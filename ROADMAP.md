@@ -276,7 +276,19 @@ Two deliverables:
    manifest (user declares, PM labels and confirms), then organization
    — files placed per conventions, media validated (harvested
    unsupported-file warnings), brand assets staged, manifest emitted,
-   handoff recorded.
+   handoff recorded. Default Includes harvests as-is for
+   "files every project gets" (SFX, logos, recurring assets).
+3. **The Brand Brief** — the bridge for assets Premiere can't import
+   (fonts, PDFs, docs; note: plain .txt is also on the unsupported
+   list). The PM *reads* the assets — font family names parsed from
+   TTF/OTF name tables (deterministic), palette extracted from the
+   logo, brand-guidelines PDF summarized — merges in intake answers,
+   and delivers the brief three ways: `BRAND_README.txt` on disk next
+   to the assets (including font-install pointers); a rendered
+   brand-card PNG imported into a `Files/Brand` bin (readable in the
+   source monitor — the "text file in Premiere," as an image); and
+   searchable metadata via the harvested Description/Comment fields
+   plus the existing frame-0 creative-brief sequence marker.
 **Exit:** a real footage dump plus a ten-minute intake produces an
 organized project + manifest that Phase 4 can consume blind; Ryan
 approves the layout on a real project.
@@ -424,6 +436,14 @@ with Ryan touching only the intake and the checkpoints.
   role by role (Phase 9). Harvest rule: nothing PreCut solved gets
   rebuilt; capabilities move by wrapping `precut_pipeline` behind the
   safety net.
+- **2026-09-01 — Brand Brief (Ryan + refinement):** non-importable brand
+  assets are bridged by a PM-generated brief delivered as (a) a
+  README.txt beside the assets on disk, (b) a rendered brand-card PNG
+  in a `Files/Brand` bin (plain .txt cannot import into Premiere), and
+  (c) searchable Description/Comment metadata + the frame-0
+  creative-brief marker harvested from PreCut. The PM extracts what it
+  can deterministically (font names from font files, palette from the
+  logo) rather than asking the user to retype it.
 - **2026-09-01 — Build order by role (Ryan):** Project Manager first,
   Assistant Editor second (the "75% of the difficulty" role). The PM's
   hard deliverable is the **Project Manifest** contract, including
