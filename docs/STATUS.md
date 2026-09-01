@@ -104,13 +104,13 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 build, slice 1 in progress:** `posthouse/cull/signals.py`,
-   the deterministic signal extractor (one ffmpeg pass, hardware decode
-   of originals, phase-correlation global motion, Laplacian sharpness,
-   exposure, audio) writing the per-clip signals sidecar. Tested on the
-   fixtures by ordering assertions, determinism, and the proxy-vs-source
-   agreement gate. Slices 2 to 6 follow per
-   `docs/design/PHASE4_CULL_DESIGN.md` §5.
+1. **Phase 4 slice 1 built** (`posthouse/cull/signals.py`, 25 tests,
+   suite 245/1), under Reviewer pass now; then commit and slice 2
+   (motion classification). Measured on the real clip: 1.34x realtime
+   (below the 4-5x projection, well inside the bar). Real-footage
+   proxy check: sharpness shape survives compression (r 0.98) but its
+   absolute level and the motion residual do not (r 0.54), so originals
+   stay required. Slices 2 to 6 per `PHASE4_CULL_DESIGN.md` §5.
 2. **Ryan, highest-value optional ask (~20 min):** mark about 5 minutes
    of the 33-minute clip `DJI_20260430071514_0005_D.MP4` as a held-out
    validation strip that is never fitted on. It turns "fitted on one

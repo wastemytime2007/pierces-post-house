@@ -574,6 +574,30 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Phase 4 slice 1 built: `posthouse/cull/signals.py`, the
+  signal extractor** (25 tests; suite 245 passed / 1 skipped). All five
+  fixture ordering assertions held on the first implementation (shaky >
+  stable on residual 7.67 vs 3.05; blurred < stable on Laplacian 0.87 vs
+  121.6; under/over lead their clip fractions), frame counts within 2,
+  byte-identical sidecars on repeat. Honest discrepancies reported, not
+  hidden: **runtime 1.34x realtime on the real clip vs the design's 4-5x
+  projection** (a per-frame Python loop with 9 full FFT correlations;
+  the 37-minute day is ~28 minutes, still far inside the overnight bar;
+  optimize only after downstream slices show it matters); the design's
+  3x3 grid of 256px blocks does not tile a 960x540 plane, so blocks
+  overlap (documented); hf_energy folds roll into the speed scalar
+  because shaky.mp4's shake is rotational.
+  **The proxy-vs-source gate did not reproduce on synthetic fixtures**
+  (testsrc2 has no fine detail for CRF-28 to destroy; ratio 1.03), so the
+  Lead ran it on the REAL clip against PreCut's own proxy of clip 0006.
+  Result partly inverts the design's expectation: **sharpness absolute
+  level is destroyed (proxy median 30% lower, ratio 1.43) but its
+  per-frame shape survives (r = 0.983)**, while **the motion residual,
+  the stability signal, correlates only r = 0.544** (tx 0.92, ty 0.74).
+  Ruling: the no-proxies rule stands, for the corrected reason: the
+  residual (shake) signal does not survive compression, and absolute
+  sharpness does not either; only sharpness *shape* would. Recorded as a
+  dated addendum in the design doc so builders see it.
 - **2026-09-01 — Phase 4 design delivered and accepted by the Lead**
   (`docs/design/PHASE4_CULL_DESIGN.md`, `docs/contracts/CULLS.md`;
   Architect). The design is measured, not estimated. Chosen stack: one

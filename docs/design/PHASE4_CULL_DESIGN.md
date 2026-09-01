@@ -301,6 +301,29 @@ nothing else. **Not in v1.** Noted here because it is a cheap
 cross-check to try once the pixel path is measured, and because a future
 session should not rediscover it from scratch.
 
+### 1.9 Measured addendum after slice 1 (Lead, 2026-09-01)
+
+Slice 1 measured two things this section predicted differently. Both
+are recorded here because builders read this document, not the log.
+
+- **Runtime.** The full extractor runs at **1.34x realtime** on the real
+  clip (175s for 235s of 4K HEVC with VideoToolbox), not the 4-5x
+  projected in §7. Cause: a per-frame Python loop doing nine full 256px
+  FFT correlations, not vectorized across frames. The 37-minute day is
+  ~28 minutes, still far inside "overnight batch acceptable." Do not
+  optimize until a later slice shows the time matters.
+- **Proxy-vs-source.** On the synthetic fixtures the sharpness
+  disagreement did not appear (testsrc2 has no fine detail for CRF-28
+  to destroy). On the REAL clip against PreCut's own proxy the picture
+  is partly inverted from §1.4's expectation: sharpness **absolute
+  level** is destroyed (proxy median 30% lower) but its **per-frame
+  shape survives** (r = 0.983), whereas the **motion residual, the
+  stability signal, correlates only r = 0.544** (tx 0.92, ty 0.74). The
+  no-proxies rule therefore stands for a corrected reason: the residual
+  does not survive compression, and neither does absolute sharpness;
+  only sharpness *shape* would. Any future "proxy shortcut" argument
+  must clear the residual, not the sharpness, bar.
+
 ## 2. Segmentation
 
 ### 2.1 From per-frame cost vectors to labelled runs
