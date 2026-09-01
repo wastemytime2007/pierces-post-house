@@ -574,6 +574,20 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Slice 1 review found a deadlock; fixed and committed
+  (`c2fc65c`).** The extractor read frames from ffmpeg's stdout while
+  draining stderr only afterwards, so a chatty decode filled the 64 KB
+  stderr pipe and both processes blocked forever. It never shows on
+  fixtures (quiet decodes) and would have frozen the cull on real footage
+  at 2 a.m. The reviewer reproduced the hang; the Lead reproduced the old
+  pattern standalone (hangs at an 8s timeout) to prove the new regression
+  test bites. Fix: stderr to a temp file (no buffer limit, tail quoted on
+  failure), kill ffmpeg cleanly on early consumer exit instead of
+  misreporting the EPIPE exit, `-nostdin`. Two regression tests drive a
+  fake ffmpeg that floods stderr with 260 KB before emitting frames.
+  Standing rule for every subprocess pipe in the house: never
+  `stderr=PIPE` alongside an incrementally-read stdout; use a file or
+  `communicate()`.
 - **2026-09-01 — Phase 4 slice 1 built: `posthouse/cull/signals.py`, the
   signal extractor** (25 tests; suite 245 passed / 1 skipped). All five
   fixture ordering assertions held on the first implementation (shaky >

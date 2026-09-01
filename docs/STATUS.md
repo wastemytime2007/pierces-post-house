@@ -104,8 +104,10 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 slice 1 built** (`posthouse/cull/signals.py`, 25 tests,
-   suite 245/1), under Reviewer pass now; then commit and slice 2
+1. **Phase 4 slice 1 committed** (`c2fc65c`; `posthouse/cull/signals.py`,
+   27 tests incl. two deadlock regressions; suite 247/1). Review found
+   and we fixed a stdout/stderr pipe deadlock that only real footage
+   would trigger. Remaining review findings being applied; then slice 2
    (motion classification). Measured on the real clip: 1.34x realtime
    (below the 4-5x projection, well inside the bar). Real-footage
    proxy check: sharpness shape survives compression (r 0.98) but its
