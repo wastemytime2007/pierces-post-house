@@ -148,6 +148,58 @@ absent from a freshly built manifest, not written as `[]`.
 python -m posthouse.manifest validate path/to/manifest.json --mode handoff
 ```
 
+## The Brand Brief (`posthouse/brandbrief.py`)
+
+Fonts, PDFs, and plain `.txt` files can't ride FCP7 XML into Premiere
+(ROADMAP.md §7 "Fonts"; contract §4.3's "document"/"text" categories).
+This module bridges that gap the way the Brand Brief Decision Log
+describes: it reads what it can deterministically off the staged brand
+files and delivers a contract §2.3-shaped `brand` dict plus two on-disk
+artifacts, both written **inside** `assets_dir` — `BRAND_README.txt` and
+a 1920x1080 `brand-card.png` (importable, readable in Premiere's source
+monitor). The **co-location rule is enforced in code**, not just
+documented: `generate_brief` has no parameter that can point either file
+outside `assets_dir`, and `validate_brief_colocation` exhaustively
+rejects a `brief.card_png_path`/`readme_path` that resolves outside it —
+mirroring `posthouse.manifest`'s own rule 8 for the same field.
+
+**Extraction, not guessing.** `build_brand_section(assets_dir)` scans
+`assets_dir` recursively and, for every file, does the deterministic
+thing the contract asks for: font `name`-table parsing via `fontTools`
+(`extract_font_info` — `family_name` prefers nameID 16 over 1,
+`style_name` 17 over 2, `postscript_name` is 6; a font whose table can't
+be read degrades to `extracted_by: "filename"` with a best-effort family
+guess, never dropped); `install_status` via a plain directory scan of the
+real macOS font locations (no `fc-list`, matched by family or
+postscript name, `"unknown"` only when the check itself can't run);
+palette extraction via PIL with **fixed** quantization parameters
+(`MEDIANCUT`, no dithering, no k-means) so the same logo always produces
+the same palette, sorted by descending pixel count with an ascending-hex
+tiebreak — full transparency is ignored, and role assignment
+(primary/secondary/accent/neutral, by rank) is documented everywhere as
+a starting point Ryan corrects, never an authoritative brand read;
+`has_alpha` via a real PIL mode/`transparency` check. `logos[].kind` and
+`documents[].kind` are filename-based best-effort guesses, same posture
+the contract allows elsewhere. `documents[].unsupported_reason` reuses
+`auto_include.unsupported_reason()` **verbatim** — the same discipline
+`posthouse.manifest.categorize_unsupported` already follows, so PreCut
+and the Post House give Ryan the same sentence. PDF summarization and the
+frame-0 creative-brief marker are explicitly **not** in this slice —
+`documents[].summarized` is always `False`, `brief.marker_written` is
+always `False` (the exporter, not this module, writes that marker).
+
+```
+python -m posthouse.brandbrief build path/to/Brand\ Assets --client "Mendez Realty"
+```
+
+Writes `BRAND_README.txt` + `brand-card.png` inside the given
+`assets_dir`, prints the `brand` section as JSON (optionally also to
+`--out-json PATH`), and exits non-zero with every co-location problem
+listed on stderr if the invariant is somehow violated. The same behavior
+is available as a Python API: `build_brand_section(assets_dir)` ->
+`generate_brief(brand, assets_dir, client_name=...)` ->
+`validate_brief_colocation(brand, assets_dir)`.
+
 Exits non-zero with every fatal error printed to stderr on a handoff-mode
 failure (intake mode always exits 0 — warnings only). The same behavior
 is available as a Python API via `validate_manifest`, which never raises

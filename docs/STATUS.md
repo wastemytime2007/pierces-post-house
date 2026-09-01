@@ -13,12 +13,11 @@ audio sync; Phase 1's cloud-buildable slice shipped. Product pivoted
 (2026-09-01): the end product is a new role-driven app; PreCut is the
 component donor. See ROADMAP §6 for the phase plan.
 
-**Next slice of Phase 2:** the Brand Brief generator (font-name
-extraction from TTF/OTF name tables, palette from the logo, README +
-brand-card PNG, co-location invariant) — `fontTools` 4.63 and `PIL`
-12.3 are both present in `~/precut-venv-fresh`. Then the organization
-step (staging assets alongside footage per the resolved portability
-ruling).
+**Next slice of Phase 2:** the organization step — staging brand assets
+alongside the footage per the resolved portability ruling (footage
+itself never moved), wiring `build_brand_section` into the manifest's
+`brand` field, and recording the PM's handoff entry. That closes the
+PM role's headless build.
 
 ## In progress
 
@@ -92,9 +91,10 @@ ruling).
 
 ## Next (in order)
 
-1. Phase 2 remaining slices: Brand Brief generator, then the
-   organization step (stage assets alongside footage; footage itself
-   never moved). Manifest builder/validator is done.
+1. Phase 2 final slice: the organization step (stage assets alongside
+   footage; footage itself never moved) + wiring the brand section into
+   the manifest + the PM handoff record. Manifest builder/validator and
+   Brand Brief generator are both done.
 2. Phase 1 remainder (Mac session, available now): heavy-dep harvest
    wrappers (transcribe, tag/index, sync) per
    `posthouse/harvest/DEFERRED.md`; the one remaining Tier-2 gap
@@ -105,6 +105,18 @@ ruling).
    first, product maybe later" and "review happens in Premiere"
    assumptions from the gameplan discussion.
 
+- 2026-09-01 — **Phase 2 slice 2: Brand Brief generator shipped.**
+  `posthouse/brandbrief.py` — font extraction from name tables, macOS
+  install status, deterministic palette, README + brand-card PNG inside
+  `assets_dir` with the co-location invariant enforced in code, CLI.
+  33 tests; suite 157 passed / 1 skipped, verified by the Lead against a
+  realistic SoldFast-branded fixture (it correctly recovered navy
+  #033459, blue #0391D8, light blue #00ADE1, orange #F4690B from a logo).
+  Three defects found by *looking at* the rendered card rather than by
+  tests — em dashes in generated copy, bare counts instead of named
+  files with reasons, and a vivid orange labelled "neutral" — all fixed
+  with regression tests. Out of scope this slice: PDF summarization and
+  the frame-0 marker. *(This commit.)*
 - 2026-09-01 — **Phase 2 slice 1: manifest builder/validator shipped.**
   `posthouse/manifest.py` — build/load/save/validate, source-ID minting
   per contract §5 (frozen, never renumbered), two-moment validation

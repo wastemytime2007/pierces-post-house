@@ -535,6 +535,38 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Generated deliverables are published copy: no em dashes.**
+  The Brand Brief's README and card land in Ryan's projects and get handed
+  to human editors, which puts them under his published-copy style rule
+  (em dashes are the most-recognized AI tell). Repo docs, code comments,
+  and docstrings are exempt; anything the pipeline *generates* for a
+  project is not. Enforced by a test that scans both the generated README
+  and the card's rendered string literals, so it can't quietly come back.
+  **This generalizes:** every later role that writes project-facing text
+  (marker names, sequence names, captions, the Creative Editor's output)
+  inherits the same rule.
+- **2026-09-01 — Phase 2 slice 2 shipped: the Brand Brief generator**
+  (`posthouse/brandbrief.py`, 33 tests). Font families parsed from TTF/OTF
+  name tables via fontTools (never dropped: a corrupt font degrades to
+  `extracted_by: "filename"`), macOS install-status by directory scan,
+  deterministic palette extraction (fixed MEDIANCUT quantize, sorted by
+  descending pixel count with ascending-hex tiebreak), README + 1920x1080
+  card PNG written inside `assets_dir` with the co-location invariant
+  enforced in code. Deliberately out of scope this slice: PDF
+  summarization (`summarized` stays false, no LLM call) and the frame-0
+  creative-brief marker (`marker_written` stays false, that's the
+  exporter's job). No golden PNG is committed: text rendering drifts
+  across PIL/font versions, so the card is asserted on structural
+  properties plus byte-identical determinism across consecutive runs,
+  while the brand *data* gets a normal golden.
+  **Three defects found by looking at a real rendered card, which the
+  tests could not catch, all fixed with regression tests:** em dashes in
+  the generated copy (see the entry above); the card printing bare counts
+  ("DOCUMENTS: 1") instead of naming files and their harvested
+  not-importable reasons, which defeats the card's whole purpose; and a
+  palette role heuristic that ranked purely by frequency, labelling
+  SoldFast's vivid orange "neutral" because it was least common. Roles now
+  gate `neutral` on HLS saturation and rank only the chromatic colours.
 - **2026-09-01 — Phase 2 slice 1 shipped: the manifest builder/validator**
   (`posthouse/manifest.py`, 60+ tests). Four implementation judgment calls
   made against gaps the ratified contract didn't specify — all accepted by

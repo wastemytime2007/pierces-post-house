@@ -1,0 +1,52 @@
+{
+  "assets_dir": "{ASSETS_DIR}",
+  "fonts": [
+    {
+      "file": "Gilroy-Bold.otf",
+      "family_name": "Gilroy",
+      "style_name": "Bold",
+      "postscript_name": "Gilroy-Bold",
+      "format": "otf",
+      "extracted_by": "name_table",
+      "install_status": "unknown"
+    }
+  ],
+  "palette": [
+    {
+      "hex": "#FF0000",
+      "role": "primary",
+      "source": "logo:mendez-logo.png"
+    },
+    {
+      "hex": "#0000FF",
+      "role": "secondary",
+      "source": "logo:mendez-logo.png"
+    }
+  ],
+  "logos": [
+    {
+      "file": "mendez-logo.png",
+      "kind": "primary",
+      "has_alpha": true
+    },
+    {
+      "file": "wordmark.jpg",
+      "kind": "wordmark",
+      "has_alpha": false
+    }
+  ],
+  "documents": [
+    {
+      "file": "Brand_Guidelines.pdf",
+      "kind": "brand_guidelines",
+      "unsupported_reason": "PDFs aren't importable as Premiere project items.",
+      "summarized": false
+    },
+    {
+      "file": "notes.txt",
+      "kind": "other",
+      "unsupported_reason": "Text files aren't importable as Premiere project items.",
+      "summarized": false
+    }
+  ]
+}
