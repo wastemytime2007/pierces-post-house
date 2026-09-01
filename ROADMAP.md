@@ -289,6 +289,13 @@ Two deliverables:
    source monitor — the "text file in Premiere," as an image); and
    searchable metadata via the harvested Description/Comment fields
    plus the existing frame-0 creative-brief sequence marker.
+   **Co-location rule:** the brand-card PNG physically lives inside the
+   staged brand-assets folder on disk (beside the README, fonts, PDFs),
+   and only there — so right-click → Reveal in Finder on the card in
+   Premiere opens the folder holding the non-importable assets. Bins
+   are virtual, the folder is the doorway; never duplicate the card
+   elsewhere. Bin naming (current "Logos" → "Brand Assets" or similar)
+   is a Phase 2 back-end detail — noted, not now.
 **Exit:** a real footage dump plus a ten-minute intake produces an
 organized project + manifest that Phase 4 can consume blind; Ryan
 approves the layout on a real project.
