@@ -1,0 +1,10 @@
+# media never enters the repo; the benchmark holds paths, answer keys, and scores only
+*.mov
+*.MOV
+*.mp4
+*.MP4
+*.mxf
+*.wav
+*.WAV
+*.braw
+*.r3d
