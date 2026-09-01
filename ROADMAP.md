@@ -472,6 +472,19 @@ with Ryan touching only the intake and the checkpoints.
   the ML deps present or stubbed); gate the single-sequence
   `_build_audio` on ffprobe `has_audio` like the library builder
   already does (cold footage mixes silent sources onto V1 freely).
+- **2026-09-01 — Project Manifest contract v1 drafted**
+  (`docs/contracts/PROJECT_MANIFEST.md`, Architect; pending Ryan's
+  ratification). Load-bearing choices: source IDs are minted once and
+  frozen (`<kind>-<slug>-<NN>` — renames never orphan artifacts;
+  downstream artifacts address files as `{source_id, rel_path}` so
+  absolute paths live in exactly one place); two-moment validation
+  (intake warns, handoff rejects); pipeline state deliberately NOT in
+  the manifest (proxy/transcript status stays with the stage that owns
+  it); co-location of the Brand Brief card is a validated invariant.
+  Caveat for bridge code: manifest `kind` vocabulary maps to, not
+  equals, PreCut's `SourceKind` (`source_audio` ⇄ `audio`; `assets` is
+  new). Six product questions for Ryan are listed in the doc with
+  recommendations.
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic

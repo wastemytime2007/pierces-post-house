@@ -95,7 +95,7 @@ additive-only DB migration rule.
 
 | Artifact | Producer → Consumer | Form | Status |
 | --- | --- | --- | --- |
-| **Project Manifest** | PM role → every later role | Client/brand identity, brand assets, source folders with user-declared kinds, per-source flags (`dual_use`, …), delivery targets | To spec in Phase 2 — the PM's hard deliverable |
+| **Project Manifest** | PM role → every later role | `manifest.json` at project root — identity/provenance (incl. PreCut pin), client + brand (with Brand Brief artifacts), sources with frozen IDs (`<kind>-<slug>-<NN>`) and `dual_use` flags, delivery targets from PreCut's preset vocabulary, append-only handoff log | **Drafted** — `docs/contracts/PROJECT_MANIFEST.md`, awaiting Ryan's ratification (6 open questions) |
 | Footage index | PreCut pipeline → everyone | SQLite + LanceDB (exists) | Shipped |
 | Transcript | PreCut (Whisper) → story/cull | JSON per A-roll (exists) | Shipped |
 | Story plan | PreCut planner → assembler | JSON in `plans/` (exists) | Shipped |

@@ -13,7 +13,8 @@ role).** See ROADMAP §6 for the renumbered phases.
 
 ## In progress
 
-*(nothing — between phases)*
+*(nothing in flight — all agents completed and integrated; safe point
+for teleport/handoff to a Mac session)*
 
 ## Done
 
@@ -50,8 +51,11 @@ role).** See ROADMAP §6 for the renumbered phases.
 
 ## Next (in order)
 
-1. Phase 2: Project Manifest contract draft (Architect) → PM role
-   headless build (intake → organize → Brand Brief → manifest).
+0. **Ryan:** review `docs/contracts/PROJECT_MANIFEST.md` — veto/extend
+   the field list and answer its 6 open questions (each has a
+   recommendation). PM implementation starts after ratification.
+1. Phase 2: PM role headless build against the ratified contract
+   (intake → organize → Brand Brief → manifest).
 2. Phase 1 remainder (Mac session): heavy-dep harvest wrappers
    (transcribe, tag/index, sync) per `posthouse/harvest/DEFERRED.md`;
    Tier-2 safety-net items (full import gate, DB migrations, real
