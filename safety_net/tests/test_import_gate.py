@@ -122,18 +122,66 @@ def test_markers_module_does_not_import_cleanly_stdlib_only():
     )
 
 
-@pytest.mark.skip(
-    reason=(
-        "Full backend import gate (all 35 precut_pipeline + python_backend "
-        "modules, including database.py/embedder.py/matcher.py/"
-        "transcriber.py/tagger.py/claude_tagger.py and friends) requires "
-        "the real project venv: lancedb, torch, whisper, open_clip, PIL, "
-        "rich, anthropic. That venv only exists on Ryan's Mac "
-        "(~/precut-venv-fresh per precut/ARCHITECTURE.md 'Runtime "
-        "environment'). This cloud safety net intentionally covers only "
-        "the stdlib-only exporter chain (see module docstring); the full "
-        "gate is a Tier-2 check to run there, not here."
+# precut_pipeline/ submodules, minus __init__ (imported implicitly by the
+# package itself) and cutlist/exporter/multi_exporter/overlay/presets/
+# theme_categories/markers, which already have dedicated coverage above.
+_PIPELINE_DIR = PRECUT_ROOT / "python_backend" / "precut_pipeline"
+_ALREADY_COVERED = set(CHAIN_MODULES) | {"markers", "__init__"}
+PIPELINE_MODULES_REMAINING = sorted(
+    p.stem for p in _PIPELINE_DIR.glob("*.py") if p.stem not in _ALREADY_COVERED
+) if _PIPELINE_DIR.is_dir() else []
+
+# python_backend/ top-level modules. Not a package (no __init__.py), so
+# these import as bare names once BACKEND_DIR is on sys.path — same as the
+# posthouse bridge does it. `exporter.py` exists at BOTH this level and
+# inside precut_pipeline/; the bare name here is the top-level one.
+_BACKEND_DIR = PRECUT_ROOT / "python_backend"
+TOP_LEVEL_MODULES = sorted(
+    p.stem for p in _BACKEND_DIR.glob("*.py")
+) if _BACKEND_DIR.is_dir() else []
+
+
+def _require_ml_deps_or_skip():
+    import importlib.util
+    missing = [
+        m for m in ("lancedb", "torch", "whisper", "open_clip", "PIL", "rich", "anthropic")
+        if importlib.util.find_spec(m) is None
+    ]
+    if missing:
+        pytest.skip(
+            f"Tier-2 full import gate requires the real project venv; "
+            f"missing here: {', '.join(missing)}. Run this on Ryan's Mac "
+            f"(~/precut-venv-fresh per precut/ARCHITECTURE.md)."
+        )
+
+
+@pytest.mark.parametrize("module_name", PIPELINE_MODULES_REMAINING)
+def test_full_pipeline_module_imports_cleanly_ryans_mac_only(module_name):
+    """The Tier-2 half of the import gate: every precut_pipeline module NOT
+    already covered by the stdlib-only chain test above (database, embedder,
+    matcher, transcriber, tagger, claude_tagger, and friends — the ones that
+    genuinely need lancedb/torch/whisper/open_clip/anthropic). Runs only
+    where those deps exist; skips everywhere else rather than failing.
+    """
+    _require_ml_deps_or_skip()
+    result = _import_in_clean_subprocess(f"precut_pipeline.{module_name}")
+    assert result.returncode == 0, (
+        f"precut_pipeline.{module_name} failed to import:\n{result.stderr}"
     )
-)
-def test_full_backend_import_gate_ryans_mac_only():
-    pass
+
+
+@pytest.mark.parametrize("module_name", TOP_LEVEL_MODULES)
+def test_top_level_backend_module_imports_cleanly_ryans_mac_only(module_name):
+    """python_backend/*.py — backend.py, pipeline.py, producer.py, project.py,
+    settings.py, setup_helper.py, proxy_manager.py, audio_indexer.py, and
+    friends. Same clean-subprocess, ML-deps-required treatment as the
+    precut_pipeline half above.
+    """
+    _require_ml_deps_or_skip()
+    code = f"import sys; sys.path.insert(0, {str(_BACKEND_DIR)!r}); import {module_name}"
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, (
+        f"{module_name} failed to import:\n{result.stderr}"
+    )

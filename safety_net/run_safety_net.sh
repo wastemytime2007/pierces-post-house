@@ -13,7 +13,16 @@ if [[ "${BLESS:-}" == "1" ]]; then
   exit 2
 fi
 
-export PRECUT_ROOT="${PRECUT_ROOT:-/home/user/precut}"
+# No hardcoded default: a cloud checkout and Ryan's Mac never share a path,
+# and silently defaulting to the wrong one would run Tier 1 against nothing
+# (or, worse, against a stale checkout) with no error. Caller must set it.
+if [[ -z "${PRECUT_ROOT:-}" ]]; then
+  echo "PRECUT_ROOT is not set — point it at a PreCut checkout and re-run." >&2
+  echo "  Cloud/CI:   PRECUT_ROOT=/home/user/precut ./safety_net/run_safety_net.sh" >&2
+  echo "  Ryan's Mac: PRECUT_ROOT=~/precut-checkout ./safety_net/run_safety_net.sh" >&2
+  exit 2
+fi
+export PRECUT_ROOT
 
 # Pinned so Python's per-process dict/set hash randomization can never be the
 # reason a diff-based golden-master test flakes (belt and suspenders on top
@@ -23,5 +32,15 @@ export PRECUT_ROOT="${PRECUT_ROOT:-/home/user/precut}"
 # a multi-element set of overlay styles).
 export PYTHONHASHSEED=0
 
+# Prefer the real project venv when present (Ryan's Mac — runs the full
+# Tier-2 suite for real) and fall back to plain python3 (cloud/CI — Tier 1
+# only, Tier-2 tests self-skip when the ML deps aren't importable).
+if [[ -x "$HOME/precut-venv-fresh/bin/python" ]]; then
+  PYTHON="$HOME/precut-venv-fresh/bin/python"
+else
+  PYTHON="python3"
+fi
+
 echo "PRECUT_ROOT=$PRECUT_ROOT"
-python3 -m pytest "$SCRIPT_DIR/tests" -v
+echo "python=$PYTHON"
+"$PYTHON" -m pytest "$SCRIPT_DIR/tests" -v

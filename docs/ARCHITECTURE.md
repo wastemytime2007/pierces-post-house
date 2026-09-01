@@ -129,13 +129,21 @@ is not (multi-GB models, MPS-vs-CPU embedding drift, live API calls):
   original for the case-probing quirk). Quirk 6 (additive-only DB
   migrations) is not observable in XML and gets its own DB test in
   Tier 2. Required green before and after any `precut` commit.
-- **Tier 2 — full-pipeline gate (Ryan's Mac only).** The real venv, real
-  models, real footage. Asserted on invariants (stage completion,
-  segment counts, no crash, sync-pair scores), never tree-diffed —
-  model output is not golden-masterable. Also home of the DB-migration
-  test and the audio-sync coverage (synthetic audio can't clear the
+- **Tier 2 — full-pipeline gate (Ryan's Mac only). Shipped 2026-09-01,
+  verified live.** The real venv (`~/precut-venv-fresh`), auto-detected
+  by `run_safety_net.sh`. Two parts are implemented and green: the full
+  35-module import gate (`test_import_gate.py`, parametrized across
+  every `precut_pipeline` + `python_backend` module, ML-deps-gated so
+  it self-skips off-Mac) and the additive-only DB-migration test
+  (`test_db_migrations.py` — old-schema fixture DB → `Database.__init__`
+  → no row loss, idempotent re-open, new columns writable). Both are
+  covered by the same sabotage discipline as Tier 1. **Still open:**
+  real-footage audio-sync coverage — synthetic audio can't clear the
   MFCC score threshold, so Tier 1 keeps sync off rather than silently
-  blessing an un-synced XML).
+  blessing an un-synced XML, and this needs genuine correlated
+  dual-source audio to exercise for real. Anything model-output-shaped
+  here is asserted on invariants, never tree-diffed — model output is
+  not golden-masterable.
 - **Benchmark project**: one real past project + Ryan's delivered edit
   as answer key (plus a one-time "usable but unused" marking pass).
   Lives only on Ryan's Mac; scoring harness runs there headless and

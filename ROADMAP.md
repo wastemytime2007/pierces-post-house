@@ -472,6 +472,30 @@ with Ryan touching only the intake and the checkpoints.
   the ML deps present or stubbed); gate the single-sequence
   `_build_audio` on ffprobe `has_audio` like the library builder
   already does (cold footage mixes silent sources onto V1 freely).
+- **2026-09-01 — Phase 0 Tier 2 shipped, on Ryan's Mac, for real.**
+  Teleported session ran the safety net against the real
+  `~/precut-venv-fresh` (torch/lancedb/whisper/CLIP present) and a fresh
+  pinned checkout (`e035fbaf`, matching `posthouse/PRECUT_PIN` exactly —
+  no drift warning). The three Tier-2 stubs that were only ever
+  documented as deferred are now real, passing tests: the full
+  35-module import gate (`test_import_gate.py`, parametrized over every
+  `precut_pipeline` and `python_backend` module, ML-deps-gated so it
+  self-skips off-Mac), the additive-only DB-migration test
+  (`test_db_migrations.py` — old-schema fixture → `Database.__init__` →
+  asserts no row loss, idempotent re-open, new columns writable), and
+  `run_safety_net.sh` now auto-detects the real venv when present and
+  refuses to run with an unset `PRECUT_ROOT` instead of defaulting
+  silently. Full suite: **60 passed, 1 skipped** (the stdlib-only-claim
+  test correctly self-skips now that the real deps exist — the
+  reviewer's earlier fix for exactly this case verified working, live).
+  Sabotage re-run on the Mac: reintroduced the historical `<out> =
+  duration - 1` bug in a scratch checkout copy — caught three ways
+  (quirk-4 assertion, both golden masters); reverted, scratch deleted.
+  **Remaining Tier-2 gap: real-footage audio sync** (needs genuine
+  correlated dual-source audio, not synthetic tones — still open).
+  Minor discovery for the backlog: the installed `lancedb` deprecates
+  `table_names()` in favor of `list_tables()` (warning only, not
+  failing yet).
 - **2026-09-01 — Project Manifest contract v1 drafted**
   (`docs/contracts/PROJECT_MANIFEST.md`, Architect; pending Ryan's
   ratification). Load-bearing choices: source IDs are minted once and

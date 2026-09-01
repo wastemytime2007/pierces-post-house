@@ -225,21 +225,10 @@ def test_quirk5_duration_frames_reflects_live_probe_not_stale_db_values(exported
 # Quirk 6 — additive-only DB migrations (Ryan's Mac only)
 # ---------------------------------------------------------------------------
 
-import pytest  # noqa: E402  (kept near its single use, mirroring the other skip)
-
-
-@pytest.mark.skip(
-    reason=(
-        "DECISIONS.md #6 (DB schema migrations are additive-only, "
-        "ALTER TABLE ADD COLUMN wrapped in try/except for idempotence) "
-        "lives entirely in database.py, which requires lancedb + numpy + "
-        "pyarrow to import for real (see conftest.py 'The markers.py "
-        "surprise' — those are stubbed there only to satisfy markers.py's "
-        "import chain, not to provide a working Database). Exercising the "
-        "actual migration behavior means opening a real Database against "
-        "a pre-migration on-disk DB fixture, which needs the real venv. "
-        "Covered on Ryan's Mac only, same as the full import gate."
-    )
-)
-def test_quirk6_db_migrations_are_additive_only_ryans_mac_only():
-    pass
+# Implemented in test_db_migrations.py (needs a real Database against a
+# pre-migration on-disk fixture, hence lancedb/numpy/pyarrow — Tier-2,
+# skips itself where those aren't installed rather than living here as a
+# permanent stub). See that file for:
+#   test_migration_adds_missing_columns_without_dropping_the_row
+#   test_migration_is_idempotent_on_second_open
+#   test_new_columns_are_writable_after_migration
