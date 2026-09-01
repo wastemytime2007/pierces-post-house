@@ -1,9 +1,8 @@
 # Project Manifest — contract v1
 
 Owner: Lead Architect (`docs/TEAM.md`). Status: **ratified 2026-09-01**
-(§6). One flagged open tension remains — raw-footage portability, §2.3 —
-to resolve before Phase 2's file-organization step is built. Governs the
-artifact only — nothing here specifies UI.
+(§6) — fully settled, no open blockers. Governs the artifact only —
+nothing here specifies UI.
 
 ## 1. Purpose and lifecycle
 
@@ -66,25 +65,23 @@ unless a default is stated.
 
 *Rationale: the PM extracts deterministically rather than making Ryan retype (Decision Log, Brand Brief) — every value here is read off a file or confirmed by him.*
 
-**Governing principle (Open Q 4):** brand assets are snapshotted into
-the project, never referenced from an external library, because the
-project folder itself is meant to be the unit of portability — Ryan's
-stated ideal is handing one titled folder to a human editor with
-nothing missing. Brand assets (small files) can genuinely live inside
-`root_dir` this way at no real cost, so that part is settled now.
-
-**Flagged tension, not yet resolved:** raw footage is a different
-order of size, and PreCut's existing, deliberate design is "source
-footage is never moved" (README.md) — projects reference footage
-in place rather than copying multi-TB camera originals. Ryan's
-"nothing missing when I hand off the folder" ideal, taken literally
-for footage too, conflicts with that. `sources[].path` in this
-contract **stays a reference to wherever the footage already lives**
-(PreCut's model) for v1; treat true full-footage portability (a
-copy-or-relink step, proxy-only handoff, or something else) as a
-Phase 2 implementation question to raise with Ryan explicitly before
-building the PM's file-organization step — do not silently decide it
-either way.
+**Governing principle (Open Q 4), resolved 2026-09-01:** brand assets
+are snapshotted into the project, never referenced from an external
+library, because the project folder itself is meant to be the unit of
+portability. Ryan clarified the scope directly: this means copying
+brand assets (and any other small additional assets) so they live
+**alongside** the footage — as a sibling directory under the same
+project root — never copying or relocating the footage itself.
+`root_dir` is (or contains) wherever the source footage folders
+already sit; the PM stages `assets_dir` as a new sibling directory
+under that same root and copies brand files into it. **This fully
+resolves the earlier flagged tension**: PreCut's "source footage is
+never moved" design (README.md) is untouched — `sources[].path`
+stays a reference to wherever the footage already lives — while
+handing the project root to a human editor still surfaces everything
+relevant (footage folders + `assets_dir` + `manifest.json`) as one
+browsable structure, at the real cost of copying only the small files.
+No longer a blocker on Phase 2.
 
 | Field | Type | Req | Meaning |
 | --- | --- | --- | --- |

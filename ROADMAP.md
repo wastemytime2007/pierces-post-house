@@ -519,11 +519,13 @@ with Ryan touching only the intake and the checkpoints.
   - **Brand snapshots per project, per the recommendation** — and
     Ryan elevated it to a governing principle: a project folder should
     be fully self-contained so it can be handed to a human editor with
-    nothing missing. **This surfaced a real, unresolved tension**: taken
-    literally for raw footage, it conflicts with PreCut's deliberate
-    "source footage is never moved" design. Flagged in the contract
-    (§2.3), not silently resolved — needs an explicit decision before
-    Phase 2's file-organization step is built.
+    nothing missing. **This surfaced a tension, now resolved (same
+    date):** Ryan clarified the scope means copying brand and other
+    small assets to live alongside the footage — a sibling directory
+    under the project root — never copying or relocating the footage
+    itself. PreCut's "source footage is never moved" design (README.md)
+    stays fully intact; `sources[].path` keeps referencing footage in
+    place. Contract §2.3 updated; no longer a blocker.
   - **On-camera people, with added scope:** the PM asks once at intake
     (as recommended) but Ryan wants best-effort per-voice attribution
     across multiple speakers, with name corrections propagating to
@@ -535,8 +537,18 @@ with Ryan touching only the intake and the checkpoints.
     "ideal, not critical if it gets too complicated."
   - `dual_use` per folder and late-footage-as-revision both ratified
     exactly as recommended.
-  PM implementation (Phase 2) can start once the flagged footage-
-  portability tension is resolved.
+  Contract is fully settled — no open blockers. Phase 2 (PM
+  implementation) can start.
+- **2026-09-01 — Cross-clip speaker naming: build it, don't borrow it.**
+  Verified (web search, not assumed): Premiere's built-in Speech to
+  Text does per-clip/per-sequence speaker detection with a "rename all
+  instances" option, but that rename is scoped to one transcript —
+  Premiere cannot track or rename a speaker's identity across separate
+  clips; this is a confirmed, currently-open Adobe feature request, not
+  a PreCut/Post House gap. Ryan's per-voice-attribution-with-propagating-
+  rename ask (Open Q 3 above) is therefore real, differentiating AE
+  work, not something to source from the NLE — stays scoped to Phase 4
+  as previously logged.
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic

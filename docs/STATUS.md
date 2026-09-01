@@ -10,10 +10,8 @@ everything in flight.
 real-footage audio sync — still open.** Phase 1 cloud-buildable slice
 shipped. Product pivoted (2026-09-01): the end product is a new
 role-driven app; PreCut is the component donor. **Project Manifest
-contract ratified by Ryan** — one flagged tension (raw-footage
-portability vs. PreCut's never-move-source-footage design) needs an
-explicit decision before Phase 2's file-organization step is built.
-See ROADMAP §6 for the phase plan.
+contract is fully ratified, no open blockers — Phase 2 (PM role) is
+clear to start.** See ROADMAP §6 for the phase plan.
 
 ## In progress
 
@@ -69,21 +67,25 @@ See ROADMAP §6 for the phase plan.
   job after it has actually seen the organized footage; shoot dates
   read with no confirmation step; on-camera naming gets real added
   scope — per-voice attribution with propagating rename, scoped out to
-  Phase 4). One real tension surfaced and flagged, not resolved: Ryan's
-  "one self-contained project folder, nothing missing on handoff"
-  principle conflicts with PreCut's deliberate never-move-source-footage
-  design for raw footage specifically. Contract updated in place; full
-  rulings in ROADMAP's Decision Log. *(This commit.)*
+  Phase 4). *(a25e2cc.)*
+- 2026-09-01 — **Footage-portability tension resolved.** Ryan clarified
+  "self-contained project folder" means brand/other small assets are
+  copied to live alongside the footage (a sibling directory under the
+  project root) — the footage itself is never copied or relocated,
+  fully preserving PreCut's "source footage is never moved" design.
+  Contract §2.3 updated; no blocker remains.
+- 2026-09-01 — **Cross-clip speaker naming verified as real new work,
+  not an NLE feature to reuse.** Confirmed via web search: Premiere's
+  Speech to Text has per-clip "rename all instances" but cannot track
+  a speaker's identity across separate clips — an open Adobe feature
+  request, not shipped. Ryan's propagating-rename ask stays Phase 4
+  (Assistant Editor) scope as previously logged, now with citations.
+  *(This commit.)*
 
 ## Next (in order)
 
-0. **Ryan:** decide the flagged raw-footage-portability tension
-   (ROADMAP Decision Log, this date) — copy footage into the project
-   folder, relink in place (PreCut's current model), proxy-only
-   handoff, or something else. Blocks Phase 2's file-organization step
-   specifically; the manifest schema itself is otherwise ready.
 1. Phase 2: PM role headless build against the ratified contract
-   (intake → organize → Brand Brief → manifest), once 0 is settled.
+   (intake → organize → Brand Brief → manifest). Clear to start.
 2. Phase 1 remainder (Mac session, available now): heavy-dep harvest
    wrappers (transcribe, tag/index, sync) per
    `posthouse/harvest/DEFERRED.md`; the one remaining Tier-2 gap
