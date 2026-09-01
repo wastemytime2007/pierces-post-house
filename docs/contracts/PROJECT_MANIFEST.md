@@ -294,11 +294,19 @@ rule `posthouse.coldfootage` already follows.
 ### 4.2 WARN (recorded, never blocking)
 
 `dual_use: true` on a non-`aroll` source (ignored downstream) ·
-`inference.agrees_with_declaration: false` · `delivery_targets` empty or
-all `proposed` · a font with `install_status != "installed"` · a source
+`inference.agrees_with_declaration: false` · a font with
+`install_status != "installed"` · a source
 on a different volume than `root_dir` (unmountable later) · `brand`
 absent entirely · `source_audio` present with no `aroll` to sync to · a
 source with zero media files · nested same-kind sources.
+
+**Amended 2026-09-01 (Lead, after seeing it fire in a real run):** an
+empty `delivery_targets` is NOT a warning. Open Q 1's ruling made that
+field Creative-Editor-owned and deliberately absent at PM handoff, so
+warning about it at the PM stage flags the correct state as a problem
+and trains readers to ignore warnings. The check belongs to the Creative
+Editor's own validation when Phase 6 builds it: by the time a cut is
+being assembled, missing delivery targets are genuinely worth flagging.
 
 ### 4.3 Unsupported files → warn, with the harvested reason
 

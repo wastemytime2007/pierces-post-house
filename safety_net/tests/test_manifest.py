@@ -625,10 +625,15 @@ def test_warn_brand_absent(tmp_path):
     assert any("brand is absent" in w for w in handoff.warnings)
 
 
-def test_warn_delivery_targets_empty(tmp_path):
+def test_no_warning_for_empty_delivery_targets(tmp_path):
+    """Contract §4.2 as amended 2026-09-01: an empty `delivery_targets` is
+    the CORRECT state at PM handoff (Open Q 1 made the field
+    Creative-Editor-owned), so warning about it here would flag correct
+    output and train readers to ignore warnings. Phase 6 owns that check.
+    Caught by watching a real PM run emit the warning."""
     m = _make_example_manifest(tmp_path)
     handoff = M.validate_manifest(m, mode="handoff")
-    assert any("delivery_targets" in w for w in handoff.warnings)
+    assert not any("delivery_targets" in w for w in handoff.warnings), handoff.warnings
 
 
 def test_warn_source_audio_with_no_aroll(tmp_path):

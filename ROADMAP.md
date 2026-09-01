@@ -535,6 +535,42 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — PHASE 2 COMPLETE: the Project Manager role runs
+  headless.** Final slice `posthouse/projectmanager.py` (21 tests; suite
+  178 passed / 1 skipped): per-source media census by extension (not
+  ffprobe — a card dump is thousands of files and this is an intake
+  snapshot, not analysis), unsupported-file aggregation with harvested
+  reasons, harvested camera inference recorded with the real PreCut pin
+  (`agrees_with_declaration` computed but declared `kind` always wins),
+  shoot dates read from `st_birthtime` with an mtime fallback and no
+  confirmation step (as ratified), brand-asset staging into a
+  `Brand Assets` sibling directory, Brand Brief generation against the
+  staged copy, the append-only handoff record, and a hard gate that the
+  emitted manifest passes handoff validation.
+  **Verified end to end by the Lead on a realistic fake shoot**, not
+  just by tests: a project folder now opens as footage folders + Brand
+  Assets + manifest.json, exactly the "hand one folder to a human
+  editor" shape Ryan asked for. A late-footage re-run bumped `revision`
+  1→2, appended the new source with a fresh id, left all prior ids
+  frozen, appended a second handoff entry, and added exactly one file to
+  disk — footage never copied, which is the ruling's whole point.
+  Judgment call accepted (logged, overridable by Ryan):
+  `agrees_with_declaration` is false when an `aroll`/`source_audio`
+  source infers `drone`/`aerial`/`timelapse` tags; `broll`/`assets`
+  always agree, since B-roll can legitimately be anything.
+  **Phase 2 exit criterion met.** Next role: Assistant Editor (Phase 4
+  flagship), gated on the Phase 3 benchmark, which needs Ryan to
+  nominate a past project.
+- **2026-09-01 — Contract amended: an empty `delivery_targets` is not a
+  warning.** Caught by watching a real PM run print it. §4.2 listed it,
+  but Open Q 1's ratification had since made the field
+  Creative-Editor-owned and deliberately absent at PM handoff, so the
+  rule fired on the *correct* state and would have trained everyone to
+  tune warnings out. Removed from the contract and the validator; the
+  check moves to the Creative Editor's own validation in Phase 6, where
+  an empty list genuinely means something is missing. (Lead edit to an
+  Architect-owned doc, made rather than re-dispatching an agent for two
+  lines; noted here for the record.)
 - **2026-09-01 — Generated deliverables are published copy: no em dashes.**
   The Brand Brief's README and card land in Ryan's projects and get handed
   to human editors, which puts them under his published-copy style rule

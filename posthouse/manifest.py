@@ -869,10 +869,13 @@ def validate_manifest(manifest: dict, mode: str = "intake") -> ValidationResult:
                     "the co-location rule (contract §2.3) is violated"
                 )
 
-    # --- Delivery targets (rule 6, 7 + warn) -----------------------------
+    # --- Delivery targets (rules 6, 7) -----------------------------------
+    # Deliberately NO "delivery_targets is empty" warning: contract §4.2 as
+    # amended 2026-09-01. Open Q 1 made the field Creative-Editor-owned and
+    # absent at PM handoff, so warning here flags the *correct* state and
+    # teaches readers to tune warnings out. Phase 6's Creative Editor owns
+    # that check, where an empty list actually means something is missing.
     dts = manifest.get("delivery_targets") or []
-    if not dts or all(dt.get("status") == "proposed" for dt in dts):
-        warn("delivery_targets is empty or every entry is still 'proposed'")
 
     presets_mod = None
     if dts:

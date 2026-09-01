@@ -208,3 +208,90 @@ either way; a caller wanting "handoff with teeth" checks
 round-trip a manifest to disk with the same write-tempfile-then-
 `os.replace` atomic pattern as `precut_pipeline`'s own
 `project.py:Project.save()`.
+
+## The Project Manager (`posthouse/projectmanager.py`)
+
+This is the module that completes the PM role's headless build (ROADMAP.md
+§6 Phase 2 item 2): `organize_project(...)` ties `manifest.py` and
+`brandbrief.py` together into the PM's actual entry point — raw footage
+folders plus structured intake answers in, an organized, validated,
+handoff-ready project out. No conversational intake and no UI (ROADMAP.md
+ground rule 7); the intake answers arrive as a plain list of source
+declarations (`{path, kind, dual_use?, notes?}`), matching the scope
+`manifest.py` already set for this package.
+
+**Footage is never copied or moved — the one load-bearing rule this
+module is built around** (contract §2.3). The only `shutil.copytree` call
+in the module is `_stage_brand_assets`, which copies the brand-assets
+source directory into a NEW sibling folder under `project.root_dir`
+(default name `"Brand Assets"`, matching the contract's own worked
+example verbatim) — never anything from a declared footage source. Every
+other touch of a source path is read-only (`Path.rglob`/`Path.stat` for
+the census and shoot-date derivation). `_stage_brand_assets` refuses to
+run at all if the brand-assets source equals, contains, or is contained
+by any declared footage source, and asserts after copying that nothing
+under `assets_dir` overlaps a footage source's path.
+
+**Per-source census** (`media{}`, contract §2.4) is extension
+classification via the harvested `auto_include.kind_for_path` — never
+per-file ffprobe. A card dump can be thousands of files; this is an
+intake snapshot, not analysis (that's Phase 4's job, on material this
+role has already organized). Files `kind_for_path` can't classify count
+toward `other_count` and get aggregated into `unsupported[]` by
+extension through `manifest.categorize_unsupported` — the exact function
+`manifest.py` already uses, so there is no second reason-string
+implementation anywhere in the package.
+
+**Inference** (`inference{}`, contract §2.4) calls the harvested
+`camera_inference.infer_camera_tags` against each source's folder path
+(matching camera-model subfolders the way PreCut's own docstring
+describes) and tags `method` with the real PreCut pin, read from
+`precut_bridge.PIN_FILE` rather than hardcoded. `agrees_with_declaration`
+is a judgment call the ratified contract leaves open (it specifies the
+field, not the comparison rule): a declared `aroll`/`source_audio` source
+whose inferred tags include `drone`/`aerial`/`timelapse` disagrees (a
+locked-off interview does not come from a drone); `broll`/`assets` always
+agree, since B-roll can legitimately be anything. Recorded, never
+authoritative — the declared `kind` always wins downstream.
+
+**Shoot dates** (contract §2.2, ratified: read from files, no
+confirmation step) come from every video file's creation timestamp:
+`st_birthtime` where the platform provides it (macOS), falling back to
+`st_mtime` where it doesn't (no `os.statx` call is made just to chase a
+birthtime Linux doesn't expose through `os.stat_result`). Recomputed from
+whatever is on disk on every run, so late footage naturally extends
+`project.shoot_dates` without special-casing.
+
+**Idempotent re-runs / late footage** (ratified: late footage is a new
+revision): a declared source whose resolved path already matches one in
+an existing `manifest.json` is left completely untouched — no recompute,
+no re-mint. Only genuinely new source paths are appended via
+`manifest.add_source`, which mints a fresh frozen id without touching any
+prior one. Brand assets are always re-staged (`copytree(...,
+dirs_exist_ok=True)` overwrites same-named files in place — refreshed,
+not duplicated). `revision` follows `save_manifest`'s existing rule
+(bumped on every write except the very first).
+
+**The final gate.** Before anything is written, the assembled manifest
+(handoff entry included) is run through
+`manifest.validate_manifest(mode="handoff")`. A failure raises
+`OrganizeError` carrying every error and writes nothing — an existing
+`manifest.json` on disk is left exactly as it was.
+
+```
+python -m posthouse.projectmanager organize --root DIR --client NAME \
+  --project NAME --type TYPE --source PATH:KIND[:dual_use] [--source ...] \
+  [--assets DIR]
+```
+
+Exits non-zero listing every problem on stderr on failure. The same
+behavior is available as a Python API: `organize_project(...)` returns an
+`OrganizeResult` (`manifest`, `manifest_path`, `is_new_project`,
+`added_source_ids`, `staged_asset_files`, `warnings`) or raises
+`OrganizeError`.
+
+Out of scope for this slice: an interactive intake conversation (ground
+rule 7 — every answer arrives as structured input); recomputing census/
+inference for a source already on the manifest from a prior run (it's
+left untouched by design, per the idempotency rule above); anything
+beyond the PM's own handoff (Assistant Editor consumption is Phase 4).

@@ -6,18 +6,25 @@ everything in flight.
 
 ## Current stage — see § Done for the latest slice
 
-**Phase 2 (Project Manager role) in progress — slice 1 shipped.** The
-manifest builder/validator is built, reviewed, and green. Phase 0 is
-complete (Tier 1 + Tier 2, verified on Ryan's Mac) except real-footage
-audio sync; Phase 1's cloud-buildable slice shipped. Product pivoted
-(2026-09-01): the end product is a new role-driven app; PreCut is the
-component donor. See ROADMAP §6 for the phase plan.
+**PHASE 2 COMPLETE — the Project Manager role runs headless.** All
+three slices shipped (manifest builder/validator, Brand Brief
+generator, organization step). Verified end to end on a realistic fake
+shoot: a raw footage dump plus intake answers produces an organized
+project folder holding footage (never moved), a `Brand Assets`
+directory, and a validated `manifest.json`. Suite: 178 passed /
+1 skipped.
 
-**Next slice of Phase 2:** the organization step — staging brand assets
-alongside the footage per the resolved portability ruling (footage
-itself never moved), wiring `build_brand_section` into the manifest's
-`brand` field, and recording the PM's handoff entry. That closes the
-PM role's headless build.
+Phase 0 is complete (Tier 1 + Tier 2, verified on this Mac) except
+real-footage audio sync; Phase 1's cloud-buildable slice shipped.
+Product pivoted (2026-09-01): the end product is a new role-driven app;
+PreCut is the component donor. See ROADMAP §6 for the phase plan.
+
+**What's next, and what it needs from Ryan:** the Assistant Editor is
+the Phase 4 flagship and the roadmap gates it on Phase 3, the benchmark
+— which is blocked on Ryan nominating one finished past project (raw
+footage plus his delivered edit). Without it there is no answer key to
+measure the cull against, and the cull is exactly the skill that must
+not be tuned by vibes.
 
 ## In progress
 
@@ -91,10 +98,11 @@ PM role's headless build.
 
 ## Next (in order)
 
-1. Phase 2 final slice: the organization step (stage assets alongside
-   footage; footage itself never moved) + wiring the brand section into
-   the manifest + the PM handoff record. Manifest builder/validator and
-   Brand Brief generator are both done.
+1. **Ryan: nominate the benchmark project** — one finished past job
+   whose raw footage AND delivered edit are both still on disk. This is
+   now the critical path: Phase 3 (benchmark) gates Phase 4 (the
+   Assistant Editor cull), and the cull is the one skill that must be
+   measured against a real answer key rather than tuned by feel.
 2. Phase 1 remainder (Mac session, available now): heavy-dep harvest
    wrappers (transcribe, tag/index, sync) per
    `posthouse/harvest/DEFERRED.md`; the one remaining Tier-2 gap
@@ -105,6 +113,17 @@ PM role's headless build.
    first, product maybe later" and "review happens in Premiere"
    assumptions from the gameplan discussion.
 
+- 2026-09-01 — **Phase 2 slice 3 shipped; PHASE 2 COMPLETE.**
+  `posthouse/projectmanager.py` — census, unsupported aggregation,
+  harvested camera inference with the real pin, shoot dates from file
+  timestamps, brand-asset staging into `Brand Assets`, Brand Brief
+  generation, append-only handoff record, and a hard handoff-validation
+  gate before anything is written. 21 tests; suite 178 passed /
+  1 skipped. Verified by the Lead on a realistic fake shoot including a
+  late-footage re-run (revision 1→2, prior source ids frozen, exactly
+  one new file on disk, footage never copied). Also amended contract
+  §4.2 to drop the now-incorrect "delivery_targets is empty" warning,
+  caught by watching the real run. *(This commit.)*
 - 2026-09-01 — **Phase 2 slice 2: Brand Brief generator shipped.**
   `posthouse/brandbrief.py` — font extraction from name tables, macOS
   install status, deterministic palette, README + brand-card PNG inside
