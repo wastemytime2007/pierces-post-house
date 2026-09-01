@@ -526,29 +526,28 @@ with Ryan touching only the intake and the checkpoints.
     itself. PreCut's "source footage is never moved" design (README.md)
     stays fully intact; `sources[].path` keeps referencing footage in
     place. Contract §2.3 updated; no longer a blocker.
-  - **On-camera people, with added scope:** the PM asks once at intake
-    (as recommended) but Ryan wants best-effort per-voice attribution
-    across multiple speakers, with name corrections propagating to
-    every clip carrying that voice. This is genuinely bigger than an
-    intake field — it implies voice attribution spanning clips, which
-    needs audio/transcript analysis the manifest doesn't have. Scoped
-    out of the manifest and tracked as a Phase 4 (Assistant Editor)
-    capability to design, not invented ahead of that phase; per Ryan,
-    "ideal, not critical if it gets too complicated."
+  - **On-camera people:** the PM asks once at intake (as recommended);
+    `project.people` is a simple roster. The follow-on ask (per-voice
+    attribution across clips with propagating rename) was raised, then
+    **de-scoped by Ryan the same day**: generic "Speaker 1" / "Speaker
+    2" labels are sufficient everywhere — see the next entry.
   - `dual_use` per folder and late-footage-as-revision both ratified
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
-- **2026-09-01 — Cross-clip speaker naming: build it, don't borrow it.**
-  Verified (web search, not assumed): Premiere's built-in Speech to
-  Text does per-clip/per-sequence speaker detection with a "rename all
-  instances" option, but that rename is scoped to one transcript —
-  Premiere cannot track or rename a speaker's identity across separate
-  clips; this is a confirmed, currently-open Adobe feature request, not
-  a PreCut/Post House gap. Ryan's per-voice-attribution-with-propagating-
-  rename ask (Open Q 3 above) is therefore real, differentiating AE
-  work, not something to source from the NLE — stays scoped to Phase 4
-  as previously logged.
+- **2026-09-01 — Cross-clip speaker naming: verified as real work,
+  then de-scoped entirely.** First verified (web search, not assumed)
+  that Premiere's built-in Speech to Text cannot do it — "rename all
+  instances" is scoped to one transcript, and cross-clip speaker
+  tracking is a confirmed, currently-open Adobe feature request, so it
+  isn't something to borrow from the NLE. Then, on reflection the same
+  day, **Ryan de-scoped the feature itself**: generic "Speaker 1" /
+  "Speaker 2" style labels are sufficient — no cross-clip voice
+  identity, matching, or propagating rename is needed anywhere in the
+  Post House. Net effect: Phase 4 (Assistant Editor) needs no custom
+  diarization/voice-matching work at all; whatever speaker separation
+  the AE's transcription step naturally produces is the finished
+  feature.
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic

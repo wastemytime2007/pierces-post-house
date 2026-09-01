@@ -58,7 +58,7 @@ unless a default is stated.
 | `project_type` | str | ✓ | `interview` \| `property_tour` \| `renovation` \| `event` \| `product` \| `other`. Free-text goes in `notes`, not here. |
 | `shoot_dates` | [date] | — | List, not a scalar — multi-day shoots are normal. Read directly from file creation timestamps at intake, no confirmation step (Ryan, Open Q 5). |
 | `locations` | [{…}] | — | `[{label (req), address?}]` |
-| `people` | [{…}] | — | `[{id, name, role: "subject"\|"agent"\|"host"\|"other"}]` — the roster of who Ryan expects on camera, asked once at intake (`id` = slugified name per §5, unique in the project), referenced by `sources[].subject_ids`. This is a starting roster the PM writes, **not** a per-clip speaker-diarization result — see Open Q 3: matching a voice to a name across clips, with a correction that propagates everywhere that voice appears, is real scope beyond intake and is tracked as a Phase 4 (Assistant Editor) capability, not specified in this contract. Feeds Phase 4 per-subject grouping either way. |
+| `people` | [{…}] | — | `[{id, name, role: "subject"\|"agent"\|"host"\|"other"}]` — the roster of who Ryan expects on camera, asked once at intake (`id` = slugified name per §5, unique in the project), referenced by `sources[].subject_ids`. Feeds Phase 4 per-subject grouping. Cross-clip per-voice identity matching is explicitly out of scope (Open Q 3, ratified 2026-09-01) — generic speaker labels are sufficient wherever speaker identity is needed elsewhere in the pipeline. |
 | `notes` | str | — | Free text from intake that has no field yet. |
 
 ### 2.3 `brand` — assets and the Brand Brief
@@ -379,16 +379,16 @@ silently trusted.
 2. **`dual_use` grain: folder or clip?** **Ruling: per folder**, as
    recommended.
 3. **Should the PM ask who's on camera?** **Ruling: yes**, as
-   recommended, plus real added scope: multiple people are often on
-   camera together, so the PM does best-effort per-voice attribution,
-   and correcting a wrong name (e.g. "Bob" → "Mitch") must propagate to
-   every clip carrying that voice, not just one field. Ryan flagged
-   this himself as "ideal, not critical if it gets too complicated" —
-   **this is genuinely bigger than an intake question** (it implies
-   voice attribution spanning clips, which needs transcription/audio
-   analysis this contract doesn't have). Scoped out of PM v1; tracked
-   as a Phase 4 (Assistant Editor) capability to design when that phase
-   starts, not invented here.
+   recommended — `project.people` stays a simple intake roster. The
+   follow-on ask (per-voice attribution across clips, with a name
+   correction propagating everywhere that voice appears) was
+   **de-scoped by Ryan on reflection (2026-09-01): generic Speaker 1 /
+   Speaker 2 style labels are sufficient.** No cross-clip voice
+   identity, matching, or propagating rename is needed anywhere in the
+   Post House. This removes real complexity from the eventual Phase 4
+   design — whatever speaker separation the AE's own transcription
+   produces (even literally "Speaker 1", "Speaker 2") is the finished
+   feature, not an intermediate step toward named identity.
 4. **Brand: per-project or reusable library?** **Ruling: snapshot per
    project**, as recommended — and elevated to a governing principle
    (§2.3): the project folder should be a fully self-contained handoff

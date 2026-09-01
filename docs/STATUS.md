@@ -74,12 +74,13 @@ clear to start.** See ROADMAP §6 for the phase plan.
   project root) — the footage itself is never copied or relocated,
   fully preserving PreCut's "source footage is never moved" design.
   Contract §2.3 updated; no blocker remains.
-- 2026-09-01 — **Cross-clip speaker naming verified as real new work,
-  not an NLE feature to reuse.** Confirmed via web search: Premiere's
-  Speech to Text has per-clip "rename all instances" but cannot track
-  a speaker's identity across separate clips — an open Adobe feature
-  request, not shipped. Ryan's propagating-rename ask stays Phase 4
-  (Assistant Editor) scope as previously logged, now with citations.
+- 2026-09-01 — **Cross-clip speaker naming: verified real, then
+  dropped.** Confirmed via web search Premiere can't do it (see
+  ROADMAP Decision Log). Ryan then de-scoped the feature itself the
+  same day: generic "Speaker 1" / "Speaker 2" labels are sufficient
+  everywhere — no cross-clip voice matching or propagating rename
+  needed. Removes real complexity from the eventual Phase 4 design.
+  Manifest's `people` field simplified back to a plain intake roster.
   *(This commit.)*
 
 ## Next (in order)
