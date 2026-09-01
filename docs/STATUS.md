@@ -120,6 +120,16 @@ not be tuned by vibes.
    first, product maybe later" and "review happens in Premiere"
    assumptions from the gameplan discussion.
 
+- 2026-09-01 — **Phase 3 scoring harness shipped and reviewed.**
+  `posthouse/benchmark.py`: Premiere-export parser, time-overlap
+  P/R/IoU with independently-dilated tolerance, per-ruleset and
+  truth-scope handling, largest-misses report, CLI. Review found 8
+  verified defects (3 load-bearing: gap-merging dilation, wrong-clip
+  basename credit, untrimmed nests), all fixed with regression tests;
+  truth scope added for the partial answer key. Suite 220 passed /
+  1 skipped; arithmetic and real-key parse hand-verified by the Lead.
+  Ryan's answer key (clip 0006, 26 selects, 39% usable) staged and
+  parsing exactly. *(This commit.)*
 - 2026-09-01 — **Benchmark v1 staged (Runnells Day 1) and the PM's
   first real-footage run.** Manifest at `benchmark/runnells-day-1/`
   (paths only; media stays on `RDOSS_2025`). The real run exposed two

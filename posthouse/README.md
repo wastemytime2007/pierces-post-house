@@ -375,3 +375,56 @@ rule 7 — every answer arrives as structured input); recomputing census/
 inference for a source already on the manifest from a prior run (it's
 left untouched by design, per the idempotency rule above); anything
 beyond the PM's own handoff (Assistant Editor consumption is Phase 4).
+
+## The benchmark scoring harness (`posthouse/benchmark.py`)
+
+Phase 3 (ROADMAP.md §5, §6). Scores a cull's `culls.json` (or any
+`posthouse.coldfootage`-shaped segments file — see that module's
+docstring) against a real answer key: Ryan marks every usable range in
+the benchmark project's raw footage directly onto one selects sequence
+in Premiere and exports it as an FCP7 XML (`benchmark/README.md` has the
+exact steps, and the "why" — marking usable ranges directly instead of
+using a finished edit closes ROADMAP §7's "answer-key survivorship" gap
+rather than needing a separate marking pass).
+
+* `parse_answer_key_xml(xml_path) -> list[Range]` reads that XML.
+  Tolerates real Premiere exports, not just PreCut's own writer:
+  `<clipitem>` -> `<file id=...>` reference reuse (a file's full body is
+  written once, later references are bare `<file id="...">` with no
+  children), percent-encoded `<pathurl>` (`file://localhost/...`,
+  decoded), `<in>`/`<out>` in frames at the clip's own `<rate>` (falling
+  back to the file's rate) with NTSC-flagged timebases converted to their
+  real frame rate (30 + NTSC = 29.97, not 30), clipitems with no `<file>`
+  child (gaps/titles/adjustment layers, skipped), and nested `<sequence>`
+  elements under `<project>`/`<children>`/`<bin>` (every `<sequence>` in
+  the document is walked). A linked video+audio clipitem pair naturally
+  dedupes to one range because both resolve to the same source+in/out.
+* `load_culls(culls_json_path) -> list[Range]` reads the segments shape,
+  including the optional per-segment `ruleset: "narrative" | "visual"`
+  for dual-use sources (Project Manifest contract §5).
+* `score(predicted, truth, *, handle_tolerance_sec=1.0) -> Score` — see
+  the function's own docstring for the exact overlap/tolerance rules.
+  Short version: both sides get overlap-merged per source first (no
+  double-counting), precision measures predicted time against truth
+  *widened* by the handle tolerance on each side (so trim handles never
+  register as false positives), recall measures predicted time against
+  the raw, un-widened truth. `ruleset`-tagged predicted segments get
+  scored per ruleset AND pooled ("overall"), because a dual-use source's
+  narrative cull and visual cull are different questions against the
+  same ground truth. A source with nothing predicted scores precision
+  1.0 (nothing to be a false positive); a source with no truth scores
+  recall 1.0 (nothing to miss) — a documented zero-division convention,
+  not an unstated default.
+* `write_report(score, out_dir) -> (json_path, txt_path)` writes
+  `benchmark_report.json` (machine) and `benchmark_report.txt` (human,
+  no em dashes).
+
+CLI:
+
+```
+python -m posthouse.benchmark score --answer-key KEY.xml --culls CULLS.json \
+  [--out DIR] [--handle-tolerance 1.0]
+```
+
+Exits non-zero listing every problem (from either the answer key or the
+culls file) on stderr on failure.

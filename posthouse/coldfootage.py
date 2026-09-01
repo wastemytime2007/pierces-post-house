@@ -86,6 +86,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -155,8 +156,110 @@ def _probe_native_dims(source_path: str) -> tuple[int, int, float]:
     return (int(width), int(height), float(fps))
 
 
+def _shape_check_segment(
+    seg: object, tag: str
+) -> tuple[Optional[str], Optional[str], Optional[float], Optional[float]]:
+    """Pure per-segment shape check: is ``seg`` an object with a
+    ``source_path`` and a finite, non-negative, ordered ``in_sec``/
+    ``out_sec``? No filesystem access, no ffprobe.
+
+    Returns ``(problem, source_path, in_sec, out_sec)`` — ``problem`` is
+    ``None`` on success (with ``in_sec``/``out_sec`` populated as floats),
+    or a description string on failure (with ``in_sec``/``out_sec`` as
+    ``None``; ``source_path`` is populated when it could be read at all,
+    for use in the problem message).
+    """
+    if not isinstance(seg, dict):
+        return (f"{tag}: expected an object, got {type(seg).__name__}", None, None, None)
+
+    source_path = seg.get("source_path", "")
+    if not source_path:
+        return (f"{tag}: missing source_path", source_path, None, None)
+
+    try:
+        raw_in = seg["in_sec"]
+        raw_out = seg["out_sec"]
+        if isinstance(raw_in, bool) or isinstance(raw_out, bool):
+            raise TypeError("in_sec/out_sec must not be a bool")
+        in_sec = float(raw_in)
+        out_sec = float(raw_out)
+        if not (math.isfinite(in_sec) and math.isfinite(out_sec)):
+            raise ValueError("in_sec/out_sec must be finite numbers")
+        if in_sec < 0:
+            raise ValueError(f"in_sec must be >= 0, got {in_sec}")
+    except (KeyError, TypeError, ValueError) as e:
+        return (
+            f"{tag} ({source_path!r}): missing/invalid in_sec or out_sec ({e})",
+            source_path, None, None,
+        )
+
+    if in_sec >= out_sec:
+        return (
+            f"{tag} ({source_path}): in_sec ({in_sec}) >= out_sec ({out_sec})",
+            source_path, None, None,
+        )
+
+    return (None, source_path, in_sec, out_sec)
+
+
+def _validate_segments_list_shape(segments: list) -> list[str]:
+    """Every per-segment shape problem in ``segments``, not just the
+    first. Pure — no filesystem access, no ffprobe. See
+    :func:`_shape_check_segment`."""
+    problems: list[str] = []
+    for i, seg in enumerate(segments):
+        problem, *_ = _shape_check_segment(seg, f"segment[{i}]")
+        if problem:
+            problems.append(problem)
+    return problems
+
+
+def validate_segments_shape(data: dict) -> list[str]:
+    """Validate the pure shape of a segments-file dict: header fields
+    (``contract_version``, ``sequence_name``, a non-empty ``segments``
+    list) and per-segment field types/ranges — WITHOUT touching the
+    filesystem or probing media (no exists-check, no ffprobe duration
+    check). Returns every problem found, not just the first.
+
+    This is the one shared contract check between this module's own
+    segments loader (:func:`_load_segments_dict`, and
+    :func:`_validate_and_resolve` which follows it with the fs/ffprobe
+    checks that stay module-specific) and
+    ``posthouse.benchmark.load_culls`` — a culls.json is, by contract,
+    shaped exactly like this module's segments file, plus one field
+    (``ruleset``) that benchmark validates on its own on top of this.
+    Before this function existed the two loaders had already drifted:
+    benchmark's copy didn't require ``sequence_name`` while this module's
+    did. ``sequence_name`` is required here, and a culls file is held to
+    the same rule, since it is contractually a segments file.
+    """
+    problems: list[str] = []
+
+    contract_version = data.get("contract_version")
+    if contract_version != CONTRACT_VERSION:
+        problems.append(
+            f"unsupported contract_version {contract_version!r}; "
+            f"expected version {CONTRACT_VERSION}"
+        )
+
+    sequence_name = data.get("sequence_name")
+    if not sequence_name or not isinstance(sequence_name, str):
+        problems.append("segments file must have a non-empty 'sequence_name' string")
+
+    segments = data.get("segments")
+    segments_is_list = isinstance(segments, list)
+    if not segments_is_list or not segments:
+        problems.append("segments file must have a non-empty 'segments' list")
+
+    if segments_is_list:
+        problems.extend(_validate_segments_list_shape(segments))
+
+    return problems
+
+
 def _validate_and_resolve(segments: list[dict]) -> list[_ResolvedSegment]:
-    """Validate every segment, collect every problem, then resolve handles.
+    """Validate every segment (shape, then filesystem/ffprobe), collect
+    every problem, then resolve handles.
 
     Raises ColdFootageValidationError listing every offending segment if
     any validation fails. Returns resolved segments (with handles applied
@@ -171,26 +274,13 @@ def _validate_and_resolve(segments: list[dict]) -> list[_ResolvedSegment]:
 
     for i, seg in enumerate(segments):
         tag = f"segment[{i}]"
-        source_path = seg.get("source_path", "")
+        problem, source_path, in_sec, out_sec = _shape_check_segment(seg, tag)
+        if problem:
+            problems.append(problem)
+            continue
+
         label = seg.get("label") or ""
         handle_sec = float(seg.get("handle_sec", DEFAULT_HANDLE_SEC))
-
-        try:
-            in_sec = float(seg["in_sec"])
-            out_sec = float(seg["out_sec"])
-        except (KeyError, TypeError, ValueError) as e:
-            problems.append(f"{tag} ({source_path!r}): missing/invalid in_sec or out_sec ({e})")
-            continue
-
-        if not source_path:
-            problems.append(f"{tag}: missing source_path")
-            continue
-
-        if in_sec >= out_sec:
-            problems.append(
-                f"{tag} ({source_path}): in_sec ({in_sec}) >= out_sec ({out_sec})"
-            )
-            continue
 
         src = Path(source_path)
         if not src.exists():
@@ -235,22 +325,10 @@ def _validate_and_resolve(segments: list[dict]) -> list[_ResolvedSegment]:
 
 
 def _load_segments_dict(segments_dict: dict) -> tuple[str, list[dict]]:
-    contract_version = segments_dict.get("contract_version")
-    if contract_version != CONTRACT_VERSION:
-        raise ColdFootageError(
-            f"unsupported contract_version {contract_version!r}; "
-            f"posthouse.coldfootage supports version {CONTRACT_VERSION}"
-        )
-
-    sequence_name = segments_dict.get("sequence_name")
-    if not sequence_name or not isinstance(sequence_name, str):
-        raise ColdFootageError("segments file must have a non-empty 'sequence_name' string")
-
-    segments = segments_dict.get("segments")
-    if not isinstance(segments, list) or not segments:
-        raise ColdFootageError("segments file must have a non-empty 'segments' list")
-
-    return sequence_name, segments
+    problems = validate_segments_shape(segments_dict)
+    if problems:
+        raise ColdFootageValidationError(problems)
+    return segments_dict["sequence_name"], segments_dict["segments"]
 
 
 def build_coldfootage_xml(

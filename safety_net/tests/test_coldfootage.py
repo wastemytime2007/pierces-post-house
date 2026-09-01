@@ -29,6 +29,7 @@ from posthouse.coldfootage import (
     ColdFootageValidationError,
     _validate_and_resolve,
     build_coldfootage_xml,
+    validate_segments_shape,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -159,6 +160,34 @@ def test_validation_passes_valid_segments_through_unmodified_order():
         {"source_path": SHAKY, "in_sec": 0.0, "out_sec": 1.0, "handle_sec": 0.0},
     ])
     assert [r.source_path for r in resolved] == [STABLE, SHAKY]
+
+
+def test_validate_segments_shape_is_pure_and_exhaustive():
+    """Code review finding 7: the shared shape validator (also used by
+    posthouse.benchmark.load_culls) checks header AND per-segment shape
+    without touching the filesystem or ffprobe — a source_path that does
+    not exist on disk must NOT be flagged here (that's
+    _validate_and_resolve's job), only genuine shape problems."""
+    problems = validate_segments_shape({
+        "contract_version": 1,
+        "sequence_name": "Shape Test",
+        "segments": [
+            {"source_path": "/does/not/exist/on/disk.mov", "in_sec": 0.0, "out_sec": 1.0},
+            {"source_path": "", "in_sec": 0.0, "out_sec": 1.0},
+        ],
+    })
+    # Only the missing-source_path segment is a shape problem; a
+    # nonexistent file is not a shape problem.
+    assert len(problems) == 1
+    assert "missing source_path" in problems[0]
+
+
+def test_validate_segments_shape_requires_sequence_name():
+    problems = validate_segments_shape({
+        "contract_version": 1,
+        "segments": [{"source_path": "x.mov", "in_sec": 0.0, "out_sec": 1.0}],
+    })
+    assert any("sequence_name" in p for p in problems)
 
 
 def test_bad_contract_version_rejected():

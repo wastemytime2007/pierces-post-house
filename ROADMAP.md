@@ -574,6 +574,33 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — PHASE 3 harness shipped: `posthouse/benchmark.py`**
+  (parser for Premiere's real FCP7 export, time-based P/R/IoU scorer,
+  per-ruleset breakdown, largest-misses report, CLI). Suite 220 passed /
+  1 skipped. The Lead hand-verified the arithmetic against computed
+  cases (P .6923 / R .80 / IoU .5333 on a known overlap; exact-tolerance
+  overcover scores 1.0) and the parser against Ryan's real export (26
+  ranges, 92.2s, matching an independent count exactly).
+  **A high-effort code review found 8 verified defects before commit,
+  three of them load-bearing for every later measurement:** (1) truth
+  dilation merged ranges separated by short gaps, so a cull that never
+  cut on a brief disturbance scored perfect; on Ryan's real key 7 of 25
+  gaps are under 2s, so this would have hidden 28% of his boundaries.
+  Fixed: each truth interval dilates independently, capped at the gap
+  midpoint. (2) The basename fallback silently credited the wrong clip
+  when two cards share a camera-native filename; now refused and
+  reported as unmatched. (3) Nested sequences were walked but never
+  trimmed (3x over-count in one case); now refused loudly with a flatten
+  instruction. Plus: malformed culls (negative, NaN, bool, non-object)
+  now rejected; header and segment errors reported together as promised;
+  the culls validator, which had already drifted from coldfootage's, is
+  now one shared function so Phase 4's contract bump cannot silently
+  fork them; `pathurl` decoding no longer truncates on `#`/`?`; the CLI
+  test no longer needs PreCut. **Added the same day from real data:
+  truth scope** — predicted sources with no truth are excluded from the
+  overall score and listed as unscored, because the answer key covers
+  only clip 0006. 14 regression tests, each reproducing the reviewer's
+  exact scenario.
 - **2026-09-01 — Benchmark v1 answer key delivered by Ryan (partial,
   by design).** He marked clip `DJI_20260430075045_0006_D.MP4` (3.9 min)
   only; the 33-minute clip stays unmarked for now (optional later, not
