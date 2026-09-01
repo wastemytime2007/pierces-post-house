@@ -177,6 +177,29 @@ settle-time thresholds. Constraints learned in review:
   Phase 4 includes a fixture gate asserting proxy-vs-source metric
   agreement before any proxy shortcut is trusted.
 
+**Ryan's selection criteria (2026-09-01, stated while marking the
+Runnells answer key). These are the spec; the detection stack serves
+them:**
+
+- **Movement intent, consistent across the whole select.** A good shot
+  has *intentional* movement, and "static, held" counts as an intent. A
+  select is one continuous motion intent from its first frame to its
+  last: a locked-off static hold, or a pan right, or a tilt down. The
+  moment the motion type changes (the operator stops panning and holds;
+  a hold turns into a tilt) the select ends and, if the new motion is
+  clean, a new one begins. So the cull's segment boundaries are
+  **motion-type change points**, not only shake onsets. This means
+  per-frame motion *classification* (static / pan / tilt / push /
+  handheld-drift / shake) plus change-point detection, and it retires
+  any idea of "one settled segment per camera hold."
+- **A clear focus point.** The subject must be in focus, with one
+  deliberate exception: a **rack focus** (something starts in focus and
+  goes out, or vice versa) is a legitimate select when the transition
+  is intentional and smooth. Focus hunting is not. So the sharpness
+  signal (Laplacian variance over time) is judged by *shape*: steady
+  high = in focus; a smooth monotonic ramp between two stable levels =
+  rack focus, keep; erratic oscillation = hunting, cut.
+
 Craft details that make the output professional rather than merely
 correct:
 
@@ -206,15 +229,28 @@ nothing is silently dropped.
 
 ### The benchmark project
 
-One finished past project, nominated by Ryan: raw footage in, plus his
-actual delivered edit as the **answer key**. Nothing generative gets
-tuned without it.
+One real project, nominated by Ryan, with the raw footage still on disk
+(benchmark v1: Runnells Day 1, see the Decision Log). Nothing generative
+gets tuned without it.
 
-- **Cull scoring:** precision (junk that got through) and recall (usable
-  material missed) against the ranges in Ryan's edit plus a one-time
-  "usable but unused" marking pass. Recall matters more: an assistant
-  editor who hides good footage is worse than one who lets a little
-  shake through.
+**The answer key is marked, not inferred from an edit.** Ryan opens the
+raw clips in Premiere, sets in/out around every range an assistant
+editor would call usable, inserts each onto one selects sequence, and
+exports it as FCP7 XML (`benchmark/README.md` has the steps). For the
+cull this beats a delivered edit outright: it measures "what is usable"
+directly instead of "what happened to get used," so there is no
+survivorship gap to correct for. A finished edit is still the right
+answer key for matching and story scoring later (benchmark v2, next real
+job).
+
+- **Cull scoring** (`posthouse/benchmark.py`): time-based precision
+  (junk that got through) and recall (usable material missed) against
+  the marked ranges, with each truth range dilated independently by the
+  trim-handle tolerance so handles are neutral but the gaps *between*
+  usable ranges stay outside truth (a cull that never cuts on a short
+  disturbance must score as wrong, not perfect). Per-ruleset breakdown
+  for dual-use footage. Recall matters more: an assistant editor who
+  hides good footage is worse than one who lets a little shake through.
 - **Grouping scoring:** do per-subject sequences match how Ryan would
   bin the material (~30-minute spot-check labeling session).
 - **Matching/B-roll scoring:** of the B-roll the skill would place, how
@@ -387,9 +423,12 @@ with Ryan touching only the intake and the checkpoints.
   verified as 1.0.0-beta.3 (PROVENANCE.md). Residual: undocumented
   post-May-2026 UI changes were never in the repo. Matters less
   post-pivot: the new app's shell is new work regardless.
-- **Answer-key survivorship.** Ground truth is what Ryan *kept*; cull
-  recall needs the one-time usable-but-unused marking pass or it reads
-  falsely low.
+- **Answer-key survivorship: retired for the cull by design.** Benchmark
+  v1's answer key is marked directly from raw footage (every usable
+  range, not just the used ones), so this gap does not exist for cull
+  scoring. It returns only when a delivered edit is the answer key
+  (matching and story scoring, benchmark v2), where a one-time
+  usable-but-unused marking pass is still needed.
 
 ## 8. Decision Log
 
@@ -535,6 +574,22 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Benchmark v1 answer key delivered by Ryan (partial,
+  by design).** He marked clip `DJI_20260430075045_0006_D.MP4` (3.9 min)
+  only; the 33-minute clip stays unmarked for now (optional later, not
+  blocking). Result: **26 selects, 92.2s usable of 235.3s (39%)**,
+  durations 1.2–7.9s (median ~3.4s), sequence named "Culled B-Roll".
+  Staged at `benchmark/runnells-day-1/answer_key.xml`. Two consequences
+  ruled immediately: (1) **truth scope** — the harness scores only
+  sources that have truth and reports the rest as unscored, so the
+  unmarked clip never records false positives against a judgment nobody
+  has made; (2) the key contains adjacent selects **0.34s and 0.77s
+  apart**, which turns the reviewer's dilation-merging finding from a
+  theoretical hole into a certain one on this very data. **Ryan's
+  selection criteria, stated while marking, are now the cull spec (§4):
+  one consistent motion intent per select (static hold, or one pan/tilt
+  start to finish; boundaries are motion-type change points), and a
+  clear focus point, with an intentional rack focus allowed.**
 - **2026-09-01 — Benchmark v1 nominated and staged: Runnells Day 1.**
   Ryan has no finished project with both raw footage and a delivered
   edit, so the benchmark uses raw footage plus an answer key he marks

@@ -97,16 +97,14 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Ryan: mark the Runnells Day 1 answer key** (about an hour): open
-   the two Osmo clips in Premiere, set in/out around every usable range
-   exactly as an assistant editor would, insert each onto one selects
-   sequence, File → Export → Final Cut Pro XML, save as
-   `benchmark/runnells-day-1/answer_key.xml`. Step-by-step in
-   `benchmark/README.md`. This is the critical path: it gates the
-   Assistant Editor cull, the one skill that must be measured against a
-   real answer key rather than tuned by feel. Scoring harness
-   (`posthouse/benchmark.py`) is being built now so it runs the moment
-   the XML exists.
+1. **Answer key delivered** for clip 0006 (26 selects, 39% usable);
+   staged at `benchmark/runnells-day-1/answer_key.xml`. Scoring harness
+   review fixes landing now (incl. truth-scope for the unmarked 33-min
+   clip). Then: baseline scores and **Phase 4, the Assistant Editor
+   cull**, built against Ryan's stated criteria (ROADMAP §4: motion
+   intent consistent per select; clear focus, rack focus allowed).
+   Optional, not blocking: Ryan marks the 33-minute clip later for a
+   larger truth set.
 2. Unblocked while waiting on the benchmark (neither sets a threshold,
    so neither risks tuning by feel): (a) the cull's **signal-extraction
    layer** — per-frame motion magnitude (ffmpeg `vidstabdetect` or
