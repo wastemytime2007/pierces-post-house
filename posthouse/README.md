@@ -428,3 +428,51 @@ python -m posthouse.benchmark score --answer-key KEY.xml --culls CULLS.json \
 
 Exits non-zero listing every problem (from either the answer key or the
 culls file) on stderr on failure.
+
+## Phase 4 slice 1: the signal extractor (`posthouse/cull/signals.py`)
+
+The first slice of the Assistant Editor's technical cull
+(ROADMAP.md §6 Phase 4; `docs/design/PHASE4_CULL_DESIGN.md` §1 and §5;
+`docs/contracts/CULLS.md` §6). No classification, no segments, no
+`culls.json` yet: this module decodes one source file and writes its
+signals sidecar. `extract_signals(source_path, out_dir, decode="auto")`
+does one ffmpeg pipe of the ORIGINAL file (never a proxy) into a 960x540
+gray plane, consumed frame by frame in numpy, with VideoToolbox hardware
+decode used when available and a logged, non-fatal fallback to software
+decode otherwise. Per frame: a 3x3 grid of Hann-windowed block
+phase correlations fit to a 4-DOF similarity model (translation,
+log-scale, roll) with the fit's own least-squares residual kept as a
+signal; Laplacian variance (raw and per-clip normalized); luma
+mean/std and clipped-low/high fractions with a decimated 64-bin
+histogram. A separate ffmpeg pass reads the ORIGINAL audio track (when
+present) in 20ms windows for peak dBFS, RMS dBFS, and clip-run length; a
+silent source gets an explicit "no audio stream" marker rather than a
+crash or a fabricated empty array.
+
+The sidecar is `<out_dir>/<name>.signals.npz` (the signal arrays) plus
+`<name>.signals.json` (provenance, column dictionary, sha256 of both the
+source file and the npz), written tempfile-then-`os.replace`. Same
+source file, same decode mode, twice in a row produces byte-identical
+npz bytes and an identical header apart from the run timestamp.
+
+```
+python -m posthouse.cull.signals extract SOURCE --out DIR \
+  [--decode auto|videotoolbox|software]
+```
+
+Prints per-stage timing and the realtime factor, exits non-zero with
+every input problem listed on stderr on failure.
+
+Tested against the five safety-net fixtures as ordering assertions
+(shaky beats stable on motion residual and high-frequency energy,
+blurred trails stable on Laplacian variance, underexposed and
+overexposed each lead their own clipped-fraction), the frame-count
+invariant, determinism, and the proxy-vs-source agreement gate ROADMAP
+§4 requires (a CRF-28 540p proxy of a fixture, built with PreCut's own
+proxy_manager settings). One real finding from that gate, recorded in
+`safety_net/tests/test_cull_signals.py`: the sharpness side of the
+disagreement does not reproduce on these synthetic `testsrc2` fixtures
+(they are too smooth at 640x360 for CRF-28 to visibly damage), while the
+motion-agreement and audio-disagreement sides both hold as designed —
+noted as a fixture limitation, not a retraction of the no-proxies rule,
+which was measured on real 4K footage in the design doc itself.
