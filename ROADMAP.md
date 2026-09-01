@@ -574,6 +574,46 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Phase 4 design delivered and accepted by the Lead**
+  (`docs/design/PHASE4_CULL_DESIGN.md`, `docs/contracts/CULLS.md`;
+  Architect). The design is measured, not estimated. Chosen stack: one
+  ffmpeg pass per file with VideoToolbox hardware decode of the
+  **original** HEVC (software decode runs 1.29x realtime, hardware 4.7x)
+  to a 960x540 gray plane; block-wise phase correlation (3x3 grid) fit to
+  a 4-DOF similarity (translation, log-scale, roll) plus residual, so
+  push/pull is visible; deterministic motion classification into 11
+  states; Laplacian variance normalized per clip and judged by temporal
+  shape (steady / monotonic ramp = rack / oscillation = hunt); exposure
+  histograms; audio peak/RMS with speech presence via the harvested
+  transcribe. Segmentation: Viterbi over motion classes with one fitted
+  transition penalty (emits labelled runs), hysteresis state machine
+  shipped first as the A/B control. Rejected with evidence:
+  `vidstabdetect` (**not compiled into Ryan's ffmpeg**, and blind to
+  zoom), Farneback (no OpenCV, ~10x cost, per-pixel answer to a
+  camera-motion question), `ruptures` (not installed, wrong output).
+  Grounding on Ryan's own key: selects #3/#4 measure a pan at -5.84
+  px/frame then a tilt at -2.78, with the 0.34s axis change in neither;
+  accepted selects span lapvar 100 (dim interior) to 4890 (daylight), so
+  an absolute sharpness threshold is impossible. **Runtime measured: 7.0x
+  realtime for a reduced stack over the whole 235s clip; projected 4-5x
+  for the full stack, so the 37-minute day runs in 8-10 minutes** against
+  a bar of overnight. Crude two-signal probe already reaches P 0.70 /
+  R 0.78 / IoU 0.46 (quoted as the floor). **First target: R >= 0.85,
+  P >= 0.70, IoU >= 0.55, recall ranked first, block-CV spread reported.**
+  `culls.json` stays `contract_version: 1` by field-by-field proof
+  (additive only; the shared validator ignores unknown keys); identity
+  is `source_id`+`rel_path`, `source_path` is resolution, identity wins
+  on disagreement; top-level `rejections[]` must tile `[0, duration]`
+  with segments per (source, ruleset). Fitting is contained, not solved:
+  staged <=4-parameter fits, contiguous-block CV, block bootstrap,
+  non-overfittable fixture *ordering* guards; 26 selects on one clip can
+  show the detector is not broken and rank parameter sets coarsely, and
+  **cannot** establish generalization. Build plan: six reviewable slices;
+  slice 1 (signal extractor) dispatched this date. Open questions for
+  Ryan (13, none blocking slice 1) are recorded in both docs with
+  recommendations; the Lead proceeds on the recommendations until Ryan
+  overrides. Lead correction applied: sequence names in the contract
+  used em dashes, which is project-facing text in Premiere; changed.
 - **2026-09-01 — PHASE 3 EXIT MET: baseline recorded before anything is
   improved.** With no cull yet, the honest baseline is "select
   everything" (what zero culling hands an editor). On clip 0006 against

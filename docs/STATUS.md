@@ -104,14 +104,22 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Answer key delivered** for clip 0006 (26 selects, 39% usable);
-   staged at `benchmark/runnells-day-1/answer_key.xml`. Scoring harness
-   review fixes landing now (incl. truth-scope for the unmarked 33-min
-   clip). Then: baseline scores and **Phase 4, the Assistant Editor
-   cull**, built against Ryan's stated criteria (ROADMAP §4: motion
-   intent consistent per select; clear focus, rack focus allowed).
-   Optional, not blocking: Ryan marks the 33-minute clip later for a
-   larger truth set.
+1. **Phase 4 build, slice 1 in progress:** `posthouse/cull/signals.py`,
+   the deterministic signal extractor (one ffmpeg pass, hardware decode
+   of originals, phase-correlation global motion, Laplacian sharpness,
+   exposure, audio) writing the per-clip signals sidecar. Tested on the
+   fixtures by ordering assertions, determinism, and the proxy-vs-source
+   agreement gate. Slices 2 to 6 follow per
+   `docs/design/PHASE4_CULL_DESIGN.md` §5.
+2. **Ryan, highest-value optional ask (~20 min):** mark about 5 minutes
+   of the 33-minute clip `DJI_20260430071514_0005_D.MP4` as a held-out
+   validation strip that is never fitted on. It turns "fitted on one
+   clip, generalization unknown" into one honest held-out measurement.
+3. **Ryan, 13 design questions with recommendations** in
+   `PHASE4_CULL_DESIGN.md` §6 and `CULLS.md` §8 (e.g. pan decelerating
+   into a hold: one select or two; slow push = movement or static;
+   minimum select length; rack focus ending out of focus). The Lead is
+   proceeding on the recommendations; override any at any time.
 2. Unblocked while waiting on the benchmark (neither sets a threshold,
    so neither risks tuning by feel): (a) the cull's **signal-extraction
    layer** — per-frame motion magnitude (ffmpeg `vidstabdetect` or
