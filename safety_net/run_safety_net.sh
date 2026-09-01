@@ -3,7 +3,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# The runner is the CHECK; blessing a new golden is a deliberate manual act
+# (see README). Refuse to run with BLESS set so a stray env var can never
+# silently rewrite the snapshots this suite exists to defend.
+if [[ "${BLESS:-}" == "1" ]]; then
+  echo "refusing to run: BLESS=1 is set — unset it, or bless deliberately" >&2
+  echo "via the direct pytest command in safety_net/README.md" >&2
+  exit 2
+fi
 
 export PRECUT_ROOT="${PRECUT_ROOT:-/home/user/precut}"
 

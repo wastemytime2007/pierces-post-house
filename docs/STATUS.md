@@ -13,9 +13,7 @@ role).** See ROADMAP §6 for the renumbered phases.
 
 ## In progress
 
-- Code-review pass on the safety net (Reviewer role) — queued as the
-  next engineering action before the net is treated as the permanent
-  gate.
+*(nothing — between phases)*
 
 ## Done
 
@@ -34,21 +32,34 @@ role).** See ROADMAP §6 for the renumbered phases.
   UX; PreCut = donor, harvested not rebuilt, untouched until superseded;
   build order PM → AE; Project Manifest contract (incl. `dual_use`
   flags) is the PM's hard deliverable. Roadmap restructured to Phases
-  0–9. *(This commit.)*
+  0–9. *(7331bf3.)* Brand Brief spec + co-location rule added. *(next
+  two commits.)*
+- 2026-09-01 — **Reviewer pass on the safety net**: 8 findings (2 would
+  have failed on Ryan's Mac: markers import-gate assertion inverted
+  under real ML deps; hash-seed-dependent path normalization order on
+  macOS), all fixed and re-verified, plus a BLESS=1 refusal in the
+  runner and loud-skip on bless. *(This commit.)*
+- 2026-09-01 — **Phase 1 slice shipped**: `posthouse/` package — door-3
+  bridge pinned to PreCut e035fbaf, cold-footage builder (segments JSON
+  → V1 sequence XML through the proven exporter chain, API + CLI,
+  non-zero exit on failure), light-dep harvest wrappers (auto_include,
+  camera_inference, theme_categories, proxy_manager), 15 new tests +
+  cold-footage golden. Suite now 31 passed / 2 skipped, verified by the
+  Lead. Heavy-dep wrappers deferred (`posthouse/harvest/DEFERRED.md`).
+  *(This commit.)*
 
 ## Next (in order)
 
-1. Reviewer pass on `safety_net/` (findings → fixes → then it's the
-   permanent gate).
-2. Phase 1: harvest layer — wrap proxy/transcribe/tag/sync/exporter (+
-   Default Includes → brand-asset staging) as standalone skills pinned
-   to a tagged PreCut commit; build the cold-footage sequence builder.
-3. Phase 2: Project Manifest contract draft (Architect) → PM role
-   headless build.
-4. **Ryan (when ready):** nominate the benchmark project (blocks
-   Phase 3, not Phases 1–2). Also pending from earlier: ratify the
-   "internal tool first, product maybe later" and "review happens in
-   Premiere" assumptions from the gameplan discussion.
+1. Phase 2: Project Manifest contract draft (Architect) → PM role
+   headless build (intake → organize → Brand Brief → manifest).
+2. Phase 1 remainder (Mac session): heavy-dep harvest wrappers
+   (transcribe, tag/index, sync) per `posthouse/harvest/DEFERRED.md`;
+   Tier-2 safety-net items (full import gate, DB migrations, real
+   sync).
+3. **Ryan (when ready):** nominate the benchmark project (blocks
+   Phase 3, not Phase 2). Also pending: ratify the "internal tool
+   first, product maybe later" and "review happens in Premiere"
+   assumptions from the gameplan discussion.
 
 ## Attempts ledger
 

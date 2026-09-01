@@ -94,6 +94,22 @@ def test_markers_module_does_not_import_cleanly_stdlib_only():
     clean subprocess specifically so it keeps proving the underlying,
     unstubbed fact regardless of what else this pytest session has done.
     """
+    import importlib.util
+
+    def _really_installed(name: str) -> bool:
+        try:
+            return importlib.util.find_spec(name) is not None
+        except ValueError:
+            # find_spec raises ValueError for a module in sys.modules with
+            # __spec__=None — i.e. conftest's inert stub, not a real install.
+            return False
+
+    if any(_really_installed(m) for m in ("lancedb", "torch")):
+        pytest.skip(
+            "ML deps are installed in this environment (e.g. Ryan's Mac venv), "
+            "so markers.py imports fine here — the stdlib-only fact this test "
+            "proves is only provable where the deps are absent."
+        )
     result = _import_in_clean_subprocess("precut_pipeline.markers")
     assert result.returncode != 0, (
         "precut_pipeline.markers imported cleanly with no ML deps installed — "

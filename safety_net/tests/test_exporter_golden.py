@@ -20,6 +20,8 @@ import difflib
 import os
 from pathlib import Path
 
+import pytest
+
 GOLDEN_PATH = Path(__file__).parent.parent / "golden" / "expected_multi.xml"
 ACTUAL_PATH = Path(__file__).parent.parent / "golden" / "actual_multi.xml"
 
@@ -27,15 +29,16 @@ ACTUAL_PATH = Path(__file__).parent.parent / "golden" / "actual_multi.xml"
 def test_multi_timeline_export_matches_golden_master(normalized_xml):
     if os.environ.get("BLESS") == "1":
         GOLDEN_PATH.parent.mkdir(parents=True, exist_ok=True)
-        GOLDEN_PATH.write_text(normalized_xml)
-        # Blessing always "passes" — it's an explicit act, not a check.
-        return
+        GOLDEN_PATH.write_text(normalized_xml, encoding="utf-8")
+        # Blessing is an explicit act, not a check — skip LOUDLY so a stray
+        # BLESS=1 in the environment can never masquerade as a green gate.
+        pytest.skip(f"BLESSED new golden snapshot at {GOLDEN_PATH} — this was NOT a check")
 
     assert GOLDEN_PATH.exists(), (
         f"No blessed snapshot at {GOLDEN_PATH}. Run with BLESS=1 to create "
         f"one, and record why in the Decision Log per safety_net/README.md."
     )
-    expected = GOLDEN_PATH.read_text()
+    expected = GOLDEN_PATH.read_text(encoding="utf-8")
 
     if normalized_xml == expected:
         if ACTUAL_PATH.exists():
@@ -43,7 +46,7 @@ def test_multi_timeline_export_matches_golden_master(normalized_xml):
         return
 
     ACTUAL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ACTUAL_PATH.write_text(normalized_xml)
+    ACTUAL_PATH.write_text(normalized_xml, encoding="utf-8")
 
     diff = list(difflib.unified_diff(
         expected.splitlines(), normalized_xml.splitlines(),

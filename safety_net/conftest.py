@@ -72,11 +72,19 @@ GOLDEN_DIR = Path(__file__).parent / "golden"
 # ---------------------------------------------------------------------------
 
 def _install_stub_if_missing(name: str, build: "callable[[], types.ModuleType]") -> None:
+    # find_spec answers "is it installed" without executing the package —
+    # fully importing torch/lancedb here just to learn a stub is unneeded
+    # would cost seconds per run on Ryan's Mac and could error out on a
+    # broken heavy install.
+    import importlib.util
+    if name in sys.modules:
+        return  # already present — real, or a stub installed earlier (e.g. by
+                # posthouse.precut_bridge in the same process)
     try:
-        __import__(name)
-        return  # real package is installed (e.g. Ryan's Mac venv) — use it
-    except ImportError:
-        pass
+        if importlib.util.find_spec(name) is not None:
+            return  # real package is installed (e.g. Ryan's Mac venv) — use it
+    except ValueError:
+        return  # a __spec__=None stub is registered; leave it alone
     sys.modules[name] = build()
 
 
@@ -139,7 +147,16 @@ def normalize_xml_text(raw_text: str, root_dir: Path) -> str:
     from urllib.parse import quote
 
     text = raw_text
-    for base in {root_dir, root_dir.resolve(), PRECUT_ROOT, PRECUT_ROOT.resolve()}:
+    # Longest path first: on macOS /var/... and /private/var/... are
+    # substrings of each other, so replacement order changes the result.
+    # A sorted list keeps normalization deterministic regardless of hash
+    # seed (sets iterate in seed-dependent order).
+    bases = sorted(
+        {root_dir, root_dir.resolve(), PRECUT_ROOT, PRECUT_ROOT.resolve()},
+        key=lambda p: len(str(p)),
+        reverse=True,
+    )
+    for base in bases:
         base_str = str(base)
         token = "{PRECUT_ROOT}" if base in (PRECUT_ROOT, PRECUT_ROOT.resolve()) else "{ROOT}"
         # Percent-encoded form, as produced by path_to_url()'s quote(..., safe="/")

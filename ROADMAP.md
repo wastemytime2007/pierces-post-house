@@ -456,6 +456,22 @@ with Ryan touching only the intake and the checkpoints.
   hard deliverable is the **Project Manifest** contract, including
   per-source `dual_use` flags — A-roll that also yields B-roll is
   culled twice, under both rulesets.
+- **2026-09-01 — Phase 1 slice shipped; segments contract v1 ratified:**
+  `posthouse/` package (door-3 bridge with commit pin, cold-footage
+  builder API + CLI, light-dep harvest wrappers; heavy wrappers deferred
+  to a Mac session per `posthouse/harvest/DEFERRED.md`). Contract
+  rulings: (1) validation applies to the pre-handle range; handles
+  always clamp to source bounds, never reject; (2) segment order in the
+  file is final — the producer sorts, the builder lays; (3) sequence
+  dimensions probe the first segment's source, falling back to
+  1920x1080@30 — no per-segment aspect in v1.
+- **2026-09-01 — Backlog for the first sanctioned PreCut change** (on
+  Ryan's Mac, behind the safety net, when convenient — none are urgent):
+  make `FCPXMLWriter._build_markers`'s import of `markers` conditional
+  on the cutlist actually carrying markers (today every export needs
+  the ML deps present or stubbed); gate the single-sequence
+  `_build_audio` on ffprobe `has_audio` like the library builder
+  already does (cold footage mixes silent sources onto V1 freely).
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic

@@ -61,8 +61,7 @@ def test_quirk1_find_original_for_proxy_returns_true_ondisk_case(synthetic_proje
     assert resolved.name == "AROLL_01.MOV", (
         f"expected the exact on-disk case 'AROLL_01.MOV', got {resolved.name!r}"
     )
-    assert resolved == synthetic_project["aroll_original"].resolve() or \
-        resolved.resolve() == synthetic_project["aroll_original"].resolve()
+    assert resolved.resolve() == synthetic_project["aroll_original"].resolve()
 
 
 # ---------------------------------------------------------------------------
