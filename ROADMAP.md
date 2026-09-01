@@ -574,6 +574,19 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — PHASE 3 EXIT MET: baseline recorded before anything is
+  improved.** With no cull yet, the honest baseline is "select
+  everything" (what zero culling hands an editor). On clip 0006 against
+  Ryan's 26 selects: **precision 0.577, recall 1.000, F1 0.732, IoU
+  0.392** (`benchmark/runnells-day-1/baselines/select_all/`). Why 0.577
+  and not the raw 39%: the 1.0s handle tolerance forgives ~1s either side
+  of each of 26 truth ranges (capped at gap midpoints), roughly 44s of
+  neutral footage, so 0.577 is the tolerance-adjusted floor and IoU 0.392
+  the strict one. The cull must beat both; recall is what it must not
+  lose. Observation for the fitting plan: a 1.0s tolerance is generous
+  against 3.4s-median selects, so the Phase 4 design should treat
+  tolerance as a reported parameter, not a constant. Phases 0 through 3
+  are complete.
 - **2026-09-01 — PHASE 3 harness shipped: `posthouse/benchmark.py`**
   (parser for Premiere's real FCP7 export, time-based P/R/IoU scorer,
   per-ruleset breakdown, largest-misses report, CLI). Suite 220 passed /

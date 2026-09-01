@@ -1,0 +1,41 @@
+{
+  "overall": {
+    "label": "overall",
+    "precision": 0.5769578347384644,
+    "recall": 1.0,
+    "f1": 0.7317352715827711,
+    "iou": 0.391901799474209,
+    "predicted_sec": 235.328,
+    "truth_sec": 92.22546666666665,
+    "overlap_sec": 92.22546666666665,
+    "per_source": {
+      "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4": {
+        "source_key": "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4",
+        "display_name": "DJI_20260430075045_0006_D.MP4",
+        "precision": 0.5769578347384644,
+        "recall": 1.0,
+        "f1": 0.7317352715827711,
+        "iou": 0.391901799474209,
+        "predicted_sec": 235.328,
+        "truth_sec": 92.22546666666665,
+        "overlap_sec": 92.22546666666665
+      }
+    },
+    "largest_misses": [],
+    "largest_false_positives": [
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 0.0,
+        "out_sec": 235.328,
+        "duration_sec": 235.328,
+        "false_positive_sec": 99.55366666666666
+      }
+    ],
+    "unmatched_predicted_sources": [],
+    "unscored_predicted_sources": []
+  },
+  "rulesets": {},
+  "handle_tolerance_sec": 1.0,
+  "unmatched_predicted_sources": [],
+  "unscored_predicted_sources": []
+}

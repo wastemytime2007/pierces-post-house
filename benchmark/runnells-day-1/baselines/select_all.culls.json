@@ -1,0 +1,13 @@
+{
+  "contract_version": 1,
+  "sequence_name": "Baseline: select everything",
+  "segments": [
+    {
+      "source_path": "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4",
+      "in_sec": 0.0,
+      "out_sec": 235.328,
+      "label": "whole clip",
+      "handle_sec": 0.0
+    }
+  ]
+}

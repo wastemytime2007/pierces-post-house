@@ -6,7 +6,14 @@ everything in flight.
 
 ## Current stage — see § Done for the latest slice
 
-**PHASES 0, 1, AND 2 ALL COMPLETE, nothing deferred.** Phase 0's last
+**PHASES 0 THROUGH 3 COMPLETE. Phase 4 (Assistant Editor cull) in
+design.** Benchmark v1 has a real answer key (clip 0006, 26 selects)
+and a recorded select-everything baseline to beat: P 0.577 / R 1.000 /
+F1 0.732 / IoU 0.392. The Architect is designing the cull's signal
+stack, segmentation, and culls.json contract against Ryan's criteria
+(motion intent per select; clear focus, rack allowed) before any build.
+
+Earlier stage summary: **PHASES 0, 1, AND 2 ALL COMPLETE, nothing deferred.** Phase 0's last
 Tier-2 gap (real-footage audio sync) closed with a real measurement:
 4ms offset error, score 11.55 vs threshold 10.0 on manufactured real
 speech. Phase 1's heavy-dep harvest wrappers (transcribe, index, sync)
