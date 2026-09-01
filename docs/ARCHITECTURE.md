@@ -4,24 +4,34 @@ Owner: Lead Architect. Describes the system we are building across repos.
 PreCut's internal architecture is documented in its own repo
 (`precut/ARCHITECTURE.md`); this file covers the layer *around* it.
 
-## The three layers
+## The product and the three layers
+
+The end product is **a new application** (this repo) whose UX walks a
+project through the post-house roles with visible handoffs: Ryan briefs
+the Project Manager at intake, the PM hands off to the Assistant Editor,
+and so on to one Premiere-ready XML, with supervisor checkpoints
+between stations. PreCut is the **component donor**: its solved
+capabilities are harvested (wrapped, pinned, gated by the safety net),
+never rebuilt and never modified in place.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │ LAYER 3 — Orchestration (Claude Code)                          │
-│   The engineering team (docs/TEAM.md) that builds and runs     │
-│   the post-house roles. Coordination state lives in this repo. │
+│   The engineering team (docs/TEAM.md) that builds the house.   │
+│   Coordination state lives in this repo.                       │
 ├────────────────────────────────────────────────────────────────┤
-│ LAYER 2 — The agent layer ("the staff")                        │
-│   Post-house role skills: cull, organize, story, music, audio, │
-│   color-QC. Each is a CLIENT of PreCut: reads its artifacts,   │
-│   writes new artifacts, emits sequences through its exporter.  │
-│   No skill modifies the PreCut app.                            │
+│ LAYER 2 — Pierce's Post House (the new app: roles + shell)     │
+│   Post-house roles: Project Manager (manifest + organization), │
+│   Assistant Editor (sync, cull, grouping, flagging), Creative  │
+│   Editor, Audio Designer, Colorist-QC — composed from          │
+│   harvested PreCut skills + new code, headless first; the      │
+│   role-pipeline shell arrives in Phase 5.                      │
 ├────────────────────────────────────────────────────────────────┤
-│ LAYER 1 — PreCut (shipped, protected)                          │
+│ LAYER 1 — PreCut (shipped, protected, DONOR)                   │
 │   Tauri/React app + Python backend on Ryan's Mac.              │
 │   Ingest, proxies, Whisper, Claude vision tagging, CLIP index, │
 │   lav sync, story angles, FCP7 XML export → Premiere Pro.      │
+│   Stays working and untouched until superseded role by role.   │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -85,6 +95,7 @@ additive-only DB migration rule.
 
 | Artifact | Producer → Consumer | Form | Status |
 | --- | --- | --- | --- |
+| **Project Manifest** | PM role → every later role | Client/brand identity, brand assets, source folders with user-declared kinds, per-source flags (`dual_use`, …), delivery targets | To spec in Phase 2 — the PM's hard deliverable |
 | Footage index | PreCut pipeline → everyone | SQLite + LanceDB (exists) | Shipped |
 | Transcript | PreCut (Whisper) → story/cull | JSON per A-roll (exists) | Shipped |
 | Story plan | PreCut planner → assembler | JSON in `plans/` (exists) | Shipped |

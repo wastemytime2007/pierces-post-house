@@ -1,12 +1,15 @@
 # CLAUDE.md — Pierce's Post House (coordination repo)
 
-This repo is the **coordination hub and the home of the agent layer** for
-Pierce's Post House: an AI post-production team built on top of PreCut.
-The PreCut app's code lives in its own repo; this repo holds the plans,
-decisions, team charter, current status, **and** the code we build around
-PreCut — the safety net (`safety_net/`) and, as phases open, the
-post-house skills — so that any session or agent can pick up exactly
-where the last one left off.
+This repo is the **home of the Pierce's Post House application and its
+coordination hub**. The end product is a new app whose UX walks a
+project through post-house roles (Project Manager → Assistant Editor →
+Creative Editor → …) with visible handoffs; **PreCut is the component
+donor** — its solved problems get harvested, never rebuilt, and the
+PreCut repo itself is never modified while it remains Ryan's production
+tool. This repo holds the plans, decisions, team charter, current
+status, the safety net (`safety_net/`), and the app's code as it grows,
+so that any session or agent can pick up exactly where the last one
+left off.
 
 ## Required reading order (every agent, every session)
 

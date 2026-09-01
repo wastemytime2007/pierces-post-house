@@ -96,12 +96,13 @@ counting and escalation are the Lead's job, backed by a durable ledger:
 
 | Phase | Active roles |
 | --- | --- |
-| Planning (now) | Lead, Architect, PM |
-| 0 — Safety net | Lead, QA, Senior Eng, Reviewer |
-| 1 — Headless driver | Lead, Senior Eng, QA, Reviewer |
-| 2 — Benchmark | Lead, QA, PM (metrics definition), Ryan (answer key) |
-| 3 — Cull | Lead, Architect (segmentation design), Senior Eng, QA, Reviewer, Security |
-| 4+ | Per roadmap; Frontend remains dormant until UI is earned |
+| 0 — Safety net (Tier 1 done) | Lead, QA, Senior Eng, Reviewer |
+| 1 — Harvest layer | Lead, Senior Eng, QA, Reviewer |
+| 2 — Project Manager role | Lead, Architect (manifest contract), PM, Senior Eng, Reviewer |
+| 3 — Benchmark | Lead, QA, PM (metrics definition), Ryan (answer key) |
+| 4 — Assistant Editor | Lead, Architect (segmentation design), Senior Eng, QA, Reviewer, Security |
+| 5 — App shell v1 | Lead, Frontend (activates here), Senior Eng, Reviewer, Security |
+| 6+ | Per roadmap |
 
 ## How work physically happens
 
