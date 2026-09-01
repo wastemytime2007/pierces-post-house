@@ -1,0 +1,62 @@
+{
+  "ffmpeg_version": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+  "ffprobe_version": "ffprobe version 6.1.1-3ubuntu5 Copyright (c) 2007-2023 the FFmpeg developers",
+  "files": {
+    "AROLL_01.MOV": {
+      "audio_channels": 1,
+      "audio_samplerate": 48000,
+      "duration_sec": 4.0,
+      "fps": 30.0,
+      "has_audio": true,
+      "height": 360,
+      "nb_frames": 120,
+      "width": 640
+    },
+    "blurred.mp4": {
+      "duration_sec": 4.0,
+      "fps": 30.0,
+      "has_audio": false,
+      "height": 360,
+      "nb_frames": 120,
+      "width": 640
+    },
+    "lav.wav": {
+      "audio_channels": 1,
+      "audio_samplerate": 48000,
+      "duration_sec": 4.0,
+      "has_audio": true
+    },
+    "overexposed.mp4": {
+      "duration_sec": 4.0,
+      "fps": 30.0,
+      "has_audio": false,
+      "height": 360,
+      "nb_frames": 120,
+      "width": 640
+    },
+    "shaky.mp4": {
+      "duration_sec": 4.0,
+      "fps": 30.0,
+      "has_audio": false,
+      "height": 360,
+      "nb_frames": 120,
+      "width": 640
+    },
+    "stable.mp4": {
+      "duration_sec": 4.0,
+      "fps": 30.0,
+      "has_audio": false,
+      "height": 360,
+      "nb_frames": 120,
+      "width": 640
+    },
+    "underexposed.mp4": {
+      "duration_sec": 4.0,
+      "fps": 30.0,
+      "has_audio": false,
+      "height": 360,
+      "nb_frames": 120,
+      "width": 640
+    }
+  }
+}
