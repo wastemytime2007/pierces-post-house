@@ -324,6 +324,19 @@ with Ryan touching only supervisor checkpoints.
 - **2026-08-31 — Color/audio scheduling:** Colorist and Audio Designer are
   post-picture-lock roles with different delivery mechanics; deliberately
   last. Colorist v1 is QC-report scope only.
+- **2026-09-01 — Engineering team structure:** roles are hats
+  instantiated per task, not standing agents; the repo is the team's
+  only memory. Single-writer doc ownership, append-only Decision Log,
+  subagents never push, two-strikes escalation ladder
+  (Sonnet → Opus → Fable → Ryan). Full charter: `docs/TEAM.md`.
+- **2026-09-01 — Model policy:** Fable 5 for orchestration and hardest
+  reasoning only; Opus 5 for architecture and review; Sonnet 5 default
+  for implementation; Haiku 4.5 for mechanical tasks. Escalate after two
+  failed attempts, never silently retry a third time.
+- **2026-09-01 — Governance docs:** `CLAUDE.md` (rules), `docs/TEAM.md`
+  (charter), `docs/ARCHITECTURE.md` (system), `docs/STATUS.md` (state)
+  are the coordination layer; every session ends by updating STATUS and
+  pushing.
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic
