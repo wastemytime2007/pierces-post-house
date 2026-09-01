@@ -497,18 +497,46 @@ with Ryan touching only the intake and the checkpoints.
   `table_names()` in favor of `list_tables()` (warning only, not
   failing yet).
 - **2026-09-01 — Project Manifest contract v1 drafted**
-  (`docs/contracts/PROJECT_MANIFEST.md`, Architect; pending Ryan's
-  ratification). Load-bearing choices: source IDs are minted once and
-  frozen (`<kind>-<slug>-<NN>` — renames never orphan artifacts;
-  downstream artifacts address files as `{source_id, rel_path}` so
-  absolute paths live in exactly one place); two-moment validation
-  (intake warns, handoff rejects); pipeline state deliberately NOT in
-  the manifest (proxy/transcript status stays with the stage that owns
-  it); co-location of the Brand Brief card is a validated invariant.
-  Caveat for bridge code: manifest `kind` vocabulary maps to, not
-  equals, PreCut's `SourceKind` (`source_audio` ⇄ `audio`; `assets` is
-  new). Six product questions for Ryan are listed in the doc with
-  recommendations.
+  (`docs/contracts/PROJECT_MANIFEST.md`, Architect). Load-bearing
+  choices: source IDs are minted once and frozen (`<kind>-<slug>-<NN>` —
+  renames never orphan artifacts; downstream artifacts address files as
+  `{source_id, rel_path}` so absolute paths live in exactly one place);
+  two-moment validation (intake warns, handoff rejects); pipeline state
+  deliberately NOT in the manifest (proxy/transcript status stays with
+  the stage that owns it); co-location of the Brand Brief card is a
+  validated invariant.
+- **2026-09-01 — Project Manifest contract RATIFIED by Ryan.** Three
+  rulings diverge from the draft's recommendations, one adds real
+  scope:
+  - **Delivery targets are not proposed at intake at all.** Rejected
+    the draft's "both" recommendation. The PM never writes
+    `delivery_targets`; it stays absent until the Creative Editor
+    (Phase 6) has actually organized and familiarized itself with the
+    footage and can make an informed suggestion, which then goes to
+    Ryan for discussion before anything is `confirmed`.
+  - **Shoot dates are read from file timestamps with no confirmation
+    step** — stronger than the draft's "read, then confirm."
+  - **Brand snapshots per project, per the recommendation** — and
+    Ryan elevated it to a governing principle: a project folder should
+    be fully self-contained so it can be handed to a human editor with
+    nothing missing. **This surfaced a real, unresolved tension**: taken
+    literally for raw footage, it conflicts with PreCut's deliberate
+    "source footage is never moved" design. Flagged in the contract
+    (§2.3), not silently resolved — needs an explicit decision before
+    Phase 2's file-organization step is built.
+  - **On-camera people, with added scope:** the PM asks once at intake
+    (as recommended) but Ryan wants best-effort per-voice attribution
+    across multiple speakers, with name corrections propagating to
+    every clip carrying that voice. This is genuinely bigger than an
+    intake field — it implies voice attribution spanning clips, which
+    needs audio/transcript analysis the manifest doesn't have. Scoped
+    out of the manifest and tracked as a Phase 4 (Assistant Editor)
+    capability to design, not invented ahead of that phase; per Ryan,
+    "ideal, not critical if it gets too complicated."
+  - `dual_use` per folder and late-footage-as-revision both ratified
+    exactly as recommended.
+  PM implementation (Phase 2) can start once the flagged footage-
+  portability tension is resolved.
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic

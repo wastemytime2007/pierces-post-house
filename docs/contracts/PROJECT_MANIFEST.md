@@ -1,8 +1,9 @@
 # Project Manifest — contract v1
 
-Owner: Lead Architect (`docs/TEAM.md`). Status: **draft for Ryan's review**
-(field list is vetoable/extendable by him; Open Questions at the end).
-Governs the artifact only — nothing here specifies UI.
+Owner: Lead Architect (`docs/TEAM.md`). Status: **ratified 2026-09-01**
+(§6). One flagged open tension remains — raw-footage portability, §2.3 —
+to resolve before Phase 2's file-organization step is built. Governs the
+artifact only — nothing here specifies UI.
 
 ## 1. Purpose and lifecycle
 
@@ -56,14 +57,34 @@ unless a default is stated.
 | `root_dir` | str | ✓ | Absolute path of the project folder holding this file. |
 | `client` | {…} | ✓ | `{name (req), contact?, notes?}` |
 | `project_type` | str | ✓ | `interview` \| `property_tour` \| `renovation` \| `event` \| `product` \| `other`. Free-text goes in `notes`, not here. |
-| `shoot_dates` | [date] | — | List, not a scalar — multi-day shoots are normal. PM proposes from file creation timestamps, Ryan confirms. |
+| `shoot_dates` | [date] | — | List, not a scalar — multi-day shoots are normal. Read directly from file creation timestamps at intake, no confirmation step (Ryan, Open Q 5). |
 | `locations` | [{…}] | — | `[{label (req), address?}]` |
-| `people` | [{…}] | — | `[{id, name, role: "subject"\|"agent"\|"host"\|"other"}]` — on-camera people (`id` = slugified name per §5, unique in the project), referenced by `sources[].subject_ids`. Feeds Phase 4 per-subject grouping. |
+| `people` | [{…}] | — | `[{id, name, role: "subject"\|"agent"\|"host"\|"other"}]` — the roster of who Ryan expects on camera, asked once at intake (`id` = slugified name per §5, unique in the project), referenced by `sources[].subject_ids`. This is a starting roster the PM writes, **not** a per-clip speaker-diarization result — see Open Q 3: matching a voice to a name across clips, with a correction that propagates everywhere that voice appears, is real scope beyond intake and is tracked as a Phase 4 (Assistant Editor) capability, not specified in this contract. Feeds Phase 4 per-subject grouping either way. |
 | `notes` | str | — | Free text from intake that has no field yet. |
 
 ### 2.3 `brand` — assets and the Brand Brief
 
 *Rationale: the PM extracts deterministically rather than making Ryan retype (Decision Log, Brand Brief) — every value here is read off a file or confirmed by him.*
+
+**Governing principle (Open Q 4):** brand assets are snapshotted into
+the project, never referenced from an external library, because the
+project folder itself is meant to be the unit of portability — Ryan's
+stated ideal is handing one titled folder to a human editor with
+nothing missing. Brand assets (small files) can genuinely live inside
+`root_dir` this way at no real cost, so that part is settled now.
+
+**Flagged tension, not yet resolved:** raw footage is a different
+order of size, and PreCut's existing, deliberate design is "source
+footage is never moved" (README.md) — projects reference footage
+in place rather than copying multi-TB camera originals. Ryan's
+"nothing missing when I hand off the folder" ideal, taken literally
+for footage too, conflicts with that. `sources[].path` in this
+contract **stays a reference to wherever the footage already lives**
+(PreCut's model) for v1; treat true full-footage portability (a
+copy-or-relink step, proxy-only handoff, or something else) as a
+Phase 2 implementation question to raise with Ryan explicitly before
+building the PM's file-organization step — do not silently decide it
+either way.
 
 | Field | Type | Req | Meaning |
 | --- | --- | --- | --- |
@@ -98,6 +119,16 @@ unless a default is stated.
 
 *Rationale: reuse `presets.py`'s vocabulary exactly, so a target maps to a real sequence size and a real overlay with no translation layer.*
 
+**Ruling (Open Q 1 — overrides the draft's recommendation):** the PM
+never proposes delivery targets. This list is **absent at PM handoff**
+and stays empty until the Creative Editor has actually combed through
+and familiarized itself with the organized footage (Phase 6) — only
+then does it have grounds to *suggest* deliverables, which it brings to
+Ryan for discussion before anything is `confirmed`. Guessing a format
+before anyone has seen the footage produces nothing useful; the PM's
+job is organizing the material well enough that the Creative Editor's
+suggestion is actually informed.
+
 | Field | Type | Req | Meaning |
 | --- | --- | --- | --- |
 | `id` | str | ✓ | `dt-<slug>-NN` per §5. |
@@ -107,7 +138,7 @@ unless a default is stated.
 | `preset_key` | str | — | A `presets.PRESETS_BY_KEY` key (`reel_30s`, `ad_30s`, `youtube_highlight`, `talking_head_full`, …) when the target matches a built-in. |
 | `target_duration_sec` | num | — | Overrides the preset. `-1` = full source length (PreCut's `talking_head_full` sentinel). |
 | `duration_tolerance_sec` | num | — | Defaults to the preset's. |
-| `status` | str | ✓ | `proposed` (PM's guess at intake) \| `confirmed` (Ryan or the Creative Editor signed off). See Open Q 1. |
+| `status` | str | ✓ | `proposed` (Creative Editor's suggestion, Phase 6) \| `confirmed` (Ryan signed off after discussion). Never written by the PM — see the ruling above. |
 
 ### 2.6 `default_includes` — files every project gets
 
@@ -341,33 +372,37 @@ read and stamps that `{manifest_id, manifest_revision}` pair into its own
 output — that pair is how a stale artifact gets caught instead of
 silently trusted.
 
-## 6. Open questions for Ryan
+## 6. Open questions — RATIFIED by Ryan, 2026-09-01
 
-1. **Are delivery targets set at intake, or later by the Creative
-   Editor?** *Recommendation: both.* PM captures them at intake as
-   `status: "proposed"` because you usually know; the Creative Editor may
-   add or change them and must mark `confirmed`. Nothing before the
-   Creative Editor reads them, so a wrong guess at intake costs nothing.
-2. **Is `dual_use` per folder enough, or does it need to be per clip?**
-   *Recommendation: per folder for v1* — it matches how you actually
-   shoot and how PreCut's drop zones already work. Per-clip exceptions
-   are an additive field later if a real project demands it.
-3. **Should the PM ask who's on camera?** *Recommendation: yes, once.*
-   `project.people` costs one intake question and is the only thing that
-   makes Phase 4's per-subject sequences name themselves "Carla" instead
-   of "Cluster 2". Nothing extracts it deterministically.
-4. **Repeat clients: does brand live in the project, or in a reusable
-   client library?** *Recommendation: snapshot in the project for v1*
-   (`brand.library_ref` reserved but unused), so no project can be broken
-   by a later library edit. A real library is Phase 5 work.
-5. **Shoot dates: ask, or read them off the files?** *Recommendation:
-   read, then confirm* — the PM proposes dates from file creation
-   timestamps and you correct them, the same "extract, don't retype"
-   posture as the Brand Brief.
-6. **Late footage: new manifest revision, or new project?**
-   *Recommendation: revision.* New sources append with new ids, existing
-   ids never renumber, `revision` increments, and artifacts built against
-   the old revision are flagged stale rather than deleted.
+1. **Delivery targets: intake, or later?** **Ruling: later, and not by
+   the PM at all.** The draft's "both" recommendation is overridden —
+   Ryan wants zero guessing before the footage has been organized and
+   the Creative Editor has actually looked at it. See the ruling in
+   §2.5 above; `delivery_targets` is absent at PM handoff.
+2. **`dual_use` grain: folder or clip?** **Ruling: per folder**, as
+   recommended.
+3. **Should the PM ask who's on camera?** **Ruling: yes**, as
+   recommended, plus real added scope: multiple people are often on
+   camera together, so the PM does best-effort per-voice attribution,
+   and correcting a wrong name (e.g. "Bob" → "Mitch") must propagate to
+   every clip carrying that voice, not just one field. Ryan flagged
+   this himself as "ideal, not critical if it gets too complicated" —
+   **this is genuinely bigger than an intake question** (it implies
+   voice attribution spanning clips, which needs transcription/audio
+   analysis this contract doesn't have). Scoped out of PM v1; tracked
+   as a Phase 4 (Assistant Editor) capability to design when that phase
+   starts, not invented here.
+4. **Brand: per-project or reusable library?** **Ruling: snapshot per
+   project**, as recommended — and elevated to a governing principle
+   (§2.3): the project folder should be a fully self-contained handoff
+   unit. That principle surfaced a real, unresolved tension for raw
+   footage (see the flagged tension in §2.3) that needs its own
+   decision before Phase 2's file-organization step is built.
+5. **Shoot dates: ask, or read?** **Ruling: read only, no confirmation
+   step** — stronger than the draft's "read, then confirm." §2.2
+   updated accordingly.
+6. **Late footage: revision or new project?** **Ruling: new
+   revision**, as recommended.
 
 ---
 
