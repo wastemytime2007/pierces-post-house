@@ -1,9 +1,9 @@
 {
   "contract_version": 1,
-  "manifest_id": "9714fb60-90a4-4c11-8527-07a7ba6fd255",
+  "manifest_id": "7964908a-f87f-426d-846c-367465b0d6a6",
   "revision": 1,
-  "created_at": "2026-09-01T21:50:00Z",
-  "updated_at": "2026-09-01T21:50:00Z",
+  "created_at": "2026-09-01T21:54:25Z",
+  "updated_at": "2026-09-01T21:54:25Z",
   "generator": {
     "name": "posthouse.pm",
     "version": "0.1.0",
@@ -18,8 +18,7 @@
     },
     "project_type": "renovation",
     "shoot_dates": [
-      "2026-04-30",
-      "2026-07-30"
+      "2026-04-30"
     ]
   },
   "sources": [
@@ -29,22 +28,14 @@
       "display_name": "Osmo",
       "kind": "aroll",
       "dual_use": true,
-      "added_at": "2026-09-01T21:50:00Z",
+      "added_at": "2026-09-01T21:54:25Z",
       "media": {
-        "video_count": 6,
+        "video_count": 2,
         "audio_count": 0,
         "image_count": 0,
-        "other_count": 1,
-        "total_bytes": 18850402843
+        "other_count": 0,
+        "total_bytes": 18572947102
       },
-      "unsupported": [
-        {
-          "ext": "(no extension)",
-          "count": 1,
-          "category": "unknown_extension",
-          "reason": "1 (no extension) file(s) skipped (unsupported extension; expected audio, video, or image)."
-        }
-      ],
       "inference": {
         "camera_tags": [
           "osmo"
@@ -58,7 +49,7 @@
       "path": "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Source Audio",
       "display_name": "Source Audio",
       "kind": "source_audio",
-      "added_at": "2026-09-01T21:50:00Z",
+      "added_at": "2026-09-01T21:54:25Z",
       "media": {
         "video_count": 0,
         "audio_count": 4,
@@ -78,18 +69,17 @@
     {
       "role": "project_manager",
       "action": "emitted",
-      "at": "2026-09-01T21:50:00Z",
+      "at": "2026-09-01T21:54:25Z",
       "revision": 1,
       "agent": "posthouse.pm/0.1.0"
     }
   ],
   "validation": {
-    "ran_at": "2026-09-01T21:50:00Z",
+    "ran_at": "2026-09-01T21:54:25Z",
     "mode": "handoff",
     "errors": [],
     "warnings": [
       "source aroll-osmo-01: lives on a different volume than project.root_dir — may become unmountable later",
-      "aroll-osmo-01: 1 (no extension) file(s) skipped (unsupported extension; expected audio, video, or image).",
       "source source-audio-source-audio-01: lives on a different volume than project.root_dir — may become unmountable later",
       "brand is absent — no brand assets staged for this project"
     ]

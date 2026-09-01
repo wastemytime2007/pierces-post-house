@@ -97,11 +97,16 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Ryan: nominate the benchmark project** — one finished past job
-   whose raw footage AND delivered edit are both still on disk. This is
-   now the critical path: Phase 3 (benchmark) gates Phase 4 (the
-   Assistant Editor cull), and the cull is the one skill that must be
-   measured against a real answer key rather than tuned by feel.
+1. **Ryan: mark the Runnells Day 1 answer key** (about an hour): open
+   the two Osmo clips in Premiere, set in/out around every usable range
+   exactly as an assistant editor would, insert each onto one selects
+   sequence, File → Export → Final Cut Pro XML, save as
+   `benchmark/runnells-day-1/answer_key.xml`. Step-by-step in
+   `benchmark/README.md`. This is the critical path: it gates the
+   Assistant Editor cull, the one skill that must be measured against a
+   real answer key rather than tuned by feel. Scoring harness
+   (`posthouse/benchmark.py`) is being built now so it runs the moment
+   the XML exists.
 2. Unblocked while waiting on the benchmark (neither sets a threshold,
    so neither risks tuning by feel): (a) the cull's **signal-extraction
    layer** — per-frame motion magnitude (ffmpeg `vidstabdetect` or
@@ -117,6 +122,14 @@ not be tuned by vibes.
    first, product maybe later" and "review happens in Premiere"
    assumptions from the gameplan discussion.
 
+- 2026-09-01 — **Benchmark v1 staged (Runnells Day 1) and the PM's
+  first real-footage run.** Manifest at `benchmark/runnells-day-1/`
+  (paths only; media stays on `RDOSS_2025`). The real run exposed two
+  bugs fixtures could not: proxies + `._*` sidecars counted as footage
+  (6 videos for a 2-clip shoot, phantom July date) and a stale census
+  surviving re-runs. Both fixed, regression-tested, and re-validated on
+  the drive: 2 videos, one shoot date, refresh on re-run with frozen
+  ids. PM tests 23 passed. *(This commit.)*
 - 2026-09-01 — **Phase 1 complete; Phase 0's sync gap closed.** Heavy-dep
   harvest wrappers `posthouse/harvest/{transcribe,index,sync}.py` with
   8 Tier-2 tests; suite 186 passed / 1 skipped, verified by the Lead.

@@ -342,6 +342,36 @@ def test_declared_kind_wins_even_when_inference_disagrees(tmp_path):
 # Shoot dates
 # ---------------------------------------------------------------------------
 
+def test_census_skips_precut_proxies_and_appledouble_sidecars(tmp_path):
+    """Reproduces the first real-footage run (Runnells Day 1, 2026-09-01):
+    a 2-clip Osmo folder censused as 6 videos with a phantom shoot date,
+    because PreCut leaves `proxies/` next to the originals and macOS adds
+    `._*` AppleDouble sidecars that also end in .mp4. Only the originals
+    are footage; the returned video_files list (which shoot dates derive
+    from) must exclude everything else too."""
+    src = tmp_path / "Osmo"
+    (src / "proxies").mkdir(parents=True)
+    (src / "PreCut_Output").mkdir()
+    (src / "DJI_0005.MP4").write_bytes(b"\x00" * 1000)
+    (src / "DJI_0006.MP4").write_bytes(b"\x00" * 500)
+    # PreCut's proxies + macOS sidecars, exactly as found on the drive
+    (src / "proxies" / "DJI_0005.mp4").write_bytes(b"\x00" * 100)
+    (src / "proxies" / "DJI_0006.mp4").write_bytes(b"\x00" * 100)
+    (src / "proxies" / "._DJI_0005.mp4").write_bytes(b"\x00" * 10)
+    (src / "proxies" / "._DJI_0006.mp4").write_bytes(b"\x00" * 10)
+    (src / "._proxies").write_bytes(b"\x00" * 10)
+    (src / ".DS_Store").write_bytes(b"\x00" * 10)
+    (src / "PreCut_Output" / "export.xml").write_text("<xmeml/>")
+
+    media, unsupported, video_files = PM.census_source(src)
+
+    assert media["video_count"] == 2, media
+    assert media["other_count"] == 0, media
+    assert media["total_bytes"] == 1500, media
+    assert unsupported == [], unsupported
+    assert sorted(p.name for p in video_files) == ["DJI_0005.MP4", "DJI_0006.MP4"]
+
+
 def test_shoot_dates_derived_and_deterministic_iso_format(tmp_path):
     root = tmp_path / "Project"
     brand_source = tmp_path / "BrandKit"
@@ -450,6 +480,33 @@ def test_idempotent_rerun_does_not_duplicate_sources(tmp_path):
     assert second.added_source_ids == []
     assert second.manifest["revision"] == first.manifest["revision"] + 1
     assert len(second.manifest["handoffs"]) == 2
+
+
+def test_rerun_refreshes_census_of_existing_sources_but_keeps_identity(tmp_path):
+    """Found on Runnells Day 1: revision 2 carried a wrong video_count from
+    revision 1 while shoot_dates (also disk-derived) had already corrected
+    itself. A re-run must refresh the snapshot fields (media, unsupported,
+    inference) of sources it already knows, while their id and added_at
+    stay frozen."""
+    root = tmp_path / "Project"
+    brand_source = tmp_path / "BrandKit"
+    dirs = _make_project_tree(root, brand_source)
+
+    first = _organize(root, dirs, brand_source)
+    target = first.manifest["sources"][0]
+    before_count = target["media"]["video_count"]
+    before_id, before_added = target["id"], target["added_at"]
+
+    # Footage changes on disk between runs: one more clip lands in the folder.
+    (Path(target["path"]) / "LATE_CLIP.MP4").write_bytes(b"\x00" * 2048)
+
+    second = _organize(root, dirs, brand_source)
+    after = next(s for s in second.manifest["sources"] if s["id"] == before_id)
+
+    assert after["media"]["video_count"] == before_count + 1, after["media"]
+    assert after["id"] == before_id
+    assert after["added_at"] == before_added
+    assert second.manifest["revision"] == first.manifest["revision"] + 1
 
 
 # ---------------------------------------------------------------------------

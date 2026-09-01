@@ -166,12 +166,37 @@ def _now_iso() -> str:
 # Per-source census (contract §2.4 media{} + unsupported[])
 # ---------------------------------------------------------------------------
 
+# Directories PreCut itself writes next to originals and that must never be
+# counted as footage. Same names multi_exporter._find_original_for_proxy's
+# _scan skips (`skip_names=("proxies", "PreCut_Output")`), harvested rather
+# than re-invented so the PM and the exporter agree on what "not footage"
+# means. Found the hard way on the first real-footage run (Runnells Day 1):
+# the census reported 6 videos for a 2-clip shoot and a phantom July shoot
+# date, because it walked into Osmo/proxies/ and counted PreCut's proxies
+# plus their macOS `._*` AppleDouble sidecars (which also end in .mp4).
+_SKIP_DIR_NAMES = frozenset({"proxies", "PreCut_Output"})
+
+
+def _is_hidden(p: Path) -> bool:
+    """macOS `._*` AppleDouble sidecars, `.DS_Store`, and any other dotfile:
+    metadata, never media."""
+    return p.name.startswith(".")
+
+
 def _iter_files(path: Path) -> list[Path]:
     if not path.exists():
         return []
     if path.is_file():
-        return [path]
-    return [p for p in path.rglob("*") if p.is_file()]
+        return [] if _is_hidden(path) else [path]
+    out: list[Path] = []
+    for p in path.rglob("*"):
+        if not p.is_file() or _is_hidden(p):
+            continue
+        rel_parts = p.relative_to(path).parts[:-1]
+        if any(part in _SKIP_DIR_NAMES or part.startswith(".") for part in rel_parts):
+            continue
+        out.append(p)
+    return out
 
 
 def census_source(path: Path) -> tuple[dict, list[dict], list[Path]]:
@@ -410,11 +435,27 @@ def organize_project(
             resolved = str(spath)
 
         if resolved in existing_source_paths:
-            # Already declared in a prior run — untouched (frozen id,
-            # no recompute). Its footage is still rescanned below only
-            # for shoot-date purposes, never for census/inference.
-            _, _, vids = census_source(spath)
+            # Already declared in a prior run. Identity is FROZEN (id,
+            # added_at, dual_use, notes, display_name, subject_ids never
+            # change here), but the snapshot fields REFRESH: media census,
+            # unsupported[], and inference are re-read from disk. A re-run
+            # is exactly the moment a stale snapshot should update; found
+            # on Runnells Day 1, where revision 2 kept a wrong video_count
+            # from revision 1 while shoot_dates (also disk-derived) had
+            # already corrected itself. Cost is identical either way: the
+            # folder was being walked for shoot dates regardless.
+            media, unsupported, vids = census_source(spath)
             all_video_files.extend(vids)
+            existing_id = existing_source_paths[resolved]
+            for s in (existing_manifest or {}).get("sources", []):
+                if s.get("id") == existing_id:
+                    s["media"] = media
+                    if unsupported:
+                        s["unsupported"] = unsupported
+                    else:
+                        s.pop("unsupported", None)
+                    s["inference"] = infer_source(spath, s.get("kind", raw["kind"]), precut_pin)
+                    break
             continue
 
         kind = raw["kind"]

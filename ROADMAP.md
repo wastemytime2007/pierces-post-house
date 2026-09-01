@@ -535,6 +535,38 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Benchmark v1 nominated and staged: Runnells Day 1.**
+  Ryan has no finished project with both raw footage and a delivered
+  edit, so the benchmark uses raw footage plus an answer key he marks
+  directly in Premiere (every usable in/out onto a selects sequence,
+  exported as FCP7 XML). For the cull this is *better* than a finished
+  edit: it removes the survivorship gap (§7) outright, since he marks
+  what is usable rather than what he happened to use. Footage: two 4K
+  HEVC 29.97 Osmo clips (33.2 min + 3.9 min) on `RDOSS_2025`, referenced
+  in place, declared `aroll` + `dual_use` (Ryan: the walkthrough A-roll
+  doubles as B-roll), plus four DJI lav files. The repo holds only paths,
+  the manifest, and later the answer key and scores; media is
+  gitignored under `benchmark/`. A deliberate-defects mini-shoot is the
+  planned supplement for defect coverage; the next real job with a
+  finished edit becomes benchmark v2 for matching/story scoring.
+- **2026-09-01 — First real-footage PM run found two bugs the fixtures
+  never could.** (1) The census counted **6 videos for a 2-clip shoot**
+  and invented a **July 30 shoot date**: it walked into PreCut's
+  `Osmo/proxies/` and counted the proxies plus their macOS `._*`
+  AppleDouble sidecars (which also end in `.mp4`), and dated the shoot by
+  proxy-generation time. Fix: `_iter_files` now skips PreCut's own
+  skip-list (`proxies`, `PreCut_Output`, harvested from
+  `multi_exporter._find_original_for_proxy` so PM and exporter agree on
+  what is not footage) and every dotfile. (2) On re-run, existing sources
+  kept a **stale census** from the prior revision while `shoot_dates`
+  (also disk-derived) had already corrected itself. Ruling: a re-run
+  refreshes the snapshot fields (media, unsupported, inference) of
+  known sources; only identity (id, added_at, dual_use, notes) is
+  frozen. Both fixed with regression tests reproducing the exact
+  on-disk layout, and re-validated against the real drive (stale 6
+  corrected to 2 on re-run, id unchanged). Lesson logged for every
+  later role: the fixtures prove correctness; only real footage proves
+  the assumptions.
 - **2026-09-01 — PHASE 1 COMPLETE, and Phase 0's last Tier-2 gap is
   CLOSED.** The three heavy-dep harvest wrappers shipped
   (`posthouse/harvest/{transcribe,index,sync}.py`, 8 Tier-2 tests marked
