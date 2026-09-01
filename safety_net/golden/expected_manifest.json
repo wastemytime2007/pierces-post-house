@@ -1,0 +1,150 @@
+{
+  "contract_version": 1,
+  "manifest_id": "{UUID}",
+  "revision": 1,
+  "created_at": "{TS}",
+  "updated_at": "{TS}",
+  "generator": {
+    "name": "posthouse.pm",
+    "version": "0.1.0",
+    "precut_pin": "e035fbaf1fe63bfb0647917af142304b4470d00d"
+  },
+  "project": {
+    "name": "Mendez Listing — 128 Alder St",
+    "slug": "mendez-listing-128-alder-st",
+    "root_dir": "{ROOT}",
+    "client": {
+      "name": "Carla Mendez Realty",
+      "contact": "carla@mendezrealty.com"
+    },
+    "project_type": "interview",
+    "shoot_dates": [
+      "2026-08-27"
+    ],
+    "locations": [
+      {
+        "label": "128 Alder St",
+        "address": "128 Alder St, Bend OR"
+      }
+    ],
+    "people": [
+      {
+        "id": "carla-mendez",
+        "name": "Carla Mendez",
+        "role": "agent"
+      }
+    ],
+    "notes": "Agent-led walkthrough. She wants the kitchen island featured."
+  },
+  "brand": {
+    "assets_dir": "{ROOT}/Brand Assets",
+    "fonts": [
+      {
+        "file": "Gilroy-Bold.otf",
+        "family_name": "Gilroy",
+        "style_name": "Bold",
+        "format": "otf",
+        "extracted_by": "name_table",
+        "install_status": "not_installed"
+      }
+    ],
+    "palette": [
+      {
+        "hex": "#1B3A57",
+        "role": "primary",
+        "source": "logo:mendez-logo.png"
+      }
+    ],
+    "logos": [
+      {
+        "file": "mendez-logo.png",
+        "kind": "primary",
+        "has_alpha": true
+      }
+    ],
+    "documents": [],
+    "brief": {
+      "readme_path": "BRAND_README.txt",
+      "card_png_path": "brand-card.png",
+      "bin_path": "Files/Brand",
+      "marker_written": true
+    }
+  },
+  "sources": [
+    {
+      "id": "aroll-a-carla-interview-01",
+      "path": "{ROOT}/A - Carla Interview",
+      "display_name": "A - Carla Interview",
+      "kind": "aroll",
+      "dual_use": true,
+      "subject_ids": [
+        "carla-mendez"
+      ],
+      "notes": "She keeps talking while I grab the room.",
+      "added_at": "{TS}",
+      "media": {
+        "video_count": 14,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 88213004288
+      },
+      "inference": {
+        "camera_tags": [
+          "sony",
+          "cinema"
+        ],
+        "method": "camera_inference@e035fbaf",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-b-interior-rooms-01",
+      "path": "{ROOT}/B - Interior Rooms",
+      "display_name": "B - Interior Rooms",
+      "kind": "broll",
+      "added_at": "{TS}",
+      "media": {
+        "video_count": 63,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 2,
+        "total_bytes": 141238374400
+      },
+      "unsupported": [
+        {
+          "ext": ".lrf",
+          "count": 2,
+          "category": "unknown_extension",
+          "reason": "2 .lrf file(s) skipped (unsupported extension; expected audio, video, or image)."
+        }
+      ],
+      "inference": {
+        "camera_tags": [
+          "osmo",
+          "gimbal",
+          "pocket"
+        ],
+        "method": "camera_inference@e035fbaf",
+        "agrees_with_declaration": true
+      }
+    }
+  ],
+  "default_includes": [
+    {
+      "id": "{UUID}",
+      "type": "folder",
+      "source_path": "/Users/ryan/Assets/SFX/Whooshes",
+      "bin_path": "Audio/SFX",
+      "file_glob": "*.wav",
+      "origin": "global_settings"
+    }
+  ],
+  "handoffs": [],
+  "validation": {
+    "ran_at": "{TS}",
+    "mode": "intake",
+    "errors": [],
+    "warnings": []
+  }
+}

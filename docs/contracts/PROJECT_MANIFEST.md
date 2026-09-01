@@ -40,7 +40,7 @@ unless a default is stated.
 | `project` | {…} | ✓ | — | §2.2 |
 | `brand` | {…} | — | — | §2.3. Absent = no brand assets on this job. |
 | `sources` | [{…}] | ✓ | — | §2.4. Non-empty. |
-| `delivery_targets` | [{…}] | — | `[]` | §2.5 |
+| `delivery_targets` | [{…}] | — | `[]` | §2.5. **The PM writes this key never, not even as `[]`** — see §2.5's ruling; the `[]` default here describes what an absent key means to a *reader*, not something the PM emits. |
 | `default_includes` | [{…}] | — | `[]` | §2.6 |
 | `handoffs` | [{…}] | ✓ | — | §2.7. Append-only. |
 | `validation` | {…} | ✓ | — | `{ran_at: ts, mode: "intake"\|"handoff", errors: [], warnings: []}` — the last validation result, recorded so a reader can see what the PM already knew was wrong (§4). |

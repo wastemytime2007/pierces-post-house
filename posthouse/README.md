@@ -112,3 +112,47 @@ since there's no transcript to justify overriding the caller's order;
 (3) sequence dimensions are probed from the first segment's source file,
 falling back to 1920x1080@30 — there is no per-segment aspect choice in
 this contract, matching the "no overlay" scope of this slice.
+
+## The Project Manifest (`posthouse/manifest.py`)
+
+The Project Manager's hard deliverable (ROADMAP.md §6 Phase 2): builds
+and validates `manifest.json`, the one file every later role reads
+blind, per the ratified contract at `docs/contracts/PROJECT_MANIFEST.md`.
+This module is deliberately scope-limited to the manifest artifact
+itself — it takes already-decided intake answers as structured Python
+data (`build_manifest(...)`) and produces a manifest dict; it does not
+run an interactive intake conversation or organize files on disk (that's
+later Phase 2 work, gated behind "roles before shell").
+
+**Two-moment validation.** `validate_manifest(manifest, mode)` runs one
+rule set in two postures: `mode="intake"` reports every rule — including
+everything in contract §4.1's REJECT list — as a warning and never
+raises (`errors` is always `[]`, since the PM is still talking to Ryan
+and the manifest is a legal draft); `mode="handoff"` promotes §4.1
+violations to fatal `errors` while §4.2 stays advisory in `warnings`.
+Both modes are exhaustive, not fail-fast, matching
+`posthouse.coldfootage`'s validation pattern — every offender is
+collected in one pass.
+
+**Source IDs are minted once and frozen** (contract §5):
+`mint_source_id(kind, display_name, existing_ids)` computes a fresh
+`<kind>-<slug>-<NN>` id; `add_source(manifest, ...)` uses it to extend an
+*existing* manifest without ever touching a prior source's id, so
+renaming a folder at 11pm never orphans a downstream artifact that
+already cited the old id. `delivery_targets` is deliberately not a
+`build_manifest` parameter — the ratified ruling (contract §2.5) is that
+the PM never proposes delivery targets, so the key is structurally
+absent from a freshly built manifest, not written as `[]`.
+
+```
+python -m posthouse.manifest validate path/to/manifest.json --mode handoff
+```
+
+Exits non-zero with every fatal error printed to stderr on a handoff-mode
+failure (intake mode always exits 0 — warnings only). The same behavior
+is available as a Python API via `validate_manifest`, which never raises
+either way; a caller wanting "handoff with teeth" checks
+`result.ok`/`result.errors` itself. `load_manifest`/`save_manifest`
+round-trip a manifest to disk with the same write-tempfile-then-
+`os.replace` atomic pattern as `precut_pipeline`'s own
+`project.py:Project.save()`.

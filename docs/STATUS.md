@@ -4,14 +4,21 @@ Owner: Lead. Updated at the end of every working session. § Done records
 only completed, verified work with its evidence; § In progress is for
 everything in flight.
 
-## Current stage
+## Current stage — see § Done for the latest slice
 
-**Phase 0 complete (Tier 1 + Tier 2, verified on Ryan's Mac), except
-real-footage audio sync — still open.** Phase 1 cloud-buildable slice
-shipped. Product pivoted (2026-09-01): the end product is a new
-role-driven app; PreCut is the component donor. **Project Manifest
-contract is fully ratified, no open blockers — Phase 2 (PM role) is
-clear to start.** See ROADMAP §6 for the phase plan.
+**Phase 2 (Project Manager role) in progress — slice 1 shipped.** The
+manifest builder/validator is built, reviewed, and green. Phase 0 is
+complete (Tier 1 + Tier 2, verified on Ryan's Mac) except real-footage
+audio sync; Phase 1's cloud-buildable slice shipped. Product pivoted
+(2026-09-01): the end product is a new role-driven app; PreCut is the
+component donor. See ROADMAP §6 for the phase plan.
+
+**Next slice of Phase 2:** the Brand Brief generator (font-name
+extraction from TTF/OTF name tables, palette from the logo, README +
+brand-card PNG, co-location invariant) — `fontTools` 4.63 and `PIL`
+12.3 are both present in `~/precut-venv-fresh`. Then the organization
+step (staging assets alongside footage per the resolved portability
+ruling).
 
 ## In progress
 
@@ -85,8 +92,9 @@ clear to start.** See ROADMAP §6 for the phase plan.
 
 ## Next (in order)
 
-1. Phase 2: PM role headless build against the ratified contract
-   (intake → organize → Brand Brief → manifest). Clear to start.
+1. Phase 2 remaining slices: Brand Brief generator, then the
+   organization step (stage assets alongside footage; footage itself
+   never moved). Manifest builder/validator is done.
 2. Phase 1 remainder (Mac session, available now): heavy-dep harvest
    wrappers (transcribe, tag/index, sync) per
    `posthouse/harvest/DEFERRED.md`; the one remaining Tier-2 gap
@@ -96,6 +104,17 @@ clear to start.** See ROADMAP §6 for the phase plan.
    Phase 3, not Phase 2). Also pending: ratify the "internal tool
    first, product maybe later" and "review happens in Premiere"
    assumptions from the gameplan discussion.
+
+- 2026-09-01 — **Phase 2 slice 1: manifest builder/validator shipped.**
+  `posthouse/manifest.py` — build/load/save/validate, source-ID minting
+  per contract §5 (frozen, never renumbered), two-moment validation
+  (intake warns / handoff rejects, exhaustive), atomic writes,
+  contract_version refusal, CLI. 64 new tests; suite 124 passed /
+  1 skipped, verified independently by the Lead. High-effort code
+  review found 2 real defects (undetected nested-source kind conflicts;
+  person-ID docstring/implementation mismatch) — both fixed with
+  regression tests before commit. Four contract-gap judgment calls
+  logged in ROADMAP's Decision Log. *(This commit.)*
 
 ## Attempts ledger
 

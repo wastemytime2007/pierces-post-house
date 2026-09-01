@@ -535,6 +535,33 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Phase 2 slice 1 shipped: the manifest builder/validator**
+  (`posthouse/manifest.py`, 60+ tests). Four implementation judgment calls
+  made against gaps the ratified contract didn't specify — all accepted by
+  the Lead, none needed to go back to Ryan:
+  - **`revision` bumps on every save to an existing path**, using
+    file-existence as the signal; no content-diffing. Simple and
+    deterministic; a no-op save still bumps. Revisit only if the number
+    inflating in practice actually bothers anyone.
+  - **`delivery_targets` absence is enforced by API shape** —
+    `build_manifest` has no such parameter and never writes the key, so
+    §2.5's "PM never proposes" ruling can't be violated by accident. The
+    contract's §2.1 default column now cross-references §2.5 to stop the
+    next implementer writing `[]` there (a near-miss this build caught).
+  - **Aggregate `unsupported[].reason` phrasing** for the four categories
+    with a harvested per-file reason follows the contract's one worked
+    example by parallel structure, embedding the harvested string
+    verbatim rather than paraphrasing.
+  - **`project.people[].id` collisions** reuse the `-NN` scheme; the bare
+    slug is implicitly 01, so a second "Sam" is `sam-02`.
+  Code review (high effort) found two real defects, both fixed with
+  regression tests before commit: nested-source kind conflicts were
+  undetected (only exact-path duplicates were caught, so a `broll` folder
+  nested inside an `aroll` folder passed handoff validation silently —
+  contract §4.1 rule 5 requires rejecting it), and `_mint_person_id`
+  contradicted its own docstring (`-01` vs the documented `-02`).
+  Nesting is compared as path parts, not string prefixes, so
+  `/proj/A-roll` is correctly not "inside" `/proj/A`.
 - **2026-09-01 — Cross-clip speaker naming: verified as real work,
   then de-scoped entirely.** First verified (web search, not assumed)
   that Premiere's built-in Speech to Text cannot do it — "rename all
