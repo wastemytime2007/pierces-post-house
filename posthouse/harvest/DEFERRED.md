@@ -1,59 +1,63 @@
-# Deferred harvests — Ryan's Mac only
+# Heavy-dep harvests — status
 
-These capabilities are **not** wrapped in this directory. Each needs
-PreCut's real ML venv (`~/precut-venv-fresh` per `precut/ARCHITECTURE.md`
-"Runtime environment": torch, whisper, lancedb, open_clip, PIL, rich,
-anthropic) and, for two of the three, real footage/audio — neither is
-available in a cloud session. Implementation happens in a Mac session
-with that venv active. Writing stub modules that `raise
-NotImplementedError` was deliberately avoided: a stub is importable dead
-code that invites an accidental `import posthouse.harvest.transcribe`
-somewhere that silently "succeeds" until it's actually called — better to
-have nothing here at all than something that pretends to be a wrapper.
+The three capabilities this file used to describe as deferred are now
+**implemented**, on Ryan's Mac, against the real ML venv
+(`~/precut-venv-fresh`): `posthouse/harvest/transcribe.py`,
+`posthouse/harvest/index.py`, `posthouse/harvest/sync.py`. Each is a thin
+re-export over `precut_pipeline` (no Whisper/CLIP/sync logic
+reimplemented) — see each module's own docstring for its exact
+provenance. Tests live in `safety_net/tests/test_transcribe.py`,
+`test_index.py`, `test_sync.py`, all marked `@pytest.mark.tier2` (see
+`safety_net/conftest.py`'s `pytest_configure`) so a cloud/CI run can
+deselect them with `-m "not tier2"` — they need the real venv and, for
+transcribe/sync, real speech audio, so they self-skip everywhere else via
+an `importlib.util.find_spec` guard at the top of each test file, the
+same pattern `test_db_migrations.py` already used.
 
-## Transcribe
+## What's still genuinely deferred
 
-**Source:** `precut_pipeline.transcriber` (`import torch`, then Whisper
-via `precut_pipeline.config.WHISPER_MODEL`).
-**Contract sketch:** input is an A-roll audio/video file; output is a
-`Transcript` (a `source_path`, a `duration`, and a list of `Phrase`
-objects — `id`, `start`, `end`, `text`), already the on-disk shape PreCut
-persists per A-roll under a project's `transcripts/` dir
-(`docs/ARCHITECTURE.md`'s artifact table: "Transcript … JSON per A-roll").
-ROADMAP.md §7 flags a **Whisper timing-bias** risk: reuse PreCut's
-existing phrase-boundary padding logic rather than re-deriving it from
-scratch on the Mac.
+- **Claude vision tagging** (`index_broll(..., tagger="claude")`) needs
+  `ANTHROPIC_API_KEY` in the environment. Not exercised by any test here
+  (no network calls in this harvest's tests, by design) and not run for
+  real yet — a caller that wants it is on their own for verifying cost
+  and output quality.
+- **LLaVA vision tagging** (`index_broll(..., tagger="llava")`) needs a
+  reachable Ollama instance with the model already pulled. Same status —
+  wired through, never run for real, not tested here.
+- **The below-threshold sync policy** (ROADMAP.md Phase 4 open item):
+  whether a `(aroll, lav)` pair that scores under `SCORE_USE` gets
+  included-and-flagged, dropped, or surfaced for manual review is a
+  product decision, not an engineering one. `posthouse.harvest.sync.
+  sync_pairs` deliberately returns every pair it computes, each carrying
+  `passed_threshold`, and never decides for the caller. Phase 4 (the
+  Assistant Editor) is where this gets settled and logged in ROADMAP.md's
+  Decision Log.
 
-## Tag / index
+## The real-footage sync gap — closed, with a number
 
-**Source:** `precut_pipeline.tagger` (Ollama/LLaVA vision tags),
-`precut_pipeline.claude_tagger` (Claude vision tags, `ANTHROPIC_MODEL`),
-`precut_pipeline.embedder` (`numpy` + `torch` + `PIL` + `open_clip` CLIP
-embeddings), `precut_pipeline.database` (`lancedb` + `pyarrow` + `numpy`
-vector storage), `precut_pipeline.matcher` (consumes all of the above).
-**Contract sketch:** input is B-roll frames sampled at ingest; output is,
-per clip, a natural-language description + tag list (written to SQLite's
-`frames`/`clips` tables — the exact schema `multi_exporter.
-load_broll_library` already reads, see `safety_net/conftest.py`'s
-`_make_broll_index_db`) plus a CLIP embedding per sampled frame in
-LanceDB (`broll_index/precut.db` per `docs/ARCHITECTURE.md`'s "on-disk
-project artifacts" door). This is the index Phase 4's subject-grouping
-clusters over.
+`safety_net/README.md`'s "Scoped out" section and ROADMAP.md's Decision
+Log both named "real-footage audio sync" as the one open Tier-2 item,
+because synthetic sine-tone audio can't clear `SCORE_USE=10.0`. This
+build closes it using genuinely correlated speech instead of tones:
+macOS `say -v Samantha` generates real speech, ffmpeg'd into (a) a
+"camera" MOV whose audio track is that speech and (b) a "lav" WAV that is
+the same speech with 1.5s of leading silence prepended, gain and EQ
+changed, and light noise added (not a bit-identical copy).
 
-## Sync
+Measured (fresh every test run, `safety_net/tests/test_sync.py`):
+**offset recovered = -1.504s against a known -1.5s (4ms error); score =
+11.55 against `SCORE_USE=10.0`.** Real correlated speech clears the
+threshold with margin. Per the task brief this result is reported
+honestly either way — the test does not lower the threshold if a future
+run measures differently; it skips with the measured number in that case
+instead of weakening the assertion.
 
-**Source:** `precut_pipeline.audio_sync` — the module itself imports
-clean (stdlib only at module scope: `hashlib`, `re`, `time`,
-`dataclasses`), but its actual cross-correlation work lazily imports
-`audio_offset_finder.audio_offset_finder.find_offset_between_files` at
-call time, which pulls in real audio-processing deps. **Contract
-sketch:** input is a camera A-roll audio track plus one or more
-candidate lav/boom WAV files; output is an `AudioSyncState` with, per
-`(aroll, lav)` pair, an `offset_sec` and a match `score`, thresholded at
-`SCORE_USE=10.0` per `safety_net/README.md` "Scoped out". Per
-`safety_net/README.md`, synthetic sine-tone audio cannot clear that
-score floor — this is a real-footage-only test, not just a real-venv-only
-one, which is why it's Tier 2 even beyond the ML-dependency question.
-ROADMAP.md Phase 4 also needs a settled answer for below-threshold pairs
-(included-and-flagged / dropped / surfaced) before this is implemented,
-not just wrapped.
+## A note on `say` voice choice (transcribe)
+
+The default `say` voice (system default — "Alex" on this Mac) produced
+audio that Whisper's `base` model transcribed with "countertops" garbled
+("countered ups" / "counter -dops") — a real, reproducible acoustic
+finding, not a bug in the wrapper. `say -v Samantha` transcribes the same
+sentence cleanly. `test_transcribe.py` uses Samantha and records this
+choice in its own docstring rather than silently picking a voice that
+happens to work.

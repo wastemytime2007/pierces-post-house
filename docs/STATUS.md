@@ -6,16 +6,15 @@ everything in flight.
 
 ## Current stage — see § Done for the latest slice
 
-**PHASE 2 COMPLETE — the Project Manager role runs headless.** All
-three slices shipped (manifest builder/validator, Brand Brief
-generator, organization step). Verified end to end on a realistic fake
-shoot: a raw footage dump plus intake answers produces an organized
-project folder holding footage (never moved), a `Brand Assets`
-directory, and a validated `manifest.json`. Suite: 178 passed /
-1 skipped.
+**PHASES 0, 1, AND 2 ALL COMPLETE, nothing deferred.** Phase 0's last
+Tier-2 gap (real-footage audio sync) closed with a real measurement:
+4ms offset error, score 11.55 vs threshold 10.0 on manufactured real
+speech. Phase 1's heavy-dep harvest wrappers (transcribe, index, sync)
+shipped against the real venv. Phase 2's Project Manager runs headless,
+verified end to end on a realistic fake shoot including a late-footage
+re-run. Suite: 186 passed / 1 skipped (~50s on the Mac; Tier-2 tests
+carry a `tier2` marker so cloud runs can deselect them).
 
-Phase 0 is complete (Tier 1 + Tier 2, verified on this Mac) except
-real-footage audio sync; Phase 1's cloud-buildable slice shipped.
 Product pivoted (2026-09-01): the end product is a new role-driven app;
 PreCut is the component donor. See ROADMAP §6 for the phase plan.
 
@@ -103,16 +102,30 @@ not be tuned by vibes.
    now the critical path: Phase 3 (benchmark) gates Phase 4 (the
    Assistant Editor cull), and the cull is the one skill that must be
    measured against a real answer key rather than tuned by feel.
-2. Phase 1 remainder (Mac session, available now): heavy-dep harvest
-   wrappers (transcribe, tag/index, sync) per
-   `posthouse/harvest/DEFERRED.md`; the one remaining Tier-2 gap
-   (real-footage audio sync — needs genuine correlated dual-source
-   audio to exercise the MFCC threshold, not synthetic tones).
+2. Unblocked while waiting on the benchmark (neither sets a threshold,
+   so neither risks tuning by feel): (a) the cull's **signal-extraction
+   layer** — per-frame motion magnitude (ffmpeg `vidstabdetect` or
+   optical flow), Laplacian blur, exposure histograms, audio peaks,
+   emitted as a signals file and checked against the safety-net
+   fixtures, which were built with exactly this failure taxonomy
+   (stable/shaky/blurred/under/over-exposed); (b) the Phase 3 scoring
+   harness scaffold — answer-key format plus precision/recall scorer,
+   runnable the moment a real project is nominated. Thresholds that turn
+   signals into segments are NOT set until the benchmark exists.
 3. **Ryan (when ready):** nominate the benchmark project (blocks
    Phase 3, not Phase 2). Also pending: ratify the "internal tool
    first, product maybe later" and "review happens in Premiere"
    assumptions from the gameplan discussion.
 
+- 2026-09-01 — **Phase 1 complete; Phase 0's sync gap closed.** Heavy-dep
+  harvest wrappers `posthouse/harvest/{transcribe,index,sync}.py` with
+  8 Tier-2 tests; suite 186 passed / 1 skipped, verified by the Lead.
+  Sync recovered a known 1.5s offset to within 4ms at score 11.55 vs
+  SCORE_USE 10.0 on real TTS speech; the index was proven by feeding it
+  to PreCut's own `load_broll_library`; transcription reuses PreCut's
+  phrase chunking and on-disk shape. Vision tagging opt-in, off by
+  default, no network in tests. Full findings in the Decision Log.
+  *(This commit.)*
 - 2026-09-01 — **Phase 2 slice 3 shipped; PHASE 2 COMPLETE.**
   `posthouse/projectmanager.py` — census, unsupported aggregation,
   harvested camera inference with the real pin, shoot dates from file

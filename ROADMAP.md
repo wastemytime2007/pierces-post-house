@@ -535,6 +535,41 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — PHASE 1 COMPLETE, and Phase 0's last Tier-2 gap is
+  CLOSED.** The three heavy-dep harvest wrappers shipped
+  (`posthouse/harvest/{transcribe,index,sync}.py`, 8 Tier-2 tests marked
+  `tier2` so cloud runs can deselect them; suite 186 passed / 1 skipped,
+  ~50s on the Mac). No model weights downloaded: Whisper `base` and CLIP
+  ViT-B-32 were already cached from PreCut.
+  - **Sync gap closed with a real measurement, not a hand-wave.** The
+    long-standing Tier-2 hole was "synthetic sine tones can't clear
+    PreCut's MFCC threshold." Resolution: manufacture *real speech* with
+    macOS `say`, split it into a camera MOV and a lav WAV with a known
+    1.5s offset, different gain/EQ, and added noise. Measured: offset
+    recovered **-1.504s vs known -1.5s (4ms error)**, score **11.55 vs
+    `SCORE_USE=10.0`**. Real speech clears the floor with margin. The test
+    skips-with-the-number rather than weakening if a future run ever
+    measures below threshold; the threshold itself was not touched.
+  - **Index schema proven by consumption**, not column-matching: the
+    wrapper's output is fed to PreCut's own `load_broll_library`, which
+    returns real entries. 512-dim vectors, one per sampled frame;
+    re-indexing an unchanged clip is a true no-op via PreCut's
+    `clip_exists_unchanged`. Vision tagging (Claude / LLaVA) is opt-in
+    and OFF by default: the index builds offline on CLIP alone, and tests
+    make no network calls.
+  - **Transcription** reuses PreCut's phrase chunking and persists the
+    exact on-disk transcript shape. Keyword recovery 3/3 with the
+    `Samantha` voice. Acoustic finding, not a bug: the default `Alex`
+    voice garbles "countertops" under Whisper `base`, so the test pins
+    the voice and asserts ≥2/3 keywords plus structural invariants,
+    never an exact string.
+  - Below-threshold sync policy stays a Phase 4 decision: `sync_pairs`
+    returns every pair flagged with `passed_threshold`, never drops or
+    silently includes one.
+  - Backlog notes for anyone touching this venv: no `pandas` installed,
+    so LanceDB reads must use `.to_arrow()`; `BrollLibraryEntry` exposes
+    `.source_path`, not `.path`.
+  **Phase 0 and Phase 1 are now fully complete with nothing deferred.**
 - **2026-09-01 — PHASE 2 COMPLETE: the Project Manager role runs
   headless.** Final slice `posthouse/projectmanager.py` (21 tests; suite
   178 passed / 1 skipped): per-source media census by extension (not

@@ -5,8 +5,10 @@ code, built as a *client* of PreCut rather than a fork of it. Everything
 here either reuses a PreCut capability through `posthouse.precut_bridge`
 (the third integration door — `precut_pipeline` imported as a library,
 per ROADMAP.md's Decision Log) or is genuinely new logic that PreCut has
-no equivalent for. This slice (Phase 1) ships the bridge itself, the
-Cold Footage sequence builder, and the light-dependency harvest wrappers.
+no equivalent for. Phase 1 shipped the bridge itself, the Cold Footage
+sequence builder, and the light-dependency harvest wrappers first; this
+slice adds the three heavy-dependency wrappers (transcribe, index, sync)
+that need Ryan's Mac and its real ML venv, closing out Phase 1.
 
 ## The pin mechanism
 
@@ -31,14 +33,92 @@ module in a clean subprocess: `auto_include`, `camera_inference`,
 `theme_categories`, and `proxy_manager` (the last one shells out to
 ffmpeg rather than binding it, which is exactly why it's light). Each
 wrapper is a thin re-export stating its provenance and pin — no logic of
-its own. Transcription, tagging/indexing, and audio sync need PreCut's
-real ML venv (torch, whisper, lancedb, open_clip, anthropic) and, for
-sync specifically, real footage even with that venv installed — none of
-which exist in a cloud session — so they are deliberately *not* wrapped
-here. `posthouse/harvest/DEFERRED.md` records each one's contract sketch
-for whoever implements it in a Mac session; no stub modules are written,
-because an importable stub that raises `NotImplementedError` is dead code
-that invites an accidental silent-until-called import.
+its own.
+
+Transcription, tagging/indexing, and audio sync need PreCut's real ML
+venv (torch, whisper, lancedb, open_clip, anthropic) and, for sync
+specifically, real(ish) correlated audio even with that venv installed —
+none of which exist in a cloud session, so all three are wrapped but
+their tests self-skip off Ryan's Mac. `posthouse/harvest/DEFERRED.md`
+records what's still genuinely deferred (Claude/LLaVA vision tagging
+needs a key/Ollama neither is exercised here; the below-threshold sync
+policy is a Phase 4 product decision, not an engineering one).
+
+### `transcribe.py` — Whisper transcription
+
+Wraps `precut_pipeline.transcriber` unchanged: `transcribe(media_path,
+language=..., model_name=..., device=...) -> Transcript`,
+`transcript_to_json(transcript) -> str`, `save_transcript(transcript,
+path) -> Path`. `Transcript.to_dict()`/`.save()` (re-exported, not
+reimplemented) already produce exactly the on-disk shape PreCut's own
+pipeline writes per A-roll under `transcripts/<source_stem>.json`.
+Phrase-boundary chunking (`chunk_into_phrases`) is PreCut's own function,
+imported not re-derived — see the module docstring for how this
+addresses ROADMAP.md §7's Whisper timing-bias note. Tier-2 tested
+(`safety_net/tests/test_transcribe.py`) against real speech generated
+with macOS `say -v Samantha` (the default voice garbles "countertops" in
+Whisper's output — a real acoustic finding, recorded in `DEFERRED.md`,
+not a wrapper bug): keyword recovery, phrase monotonicity/non-overlap,
+sequential ids, and an on-disk round trip. Both the Whisper `base` model
+and the ffmpeg decode path were already cached
+(`~/.cache/whisper/base.pt`) — no download needed for this build.
+
+### `index.py` — CLIP embedding + B-roll SQLite/LanceDB index
+
+Wraps `precut_pipeline.embedder` (CLIP ViT-B-32, 512-dim),
+`precut_pipeline.database`, `precut_pipeline.extractor`, and
+`precut_pipeline.ingest._process_clip` (PreCut's own real per-clip
+worker, reused rather than re-derived) into `index_broll(clip_paths,
+project_dir, tagger=None) -> IndexStats`. Writes `<project_dir>/
+broll_index/precut.db` + `vectors.lance` through the real `Database`
+class — the exact schema `multi_exporter.load_broll_library` reads.
+`tagger` is `None` by default (CLIP-only, no network call); `"claude"`
+requires `ANTHROPIC_API_KEY`; `"llava"` requires a reachable Ollama
+instance — both raise loudly if their dependency is missing rather than
+silently degrading, and neither is exercised by this module's own tests.
+Idempotent re-indexing (unchanged mtime → skip; changed mtime →
+`delete_frames_for_clip` then re-insert, `clips.path` is `UNIQUE`) is
+PreCut's own guarantee, inherited unchanged. Tier-2 tested
+(`safety_net/tests/test_index.py`) against the safety-net fixture clips:
+asserts the schema is real by actually calling `load_broll_library`
+(re-exported from `multi_exporter`) on the index this module built and
+getting entries back, asserts LanceDB holds one 512-dim vector per
+sampled frame, and asserts re-indexing the same clip adds zero duplicate
+rows. CLIP weights were already cached
+(`~/.cache/huggingface/hub/models--laion--CLIP-ViT-B-32-laion2B-s34B-b79K`)
+— no download needed for this build.
+
+### `sync.py` — lav/audio sync (MFCC cross-correlation)
+
+Wraps `precut_pipeline.audio_sync` unchanged: `sync_pairs(aroll_paths,
+lav_paths) -> SyncResult`, walking the full cross product the same way
+PreCut's own `sync_project` does, calling the same per-pair primitive
+(`sync_pair`, re-exported) for each. Every pair comes back carrying
+`offset_sec`, `score`, and `passed_threshold` (`score >= SCORE_USE`,
+PreCut's own `10.0`, re-exported — never a locally redefined threshold).
+**Below-threshold policy is explicitly not this wrapper's call** (see
+`DEFERRED.md`) — every pair is returned, flagged, never dropped, never
+silently included; Phase 4 (the Assistant Editor) decides.
+
+This closes the one Tier-2 gap `safety_net/README.md` and ROADMAP.md's
+Decision Log both named as still open: real(ish) correlated dual-source
+audio, not synthetic tones. `safety_net/tests/test_sync.py` generates
+real speech with `say -v Samantha`, ffmpeg's it into a "camera" MOV and a
+"lav" WAV offset by a known 1.5s with different gain/EQ and added noise
+(not a bit-identical copy), and measures the recovered offset and score
+fresh on every run — **measured: offset -1.504s vs known -1.5s (4ms
+error); score 11.55 vs `SCORE_USE=10.0`.** Real speech clears the
+threshold. Per the task brief, if a future run measures below threshold
+the test skips with the exact number rather than lowering the threshold
+or weakening the assertion — see the test's own docstring.
+
+### Tier-2 marker
+
+All three of the above are `@pytest.mark.tier2` (registered in
+`safety_net/conftest.py`'s `pytest_configure`). Run everything:
+`pytest safety_net/tests`. Skip the slow, real-model tests (cloud/CI):
+`pytest safety_net/tests -m "not tier2"`. Run only them:
+`pytest safety_net/tests -m tier2`.
 
 ## The segments contract (`posthouse/coldfootage.py`)
 

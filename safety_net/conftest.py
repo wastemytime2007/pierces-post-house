@@ -67,6 +67,19 @@ FIXTURES_MEDIA = Path(__file__).parent / "fixtures" / "media"
 GOLDEN_DIR = Path(__file__).parent / "golden"
 
 
+def pytest_configure(config: "pytest.Config") -> None:
+    """Register the `tier2` marker so `-m "not tier2"` (cloud/CI runs that
+    want to skip the slow, real-model heavy-dep tests — transcribe, index,
+    sync) never prints an "unknown marker" warning. See
+    posthouse/harvest/DEFERRED.md and README.md for what's marked."""
+    config.addinivalue_line(
+        "markers",
+        "tier2: heavy-dep test requiring Ryan's Mac venv (slow — real "
+        "Whisper/CLIP/audio-offset-finder calls); deselect with "
+        "-m \"not tier2\".",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Stub injection for markers.py's transitive heavy deps (see module docstring)
 # ---------------------------------------------------------------------------
