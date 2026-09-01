@@ -1,6 +1,6 @@
-# CLAUDE.md — The Post House (coordination repo)
+# CLAUDE.md — Pierce's Post House (coordination repo)
 
-This repo is the **coordination and planning hub** for the Post House: an
+This repo is the **coordination and planning hub** for Pierce's Post House: an
 AI post-production team built on top of PreCut. No application code lives
 here — code lives in the related repos. This repo holds the plans,
 decisions, team charter, and current status so that any session or agent
@@ -23,7 +23,7 @@ reading 3–5.
 | --- | --- | --- |
 | `wastemytime2007/precut` | The shipped PreCut app (Tauri + React + Python). The foundation. | **Protected** — see rules |
 | `wastemytime2007/precut-premiere-extension` | Abandoned CEP/UXP panel | Reference only, never revive |
-| `wastemytime2007/test` (this repo) | Coordination hub | Active |
+| `wastemytime2007/pierces-post-house` (this repo; being renamed from `test`) | Coordination hub | Active |
 
 ## Non-negotiable rules
 

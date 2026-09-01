@@ -39,7 +39,9 @@ supervisor go-ahead.
 
 ## Standing notes
 
-- This coordination repo is `wastemytime2007/test`; working branch
+- This coordination repo is being renamed `wastemytime2007/test` →
+  `wastemytime2007/pierces-post-house` (Ryan performs the rename in
+  GitHub Settings; old URLs auto-redirect). Working branch
   `claude/ai-video-editing-team-k2a66r`.
 - Real-footage work runs only on Ryan's Mac (see ARCHITECTURE.md
   § Where things execute).
