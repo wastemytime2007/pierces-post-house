@@ -1,37 +1,56 @@
 # STATUS.md — where we are
 
 Owner: Lead. Updated at the end of every working session. This is the
-first thing any resuming session reads after CLAUDE.md.
+first thing any resuming session reads after CLAUDE.md. § Done records
+only completed, verified work with its evidence; § In progress is for
+everything in flight.
 
 ## Current stage
 
-**Planning / architecture.** No application code authorized yet.
-Roadmap Phase 0 (safety net) is the next buildable step, pending
-supervisor go-ahead.
+**Phase 0 — Safety net. Green-lit by Ryan 2026-09-01. Build in
+progress.**
+
+## In progress
+
+- Phase 0 safety-net implementation (fixtures, golden master, quirk
+  tests, import gate) — QA agent (Sonnet) building in `safety_net/`,
+  briefed with the review corrections (nb_frames quirk resolution,
+  canonicalization list, sync excluded from Tier 1).
 
 ## Done
 
 - 2026-08-31 — Reviewed `precut` and `precut-premiere-extension` repos
-  end to end. PreCut confirmed as the foundation (shipped 1.0.0-beta.3,
-  working ingest→index→story→XML pipeline, zero tests).
-- 2026-08-31 — `ROADMAP.md` written and pushed: post-house operating
-  model, role→skill map with feasibility grades, cull spec, measurement
-  plan, Phases 0–8, Decision Log.
-- 2026-09-01 — Governance layer written: `CLAUDE.md` (rules + reading
-  order), `docs/TEAM.md` (engineering roles, model policy, escalation,
-  anti-conflict rules), `docs/ARCHITECTURE.md` (three layers, two
-  integration doors, artifact contracts, testing architecture).
-- 2026-09-01 — Architecture/governance docs adversarially reviewed by an
-  Opus-tier architect agent; findings incorporated.
+  end to end. PreCut confirmed as the foundation. *(Evidence: findings
+  reflected throughout ROADMAP.md, commit 6137dfe.)*
+- 2026-08-31 — `ROADMAP.md` v1 pushed. *(Commit 6137dfe.)*
+- 2026-09-01 — Governance layer v1 pushed: CLAUDE.md, TEAM.md,
+  ARCHITECTURE.md, STATUS.md. *(Commit fc3cabc.)*
+- 2026-09-01 — Repo renamed `test` → `pierces-post-house` by Ryan; docs
+  updated. *(Commit c874dee.)*
+- 2026-09-01 — **Adversarial architecture review completed** (Opus
+  architect agent): 14 findings, 3 blocking. All findings incorporated
+  into ROADMAP/ARCHITECTURE/TEAM/CLAUDE/STATUS. Key corrections:
+  golden master respecified as canonicalizing two-tier gate; safety-net
+  home decided (this repo); third door (library import) declared for
+  Phase 3; cull grade A→B with new-code motion pipeline and
+  originals-not-proxies rule; nb_frames doc-vs-code contradiction
+  resolved for the code; escalation ladder rewritten as Lead-owned
+  ledger; audalign reference corrected to audio-offset-finder.
+  *(Evidence: this commit and its diff.)*
 
 ## Next (in order)
 
-1. **Ryan:** green-light Phase 0 (safety net) — buildable in cloud
-   sessions, no footage needed.
-2. **Ryan (when ready):** nominate the benchmark project (raw footage +
+1. QA agent completes Phase 0 build → Lead reviews, runs the suite and
+   the sabotage check, commits.
+2. Code review pass on the safety net diff before it becomes the gate.
+3. Phase 1: headless driver (per ARCHITECTURE door 1 protocol rules).
+4. **Ryan (when ready):** nominate the benchmark project (raw footage +
    delivered edit still on disk). Blocks Phase 2, not Phases 0–1.
-3. Phase 0 build: fixture project, golden-master XML test, import gate.
-4. Phase 1 build: headless driver for PreCut's backend protocol.
+
+## Attempts ledger
+
+*(task · tier · attempt # · what was tried · why it failed — written by
+the Lead before any re-dispatch; empty so far)*
 
 ## Escalations / blockers
 
@@ -39,9 +58,8 @@ supervisor go-ahead.
 
 ## Standing notes
 
-- This coordination repo is being renamed `wastemytime2007/test` →
-  `wastemytime2007/pierces-post-house` (Ryan performs the rename in
-  GitHub Settings; old URLs auto-redirect). Working branch
+- Coordination repo: `wastemytime2007/pierces-post-house` (renamed from
+  `test` 2026-09-01; old URLs redirect). Working branch
   `claude/ai-video-editing-team-k2a66r`.
 - Real-footage work runs only on Ryan's Mac (see ARCHITECTURE.md
   § Where things execute).

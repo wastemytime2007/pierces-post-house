@@ -1,10 +1,12 @@
 # CLAUDE.md — Pierce's Post House (coordination repo)
 
-This repo is the **coordination and planning hub** for Pierce's Post House: an
-AI post-production team built on top of PreCut. No application code lives
-here — code lives in the related repos. This repo holds the plans,
-decisions, team charter, and current status so that any session or agent
-can pick up exactly where the last one left off.
+This repo is the **coordination hub and the home of the agent layer** for
+Pierce's Post House: an AI post-production team built on top of PreCut.
+The PreCut app's code lives in its own repo; this repo holds the plans,
+decisions, team charter, current status, **and** the code we build around
+PreCut — the safety net (`safety_net/`) and, as phases open, the
+post-house skills — so that any session or agent can pick up exactly
+where the last one left off.
 
 ## Required reading order (every agent, every session)
 
@@ -28,9 +30,12 @@ reading 3–5.
 ## Non-negotiable rules
 
 1. **PreCut is protected.** No commits to `precut` until the Phase 0
-   safety net (fixture + golden-master XML test) exists and passes. New
-   capability is built as *clients* of PreCut (its JSON-lines backend
-   protocol and on-disk artifacts), not as edits to it.
+   safety net (fixture + golden-master XML test) exists and passes. The
+   safety net itself lives in THIS repo (`safety_net/`) and runs against
+   a PreCut checkout via `PRECUT_ROOT` — that is how it can come into
+   being without touching the protected repo. New capability is built as
+   *clients* of PreCut, not as edits to it, through the three doors in
+   `docs/ARCHITECTURE.md`.
 2. **The Decision Log is law.** Settled decisions live in `ROADMAP.md`
    § Decision Log and in PreCut's own `DECISIONS.md`. No agent may act
    against a logged decision. If you believe one is wrong, write an
@@ -38,11 +43,16 @@ reading 3–5.
    of work — do not code around it.
 3. **Docs have single writers.** Each document has one owning role (see
    `docs/TEAM.md`). Everyone else proposes changes via review notes;
-   only the owner edits. The Decision Log is append-only.
+   only the owner edits. Append-only governs the **Decision Log section
+   only**; the rest of ROADMAP.md is freely revisable by its owner (the
+   Lead).
 4. **Every working session ends with the repo current.** Update
    `docs/STATUS.md` (stage, done, next, escalations), append any new
    decisions to the Decision Log, commit, push. A session that doesn't
-   push its state didn't happen.
+   push its state didn't happen. STATUS § Done records only **completed
+   and verified** work, each entry citing its evidence (commit, file, or
+   artifact); work merely started or planned goes under § In progress.
+   Writing an unearned Done entry corrupts the team's only memory.
 5. **No code before its phase.** We are in planning/architecture. Code
    starts with Phase 0 when the supervisor green-lights it.
 6. **Supervisor is Ryan.** Product, creative, and taste calls are his.

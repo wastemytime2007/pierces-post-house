@@ -22,7 +22,7 @@ nothing; an active one costs real tokens.
 | Role | Owns (single writer) | Model tier | Responsibilities |
 | --- | --- | --- | --- |
 | **Supervisor** | Final say on product & creative | Ryan (human) | Approves phases, judges output quality, nominates benchmark, settles escalations that reach him |
-| **Lead / Orchestrator** | `CLAUDE.md`, `docs/STATUS.md`, Decision Log, all commits/pushes | Fable 5 | Plans, delegates, reviews and merges all work, owns escalations, keeps repo current |
+| **Lead / Orchestrator** | `CLAUDE.md`, `ROADMAP.md` (incl. Decision Log), `docs/STATUS.md`, all commits/pushes | Fable 5 | Plans, delegates, reviews and merges all work, owns escalations, keeps repo current |
 | **Product Manager** | `docs/REQUIREMENTS.md` (when created) | Opus 5 | Turns Ryan's workflow descriptions into testable requirements and acceptance criteria per phase |
 | **Lead Architect** | `docs/ARCHITECTURE.md`, data contracts | Opus 5 | System design, interface changes, adversarial review of plans before build |
 | **Senior Engineer (pipeline/backend)** | implementation branches | Sonnet 5 | Python pipeline work, PreCut-client skills, ffmpeg/media code |
@@ -48,17 +48,22 @@ Opus 5 $5/$25 · Sonnet 5 $2/$10 · Haiku 4.5 $1/$5.
 - **Haiku 4.5** — mechanical work with unambiguous specs: formatting,
   summarizing, boilerplate, file shuffling.
 
-### Escalation ladder (two-strikes rule)
+### Escalation ladder (two-strikes rule — a LEAD obligation)
 
-1. An agent that fails a task twice at its tier **stops**. No third
-   silent retry.
-2. It writes what it tried and why it failed (in its report or
-   `docs/STATUS.md` § Escalations), and the task escalates one tier up
-   with that summary attached.
+Subagents have no memory and cannot re-dispatch themselves, so attempt
+counting and escalation are the Lead's job, backed by a durable ledger:
+
+1. Before every dispatch of a previously-attempted task, the Lead writes
+   a row to `docs/STATUS.md` § Attempts (task · tier · attempt # · what
+   was tried · why it failed) and pastes the prior rows into the new
+   agent's brief.
+2. After two failed attempts at a tier, the Lead escalates the task one
+   tier up — never a third silent retry at the same tier.
 3. Sonnet → Opus → Fable (Lead) → **Ryan**. Product/creative ambiguity
    skips straight to Ryan — no model tier resolves a taste question.
-4. Escalation is also for disagreement: an agent that believes a logged
-   decision is wrong escalates with reasoning; it never codes around it.
+4. Agents escalate *disagreement* by reporting, not by acting: an agent
+   that believes a logged decision is wrong says so in its report with
+   reasoning; it never codes around it. The Lead carries it up.
 
 ## Anti-conflict rules
 
@@ -70,8 +75,12 @@ Opus 5 $5/$25 · Sonnet 5 $2/$10 · Haiku 4.5 $1/$5.
 3. **Read before work.** Every agent's brief includes the required
    reading order from `CLAUDE.md`. An agent that hasn't read STATUS and
    the Decision Log is not allowed to make choices, only to execute.
-4. **One writer per file per task.** Parallel agents never edit the same
-   file. The Lead partitions work so this cannot happen.
+4. **One write-capable agent at a time.** Parallel subagents share one
+   working tree, so partitioning by intention is not a mechanism. The
+   enforceable rule: at most ONE write-capable subagent runs at a time;
+   unlimited read-only agents (reviews, exploration) may run in
+   parallel with it. If genuinely parallel writes are ever needed, each
+   writer gets its own git worktree and the Lead merges.
 5. **Subagents never commit or push.** They produce diffs, reports, and
    files; the Lead reviews, commits, and pushes. One integration point,
    one coherent history.

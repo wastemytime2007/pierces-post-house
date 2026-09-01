@@ -101,8 +101,8 @@ entry.
 | Role | What it does here | Already in PreCut? | Feasibility | Phase |
 | --- | --- | --- | --- | --- |
 | Project Manager | Ingest, organize by client/project/date/type, bins | Largely yes (ingest, camera inference, bin layout) | **A** — extend conventions | 4 |
-| Assistant Editor: sync | "All Footage Synced" sequence from lav sync | Yes (audalign + cross-validation) | **A** — repackage as sequence | 4 |
-| Assistant Editor: technical cull | Usable in/out segments → "Cold Footage" timeline | No | **A** — deterministic, measurable | **3 (flagship)** |
+| Assistant Editor: sync | "All Footage Synced" sequence from lav sync | Yes (audio-offset-finder MFCC cross-correlation, score-thresholded; audalign was removed in Drop 3.6) | **A** — repackage as sequence; must define handling of below-threshold pairs | 4 |
+| Assistant Editor: technical cull | Usable in/out segments → "Cold Footage" timeline | No | **B** — deterministic and measurable, but the motion pipeline is new code (see §4) | **3 (flagship)** |
 | Assistant Editor: subject grouping | Per-subject cold-footage sequences | Partially (CLIP tags, theme categories) | **B+** — clustering on existing index | 4 |
 | Assistant Editor: transcript flagging | Color-coded storyline ranges visible on a timeline | Partially (story angles find ranges) | **B+** — new rendering of existing output | 4 |
 | Creative Editor: story + assembly | Selects → assembled cut from a brief | Yes, v1 (angles → ranges → sequence + markers) | **B** — improve, then measure | 5 |
@@ -151,11 +151,25 @@ For every source clip (e.g. `0001.mov`):
 5. Every accepted segment is placed, in source order, on a **Cold
    Footage** sequence exported through the existing XML path.
 
-Detection stack (all local, all deterministic): global-motion estimation
-for shake and for pan/tilt-vs-recompose classification (building on
-`motion_analyzer.py`), Laplacian variance for blur, histogram stats for
-exposure, audio peak/RMS scan for clipped or dead audio, minimum-duration
-and settle-time thresholds.
+Detection stack (all local, all deterministic — and all **new code**):
+per-frame global-motion estimation for shake and pan/tilt-vs-recompose
+classification (ffmpeg `vidstabdetect` transform logs or dense optical
+flow), Laplacian variance for blur, histogram stats for exposure, audio
+peak/RMS scan for clipped or dead audio, minimum-duration and
+settle-time thresholds. Two constraints learned in review:
+
+- **Explicit non-goal: reusing `motion_analyzer.py`.** It samples 6
+  frames per clip at 160px for one whole-clip tag via brightness-
+  centroid drift — it cannot locate a settle point in time and cannot
+  tell a pan from shake. The cull needs dense temporal analysis; there
+  is nothing to extend.
+- **Metrics run against originals (or a dedicated analysis-grade
+  decode), never PreCut's CRF-28 proxies.** Lossy proxies destroy
+  exactly the signals being measured: adaptive compression turns the
+  blur score into a bitrate meter, 8-bit re-encodes manufacture or hide
+  exposure clipping, and AAC does not preserve audio sample peaks.
+  Phase 3 includes a fixture gate asserting proxy-vs-source metric
+  agreement before any proxy shortcut is trusted.
 
 Two craft details that make the output professional rather than merely
 correct:
@@ -216,20 +230,30 @@ Each phase has an exit criterion. A phase without its exit criterion met
 does not hand off to the next — same rule as the house itself.
 
 ### Phase 0 — Safety net *(protects everything)*
-Fixture project (tiny synthesized/trimmed clips covering: stable shot,
-shaky shot, blurred shot, over/under-exposed shot, a lav pair, an A-roll
-with speech). Golden-master test: pipeline runs headless on the fixture,
-exported XML is compared against a blessed snapshot; the six
-expensive-to-learn FCP7 quirks in PreCut's DECISIONS.md are each covered.
-Import/compile check for all backend modules.
-**Exit:** tests pass on current `precut` main; a deliberate one-line
-sabotage of the exporter is caught.
+Lives in this repo (`safety_net/`), runs against a PreCut checkout via
+`PRECUT_ROOT`. Tier 1 (hermetic, runs anywhere): committed fixture media
+(stable/shaky/blurred/under/over-exposed clips, an audio-bearing A-roll
+with a mixed-case extension, a lav wav) + hand-built synthetic index and
+CutLists drive the exporter chain directly; output is canonicalized
+(UUIDs, roots, encoded URLs; `PYTHONHASHSEED` pinned; ffprobe version
+recorded) and compared to a blessed snapshot — never byte-diffed. The
+five FCP7 XML quirks each get a quirk→asset→assertion row; quirk 6 (DB
+migrations) and audio sync are Tier 2 (Ryan's Mac). Import gate covers
+the stdlib-only exporter chain here; the full 35-module gate runs on
+Ryan's Mac where the real venv exists. See ARCHITECTURE § Testing.
+**Exit:** tests pass against current `precut` main; a deliberate
+one-line exporter sabotage is caught; re-blessing the golden requires a
+Decision Log entry.
 
 ### Phase 1 — Headless driver *(the chassis)*
 A skill that drives PreCut's backend end-to-end from the command line:
 create project, add sources, run pipeline, generate stories, export XML.
-Touches zero app code.
-**Exit:** fixture project goes footage-to-XML with one command.
+Touches zero app code. Must implement the protocol realities in
+ARCHITECTURE door 1: self-minted `job_id`s, per-command terminal-event
+handling including `error`, wall-clock timeouts, output-file
+confirmation before shutdown.
+**Exit:** fixture project goes footage-to-XML with one command, AND a
+deliberately failing stage surfaces as a non-zero exit — not a hang.
 
 ### Phase 2 — Benchmark
 Ryan nominates the project; footage and answer key staged; scoring
@@ -238,15 +262,23 @@ harness for cull/grouping/matching written against the artifacts.
 we know today's number before improving anything.
 
 ### Phase 3 — Assistant Editor: the cull *(flagship)*
-As specified in §4. Built as a client (reads proxies, writes `culls.json`,
-emits Cold Footage sequence through the existing exporter).
+As specified in §4. Built as a client: analyzes originals (or
+analysis-grade decodes), writes `culls.json`, and emits the Cold Footage
+sequence via door 3 — `precut_pipeline` imported as a pinned library —
+because door 1's `export_timelines` can only build sequences from
+`plans/` ideas or `library_only` mode, and the existing `CutList` model
+cannot express arbitrary source segments without a transcript spine. A
+cold-footage sequence builder on top of the exporter chain is therefore
+part of this phase, covered by the Phase 0 safety net.
 **Exit:** precision/recall on the benchmark recorded; Ryan runs it on one
 real project and the Cold Footage timeline is genuinely usable.
 
 ### Phase 4 — Assistant Editor: organization
 Per-subject cold-footage sequences (clustering over the existing
 CLIP/tag index; taxonomy widened beyond real-estate as needed). "All
-Footage Synced" sequence. Storyline color-coding of transcript ranges
+Footage Synced" sequence — including a settled answer for
+below-threshold sync pairs (included unsynced and flagged, dropped, or
+surfaced to Ryan; decide and log it). Storyline color-coding of transcript ranges
 rendered onto a review timeline. Project Manager folder/bin conventions
 (client/project/date/type) formalized.
 **Exit:** a raw dump opens in Premiere as: synced sequence + cold footage
@@ -294,18 +326,24 @@ with Ryan touching only supervisor checkpoints.
 - **Artlist metadata capture.** How much mood/genre metadata can we keep
   at download time vs compute locally? Affects music-match quality.
   (Open — investigate at Phase 5 start, not before.)
-- **Runtime and cost.** Full-footage motion/blur analysis is CPU-real.
-  The cull must run overnight-batch acceptable on Ryan's machine; budget
-  measured in Phase 3 on the benchmark, not estimated.
+- **Runtime and cost.** Full-footage motion/blur analysis is CPU-real,
+  and §4 requires it against originals (or analysis-grade decodes), not
+  cheap proxies — dense per-frame motion is orders of magnitude more
+  work than PreCut's 6-frames-per-clip tagging pass. The cull must stay
+  overnight-batch acceptable on Ryan's machine; budget measured in
+  Phase 3 on the benchmark, not estimated.
 - **Taxonomy width.** Theme categories are tuned for real-estate/reno
   interview work. Confirmed as still the dominant vertical — but Phase 4
   clustering should not hard-depend on the fixed 14 categories.
 - **Whisper timing bias.** Phrase-boundary padding already exists for a
   reason; storyline color-coding inherits the same early-end bias. Reuse
   the existing padding rather than re-deriving it.
-- **Frontend source risk (PreCut).** Post-May-2026 UI source may be lost
-  (PROVENANCE.md). Any UI work in the app starts with verifying the
-  current source builds what's shipping. Agent-layer work is unaffected.
+- **Frontend source risk (PreCut) — largely retired.** The repo was
+  rebuilt, shipped as 1.0.0-beta.3 on 31 Aug 2026, and verified in
+  Premiere against a real project (PROVENANCE.md), closing the
+  repo-vs-installed-app split. Residual risk only: any undocumented
+  post-May-2026 UI changes were never in the repo and no rebuild can
+  recover them.
 - **Answer-key survivorship.** The benchmark's "usable" ground truth is
   what Ryan *kept*, which under-represents footage that was usable but
   unchosen. Cull recall scoring needs a one-time human pass marking
@@ -337,6 +375,35 @@ with Ryan touching only supervisor checkpoints.
   (charter), `docs/ARCHITECTURE.md` (system), `docs/STATUS.md` (state)
   are the coordination layer; every session ends by updating STATUS and
   pushing.
+- **2026-09-01 — Phase 0 green-lit by Ryan.** Safety net home:
+  `safety_net/` in THIS repo, running against a PreCut checkout via
+  `PRECUT_ROOT` — the bootstrap exception that lets the safety net
+  exist without touching the protected repo.
+- **2026-09-01 — Third door declared:** `precut_pipeline` may be
+  imported as a Python library by agent-layer code, pinned to a tagged
+  PreCut commit, with the exporter chain treated as a public API and
+  covered by the safety net. Needed because door 1 cannot express
+  cold-footage timelines.
+- **2026-09-01 — Duration quirk resolved (doc-vs-code):** PreCut's
+  DECISIONS.md item 5 ("never use nb_frames") is stale; shipped code
+  (Drop 4.30, `multi_exporter.py`) deliberately prefers live-probe
+  `nb_frames` because computed durations can desync from Premiere's
+  probe and mark clips offline. **The code wins.** PreCut's DECISIONS.md
+  gets amended when push access to that repo exists. General rule
+  adopted: doc-vs-code contradictions inside the protected repo escalate
+  to the Lead and resolve by amending the doc, unless a Premiere test
+  says otherwise.
+- **2026-09-01 — Golden master is a canonicalizing comparison, never a
+  byte-diff**, and the test gate is two-tier (hermetic exporter tier
+  anywhere; full-pipeline tier on Ryan's Mac). See ARCHITECTURE
+  § Testing architecture. Re-blessing a golden snapshot requires a
+  Decision Log entry.
+- **2026-09-01 — Adversarial review policy vindicated:** first
+  architecture review returned 14 findings including 3 blocking
+  (impossible byte-diff spec, no sanctioned home for Phase 0 code,
+  Phase 3's exporter path didn't exist). All incorporated this date.
+  Standing rule: plans of this size get an adversarial review before
+  build, every time.
 - **Inherited from PreCut DECISIONS.md:** FCP7 XML is the delivery path;
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic
