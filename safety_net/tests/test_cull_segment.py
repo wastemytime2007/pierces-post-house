@@ -43,6 +43,8 @@ from posthouse.cull.segment import (
     _Run,
     _consolidate_hysteresis,
     _consolidate_viterbi,
+    _direction_instability,
+    _dirstab_ok,
     _label_motion_intent,
     _resid_ok,
     _robust_z,
@@ -512,6 +514,84 @@ def test_resid_ok_robust_scale_empty_array_does_not_crash():
     """A zero-length residual array (degenerate but should not crash)."""
     z = _robust_z(np.zeros(0, dtype=np.float64))
     assert z.shape == (0,)
+
+
+def test_direction_instability_low_for_a_steady_pan_high_for_reversing_shake():
+    """2026-09-02 direction-stability re-fit (ROADMAP Decision Log): the
+    signal's whole reason for existing is separating "a pan developing
+    over a few seconds" from "the same displacement reversing back and
+    forth" (Ryan's own criterion), at equal average speed -- a naive
+    magnitude-only gate cannot tell these apart at all."""
+    fps = 30.0
+    n = 900
+    params = SegmentParams()  # dirstab defaults: window=1.0s, floor_quantile=0.30
+
+    # A steady rightward pan interleaved with quiet holds (so the per-clip
+    # floor has a real "quiet" cluster to separate from) -- moving frames
+    # all point the same way.
+    vx_pan = np.tile([0.0, 3.0, 3.0, 0.0], n // 4).astype(np.float64)
+    vy_pan = np.zeros(n, dtype=np.float64)
+    instability_pan = _direction_instability(vx_pan, vy_pan, fps, params)
+
+    # The same quiet/moving cadence and the same moving-frame speed, but
+    # direction reverses between consecutive moving frames -- a jerk/shake
+    # reversing on a sub-second cadence, not a real pan.
+    vx_shake = np.tile([0.0, 3.0, -3.0, 0.0], n // 4).astype(np.float64)
+    vy_shake = np.zeros(n, dtype=np.float64)
+    instability_shake = _direction_instability(vx_shake, vy_shake, fps, params)
+
+    # Interior frames only -- the centered window is truncated at the
+    # array edges, which is a boundary effect, not the signal under test.
+    interior = slice(60, n - 60)
+    assert np.mean(instability_pan[interior]) < 0.1, "a steady pan must read as highly direction-stable"
+    assert np.mean(instability_shake[interior]) > 0.5, "direction-reversing shake must read as unstable"
+    assert np.mean(instability_shake[interior]) > np.mean(instability_pan[interior])
+
+
+def test_direction_instability_scale_invariant_in_speed():
+    """The per-clip floor is a percentile of THIS clip's own speed
+    distribution (``stability_dirstab_floor_quantile``'s own docstring,
+    same per-clip-normalization reasoning as ``stability_resid_norm``) --
+    rescaling every frame's speed by a constant factor (a different
+    camera's motion magnitude) must not change which frames are judged
+    "moving" or the resulting instability, because both the floor and the
+    comparison it feeds are relative to the same distribution."""
+    fps = 30.0
+    n = 900
+    params = SegmentParams()
+    rng = np.random.default_rng(0)
+    theta = rng.uniform(-0.3, 0.3, n)  # a wandering but mostly-forward direction
+    speed = np.abs(rng.normal(loc=2.0, scale=1.0, size=n))
+    vx = speed * np.cos(theta)
+    vy = speed * np.sin(theta)
+
+    instability = _direction_instability(vx, vy, fps, params)
+    instability_scaled = _direction_instability(vx * 50.0, vy * 50.0, fps, params)
+    np.testing.assert_allclose(instability, instability_scaled, atol=1e-9)
+
+
+def test_direction_instability_sparse_moving_frames_default_to_zero_not_penalized():
+    """A window with fewer than 3 "moving" frames cannot support a
+    direction judgment (module docstring's "not enough evidence to
+    condemn" convention) -- a nearly static clip must not be flagged
+    unstable purely for lacking motion to judge."""
+    fps = 30.0
+    n = 300
+    params = SegmentParams()
+    vx = np.zeros(n, dtype=np.float64)
+    vy = np.zeros(n, dtype=np.float64)
+    instability = _direction_instability(vx, vy, fps, params)
+    np.testing.assert_array_equal(instability, np.zeros(n))
+
+
+def test_dirstab_ok_gate_and_instability_agree():
+    fps = 30.0
+    n = 300
+    params = SegmentParams(stability_dirstab_max=0.4)
+    vx = np.full(n, 2.0, dtype=np.float64)
+    vy = np.zeros(n, dtype=np.float64)
+    ok, instability = _dirstab_ok(vx, vy, fps, params)
+    np.testing.assert_array_equal(ok, instability < 0.4)
 
 
 def test_segment_source_clip_shorter_than_smoothing_window_does_not_crash(tmp_path):

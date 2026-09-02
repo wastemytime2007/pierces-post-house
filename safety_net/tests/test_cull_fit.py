@@ -253,6 +253,23 @@ def test_fit_one_stability_resid_only_absolute_is_unaffected_by_norm_default(tmp
     assert all(t.stage == "stability_resid_max" for t in trace["motion"])
 
 
+def test_fit_one_stability_dirstab_only_fits_exactly_that_one_param(tmp_path):
+    """2026-09-02 direction-stability re-fit (ROADMAP Decision Log): under
+    ``stability_combine="dirstab_only"``, the motion stage must search
+    ONLY ``stability_dirstab_max`` -- not ``stability_resid_max``/
+    ``stability_lapvar_quantile`` (unused by this combine mode at all)."""
+    npz, truth, blocks = _small_scenario(tmp_path)
+    evaluator = Evaluator(npz, SOURCE_PATH, truth)
+    train = blocks[:2]
+
+    params, _metrics, trace, _warnings = fit_one(
+        "stability", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"),
+        stability_combine="dirstab_only",
+    )
+    assert params.stability_combine == "dirstab_only"
+    assert all(t.stage == "stability_dirstab_max" for t in trace["motion"])
+
+
 def test_fit_stability_reproducible_with_fixed_seed(tmp_path):
     """Same CV/bootstrap machinery, same fixed-seed reproducibility
     contract as the legacy arms (test_fixed_seed_reproduces_fixed_params),
@@ -706,6 +723,34 @@ def test_stability_combine_lapvar_only_ignores_resid(tmp_path):
     result = segment_source(npz, params=params)
     covered = sum(s.frame_out - s.frame_in for s in result.segments)
     assert covered > 0, "lapvar_only must not reject purely on resid"
+
+
+def test_stability_combine_dirstab_only_ignores_resid_and_lapvar(tmp_path):
+    """dirstab_only must accept a span with terrible resid AND lapvar as
+    long as its motion direction is stable -- the whole point of isolating
+    the signal (2026-09-02 direction-stability re-fit, ROADMAP Decision
+    Log)."""
+    from posthouse.cull.segment import segment_source, SegmentParams as SP
+
+    n = 900
+    arrays = _clean_arrays(n)
+    arrays["resid"] = np.full(n, 50.0, dtype=np.float32)  # terrible motion residual
+    arrays["lapvar_norm"] = np.zeros(n, dtype=np.float32)  # worst possible sharpness
+    # A third of frames pan steadily rightward, the rest are quiet holds --
+    # the per-clip floor (30th percentile of speed) then separates "moving"
+    # from "quiet", and every moving frame shares the same direction.
+    vx = np.zeros(n, dtype=np.float32)
+    vx[::3] = 5.0
+    arrays["tx_norm_src_width"] = vx
+    npz = _write_sidecar(tmp_path / "sidecars", "dirstabonly", ["static"] * n, arrays)
+
+    params = SP(
+        consolidation="stability", stability_combine="dirstab_only",
+        stability_dirstab_max=0.5, exposure_gate=False,
+    )
+    result = segment_source(npz, params=params)
+    covered = sum(s.frame_out - s.frame_in for s in result.segments)
+    assert covered > 0, "dirstab_only must not reject purely on resid/lapvar"
 
 
 def test_stability_combine_score_lets_a_strong_signal_compensate_a_weak_one():

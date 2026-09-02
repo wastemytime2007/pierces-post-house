@@ -574,6 +574,50 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Direction-stability re-fit: shipped as a sixth
+  first-class stability arm, and it wins the arm competition, narrowly.**
+  The diagnostic sweep's own script was lost to context compaction, not
+  committed anywhere as code — reconstructed and re-verified from scratch
+  rather than trusted from memory (against the same cached signal npz
+  files the diagnostic used): sweeping per-clip floor quantile x window
+  size reproduced the reported Runnells AUC (0.714 at floor_quantile=0.30,
+  window_sec=1.0) to 3 decimal places, confirming the earlier finding was
+  real before building on it.
+  Shipped as `SegmentParams.stability_combine="dirstab_only"`
+  (`_direction_instability`/`_dirstab_ok` in `segment.py`) — a per-clip-
+  normalized circular-statistics signal on motion DIRECTION (a window's
+  moving frames' unit-vector resultant length, floor = this clip's own
+  30th percentile of speed) rather than magnitude, following the exact
+  resid_only/lapvar_only isolation pattern the 2026-09-02 combine-mode
+  investigation already established. Wired into `fit.py` as a seventh
+  ablation arm (`STABILITY_DIRSTAB_MAX_GRID`, `STAGE_GRID_STABILITY_
+  DIRSTAB_ONLY`) under the same 3-block CV/bootstrap/fixture-guard/
+  grid-edge-alarm machinery every other arm gets — not a special case.
+  9 new tests (signal-level correctness: a steady pan reads as stable,
+  reversing shake as unstable at equal average speed, scale invariance,
+  the sparse-evidence default; harness-level: fits exactly one parameter,
+  ignores resid/lapvar). Full suite 223 passed / 1 skipped (non-tier2) +
+  2 real-clip tier2 tests, both clean.
+  **Re-ran the fitting harness on Runnells** (identical sidecar/answer-key/
+  precision-floor to the prior resid_only run, so this is a real
+  apples-to-apples re-fit, not a fresh measurement under different
+  conditions): `stability_dirstab_only_full` WINS the recall-first-under-
+  precision-floor ranking over all ten stability arms — held-out
+  **P 0.629 / R 0.915 / IoU 0.417**, edging out `resid_only`'s
+  0.627/0.911/0.417 and `resid_only_robust_scale`'s 0.627/0.910/0.418.
+  **Reported honestly, not as a breakthrough**: the margin over resid_only
+  is inside noise (bootstrap 95% CI width on precision alone is 0.16), and
+  the chosen arm still does NOT beat the crude two-threshold probe overall
+  (beats it on recall, trails on precision and IoU by ~0.01). Direction-
+  stability is confirmed as a real, usable signal — it earned first place
+  under the same harness that already caught the AND-gate's edge-pinning
+  failure — but this is a tie among several roughly-equivalent single-
+  signal detectors, not evidence any of them has solved the cull.
+  **Still open, and now the real test**: none of this has been scored
+  against Ryan's real, hand-corrected Historic Valley Junction cuts (the
+  actual drone-footage generalization question) or read through the
+  granularity metrics — this run only re-confirms what already transfers
+  within Runnells itself.
 - **2026-09-02 — A full working session on real footage: Ryan's direct
   correction of the detector, three rounds of honest feature testing,
   a two-part parser bug in the tool that reads his corrections, and a

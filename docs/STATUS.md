@@ -10,12 +10,12 @@ everything in flight.
 iteration, not yet shipped.** Slices 1-5 all built and reviewed;
 significant real-footage findings at every stage; the benchmark itself
 has been hardened twice this session (a real parser bug, a real
-granularity blind spot). Where the cull's accuracy actually stands
-right now, in one line: **a per-clip-normalized direction-stability
-feature reaches a real, non-chance AUC of 0.714 on the one clip with
-trustworthy ground truth (Runnells)** — genuine signal, not yet a
-shipped detector, and not yet proven to generalize to the drone
-footage.
+granularity blind spot). Where the cull's accuracy actually stands right
+now, in one line: **direction-stability is shipped as a first-class
+detector arm and won the re-fit on Runnells (P 0.629/R 0.915/IoU 0.417),
+but only by a margin inside noise over resid_only, and it still does not
+beat the crude two-threshold probe overall** — a real, confirmed signal,
+not a breakthrough. Not yet scored against real drone footage.
 
 **The single most important finding of the session**: precision/
 recall/IoU can score a detector well while it does none of the real
@@ -44,14 +44,11 @@ exports.
 Product pivoted (2026-09-01): the end product is a new role-driven app;
 PreCut is the component donor. See ROADMAP §6 for the phase plan.
 
-**What's next:** slice 4 (fitting) is being retried with the corrected
-direction-stability feature and the exact scoring the granularity check
-now requires — a "good score" is no longer trustworthy without checking
-segment count/size too. The still-open question from the transfer study
-(does anything here generalize past Runnells) remains unresolved and
-is the next real test once a clean drone-footage answer key exists —
-Ryan's hand-corrected Historic Valley Junction cuts are exactly that,
-now correctly parsed and ready to score against.
+**What's next:** score the re-fitted detector (and its dirstab_only
+winner specifically) against Ryan's real, correctly-parsed Historic
+Valley Junction cuts, reading the result through the granularity metrics
+too — that is the actual drone-footage generalization test, and nothing
+run so far (including this session's re-fit) has touched it yet.
 
 ## In progress
 
@@ -227,23 +224,36 @@ now correctly parsed and ready to score against.
   — while doing none of the real culling work. Fixed: `granularity_
   ratio` and `under/over_segmentation_events` are now part of every
   score. Suite 363 passed / 1 skipped. *(926a3d6, e36e2c9.)*
+- 2026-09-02 — **Slice 4 re-fit with direction-stability, shipped as a
+  sixth first-class arm; it wins, narrowly.** The diagnostic sweep that
+  found AUC 0.714 was lost to context compaction (never committed as
+  code) — reconstructed from scratch against the same cached signals and
+  reproduced to 3 decimal places before building on it, not trusted from
+  memory. Shipped as `stability_combine="dirstab_only"` in `segment.py`
+  (per-clip-normalized circular-statistics signal on motion direction)
+  and wired into `fit.py` as a seventh CV/bootstrap/fixture-guarded arm.
+  9 new tests; suite 223 passed / 1 skipped (non-tier2) + 2 real-clip
+  tier2 tests. Re-fit on Runnells (same sidecar/answer-key/precision-
+  floor as the prior resid_only run): `dirstab_only` wins the arm
+  ranking, held-out **P 0.629 / R 0.915 / IoU 0.417** — inside noise of
+  `resid_only`'s 0.627/0.911/0.417, and still short of the crude
+  two-threshold probe overall (beats it on recall, trails on precision
+  and IoU by ~0.01). Genuine, confirmed signal; not a breakthrough. Not
+  yet scored against real drone footage.
 
 ## Next (in order)
 
-1. **Re-run slice 4 fitting** with the direction-stability feature
-   (0.714 AUC on Runnells) and read every result through the new
-   granularity metrics, not just P/R/IoU — a "good score" is no longer
-   trustworthy on its own after today's finding.
-2. **Score against Ryan's real Historic Valley Junction cuts** (now
-   correctly parsed, 28 ranges) as the first real drone-footage
-   technical-cull test — this is a materially stronger generalization
-   check than the Des Moines Estabs set, which is now known to carry
-   editorial contamination (real production selects, not an exhaustive
-   technical mark).
-3. Optional, not blocking: Ryan marking ~5 minutes of the unmarked
+1. **Score the re-fitted detector against Ryan's real Historic Valley
+   Junction cuts** (correctly parsed, 28 ranges), reading the result
+   through the granularity metrics too — the actual drone-footage
+   generalization test, still untouched by anything run so far. This is
+   a materially stronger check than the Des Moines Estabs set, which is
+   known to carry editorial contamination (real production selects, not
+   an exhaustive technical mark).
+2. Optional, not blocking: Ryan marking ~5 minutes of the unmarked
    33-minute Runnells clip `DJI_20260430071514_0005_D.MP4` as a
    held-out validation strip never fitted on.
-4. Not yet revisited: the 13 open design questions in
+3. Not yet revisited: the 13 open design questions in
    `PHASE4_CULL_DESIGN.md` §6 / `CULLS.md` §8 (pan-into-a-hold split,
    slow push classification, minimum select length, rack focus ending
    out of focus, etc). The pipeline they were written against
@@ -251,7 +261,7 @@ now correctly parsed and ready to score against.
    stability detector, so some may now be moot — worth a pass once the
    detector's real-footage generalization question above is settled,
    not before.
-5. Low priority, still technically open from the original gameplan
+4. Low priority, still technically open from the original gameplan
    discussion: ratify the "internal tool first, product maybe later"
    and "review happens in Premiere" assumptions with Ryan.
 

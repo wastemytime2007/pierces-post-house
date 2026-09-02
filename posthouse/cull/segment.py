@@ -179,7 +179,11 @@ _ENUM_REJECT_REASON = {
 
 # Slice 5 follow-up (2026-09-02 investigation): the legal values of
 # ``SegmentParams.stability_combine`` -- see that field's own docstring.
-_STABILITY_COMBINE_MODES = {"and", "or", "resid_only", "lapvar_only", "score"}
+# "dirstab_only" added by the 2026-09-02 direction-stability re-fit
+# (ROADMAP Decision Log): a per-clip-normalized circular-statistics
+# signal, isolated as its own arm the same way resid_only/lapvar_only
+# already are.
+_STABILITY_COMBINE_MODES = {"and", "or", "resid_only", "lapvar_only", "score", "dirstab_only"}
 
 # 2026-09-02 Decision Log follow-up (Ryan's ruling, normalize per clip): the
 # legal values of ``SegmentParams.stability_resid_norm`` -- see that field's
@@ -369,6 +373,20 @@ class SegmentParams:
       ignored entirely. First-class ablation arms (task brief point 4),
       not just diagnostic numbers: the investigation's own isolated-signal
       table lives here as reproducible harness output.
+    * ``"dirstab_only"`` -- **added 2026-09-02, direction-stability re-fit
+      (ROADMAP Decision Log).** Neither ``stability_resid_max`` nor
+      ``stability_lapvar_quantile`` is read; the gate is
+      :func:`_dirstab_ok` alone, a per-clip-normalized circular-statistics
+      signal on the motion vector's DIRECTION rather than its magnitude
+      (Ryan's own criterion: a pan developing over a few seconds is
+      intentional even at a magnitude a naive resid gate would flag, while
+      the same displacement direction-reversing within a window is shake
+      wearing a pan's clothes). Reached a real, non-chance AUC of 0.714 on
+      the Runnells exhaustive answer key during diagnosis, genuine signal
+      but not yet proven to beat ``resid_only`` under this module's own
+      fitting harness or to generalize past Runnells -- that measurement
+      is this arm's entire reason for existing as a first-class candidate
+      rather than a replacement.
     * ``"score"`` -- **the combined-score structure (task brief point 3,
       option b).** Neither signal has to individually clear a wall,
       because there is only one wall: each smoothed signal is converted to
@@ -406,6 +424,49 @@ class SegmentParams:
     presumed dominant before fitting. Fitted for real by
     :mod:`posthouse.cull.fit`'s stability stage when this mode is
     selected."""
+
+    stability_dirstab_max: float = 0.5
+    """Only used when ``stability_combine == "dirstab_only"``: a frame is
+    a stability candidate while :func:`_direction_instability`'s
+    per-frame ``1 - R`` value stays below this (``R`` = the resultant
+    length of the moving frames' unit motion vectors inside the window --
+    1.0 means every moving frame in the window points the same way, 0.0
+    means directions are scattering/reversing). Bounded in [0, 1] by
+    construction the same way ``stability_score_threshold`` is, so it
+    cannot suffer the AND gate's edge-pinning failure. 0.5 is the reasoned
+    unfit starting point (the diagnostic sweep that found AUC 0.714 used
+    the SEPARATION the raw signal gives, not a committed operating point);
+    fitted for real by :mod:`posthouse.cull.fit`'s stability stage when
+    this mode is selected."""
+
+    stability_dirstab_window_sec: float = 1.0
+    """Only used when ``stability_combine == "dirstab_only"``: the window,
+    in seconds, over which :func:`_direction_instability` computes the
+    resultant vector length. 1.0s is not a guess -- it is the value the
+    2026-09-02 diagnostic sweep (0.3/0.5/1.0/1.5s x several per-clip floor
+    quantiles) found reproduces the reported AUC 0.714 on Runnells at
+    ``stability_dirstab_floor_quantile=0.30``; carried here as a fixed
+    default rather than a fitted grid dimension because the sweep found
+    the result reasonably stable across nearby window sizes (0.5-1.5s),
+    unlike the floor quantile, which moved the Runnells number by over
+    0.1 across the same range and is the one :mod:`posthouse.cull.fit`
+    actually grids."""
+
+    stability_dirstab_floor_quantile: float = 0.30
+    """Only used when ``stability_combine == "dirstab_only"``: the
+    per-clip motion-SPEED (``hypot(tx, ty)``) percentile, in [0, 1], below
+    which a frame is excluded from the window's direction statistics
+    entirely (scored 0 instability, not penalized) as "not really
+    moving." Per-clip, not absolute, for the identical reason
+    ``stability_resid_norm``'s per-clip modes exist -- motion-residual
+    magnitudes differ by an order of magnitude across shoots (2026-09-02
+    Decision Log), and the diagnostic sweep measured this clip's-own-30th-
+    percentile floor at 0.014 to 1.967 px/frame (140x spread) across
+    Runnells and Des Moines clips, confirming an absolute floor would not
+    cross shoots either. 0.30 mirrors ``stability_lapvar_quantile``'s
+    default and is the value the diagnostic sweep found reproduces the
+    reported AUC 0.714 on Runnells; :mod:`posthouse.cull.fit` grids this
+    for real."""
 
     viterbi_lambda: float = 7.5
     """Flat transition penalty for the Viterbi path. CULLS Sec5's worked
@@ -548,6 +609,19 @@ class SegmentParams:
         if not (0.0 <= self.stability_score_resid_weight <= 1.0):
             raise ValueError(
                 f"stability_score_resid_weight must be in [0, 1], got {self.stability_score_resid_weight}"
+            )
+        if not (0.0 <= self.stability_dirstab_max <= 1.0):
+            raise ValueError(
+                f"stability_dirstab_max must be in [0, 1], got {self.stability_dirstab_max}"
+            )
+        if self.stability_dirstab_window_sec <= 0:
+            raise ValueError(
+                f"stability_dirstab_window_sec must be > 0, got {self.stability_dirstab_window_sec}"
+            )
+        if not (0.0 <= self.stability_dirstab_floor_quantile <= 1.0):
+            raise ValueError(
+                f"stability_dirstab_floor_quantile must be in [0, 1], "
+                f"got {self.stability_dirstab_floor_quantile}"
             )
 
     def as_contract_dict(self) -> dict:
@@ -1258,8 +1332,71 @@ def _resid_ok(resid_smooth: np.ndarray, params: SegmentParams) -> tuple[np.ndarr
     return resid_ok, threshold, detail
 
 
+def _direction_instability(
+    vx: np.ndarray, vy: np.ndarray, fps: float, params: SegmentParams,
+) -> np.ndarray:
+    """Per-frame ``1 - R`` (module docstring / ``stability_dirstab_max``):
+    circular-statistics direction stability on the RAW (unsmoothed) motion
+    vector, added by the 2026-09-02 direction-stability re-fit (ROADMAP
+    Decision Log) in response to Ryan's own criterion -- motion should be
+    judged by its shape over time, not just its magnitude, and a pan that
+    oscillates on the perpendicular axis is shake wearing a pan's clothes
+    even when its net displacement looks clean.
+
+    For each frame, a centered window of ``stability_dirstab_window_sec``
+    seconds is drawn. Frames in the window whose speed (``hypot(vx,
+    vy)``) exceeds THIS CLIP'S OWN ``stability_dirstab_floor_quantile``
+    percentile are "moving"; static/near-static frames are excluded from
+    the window's angle statistics entirely rather than fed noise (a
+    locked-off hold between two pans should not corrupt either pan's
+    score). ``R`` is the resultant length of the moving frames' unit
+    motion vectors (``|mean(cos theta, sin theta)|``) -- 1.0 means every
+    moving frame in the window points the same way (a smooth pan/push/
+    diagonal move, whatever axes are involved), 0.0 means direction is
+    scattering or reversing. A window with fewer than 3 moving frames
+    cannot support a direction judgment and scores 0 instability (treated
+    as stable, not penalized for lacking motion to judge) -- the same
+    "not enough evidence to condemn" convention :func:`_resid_ok`'s
+    siblings use elsewhere in this module.
+
+    Reproduces the diagnostic sweep's reported Runnells AUC (0.714 at
+    ``floor_quantile=0.30``, ``window_sec=1.0``) to 3 decimal places;
+    see the 2026-09-02 Decision Log entry for the sweep itself."""
+    speed = np.hypot(vx, vy)
+    floor = float(np.percentile(speed, 100.0 * params.stability_dirstab_floor_quantile))
+    theta = np.arctan2(vy, vx)
+    moving = speed > floor
+    ux = np.where(moving, np.cos(theta), 0.0)
+    uy = np.where(moving, np.sin(theta), 0.0)
+
+    n = len(vx)
+    w = max(3, int(round(params.stability_dirstab_window_sec * fps)))
+    half = w // 2
+    out = np.zeros(n, dtype=np.float64)
+    for i in range(n):
+        lo, hi = max(0, i - half), min(n, i + half + 1)
+        m = moving[lo:hi]
+        if int(m.sum()) < 3:
+            out[i] = 0.0
+            continue
+        R = float(np.hypot(ux[lo:hi][m].mean(), uy[lo:hi][m].mean()))
+        out[i] = 1.0 - R
+    return out
+
+
+def _dirstab_ok(vx: np.ndarray, vy: np.ndarray, fps: float, params: SegmentParams) -> tuple[np.ndarray, np.ndarray]:
+    """The direction-stability gate for ``stability_combine ==
+    "dirstab_only"``. Returns ``(dirstab_ok, instability)`` -- the raw
+    per-frame instability array is returned alongside the gate so
+    rejection-detail messages (below) can report the actual mean value,
+    the same convention :func:`_resid_ok` follows for its own threshold."""
+    instability = _direction_instability(vx, vy, fps, params)
+    return instability < params.stability_dirstab_max, instability
+
+
 def _stability_stable_mask(
     resid_smooth: np.ndarray, lapvar_smooth: np.ndarray, params: SegmentParams,
+    vx: Optional[np.ndarray] = None, vy: Optional[np.ndarray] = None, fps: float = 0.0,
 ) -> tuple[np.ndarray, float]:
     """The per-frame stable/unstable decision for every
     ``stability_combine`` mode (module docstring / ``SegmentParams.
@@ -1271,7 +1408,13 @@ def _stability_stable_mask(
     detail messages (below) report it even in modes that do not gate on
     it directly. The residual side's own threshold/detail (which strategy
     fired, and its resolved value) is available via :func:`_resid_ok`
-    directly for callers that need it (the rejection-detail builder does)."""
+    directly for callers that need it (the rejection-detail builder does).
+
+    ``vx``/``vy``/``fps`` are required only when ``stability_combine ==
+    "dirstab_only"`` (:func:`_dirstab_ok`'s own inputs); every caller in
+    this module already has the raw motion vectors and fps in scope, so
+    this is a real requirement enforced by a clear error, not a silent
+    None-propagation risk."""
     lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
     resid_ok, _resid_threshold, _resid_detail = _resid_ok(resid_smooth, params)
     lapvar_ok = lapvar_smooth >= lapvar_threshold
@@ -1285,6 +1428,10 @@ def _stability_stable_mask(
         stable = resid_ok
     elif combine == "lapvar_only":
         stable = lapvar_ok
+    elif combine == "dirstab_only":
+        if vx is None or vy is None or fps <= 0:
+            raise ValueError("stability_combine='dirstab_only' requires vx, vy, and fps")
+        stable, _instability = _dirstab_ok(vx, vy, fps, params)
     elif combine == "score":
         stable = _stability_score(resid_smooth, lapvar_smooth, params) >= params.stability_score_threshold
     else:  # pragma: no cover - unreachable, __post_init__ already validated
@@ -1340,7 +1487,7 @@ def _run_stability_pipeline(
     resid_smooth = _classify._smooth(resid, smooth_frames)
     lapvar_smooth = _classify._smooth(lapvar_norm, smooth_frames)
 
-    stable, lapvar_threshold = _stability_stable_mask(resid_smooth, lapvar_smooth, params)
+    stable, lapvar_threshold = _stability_stable_mask(resid_smooth, lapvar_smooth, params, vx, vy, fps)
 
     if params.exposure_gate:
         exposure_bad_low = clip_low > params.clip_low_frac_max
@@ -1376,19 +1523,30 @@ def _run_stability_pipeline(
                 )
             else:
                 reason = "transition" if dur_sec < params.min_duration_sec else "motion_inconsistent"
-                _resid_ok_span, _resid_threshold, resid_detail = _resid_ok(resid_smooth, params)
-                combine_detail = (
-                    f"combine={params.stability_combine}, resid_norm={params.stability_resid_norm}: "
-                    f"smoothed resid mean {float(np.mean(resid_smooth[s_in:s_out])):.2f} px/frame, "
-                    f"gate is {resid_detail}; smoothed lapvar_norm median "
-                    f"{float(np.median(lapvar_smooth[s_in:s_out])):.2f} vs this clip's own "
-                    f"q{params.stability_lapvar_quantile * 100:.0f} floor {lapvar_threshold:.2f}"
-                    if params.stability_combine != "score" else
-                    f"combine=score: mean score "
-                    f"{float(np.mean(_stability_score(resid_smooth, lapvar_smooth, params)[s_in:s_out])):.2f} "
-                    f"vs threshold {params.stability_score_threshold} "
-                    f"(resid_weight={params.stability_score_resid_weight})"
-                )
+                if params.stability_combine == "score":
+                    combine_detail = (
+                        f"combine=score: mean score "
+                        f"{float(np.mean(_stability_score(resid_smooth, lapvar_smooth, params)[s_in:s_out])):.2f} "
+                        f"vs threshold {params.stability_score_threshold} "
+                        f"(resid_weight={params.stability_score_resid_weight})"
+                    )
+                elif params.stability_combine == "dirstab_only":
+                    _dirstab_ok_span, instability = _dirstab_ok(vx, vy, fps, params)
+                    combine_detail = (
+                        f"combine=dirstab_only: mean 1-R instability "
+                        f"{float(np.mean(instability[s_in:s_out])):.2f} vs threshold "
+                        f"{params.stability_dirstab_max} (window={params.stability_dirstab_window_sec}s, "
+                        f"floor_quantile={params.stability_dirstab_floor_quantile})"
+                    )
+                else:
+                    _resid_ok_span, _resid_threshold, resid_detail = _resid_ok(resid_smooth, params)
+                    combine_detail = (
+                        f"combine={params.stability_combine}, resid_norm={params.stability_resid_norm}: "
+                        f"smoothed resid mean {float(np.mean(resid_smooth[s_in:s_out])):.2f} px/frame, "
+                        f"gate is {resid_detail}; smoothed lapvar_norm median "
+                        f"{float(np.median(lapvar_smooth[s_in:s_out])):.2f} vs this clip's own "
+                        f"q{params.stability_lapvar_quantile * 100:.0f} floor {lapvar_threshold:.2f}"
+                    )
                 detail = f"{dur_sec:.2f}s span fails the stability threshold: {combine_detail}"
             rejections.append(_Rejection(s_in, s_out, reason, detail))
             continue
@@ -1540,7 +1698,11 @@ def segment_source(
         smooth_frames = max(1, int(round(params.stability_smooth_sec * fps)))
         resid_smooth = _classify._smooth(arrays["resid"].astype(np.float64), smooth_frames)
         lapvar_smooth = _classify._smooth(arrays["lapvar_norm"].astype(np.float64), smooth_frames)
-        ok_mask, _lapvar_threshold = _stability_stable_mask(resid_smooth, lapvar_smooth, params)
+        diag_vx = arrays["tx_norm_src_width"].astype(np.float64)
+        diag_vy = arrays["ty_norm_src_width"].astype(np.float64)
+        ok_mask, _lapvar_threshold = _stability_stable_mask(
+            resid_smooth, lapvar_smooth, params, diag_vx, diag_vy, fps
+        )
         runs = _rle_from_state_array(ok_mask.astype(np.int8))
     else:
         classify_params = ClassifyParams(**(header.get("classify", {}).get("params", {}) or {}))

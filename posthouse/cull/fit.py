@@ -431,6 +431,22 @@ STAGE_GRID_STABILITY: dict[str, list] = {
 STAGE_GRID_STABILITY_RESID_ONLY: dict[str, list] = {"stability_resid_max": STABILITY_RESID_MAX_GRID}
 STAGE_GRID_STABILITY_LAPVAR_ONLY: dict[str, list] = {"stability_lapvar_quantile": STABILITY_LAPVAR_QUANTILE_GRID}
 
+# 2026-09-02 direction-stability re-fit (ROADMAP Decision Log): a fourth
+# first-class ablation arm, following the exact resid_only/lapvar_only
+# pattern above -- one free parameter (the instability threshold), the
+# window and floor-quantile held at the values the diagnostic sweep found
+# reproduce the reported Runnells AUC (SegmentParams.
+# stability_dirstab_window_sec/stability_dirstab_floor_quantile docstrings)
+# rather than gridded here, since the sweep found the window fairly stable
+# and gridding every dimension the diagnostic already swept would just be
+# re-deriving the diagnostic instead of testing whether the signal earns
+# its place in the production fitting harness. stability_dirstab_max is
+# bounded [0, 1] by construction (module docstring), same reasoning as
+# STAGE_GRID_STABILITY_SCORE's bounded grids -- a plain, evenly spaced
+# bracket around the reasoned unfit default (0.5), not data-informed bounds.
+STABILITY_DIRSTAB_MAX_GRID: list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+STAGE_GRID_STABILITY_DIRSTAB_ONLY: dict[str, list] = {"stability_dirstab_max": STABILITY_DIRSTAB_MAX_GRID}
+
 # Task brief point 3: the combined-score structure -- one fitted threshold
 # against a weighted rank combination, in place of two independent walls.
 # Both parameters are already scale-free (percentile ranks and a convex
@@ -458,6 +474,7 @@ STAGE_GRID_STABILITY_BY_COMBINE: dict[str, dict[str, list]] = {
     "resid_only": STAGE_GRID_STABILITY_RESID_ONLY,
     "lapvar_only": STAGE_GRID_STABILITY_LAPVAR_ONLY,
     "score": STAGE_GRID_STABILITY_SCORE,
+    "dirstab_only": STAGE_GRID_STABILITY_DIRSTAB_ONLY,
 }
 
 # ---------------------------------------------------------------------------
@@ -1045,7 +1062,14 @@ def fit(
     # for a question ("does exposure gating help") that does not depend
     # on the combine mode, and the module docstring already bounds runtime
     # by not fully ablating every combination.
-    for combine in ("and", "or", "resid_only", "lapvar_only", "score"):
+    # "dirstab_only" added 2026-09-02 (direction-stability re-fit, ROADMAP
+    # Decision Log) as a sixth first-class arm, following the exact pattern
+    # above -- a per-clip-normalized circular-statistics signal on motion
+    # DIRECTION rather than magnitude, isolated the same way resid_only/
+    # lapvar_only already are so this run honestly measures whether it
+    # beats them under this harness's own CV/bootstrap/fixture-guard
+    # machinery rather than trusting the diagnostic sweep's AUC alone.
+    for combine in ("and", "or", "resid_only", "lapvar_only", "score", "dirstab_only"):
         arms[f"stability_{combine}_full"] = run_arm(
             f"stability_{combine}_full", "stability", False, True,
             evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
@@ -1126,6 +1150,7 @@ def fit(
         "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
         "stability_score_full", "stability_score_no_exposure",
         "stability_resid_only_quantile_full", "stability_resid_only_robust_scale_full",
+        "stability_dirstab_only_full",
     )
     stability_ranked = sorted(
         (arms[n] for n in stability_arm_names),
