@@ -11,11 +11,15 @@ iteration, not yet shipped.** Slices 1-5 all built and reviewed;
 significant real-footage findings at every stage; the benchmark itself
 has been hardened twice this session (a real parser bug, a real
 granularity blind spot). Where the cull's accuracy actually stands right
-now, in one line: **direction-stability is shipped as a first-class
-detector arm and won the re-fit on Runnells (P 0.629/R 0.915/IoU 0.417),
-but only by a margin inside noise over resid_only, and it still does not
-beat the crude two-threshold probe overall** — a real, confirmed signal,
-not a breakthrough. Not yet scored against real drone footage.
+now, in one line: **the generalization test came back negative.** Scored
+against Ryan's real Historic Valley Junction cuts, the Runnells-fitted
+detector (direction-stability, this session's re-fit winner) scores
+P 0.727/R 0.992/IoU 0.593 — statistically indistinguishable from
+select-everything's P 0.726/R 1.000/IoU 0.596. It IS a real, measurable
+improvement on granularity (9 predicted segments vs select-everything's
+1), but even those 9 segments are still giant under-segmented blobs
+swallowing 7-8 real cuts each. Nothing fitted this session does the real
+culling work on this footage.
 
 **The single most important finding of the session**: precision/
 recall/IoU can score a detector well while it does none of the real
@@ -44,11 +48,12 @@ exports.
 Product pivoted (2026-09-01): the end product is a new role-driven app;
 PreCut is the component donor. See ROADMAP §6 for the phase plan.
 
-**What's next:** score the re-fitted detector (and its dirstab_only
-winner specifically) against Ryan's real, correctly-parsed Historic
-Valley Junction cuts, reading the result through the granularity metrics
-too — that is the actual drone-footage generalization test, and nothing
-run so far (including this session's re-fit) has touched it yet.
+**What's next:** the transfer question is now answered (no, single-signal
+arms fitted on Runnells do not generalize to the drone footage) but the
+follow-on questions are open — does the grid-edge pin on both arms'
+motion gate explain it, does anything generalize at all, is Runnells'
+own P/R/IoU hiding a similar granularity problem. Ryan's call on where
+to spend effort next.
 
 ## In progress
 
@@ -240,16 +245,32 @@ run so far (including this session's re-fit) has touched it yet.
   two-threshold probe overall (beats it on recall, trails on precision
   and IoU by ~0.01). Genuine, confirmed signal; not a breakthrough. Not
   yet scored against real drone footage.
+- 2026-09-02 — **Scored against Ryan's real Historic Valley Junction
+  cuts: the transfer question is answered, and the answer is no.**
+  Both re-fitted arms (dirstab_only, resid_only) score within rounding
+  of select-everything on P/R/IoU (0.727/0.99/0.593 vs select-
+  everything's 0.726/1.00/0.596). The granularity metrics catch what
+  P/R/IoU hides: dirstab_only genuinely predicts more, finer segments
+  (9 vs resid_only's 4 vs select-everything's 1) — a real difference —
+  but even those 9 are still giant blobs swallowing 7-8 real cuts each.
+  Neither arm does the actual culling work Ryan asked for on this
+  footage. Likely contributing factor, not yet confirmed: both arms'
+  own motion gate is pinned to the edge of its Runnells search grid
+  (`stability_resid_max=9.0` of `[0.8,9.0]`, `stability_dirstab_
+  max=0.9` of `[0.1,0.9]`) — a gate that already wants to be nearly
+  disabled on the shoot it was fitted on is a weak bet to transfer.
 
 ## Next (in order)
 
-1. **Score the re-fitted detector against Ryan's real Historic Valley
-   Junction cuts** (correctly parsed, 28 ranges), reading the result
-   through the granularity metrics too — the actual drone-footage
-   generalization test, still untouched by anything run so far. This is
-   a materially stronger check than the Des Moines Estabs set, which is
-   known to carry editorial contamination (real production selects, not
-   an exhaustive technical mark).
+1. **Ryan's call**: where to spend effort next now that single-signal
+   Runnells-fitted arms are confirmed not to generalize to the drone
+   footage. Live options, none started: (a) widen both grid-edge-pinned
+   thresholds again and re-measure whether either arm actually wants to
+   be disabled entirely; (b) fit directly on Historic Valley Junction
+   footage rather than transferring from Runnells; (c) check whether
+   Runnells' own held-out P/R/IoU is hiding a similar granularity
+   problem that never surfaced because nothing measured it there yet;
+   (d) step back from single-signal gates entirely.
 2. Optional, not blocking: Ryan marking ~5 minutes of the unmarked
    33-minute Runnells clip `DJI_20260430071514_0005_D.MP4` as a
    held-out validation strip never fitted on.
@@ -258,12 +279,16 @@ run so far (including this session's re-fit) has touched it yet.
    slow push classification, minimum select length, rack focus ending
    out of focus, etc). The pipeline they were written against
    (classifier-driven consolidation) has since been superseded by the
-   stability detector, so some may now be moot — worth a pass once the
-   detector's real-footage generalization question above is settled,
-   not before.
+   stability detector, so some may now be moot.
 4. Low priority, still technically open from the original gameplan
    discussion: ratify the "internal tool first, product maybe later"
    and "review happens in Premiere" assumptions with Ryan.
+5. Housekeeping: Ryan's real Historic Valley Junction answer key still
+   lives only at `~/Desktop/Pierce Cut Historic Valley Junction 0002
+   (detector picks).xml`, not staged into `benchmark/` — should move
+   into the repo (mirroring `runnells-day-1`/`des-moines-estabs`) before
+   it is scored against again, so results are reproducible without a
+   path into Ryan's Desktop.
 
 ## Attempts ledger
 

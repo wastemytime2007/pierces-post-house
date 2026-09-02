@@ -574,6 +574,50 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Scored against Ryan's real Historic Valley Junction
+  cuts: NEITHER re-fitted arm meaningfully beats select-everything on
+  real drone footage. This is the actual generalization test the
+  transfer study asked for, and the answer is negative.**
+  Both the Runnells-fitted `dirstab_only` (this session's winner) and
+  `resid_only` score within a rounding error of the select-everything
+  baseline: dirstab_only P 0.727/R 0.992/IoU 0.593, resid_only P
+  0.727/R 0.993/IoU 0.593, select-everything P 0.726/R 1.000/IoU 0.596.
+  **P/R/IoU alone would call this a wash and stop there** — it is the
+  granularity metrics (2026-09-02, earlier this session) that show the
+  real, non-obvious difference: `dirstab_only` predicts 9 segments
+  (granularity_ratio 0.346) against `resid_only`'s 4 (0.154) and
+  select-everything's 1 (0.038) — a real, measurable win for direction-
+  stability that P/R/IoU completely hides. But even `dirstab_only`'s 9
+  segments are still giant under-segmented blobs against 26 truth
+  segments: one 76s predicted span swallows 7 real cuts across 30.2s of
+  real gaps, a 74s span swallows 8 real cuts across 15.4s of gaps. The
+  fitted detector is not doing the real culling work Ryan asked for on
+  this footage — it is a coarser version of "keep most of the clip,"
+  same failure shape as the original 4-blob run Ryan already condemned
+  by hand, just with more blobs.
+  **Likely contributing factor, not yet separately confirmed**: both
+  arms' own motion gate pinned to the edge of its search grid on Runnells
+  (`stability_resid_max=9.0` of `[0.8, 9.0]`, `stability_dirstab_max=0.9`
+  of `[0.1, 0.9]`) — the grid-edge alarm's own warning, not a new
+  finding. A gate that already wants to be nearly disabled on the shoot
+  it was fitted on is not a strong candidate to discriminate on a
+  DIFFERENT shoot's motion characteristics; the Runnells-side "win" may
+  be coming mostly from consolidation/exposure-gate mechanics rather
+  than real threshold precision, which is one plausible explanation for
+  why almost nothing here transfers. Not yet tested directly (would need
+  widening both grids again and re-measuring, a follow-up, not done
+  here).
+  **What this settles and what it does not**: settles that the transfer
+  study's open question (does anything fitted on Runnells generalize to
+  the drone footage) is answered NO for both single-signal arms tested.
+  Does not settle whether ANY signal combination can generalize, whether
+  fitting directly on drone footage would do better, or whether the
+  granularity blind spot is hiding a similar problem on Runnells itself
+  that its own held-out P/R/IoU numbers never surfaced. Answer key used:
+  Ryan's hand-corrected
+  `~/Desktop/Pierce Cut Historic Valley Junction 0002 (detector picks).xml`
+  (28 ranges after the 2026-09-02 parser/rescale fix), still not staged
+  into the repo's `benchmark/` tree.
 - **2026-09-02 — Direction-stability re-fit: shipped as a sixth
   first-class stability arm, and it wins the arm competition, narrowly.**
   The diagnostic sweep's own script was lost to context compaction, not
