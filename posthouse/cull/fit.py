@@ -410,7 +410,16 @@ STAGE_GRID_EXPOSURE: dict[str, list] = {
 # normalization is scale-free by construction and therefore does not
 # carry this problem across cameras the way `"and"`/`"or"`/`"resid_only"`
 # structurally must.
-STABILITY_RESID_MAX_GRID: list = [0.8, 1.2, 1.8, 2.7, 4.0, 6.0, 9.0]
+# Widened a second time, 2026-09-02, after the Historic Valley Junction
+# scoring showed this arm's fitted value still pinned to 9.0 (this grid's
+# OWN previous max) even after the widening documented in the comment
+# above -- the same distribution note above already recorded p99=10.90,
+# max=21.34 px/frame on Runnells, so 9.0 sat below even that clip's own
+# observed range, let alone tested whether the gate wants to go past it
+# entirely. Extended past this clip's own observed max so the grid can
+# express "does not filter on resid at all" as a real, reachable point,
+# not just get closer to it.
+STABILITY_RESID_MAX_GRID: list = [0.8, 1.2, 1.8, 2.7, 4.0, 6.0, 9.0, 13.0, 18.0, 25.0, 35.0]
 
 # lapvar_quantile is already a per-clip PERCENTILE (bounded [0, 1] by
 # construction), so it cannot pin to a wall the way an absolute threshold
@@ -444,7 +453,15 @@ STAGE_GRID_STABILITY_LAPVAR_ONLY: dict[str, list] = {"stability_lapvar_quantile"
 # bounded [0, 1] by construction (module docstring), same reasoning as
 # STAGE_GRID_STABILITY_SCORE's bounded grids -- a plain, evenly spaced
 # bracket around the reasoned unfit default (0.5), not data-informed bounds.
-STABILITY_DIRSTAB_MAX_GRID: list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+#
+# Widened a second time, 2026-09-02, after the Historic Valley Junction
+# scoring showed this arm's fitted value pinned to 0.9 (this grid's own
+# max) on Runnells. Unlike stability_resid_max, this parameter genuinely
+# HAS a hard ceiling (instability = 1 - R cannot exceed 1.0), so "does it
+# want to be fully disabled" is directly testable, not just "does it want
+# to go further" -- extended to include that ceiling as a real, reachable
+# point.
+STABILITY_DIRSTAB_MAX_GRID: list = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99, 1.0]
 STAGE_GRID_STABILITY_DIRSTAB_ONLY: dict[str, list] = {"stability_dirstab_max": STABILITY_DIRSTAB_MAX_GRID}
 
 # Task brief point 3: the combined-score structure -- one fitted threshold

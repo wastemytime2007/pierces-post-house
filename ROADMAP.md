@@ -574,6 +574,53 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Widened both grid-edge-pinned grids to test "does it
+  want to be disabled": NO, for either. But the tie-broken value the
+  wider grid picked for direction-stability is measurably WORSE on real
+  drone footage despite being tied on Runnells — a real limitation of
+  fitting on one clip, not a fixed problem.**
+  `STABILITY_RESID_MAX_GRID` extended from `[0.8..9.0]` to `[0.8..35.0]`
+  (past this clip's own observed max of 21.34 px/frame) and
+  `STABILITY_DIRSTAB_MAX_GRID` extended from `[0.1..0.9]` to
+  `[0.1..1.0]` (its true, hard ceiling — instability cannot exceed 1.0).
+  Re-fit on Runnells: `resid_only` moved from 9.0 (its old grid's wall)
+  to 18.0, a genuine interior point, no longer flagged by the grid-edge
+  alarm. `dirstab_only` moved from 0.9 to 0.95 — also interior (not the
+  new 1.0 ceiling), also no longer flagged. **Both parameters have real
+  interior optima; neither structurally wants full disablement.** This
+  settles the question cleanly: the earlier 9.0/0.9 pins were a genuine
+  "grid too narrow" artifact, not the AND-gate's "wants to be disabled"
+  failure mode recurring.
+  Held-out metrics on Runnells for both barely moved (resid_only
+  0.625/0.911/0.416 vs the old grid's 0.627/0.911/0.417; dirstab_only
+  0.629/0.915/0.416 vs 0.629/0.915/0.417) — Runnells' own CV cannot tell
+  9.0 from 18.0, or 0.9 from 0.95, apart.
+  **The consequential part**: re-scoring both against Ryan's real
+  Historic Valley Junction cuts, `resid_only`'s 18.0 produces IDENTICAL
+  output to its old 9.0 (both are so far above the drone footage's own
+  motion-residual scale — an order of magnitude lower, per the earlier
+  per-clip-normalization Decision Log entry — that either threshold
+  accepts effectively everything there). But `dirstab_only`'s 0.95
+  produces WORSE granularity than its old 0.9: only 6 predicted segments
+  (granularity_ratio 0.231) against the old value's 9 segments (0.346) —
+  a real regression on the actual footage this is meant to work on,
+  from a change that is a dead tie on the footage it was fit on. The
+  full arm-selection re-run (`benchmark/transfer/
+  runnells_fit_dirstab_widened/`) confirms `dirstab_only` still wins the
+  arm competition and would ship 0.95 by default.
+  **Not resolved, and NOT silently shipped**: this is a real argument
+  against blindly using whatever value coordinate descent lands on when
+  Runnells' own metric is flat across a range — the current harness has
+  no way to prefer the more conservative (here, lower) value among ties,
+  and no visibility into a second clip while fitting. The pre-existing
+  `runnells_fit_dirstab/params.json` (dirstab_max=0.9) is left as the
+  shipped artifact; the widened-grid result is kept alongside at
+  `runnells_fit_dirstab_widened/` as a documented, deliberately NOT
+  adopted alternative, not a silent regression. Ryan's call on whether
+  the harness should change (prefer-lower tie-breaking, fit against two
+  clips at once, something else) or whether this is not worth solving
+  before addressing the larger negative-transfer finding this all sits
+  inside.
 - **2026-09-02 — Scored against Ryan's real Historic Valley Junction
   cuts: NEITHER re-fitted arm meaningfully beats select-everything on
   real drone footage. This is the actual generalization test the

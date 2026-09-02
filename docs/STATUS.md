@@ -48,12 +48,22 @@ exports.
 Product pivoted (2026-09-01): the end product is a new role-driven app;
 PreCut is the component donor. See ROADMAP §6 for the phase plan.
 
-**What's next:** the transfer question is now answered (no, single-signal
-arms fitted on Runnells do not generalize to the drone footage) but the
-follow-on questions are open — does the grid-edge pin on both arms'
-motion gate explain it, does anything generalize at all, is Runnells'
-own P/R/IoU hiding a similar granularity problem. Ryan's call on where
-to spend effort next.
+**Grid-edge pin ruled out as the explanation.** Widened both thresholds'
+search grids (resid past this clip's own observed max, dirstab to its
+true 1.0 ceiling) and re-fit: neither wants full disablement, both have
+real interior optima (18.0, 0.95). That resolves one theory but opens a
+sharper one — the wider grid's dirstab value (0.95) TIES the old one
+(0.9) on Runnells but is measurably WORSE on the drone footage (6
+predicted segments vs 9), a concrete demonstration that fitting on one
+clip cannot see this kind of difference at all. Not shipped as a
+replacement; kept alongside as a documented alternative.
+
+**What's next:** the transfer question is answered (no, single-signal
+arms fitted on Runnells do not generalize) and the grid-edge theory is
+ruled out. Open: does anything generalize at all, is Runnells' own
+P/R/IoU hiding a similar granularity problem, and should the harness
+change how it breaks ties among equally-good-on-Runnells candidates.
+Ryan's call on where to spend effort next.
 
 ## In progress
 
@@ -259,18 +269,39 @@ to spend effort next.
   (`stability_resid_max=9.0` of `[0.8,9.0]`, `stability_dirstab_
   max=0.9` of `[0.1,0.9]`) — a gate that already wants to be nearly
   disabled on the shoot it was fitted on is a weak bet to transfer.
+- 2026-09-02 — **Widened both grid-edge-pinned grids: neither threshold
+  wants to be disabled, ruling out that theory — but the wider grid's
+  tie-broken pick is measurably worse on real footage.** Extended
+  `stability_resid_max`'s grid to 35.0 (past this clip's own observed
+  max of 21.34) and `stability_dirstab_max`'s to its true 1.0 ceiling;
+  re-fit on Runnells. Both land on genuine interior optima (18.0, 0.95),
+  no longer flagged by the grid-edge alarm, with held-out metrics on
+  Runnells essentially unchanged from the narrower grid. Re-scored
+  against Historic Valley Junction: `resid_only`'s new value produces
+  IDENTICAL output to the old one (both already far above the drone
+  footage's own motion scale). `dirstab_only`'s new value (0.95) is
+  WORSE — 6 predicted segments (granularity_ratio 0.231) vs the old
+  0.9's 9 (0.346) — a real regression from a change that is a dead tie
+  on the fitting clip. Concrete proof that fitting on one clip cannot
+  see this kind of difference. Not shipped: the original
+  `runnells_fit_dirstab/params.json` (0.9) stays the record; the
+  widened-grid result is kept alongside at `runnells_fit_dirstab_
+  widened/` as a documented alternative, not a silent regression. Suite
+  223 passed / 1 skipped, re-verified after the grid change.
 
 ## Next (in order)
 
-1. **Ryan's call**: where to spend effort next now that single-signal
-   Runnells-fitted arms are confirmed not to generalize to the drone
-   footage. Live options, none started: (a) widen both grid-edge-pinned
-   thresholds again and re-measure whether either arm actually wants to
-   be disabled entirely; (b) fit directly on Historic Valley Junction
-   footage rather than transferring from Runnells; (c) check whether
-   Runnells' own held-out P/R/IoU is hiding a similar granularity
-   problem that never surfaced because nothing measured it there yet;
-   (d) step back from single-signal gates entirely.
+1. **Ryan's call**: where to spend effort next. The grid-edge theory is
+   now ruled out (neither threshold wants disabling) and replaced by a
+   sharper one (Runnells alone cannot distinguish tie-broken choices
+   that behave very differently elsewhere). Live options, none started:
+   (a) fit directly on Historic Valley Junction footage rather than
+   transferring from Runnells; (b) change the harness to prefer the more
+   conservative value among Runnells ties, or fit against two clips at
+   once; (c) check whether Runnells' own held-out P/R/IoU is hiding a
+   similar granularity problem that never surfaced because nothing
+   measured it there yet; (d) step back from single-signal gates
+   entirely.
 2. Optional, not blocking: Ryan marking ~5 minutes of the unmarked
    33-minute Runnells clip `DJI_20260430071514_0005_D.MP4` as a
    held-out validation strip never fitted on.
