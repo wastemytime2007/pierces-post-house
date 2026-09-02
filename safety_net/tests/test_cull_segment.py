@@ -44,6 +44,8 @@ from posthouse.cull.segment import (
     _consolidate_hysteresis,
     _consolidate_viterbi,
     _label_motion_intent,
+    _resid_ok,
+    _robust_z,
     _run_pipeline,
     boundary_hit_fraction,
     segment_source,
@@ -431,6 +433,135 @@ def test_stability_exposure_gate_disabled_is_never_flagged(tmp_path):
     result = segment_source(npz, params=SegmentParams(exposure_gate=False))
     assert len(result.segments) == 1
     assert not any(r.reason in ("underexposed", "overexposed") for r in result.rejections)
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-02 Decision Log follow-up: per-clip residual normalization
+# (``stability_resid_norm``), Ryan's ruling on the generalization failure.
+# ---------------------------------------------------------------------------
+
+def test_resid_ok_absolute_matches_legacy_behavior():
+    """``stability_resid_norm="absolute"`` (the control arm) must reproduce
+    exactly the pre-existing ``resid_smooth < stability_resid_max``
+    behavior -- no regression for the default/legacy path."""
+    resid = np.array([0.5, 1.0, 1.4, 1.6, 2.0, 5.0], dtype=np.float64)
+    params = SegmentParams(stability_resid_max=1.5, stability_resid_norm="absolute")
+    ok, threshold, _detail = _resid_ok(resid, params)
+    np.testing.assert_array_equal(ok, resid < 1.5)
+    assert threshold == 1.5
+
+
+def test_resid_ok_quantile_keeps_the_fitted_fraction_per_clip():
+    """``"quantile"`` thresholds at a PER-CLIP percentile of this clip's
+    own smoothed residual -- unlike "absolute", the same raw values pass
+    or fail depending only on their rank within THIS clip, which is
+    exactly the scale-free property the ruling asks for."""
+    resid = np.arange(100, dtype=np.float64)  # 0..99, uniform
+    params = SegmentParams(stability_resid_norm="quantile", stability_resid_quantile=0.30)
+    ok, threshold, _detail = _resid_ok(resid, params)
+    # Bottom 30% of a 0..99 uniform ramp is kept.
+    assert threshold == pytest.approx(np.percentile(resid, 30.0))
+    assert ok.sum() == np.sum(resid <= threshold)
+    assert ok.sum() == pytest.approx(31, abs=2)  # ~30 + the boundary point
+
+    # Rescale the SAME clip by 1000x (a different camera's absolute
+    # magnitude) -- the fraction kept must be identical, because the
+    # threshold is relative to this clip's own distribution.
+    resid_scaled = resid * 1000.0
+    ok_scaled, _t, _d = _resid_ok(resid_scaled, params)
+    assert ok_scaled.sum() == ok.sum()
+
+
+def test_resid_ok_robust_scale_z_score_and_scale_invariance():
+    """``"robust_scale"`` z-scores against this clip's own median/MAD --
+    like "quantile", rescaling every value by a constant factor (a
+    different camera's absolute noise floor) must not change which frames
+    pass, because the z-score is scale-free by construction."""
+    rng = np.random.default_rng(0)
+    resid = np.abs(rng.normal(loc=2.0, scale=0.5, size=500))
+    params = SegmentParams(stability_resid_norm="robust_scale", stability_resid_z_max=2.0)
+    ok, threshold, _detail = _resid_ok(resid, params)
+    assert threshold == 2.0
+    z = _robust_z(resid)
+    np.testing.assert_array_equal(ok, z <= 2.0)
+
+    resid_scaled = resid * 50.0  # a wildly different camera's noise floor
+    ok_scaled, _t, _d = _resid_ok(resid_scaled, params)
+    np.testing.assert_array_equal(ok, ok_scaled)
+
+
+def test_resid_ok_robust_scale_zero_mad_does_not_divide_by_zero():
+    """Degenerate-case guard (task brief): a clip whose smoothed residual
+    is perfectly constant has MAD == 0. Must not raise, warn, or produce
+    NaN/inf -- every frame's z-score must come back exactly 0 (nothing is
+    abnormal relative to a distribution with no spread), so a perfectly
+    stable clip is judged stable, not silently rejected by a NaN
+    comparison (``nan <= threshold`` is always False in numpy)."""
+    resid = np.full(50, 3.7, dtype=np.float64)
+    z = _robust_z(resid)
+    assert np.all(np.isfinite(z))
+    np.testing.assert_array_equal(z, np.zeros(50))
+
+    params = SegmentParams(stability_resid_norm="robust_scale", stability_resid_z_max=1.0)
+    ok, _threshold, _detail = _resid_ok(resid, params)
+    assert np.all(np.isfinite(ok.astype(np.float64)))
+    assert ok.all(), "a perfectly constant (zero-MAD) residual must be judged entirely stable, not rejected"
+
+
+def test_resid_ok_robust_scale_empty_array_does_not_crash():
+    """A zero-length residual array (degenerate but should not crash)."""
+    z = _robust_z(np.zeros(0, dtype=np.float64))
+    assert z.shape == (0,)
+
+
+def test_segment_source_clip_shorter_than_smoothing_window_does_not_crash(tmp_path):
+    """Degenerate-case guard (task brief): a clip shorter than
+    ``stability_smooth_sec``'s own frame window must not crash under any
+    ``stability_resid_norm`` strategy. ``min_duration_sec``'s hard floor
+    (1.0s) means such a clip legitimately yields zero accepted segments --
+    the assertion here is "runs to completion, tiles correctly," not
+    "accepts something.\""""
+    n = 5  # far shorter than the default 0.7s @ 30fps = 21-frame window
+    arrays = _clean_arrays(n)
+    states = ["static"] * n
+    npz = _write_sidecar(tmp_path / "sidecars", "tiny", states, arrays)
+    for norm in ("absolute", "quantile", "robust_scale"):
+        result = segment_source(npz, params=SegmentParams(stability_resid_norm=norm))
+        assert result.consolidation == "stability"
+        # Tiling invariant (segments + rejections exactly cover [0, n]) is
+        # asserted inside segment_source itself; reaching here without a
+        # TilingInvariantError or crash is the guard this test exists for.
+
+
+def test_stability_quantile_norm_rejects_the_worst_fraction_of_a_uniformly_scaled_clip(tmp_path):
+    """A clip whose motion residual is entirely at a DIFFERENT absolute
+    scale than the "absolute" mode's default cap (e.g. a drone clip whose
+    smoothed resid never exceeds 1.0 px/frame, an order of magnitude below
+    Runnells' own p50) is entirely accepted under "absolute" (nothing
+    clears the cap) but "quantile" still rejects its own worst
+    (1 - stability_resid_quantile) fraction, because the threshold is
+    relative to THIS clip regardless of the clip's absolute scale."""
+    n = 900  # 30s @ 30fps
+    arrays = _clean_arrays(n)
+    # Smoothed resid is tiny throughout (drone-scale), but with a genuine
+    # relative structure: the back third is 5x noisier than the front.
+    arrays["resid"][:600] = 0.1
+    arrays["resid"][600:] = 0.5
+    states = ["static"] * n
+    npz = _write_sidecar(tmp_path / "sidecars", "drone_scale", states, arrays)
+
+    absolute_result = segment_source(
+        npz, params=SegmentParams(stability_resid_norm="absolute", stability_resid_max=1.5, stability_combine="resid_only"),
+    )
+    assert sum(s.frame_out - s.frame_in for s in absolute_result.segments) >= n - 5  # ~everything kept
+
+    quantile_result = segment_source(
+        npz, params=SegmentParams(
+            stability_resid_norm="quantile", stability_resid_quantile=0.60, stability_combine="resid_only",
+        ),
+    )
+    kept = sum(s.frame_out - s.frame_in for s in quantile_result.segments)
+    assert kept < n - 5, "quantile mode must reject some of even a uniformly-calm-by-absolute-scale clip"
 
 
 # ---------------------------------------------------------------------------

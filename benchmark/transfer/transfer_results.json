@@ -1,0 +1,411 @@
+{
+  "des_moines_baseline_12clip_fixed_parser": {
+    "precision": 0.33602301293041953,
+    "recall": 0.9999999993863266,
+    "f1": 0.503019797752625,
+    "iou": 0.2912493119351182,
+    "predicted_sec": 1864.989899,
+    "truth_sec": 543.177025280112
+  },
+  "runnells_baseline": {
+    "precision": 0.5769578347384644,
+    "recall": 1.0,
+    "f1": 0.7317352715827711,
+    "iou": 0.391901799474209,
+    "predicted_sec": 235.328,
+    "truth_sec": 92.22546666666665
+  },
+  "dsm_clips": [
+    {
+      "basename": "A014C0005_700101_C0B714.MOV",
+      "duration_sec": 124.181333,
+      "truth_sec": 50.63333333333332,
+      "n_ranges": 5
+    },
+    {
+      "basename": "DJI_0040.MP4",
+      "duration_sec": 73.239833,
+      "truth_sec": 33.95058333333334,
+      "n_ranges": 2
+    },
+    {
+      "basename": "DJI_0041.MP4",
+      "duration_sec": 207.123583,
+      "truth_sec": 103.35324999999999,
+      "n_ranges": 3
+    },
+    {
+      "basename": "DJI_0134.MP4",
+      "duration_sec": 301.009042,
+      "truth_sec": 67.40066666666664,
+      "n_ranges": 8
+    },
+    {
+      "basename": "DJI_0138.MP4",
+      "duration_sec": 81.372958,
+      "truth_sec": 37.662625000000006,
+      "n_ranges": 3
+    },
+    {
+      "basename": "DJI_0144.MP4",
+      "duration_sec": 301.009042,
+      "truth_sec": 59.14241666666665,
+      "n_ranges": 3
+    },
+    {
+      "basename": "DJI_0145.MP4",
+      "duration_sec": 1.042708,
+      "truth_sec": 0,
+      "n_ranges": 0
+    },
+    {
+      "basename": "DJI_0211.MP4",
+      "duration_sec": 64.631233,
+      "truth_sec": 0,
+      "n_ranges": 0
+    },
+    {
+      "basename": "DJI_20260420163534_0002_D.MP4",
+      "duration_sec": 231.923358,
+      "truth_sec": 24.0840336134454,
+      "n_ranges": 1
+    },
+    {
+      "basename": "DJI_20260513155107_0002_D.MP4",
+      "duration_sec": 265.448533,
+      "truth_sec": 34.8181166666667,
+      "n_ranges": 8
+    },
+    {
+      "basename": "DJI_20260616135119_0004_D.MP4",
+      "duration_sec": 120.64,
+      "truth_sec": 63.246516666666665,
+      "n_ranges": 9
+    },
+    {
+      "basename": "DJI_20260619103722_0003_D.MP4",
+      "duration_sec": 159.042217,
+      "truth_sec": 68.88548333333333,
+      "n_ranges": 3
+    }
+  ],
+  "direction1_fit_runnells_score_des_moines": {
+    "absolute": {
+      "runnells_held_out_mean": {
+        "precision": 0.624696978437938,
+        "recall": 0.9318516115975607,
+        "f1": 0.7466244889018069,
+        "iou": 0.4296285983076034
+      },
+      "runnells_final_params": {
+        "consolidation": "stability",
+        "stability_resid_max": 9.0,
+        "stability_lapvar_quantile": 0.3,
+        "stability_resid_norm": "absolute",
+        "stability_resid_quantile": 0.7,
+        "stability_resid_z_max": 3.0,
+        "stability_smooth_sec": 0.7,
+        "stability_combine": "resid_only",
+        "stability_score_threshold": 0.5,
+        "stability_score_resid_weight": 0.5,
+        "viterbi_lambda": 7.5,
+        "min_run_sec": 1.0,
+        "settle_frames": 8,
+        "settle_frames_static": 4,
+        "min_duration_sec": 1.15,
+        "focus_gate": false,
+        "focus_norm_quantile": 0.35,
+        "focus_hunt_sign_changes_per_sec": 2.4,
+        "focus_hunt_smooth_frames": 9,
+        "focus_hunt_deadband_std": 0.15,
+        "rack_min_ramp_frames": 18,
+        "exposure_gate": true,
+        "clip_low_frac_max": 0.31,
+        "clip_high_frac_max": 0.06,
+        "handle_sec": 1.0
+      },
+      "runnells_final_edge_warnings": [
+        {
+          "param": "stability_resid_max",
+          "value": 9.0,
+          "grid_edge": "max",
+          "grid_min": 0.8,
+          "grid_max": 9.0,
+          "note": "fitted stability_resid_max=9.0 sits exactly on the max of its search grid [0.8, 9.0]. A parameter pinned to the wall of its own search space is not evidence of an interior optimum -- it is the signature either of a grid that needs widening AGAIN with a documented reason, or (if widening does not move it off the wall) of a parameter that structurally wants to be disabled, which a wider grid cannot fix (2026-09-02 Decision Log)."
+        }
+      ],
+      "des_moines_score": {
+        "precision": 0.3302506035089598,
+        "recall": 0.8578846679063328,
+        "f1": 0.476910224169452,
+        "iou": 0.27264565222648895,
+        "predicted_sec": 1631.9229333333333,
+        "truth_sec": 543.177025280112
+      },
+      "beats_des_moines_baseline": false
+    },
+    "quantile": {
+      "runnells_held_out_mean": {
+        "precision": 0.6373209073356374,
+        "recall": 0.8795111351863012,
+        "f1": 0.7371640842677224,
+        "iou": 0.4285118687253135
+      },
+      "runnells_final_params": {
+        "consolidation": "stability",
+        "stability_resid_max": 1.5,
+        "stability_lapvar_quantile": 0.3,
+        "stability_resid_norm": "quantile",
+        "stability_resid_quantile": 0.9,
+        "stability_resid_z_max": 3.0,
+        "stability_smooth_sec": 0.7,
+        "stability_combine": "resid_only",
+        "stability_score_threshold": 0.5,
+        "stability_score_resid_weight": 0.5,
+        "viterbi_lambda": 7.5,
+        "min_run_sec": 1.0,
+        "settle_frames": 8,
+        "settle_frames_static": 4,
+        "min_duration_sec": 1.15,
+        "focus_gate": false,
+        "focus_norm_quantile": 0.35,
+        "focus_hunt_sign_changes_per_sec": 2.4,
+        "focus_hunt_smooth_frames": 9,
+        "focus_hunt_deadband_std": 0.15,
+        "rack_min_ramp_frames": 18,
+        "exposure_gate": true,
+        "clip_low_frac_max": 0.31,
+        "clip_high_frac_max": 0.06,
+        "handle_sec": 1.0
+      },
+      "runnells_final_edge_warnings": [
+        {
+          "param": "stability_resid_quantile",
+          "value": 0.9,
+          "grid_edge": "max",
+          "grid_min": 0.2,
+          "grid_max": 0.9,
+          "note": "fitted stability_resid_quantile=0.9 sits exactly on the max of its search grid [0.2, 0.9]. A parameter pinned to the wall of its own search space is not evidence of an interior optimum -- it is the signature either of a grid that needs widening AGAIN with a documented reason, or (if widening does not move it off the wall) of a parameter that structurally wants to be disabled, which a wider grid cannot fix (2026-09-02 Decision Log)."
+        }
+      ],
+      "des_moines_score": {
+        "precision": 0.3287456593432886,
+        "recall": 0.7590274926956317,
+        "f1": 0.45878498302370413,
+        "iou": 0.26094850732749075,
+        "predicted_sec": 1449.0619583333332,
+        "truth_sec": 543.177025280112
+      },
+      "beats_des_moines_baseline": false
+    },
+    "robust_scale": {
+      "runnells_held_out_mean": {
+        "precision": 0.6249664557517419,
+        "recall": 0.9315806088875336,
+        "f1": 0.7466987223673369,
+        "iou": 0.430471950281256
+      },
+      "runnells_final_params": {
+        "consolidation": "stability",
+        "stability_resid_max": 1.5,
+        "stability_lapvar_quantile": 0.3,
+        "stability_resid_norm": "robust_scale",
+        "stability_resid_quantile": 0.7,
+        "stability_resid_z_max": 6.0,
+        "stability_smooth_sec": 0.7,
+        "stability_combine": "resid_only",
+        "stability_score_threshold": 0.5,
+        "stability_score_resid_weight": 0.5,
+        "viterbi_lambda": 7.5,
+        "min_run_sec": 1.0,
+        "settle_frames": 8,
+        "settle_frames_static": 4,
+        "min_duration_sec": 1.15,
+        "focus_gate": false,
+        "focus_norm_quantile": 0.35,
+        "focus_hunt_sign_changes_per_sec": 2.4,
+        "focus_hunt_smooth_frames": 9,
+        "focus_hunt_deadband_std": 0.15,
+        "rack_min_ramp_frames": 18,
+        "exposure_gate": true,
+        "clip_low_frac_max": 0.31,
+        "clip_high_frac_max": 0.06,
+        "handle_sec": 1.0
+      },
+      "runnells_final_edge_warnings": [
+        {
+          "param": "stability_resid_z_max",
+          "value": 6.0,
+          "grid_edge": "max",
+          "grid_min": 0.5,
+          "grid_max": 6.0,
+          "note": "fitted stability_resid_z_max=6.0 sits exactly on the max of its search grid [0.5, 6.0]. A parameter pinned to the wall of its own search space is not evidence of an interior optimum -- it is the signature either of a grid that needs widening AGAIN with a documented reason, or (if widening does not move it off the wall) of a parameter that structurally wants to be disabled, which a wider grid cannot fix (2026-09-02 Decision Log)."
+        }
+      ],
+      "des_moines_score": {
+        "precision": 0.3283658450673861,
+        "recall": 0.8323149652981682,
+        "f1": 0.4709370646978967,
+        "iou": 0.26839413233215303,
+        "predicted_sec": 1593.3594083333335,
+        "truth_sec": 543.177025280112
+      },
+      "beats_des_moines_baseline": false
+    }
+  },
+  "direction2_fit_des_moines_score_runnells": {
+    "absolute": {
+      "des_moines_held_out_mean": {
+        "precision": 0.39579306103281287,
+        "recall": 0.8394668937101333,
+        "f1": 0.5103456063222125,
+        "iou": 0.30378911648490287
+      },
+      "des_moines_final_params": {
+        "consolidation": "stability",
+        "stability_resid_max": 4.0,
+        "stability_lapvar_quantile": 0.3,
+        "stability_resid_norm": "absolute",
+        "stability_resid_quantile": 0.7,
+        "stability_resid_z_max": 3.0,
+        "stability_smooth_sec": 0.7,
+        "stability_combine": "resid_only",
+        "stability_score_threshold": 0.5,
+        "stability_score_resid_weight": 0.5,
+        "viterbi_lambda": 7.5,
+        "min_run_sec": 1.0,
+        "settle_frames": 8,
+        "settle_frames_static": 4,
+        "min_duration_sec": 1.15,
+        "focus_gate": false,
+        "focus_norm_quantile": 0.35,
+        "focus_hunt_sign_changes_per_sec": 2.4,
+        "focus_hunt_smooth_frames": 9,
+        "focus_hunt_deadband_std": 0.15,
+        "rack_min_ramp_frames": 18,
+        "exposure_gate": true,
+        "clip_low_frac_max": 0.31,
+        "clip_high_frac_max": 0.06,
+        "handle_sec": 1.0
+      },
+      "des_moines_final_edge_warnings": [],
+      "runnells_score": {
+        "precision": 0.6284749672216574,
+        "recall": 0.9124457308248917,
+        "f1": 0.7442943708896718,
+        "iou": 0.42695107499576773,
+        "predicted_sec": 189.0221666666667,
+        "truth_sec": 92.22546666666665
+      },
+      "beats_runnells_baseline": true
+    },
+    "quantile": {
+      "des_moines_held_out_mean": {
+        "precision": 0.4072526830004075,
+        "recall": 0.7699052568152785,
+        "f1": 0.5037908244574848,
+        "iou": 0.30121155976425057
+      },
+      "des_moines_final_params": {
+        "consolidation": "stability",
+        "stability_resid_max": 1.5,
+        "stability_lapvar_quantile": 0.3,
+        "stability_resid_norm": "quantile",
+        "stability_resid_quantile": 0.9,
+        "stability_resid_z_max": 3.0,
+        "stability_smooth_sec": 0.7,
+        "stability_combine": "resid_only",
+        "stability_score_threshold": 0.5,
+        "stability_score_resid_weight": 0.5,
+        "viterbi_lambda": 7.5,
+        "min_run_sec": 1.0,
+        "settle_frames": 8,
+        "settle_frames_static": 4,
+        "min_duration_sec": 1.15,
+        "focus_gate": false,
+        "focus_norm_quantile": 0.35,
+        "focus_hunt_sign_changes_per_sec": 2.4,
+        "focus_hunt_smooth_frames": 9,
+        "focus_hunt_deadband_std": 0.15,
+        "rack_min_ramp_frames": 18,
+        "exposure_gate": true,
+        "clip_low_frac_max": 0.31,
+        "clip_high_frac_max": 0.06,
+        "handle_sec": 1.0
+      },
+      "des_moines_final_edge_warnings": [
+        {
+          "param": "stability_resid_quantile",
+          "value": 0.9,
+          "grid_edge": "max",
+          "grid_min": 0.2,
+          "grid_max": 0.9,
+          "note": "fitted stability_resid_quantile=0.9 sits exactly on the max of its search grid [0.2, 0.9]. A parameter pinned to the wall of its own search space is not evidence of an interior optimum -- it is the signature either of a grid that needs widening AGAIN with a documented reason, or (if widening does not move it off the wall) of a parameter that structurally wants to be disabled, which a wider grid cannot fix (2026-09-02 Decision Log)."
+        }
+      ],
+      "runnells_score": {
+        "precision": 0.6418290081583552,
+        "recall": 0.8968885672937771,
+        "f1": 0.7482193077642415,
+        "iou": 0.43339160839160834,
+        "predicted_sec": 181.3478333333333,
+        "truth_sec": 92.22546666666665
+      },
+      "beats_runnells_baseline": true
+    },
+    "robust_scale": {
+      "des_moines_held_out_mean": {
+        "precision": 0.40052223437380197,
+        "recall": 0.8311446753680197,
+        "f1": 0.5113232103043818,
+        "iou": 0.3051496133365597
+      },
+      "des_moines_final_params": {
+        "consolidation": "stability",
+        "stability_resid_max": 1.5,
+        "stability_lapvar_quantile": 0.3,
+        "stability_resid_norm": "robust_scale",
+        "stability_resid_quantile": 0.7,
+        "stability_resid_z_max": 6.0,
+        "stability_smooth_sec": 0.7,
+        "stability_combine": "resid_only",
+        "stability_score_threshold": 0.5,
+        "stability_score_resid_weight": 0.5,
+        "viterbi_lambda": 7.5,
+        "min_run_sec": 1.0,
+        "settle_frames": 8,
+        "settle_frames_static": 4,
+        "min_duration_sec": 1.15,
+        "focus_gate": false,
+        "focus_norm_quantile": 0.35,
+        "focus_hunt_sign_changes_per_sec": 2.4,
+        "focus_hunt_smooth_frames": 9,
+        "focus_hunt_deadband_std": 0.15,
+        "rack_min_ramp_frames": 18,
+        "exposure_gate": true,
+        "clip_low_frac_max": 0.31,
+        "clip_high_frac_max": 0.06,
+        "handle_sec": 1.0
+      },
+      "des_moines_final_edge_warnings": [
+        {
+          "param": "stability_resid_z_max",
+          "value": 6.0,
+          "grid_edge": "max",
+          "grid_min": 0.5,
+          "grid_max": 6.0,
+          "note": "fitted stability_resid_z_max=6.0 sits exactly on the max of its search grid [0.5, 6.0]. A parameter pinned to the wall of its own search space is not evidence of an interior optimum -- it is the signature either of a grid that needs widening AGAIN with a documented reason, or (if widening does not move it off the wall) of a parameter that structurally wants to be disabled, which a wider grid cannot fix (2026-09-02 Decision Log)."
+        }
+      ],
+      "runnells_score": {
+        "precision": 0.6311108464850423,
+        "recall": 0.947178002894356,
+        "f1": 0.7574967173007916,
+        "iou": 0.43258426966292124,
+        "predicted_sec": 197.06353333333334,
+        "truth_sec": 92.22546666666665
+      },
+      "beats_runnells_baseline": true
+    }
+  }
+}

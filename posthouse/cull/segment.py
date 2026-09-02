@@ -181,6 +181,11 @@ _ENUM_REJECT_REASON = {
 # ``SegmentParams.stability_combine`` -- see that field's own docstring.
 _STABILITY_COMBINE_MODES = {"and", "or", "resid_only", "lapvar_only", "score"}
 
+# 2026-09-02 Decision Log follow-up (Ryan's ruling, normalize per clip): the
+# legal values of ``SegmentParams.stability_resid_norm`` -- see that field's
+# own docstring.
+_STABILITY_RESID_NORM_MODES = {"absolute", "quantile", "robust_scale"}
+
 
 class SegmentError(Exception):
     """Base class for segmentation failures."""
@@ -244,6 +249,89 @@ class SegmentParams:
     relative, not absolute, for the same reason design Sec1.4 gives for
     every other sharpness threshold in this module (measured medians on
     the benchmark clip run 100 to 4890 across accepted selects)."""
+
+    stability_resid_norm: str = "absolute"
+    """**2026-09-02 Decision Log: Ryan's ruling on the generalization
+    failure.** The Runnells-fitted detector scored BELOW select-everything
+    on Des Moines (P 0.317/R 0.714/IoU 0.255 vs baseline 0.338/1.000/0.300)
+    because ``stability_resid_max`` is an ABSOLUTE px/frame threshold and
+    smoothed motion-residual magnitudes differ by an order of magnitude
+    across shoots (Des Moines smoothed resid maxima ~0.5-1.0 px/frame vs
+    Runnells' own p99 of 10.90). Ryan's ruling: normalize per clip so the
+    threshold adapts to each shoot -- not per-shoot fitting, not
+    per-camera scoping. "Normalize per clip" has two meanings that fail
+    differently, so both ship as competing, separately selectable
+    strategies and measurement (not this docstring) decides which wins:
+
+    * ``"absolute"`` -- **the control arm, unchanged behavior.**
+      ``stability_resid_max`` is a raw px/frame cap
+      (``resid_smooth < stability_resid_max``). This is the mode that
+      failed to transfer; kept as the baseline every normalization
+      strategy must beat on the shoot it was NOT fitted on.
+    * ``"quantile"`` -- mirrors how ``stability_lapvar_quantile`` already
+      works: threshold at a FITTED PER-CLIP QUANTILE of the smoothed
+      residual (``stability_resid_quantile``), keeping the bottom
+      ``stability_resid_quantile`` fraction of this clip's OWN residual
+      distribution (``resid_smooth <= percentile(resid_smooth, 100 *
+      stability_resid_quantile)``). Scale-free -- no px/frame number ever
+      crosses a shoot boundary. Its known weakness, stated rather than
+      hidden: it assumes a roughly constant *fraction* of every clip is
+      usable, so a uniformly excellent clip (long, mostly-stable drone
+      footage is exactly this case) still loses its top
+      ``1 - stability_resid_quantile`` fraction to the threshold even
+      though none of it is actually bad.
+    * ``"robust_scale"`` -- normalizes the smoothed residual by a per-clip
+      ROBUST STATISTIC (median/MAD z-score: ``(resid_smooth -
+      median(resid_smooth)) / (1.4826 * MAD(resid_smooth))``, the standard
+      normal-consistent MAD scaling) and thresholds the result against
+      ``stability_resid_z_max`` in normalized units. Scale-free AND not
+      fraction-fixed: a uniformly good clip can stay almost entirely
+      selected, a uniformly bad one almost entirely rejected -- neither is
+      forced to lose a fixed top fraction the way ``"quantile"`` is.
+      Degenerate guard: a clip whose smoothed residual is perfectly
+      constant has MAD == 0; ``robust_scale`` treats that clip's z-score
+      as exactly 0 everywhere (every frame ties the median by
+      construction, so nothing is "abnormal" relative to itself) rather
+      than dividing by zero.
+
+    ``stability_resid_max`` is unused (but still validated and carried for
+    provenance) when this is ``"quantile"`` or ``"robust_scale"``;
+    ``stability_resid_quantile``/``stability_resid_z_max`` are unused
+    otherwise. Applies to every ``stability_combine`` mode that actually
+    reads the residual gate (``"and"``, ``"or"``, ``"resid_only"``) via
+    the shared ``_resid_ok`` helper -- so e.g.
+    ``stability_combine="resid_only"`` with
+    ``stability_resid_norm="robust_scale"`` is a fully valid, and the
+    module's cleanest, isolation of "does per-clip residual normalization
+    alone achieve cross-shoot transfer." Does NOT affect
+    ``stability_combine="lapvar_only"`` (never reads the residual gate at
+    all) or ``stability_combine="score"`` (``_stability_score`` already
+    applies its OWN full percentile-rank normalization to the residual,
+    independent of this field, and is unused/unaffected by whichever value
+    it holds)."""
+
+    stability_resid_quantile: float = 0.70
+    """Only used when ``stability_resid_norm == "quantile"``: the per-clip
+    fraction of frames (by smoothed residual, lowest = calmest) kept as
+    stability candidates. 0.70 is the reasoned unfit default -- the mirror
+    image of ``stability_lapvar_quantile``'s default 0.30 (lapvar keeps the
+    top ``1 - 0.30 = 0.70`` fraction by sharpness; residual keeps the
+    bottom ``0.70`` fraction by calmness), so an unfit clip with "typical"
+    signal shape keeps roughly the same overall fraction from either gate
+    before ``stability_combine`` decides how they interact. Fitted for
+    real by :mod:`posthouse.cull.fit`'s stability stage when this mode is
+    selected."""
+
+    stability_resid_z_max: float = 3.0
+    """Only used when ``stability_resid_norm == "robust_scale"``: the
+    per-clip MAD z-score cap (``(resid_smooth - median) / (1.4826 *
+    MAD)``) above which a frame is not a stability candidate. 3.0 is the
+    reasoned unfit default -- the conventional "more than 3 robust standard
+    deviations above this clip's own typical residual" outlier line,
+    scale-free by construction (unlike ``stability_resid_max``, it needs no
+    knowledge of a clip's absolute residual magnitude to mean the same
+    thing). Fitted for real by :mod:`posthouse.cull.fit`'s stability stage
+    when this mode is selected."""
 
     stability_smooth_sec: float = 0.7
     """Smoothing window, in seconds, applied to both ``resid`` and
@@ -435,6 +523,17 @@ class SegmentParams:
             )
         if self.stability_resid_max <= 0:
             raise ValueError(f"stability_resid_max must be > 0, got {self.stability_resid_max}")
+        if self.stability_resid_norm not in _STABILITY_RESID_NORM_MODES:
+            raise ValueError(
+                f"stability_resid_norm must be one of {sorted(_STABILITY_RESID_NORM_MODES)}, "
+                f"got {self.stability_resid_norm!r}"
+            )
+        if not (0.0 <= self.stability_resid_quantile <= 1.0):
+            raise ValueError(
+                f"stability_resid_quantile must be in [0, 1], got {self.stability_resid_quantile}"
+            )
+        if self.stability_resid_z_max <= 0:
+            raise ValueError(f"stability_resid_z_max must be > 0, got {self.stability_resid_z_max}")
         if self.stability_smooth_sec <= 0:
             raise ValueError(f"stability_smooth_sec must be > 0, got {self.stability_smooth_sec}")
         if self.stability_combine not in _STABILITY_COMBINE_MODES:
@@ -1097,6 +1196,68 @@ def _stability_score(resid_smooth: np.ndarray, lapvar_smooth: np.ndarray, params
     return w * resid_goodness + (1.0 - w) * lapvar_goodness
 
 
+def _robust_z(x: np.ndarray) -> np.ndarray:
+    """Per-clip median/MAD z-score: ``(x - median(x)) / (1.4826 *
+    MAD(x))``, the standard normal-consistent MAD scaling (1.4826 makes
+    the scale estimate agree with the standard deviation for normally
+    distributed data). Scale-free by construction -- no absolute px/frame
+    number ever crosses a shoot boundary (2026-09-02 Decision Log, Ryan's
+    per-clip-normalization ruling).
+
+    **Degenerate-case guard**: a clip whose smoothed residual is perfectly
+    constant (a genuinely locked-off, noise-free hold, or -- more likely
+    in practice -- a very short clip where the smoothing window collapses
+    every frame to the same padded-edge value) has MAD exactly 0. Every
+    element then trivially equals the median, so the "honest" z-score is
+    0 everywhere (nothing is abnormal relative to itself); this returns
+    exactly that rather than dividing by zero / producing NaN or inf,
+    which would otherwise poison every downstream threshold comparison
+    silently (`nan <= threshold` is always False in numpy, which would
+    reject a perfectly stable clip outright -- the opposite of correct)."""
+    if len(x) == 0:
+        return np.zeros(0, dtype=np.float64)
+    med = float(np.median(x))
+    mad = float(np.median(np.abs(x - med)))
+    if mad < 1e-12:
+        return np.zeros_like(x, dtype=np.float64)
+    return (x - med) / (1.4826 * mad)
+
+
+def _resid_ok(resid_smooth: np.ndarray, params: SegmentParams) -> tuple[np.ndarray, float, str]:
+    """The per-frame motion-residual gate, under whichever
+    ``stability_resid_norm`` strategy is selected (``SegmentParams.
+    stability_resid_norm``'s own docstring has the full reasoning).
+    Returns ``(resid_ok, threshold_value, detail_str)`` -- the threshold
+    and a human-readable description of it are both returned because
+    rejection detail messages (below) report them regardless of which
+    strategy chose them, and because a per-clip-fitted threshold (quantile
+    / robust_scale) is only known AFTER seeing this clip's own signal, not
+    something a caller can precompute."""
+    norm = params.stability_resid_norm
+    if norm == "absolute":
+        threshold = params.stability_resid_max
+        resid_ok = resid_smooth < threshold
+        detail = f"resid_smooth < {threshold} px/frame (absolute)"
+    elif norm == "quantile":
+        threshold = float(np.percentile(resid_smooth, 100.0 * params.stability_resid_quantile))
+        resid_ok = resid_smooth <= threshold
+        detail = (
+            f"resid_smooth <= this clip's own q{params.stability_resid_quantile * 100:.0f} "
+            f"= {threshold:.3f} px/frame (per-clip quantile)"
+        )
+    elif norm == "robust_scale":
+        z = _robust_z(resid_smooth)
+        threshold = params.stability_resid_z_max
+        resid_ok = z <= threshold
+        detail = (
+            f"(resid_smooth - median) / (1.4826*MAD) <= {threshold} "
+            f"(per-clip robust z-score)"
+        )
+    else:  # pragma: no cover - unreachable, __post_init__ already validated
+        raise ValueError(f"unknown stability_resid_norm {norm!r}")
+    return resid_ok, threshold, detail
+
+
 def _stability_stable_mask(
     resid_smooth: np.ndarray, lapvar_smooth: np.ndarray, params: SegmentParams,
 ) -> tuple[np.ndarray, float]:
@@ -1108,9 +1269,11 @@ def _stability_stable_mask(
     the two can never drift apart. Returns ``(stable_mask,
     lapvar_threshold)`` -- the threshold is returned too because rejection
     detail messages (below) report it even in modes that do not gate on
-    it directly."""
+    it directly. The residual side's own threshold/detail (which strategy
+    fired, and its resolved value) is available via :func:`_resid_ok`
+    directly for callers that need it (the rejection-detail builder does)."""
     lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
-    resid_ok = resid_smooth < params.stability_resid_max
+    resid_ok, _resid_threshold, _resid_detail = _resid_ok(resid_smooth, params)
     lapvar_ok = lapvar_smooth >= lapvar_threshold
 
     combine = params.stability_combine
@@ -1213,10 +1376,11 @@ def _run_stability_pipeline(
                 )
             else:
                 reason = "transition" if dur_sec < params.min_duration_sec else "motion_inconsistent"
+                _resid_ok_span, _resid_threshold, resid_detail = _resid_ok(resid_smooth, params)
                 combine_detail = (
-                    f"combine={params.stability_combine}: smoothed resid mean "
-                    f"{float(np.mean(resid_smooth[s_in:s_out])):.2f} px/frame vs cap "
-                    f"{params.stability_resid_max}, smoothed lapvar_norm median "
+                    f"combine={params.stability_combine}, resid_norm={params.stability_resid_norm}: "
+                    f"smoothed resid mean {float(np.mean(resid_smooth[s_in:s_out])):.2f} px/frame, "
+                    f"gate is {resid_detail}; smoothed lapvar_norm median "
                     f"{float(np.median(lapvar_smooth[s_in:s_out])):.2f} vs this clip's own "
                     f"q{params.stability_lapvar_quantile * 100:.0f} floor {lapvar_threshold:.2f}"
                     if params.stability_combine != "score" else

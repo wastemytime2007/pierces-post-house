@@ -104,7 +104,25 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **THE GENERALIZATION TEST FAILED, which is the most important result
+1. **TRANSFER IS ASYMMETRIC; per-clip normalization is necessary but
+   not sufficient.** Fitting on Des Moines and scoring Runnells beats
+   baseline in all three strategies (best: robust_scale P 0.631 /
+   R 0.947 / IoU 0.433 vs baseline 0.577/0.392). The reverse direction
+   fails in all three, within 0.01 of each other, which shows scale was
+   never the binding constraint there. Diagnosed: Runnells is 57.7%
+   usable, Des Moines 33.6%, and per-clip usable fraction on Des Moines
+   runs 0% to 52%. A detector fitted where most footage is usable keeps
+   too generously for footage where most is not. The `quantile`
+   strategy's constant-fraction assumption, flagged as a weakness
+   before it was built, is directly falsified by that 0-52% spread.
+   **Ryan's decision needed** (all defensible, none silently taken):
+   fit per shoot (cheap now the harness exists), scope per camera or
+   footage type, accept asymmetric transfer and always fit on the
+   denser shoot, or first test whether the usable-fraction gap is an
+   artifact of the two answer keys being made differently (purpose-built
+   marking pass vs a real job's organized selects) rather than a real
+   property of the footage.
+2. **THE GENERALIZATION TEST FAILED, which is the most important result
    so far.** The Runnells-fitted detector, run unchanged against the Des
    Moines drone footage, scored BELOW select-everything on precision and
    IoU (P 0.317 / R 0.714 / IoU 0.255 vs baseline P 0.338 / R 1.000 /

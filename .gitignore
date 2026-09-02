@@ -3,3 +3,4 @@ __pycache__/
 .pytest_cache/
 safety_net/golden/actual_*.xml
 safety_net/golden/actual_*.json
+benchmark/**/_fixtures_work/

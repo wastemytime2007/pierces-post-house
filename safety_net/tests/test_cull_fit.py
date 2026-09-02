@@ -205,6 +205,54 @@ def test_fit_one_stability_fits_exactly_the_two_stability_params(tmp_path):
     assert params.settle_frames == default.settle_frames
 
 
+def test_fit_one_stability_resid_only_quantile_fits_exactly_that_one_param(tmp_path):
+    """2026-09-02 Decision Log follow-up (Ryan's per-clip-normalization
+    ruling): under ``stability_combine="resid_only"`` with
+    ``stability_resid_norm="quantile"``, the motion stage must search
+    ONLY ``stability_resid_quantile`` -- not ``stability_resid_max``
+    (unused by this norm mode) and not ``stability_lapvar_quantile``
+    (unused by resid_only at all)."""
+    npz, truth, blocks = _small_scenario(tmp_path)
+    evaluator = Evaluator(npz, SOURCE_PATH, truth)
+    train = blocks[:2]
+
+    params, _metrics, trace, _warnings = fit_one(
+        "stability", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"),
+        stability_combine="resid_only", stability_resid_norm="quantile",
+    )
+    assert params.stability_resid_norm == "quantile"
+    assert all(t.stage == "stability_resid_quantile" for t in trace["motion"])
+
+
+def test_fit_one_stability_resid_only_robust_scale_fits_exactly_that_one_param(tmp_path):
+    npz, truth, blocks = _small_scenario(tmp_path)
+    evaluator = Evaluator(npz, SOURCE_PATH, truth)
+    train = blocks[:2]
+
+    params, _metrics, trace, _warnings = fit_one(
+        "stability", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"),
+        stability_combine="resid_only", stability_resid_norm="robust_scale",
+    )
+    assert params.stability_resid_norm == "robust_scale"
+    assert all(t.stage == "stability_resid_z_max" for t in trace["motion"])
+
+
+def test_fit_one_stability_resid_only_absolute_is_unaffected_by_norm_default(tmp_path):
+    """The pre-existing control arm: leaving ``stability_resid_norm``
+    unspecified (its ``SegmentParams`` default, ``"absolute"``) must
+    reproduce exactly the pre-2026-09-02 behavior -- no regression."""
+    npz, truth, blocks = _small_scenario(tmp_path)
+    evaluator = Evaluator(npz, SOURCE_PATH, truth)
+    train = blocks[:2]
+
+    params, _metrics, trace, _warnings = fit_one(
+        "stability", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"),
+        stability_combine="resid_only",
+    )
+    assert params.stability_resid_norm == "absolute"
+    assert all(t.stage == "stability_resid_max" for t in trace["motion"])
+
+
 def test_fit_stability_reproducible_with_fixed_seed(tmp_path):
     """Same CV/bootstrap machinery, same fixed-seed reproducibility
     contract as the legacy arms (test_fixed_seed_reproduces_fixed_params),
@@ -443,6 +491,7 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
         "stability_and_full", "stability_and_no_exposure",
         "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
         "stability_score_full", "stability_score_no_exposure",
+        "stability_resid_only_quantile_full", "stability_resid_only_robust_scale_full",
     ):
         assert name in report.arms
     assert "stability_no_focus" not in report.arms  # no such arm; stability has no focus gate
@@ -464,6 +513,20 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
         assert combine_key in verdicts
         assert verdicts[combine_key] in ("earns its place", "does not earn its place — recommend removing")
     assert len(verdicts["stability_combine_ranking"]) == 5
+
+    # 2026-09-02 Decision Log follow-up: the two competing resid_norm
+    # strategies, isolated under resid_only, each verdicted against the
+    # "absolute" control arm, plus a 3-way ranking.
+    for norm_key in (
+        "stability_resid_norm_quantile_vs_absolute", "stability_resid_norm_robust_scale_vs_absolute",
+    ):
+        assert norm_key in verdicts
+        assert verdicts[norm_key] in ("earns its place", "does not earn its place — recommend removing")
+    assert len(verdicts["stability_resid_norm_ranking"]) == 3
+    assert {r["resid_norm"] for r in verdicts["stability_resid_norm_ranking"]} == {
+        "absolute", "quantile", "robust_scale",
+    }
+
     assert f"{legacy_cons}_focus_gate" in verdicts
     assert f"{legacy_cons}_exposure_gate" in verdicts
     for v in (
@@ -480,6 +543,7 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
         "stability_and_full", "stability_and_no_exposure",
         "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
         "stability_score_full", "stability_score_no_exposure",
+        "stability_resid_only_quantile_full", "stability_resid_only_robust_scale_full",
     )
 
     assert (tmp_path / "out" / "params.json").exists()

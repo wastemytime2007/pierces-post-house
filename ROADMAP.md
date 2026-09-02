@@ -574,6 +574,52 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — TRANSFER IS ASYMMETRIC, and per-clip normalization
+  does not fix the failing direction. The reason is structural, not a
+  tuning problem.** Measured both directions, all three strategies, no
+  re-fitting on the scored shoot:
+  | direction | strategy | P | R | F1 | IoU | vs baseline |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | fit Runnells → score Des Moines | absolute | 0.330 | 0.858 | 0.477 | 0.273 | **below** (base P 0.336 / IoU 0.291) |
+  | " | quantile | 0.329 | 0.759 | 0.459 | 0.261 | **below** |
+  | " | robust_scale | 0.328 | 0.832 | 0.471 | 0.268 | **below** |
+  | fit Des Moines → score Runnells | absolute | 0.628 | 0.912 | 0.744 | 0.427 | **transfers** (base P 0.577 / IoU 0.392) |
+  | " | quantile | 0.642 | 0.897 | 0.748 | 0.433 | **transfers** |
+  | " | robust_scale | 0.631 | 0.947 | 0.757 | 0.433 | **transfers** |
+  **Fitting on the harder shoot transfers to the easier one; the reverse
+  does not, and normalization does not rescue it.** All three strategies
+  land within 0.01 of each other in the failing direction, which is the
+  tell that the residual signal's *scale* was never the binding
+  constraint there.
+  **The Lead's diagnosis, measured rather than assumed:** the two shoots
+  have very different usable fractions. Runnells is **57.7% usable**
+  (1.5 of 3.9 min); the 12-clip Des Moines set is **33.6% usable** (9.1
+  of 31.1 min). Select-everything precision IS the usable fraction, so
+  it is also the ceiling any detector's precision is judged against. A
+  detector fitted where 58% is usable learns to keep generously, and
+  keeping generously on footage that is only 34% usable cannot clear
+  that shoot's baseline. Worse for the `quantile` strategy specifically:
+  per-clip usable fraction across the Des Moines set runs from **0% to
+  52%** (two clips are true full-clip rejects), so the assumption that
+  each clip has a roughly constant usable fraction — which the Lead
+  flagged as its weakness *before* building it — is directly falsified
+  on Ryan's real footage. That prediction being confirmed is worth as
+  much as the numbers.
+  **What this means, stated plainly:** per-clip normalization was
+  necessary and is now in place (it makes thresholds scale-free, which
+  they genuinely were not), but it is **not sufficient** for
+  cross-shoot transfer. Ryan's ruling is implemented and the honest
+  result is that it does not close the gap on its own. The open options
+  are unchanged and remain his call: fit per shoot (cheap now that the
+  harness exists — one fit per job), scope the cull per camera or
+  footage type, or accept asymmetric transfer and always fit on the
+  harder/denser shoot. There is also a fourth possibility worth testing
+  before deciding: the usable-fraction gap may be an artifact of *how
+  the two answer keys were made* (Runnells was a purpose-built marking
+  pass, Des Moines is a real job's organized selects — the very caveat
+  flagged when Des Moines was staged), in which case the two are not
+  measuring quite the same thing and the comparison deserves that
+  asterisk.
 - **2026-09-02 — Ryan's ruling on the generalization failure: normalize
   per clip so thresholds adapt to each shoot.** Not per-shoot fitting,
   not per-camera scoping. The Lead flagged, before building, that

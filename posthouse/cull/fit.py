@@ -460,6 +460,42 @@ STAGE_GRID_STABILITY_BY_COMBINE: dict[str, dict[str, list]] = {
     "score": STAGE_GRID_STABILITY_SCORE,
 }
 
+# ---------------------------------------------------------------------------
+# stability_resid_norm (2026-09-02 Decision Log, Ryan's per-clip-
+# normalization ruling): grids for the two normalized residual strategies,
+# ``"quantile"`` and ``"robust_scale"``, isolated under ``stability_combine
+# == "resid_only"`` -- the cleanest first-class arm for "does per-clip
+# residual normalization alone achieve cross-shoot transfer" (task brief),
+# since it removes the lapvar/combine-structure question entirely and
+# measures the residual normalization strategy on its own. ``"absolute"``
+# (the control arm, unchanged behavior) already has its grid --
+# STAGE_GRID_STABILITY_RESID_ONLY above.
+#
+# Both new parameters are scale-free by construction (a fraction and a
+# robust z-score bound), so neither needs data-informed absolute bounds the
+# way STABILITY_RESID_MAX_GRID did -- these are plain, evenly spaced
+# brackets around the reasoned unfit defaults (SegmentParams docstrings):
+# stability_resid_quantile=0.70, stability_resid_z_max=3.0.
+STABILITY_RESID_QUANTILE_GRID: list = [0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+STABILITY_RESID_Z_MAX_GRID: list = [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0]
+
+STAGE_GRID_STABILITY_RESID_ONLY_QUANTILE: dict[str, list] = {
+    "stability_resid_quantile": STABILITY_RESID_QUANTILE_GRID,
+}
+STAGE_GRID_STABILITY_RESID_ONLY_ROBUST_SCALE: dict[str, list] = {
+    "stability_resid_z_max": STABILITY_RESID_Z_MAX_GRID,
+}
+
+# Consulted by fit_one() ONLY when stability_combine == "resid_only" -- the
+# three competing, separately selectable ``stability_resid_norm`` arms
+# (task brief). "absolute" reuses STAGE_GRID_STABILITY_RESID_ONLY (the
+# pre-existing control grid) unchanged.
+STAGE_GRID_STABILITY_RESID_ONLY_BY_NORM: dict[str, dict[str, list]] = {
+    "absolute": STAGE_GRID_STABILITY_RESID_ONLY,
+    "quantile": STAGE_GRID_STABILITY_RESID_ONLY_QUANTILE,
+    "robust_scale": STAGE_GRID_STABILITY_RESID_ONLY_ROBUST_SCALE,
+}
+
 
 # ---------------------------------------------------------------------------
 # Grid-edge alarm (task brief point 1, 2026-09-02 Decision Log follow-up)
@@ -566,6 +602,7 @@ def fit_one(
     passes: int,
     stages: tuple[str, ...],
     stability_combine: str = "and",
+    stability_resid_norm: str = "absolute",
 ) -> tuple[SegmentParams, Metrics, dict, list[dict]]:
     """One staged fit (design Sec3.2 point 1's full stage order — motion
     first because it sets the boundaries, then focus, then exposure) on
@@ -582,6 +619,16 @@ def fit_one(
     :data:`STAGE_GRID_STABILITY_BY_COMBINE`) in place of the legacy
     consolidation grids. The "exposure" stage is unchanged -- the
     stability path keeps the same exposure gate as the legacy paths.
+
+    **2026-09-02 Decision Log follow-up (Ryan's per-clip-normalization
+    ruling):** when ``stability_combine == "resid_only"``,
+    ``stability_resid_norm`` selects which of the three competing residual
+    normalization grids the "motion" stage actually searches (see
+    :data:`STAGE_GRID_STABILITY_RESID_ONLY_BY_NORM`) -- ``"absolute"`` (the
+    control arm, unchanged), ``"quantile"``, or ``"robust_scale"``. Ignored
+    for every other combine mode (``"and"``/``"or"``/``"lapvar_only"``
+    still search their own pre-existing grids unchanged; ``"score"`` has
+    its own independent, always-scale-free normalization).
     """
     is_stability = consolidation == "stability"
     base = SegmentParams(
@@ -589,6 +636,7 @@ def fit_one(
         focus_gate=False if is_stability else focus_gate,
         exposure_gate=exposure_gate,
         stability_combine=stability_combine,
+        stability_resid_norm=stability_resid_norm,
     )
     eval_fn = lambda p: evaluator.score(p, train_blocks)  # noqa: E731
 
@@ -596,7 +644,9 @@ def fit_one(
     warnings: list[dict] = []
 
     if "motion" in stages:
-        if is_stability:
+        if is_stability and stability_combine == "resid_only":
+            motion_grid = STAGE_GRID_STABILITY_RESID_ONLY_BY_NORM[stability_resid_norm]
+        elif is_stability:
             motion_grid = STAGE_GRID_STABILITY_BY_COMBINE[stability_combine]
         elif consolidation == "viterbi":
             motion_grid = STAGE_GRID_MOTION_VITERBI
@@ -682,20 +732,21 @@ def run_arm(
     n_bootstrap: int,
     seed: int,
     stability_combine: str = "and",
+    stability_resid_norm: str = "absolute",
 ) -> ArmResult:
     folds: list[FoldResult] = []
     for held_out in blocks:
         train_blocks = [b for b in blocks if b.index != held_out.index]
         params, train_m, _trace, fold_warnings = fit_one(
             consolidation, focus_gate, exposure_gate, evaluator, train_blocks, precision_floor, passes, stages,
-            stability_combine=stability_combine,
+            stability_combine=stability_combine, stability_resid_norm=stability_resid_norm,
         )
         held_m = evaluator.score(params, [held_out])
         folds.append(FoldResult(held_out.index, params, train_m, held_m, edge_warnings=fold_warnings))
 
     final_params, final_m, _trace, final_warnings = fit_one(
         consolidation, focus_gate, exposure_gate, evaluator, blocks, precision_floor, passes, stages,
-        stability_combine=stability_combine,
+        stability_combine=stability_combine, stability_resid_norm=stability_resid_norm,
     )
 
     metric_names = ("precision", "recall", "f1", "iou")
@@ -1011,6 +1062,19 @@ def fit(
         stability_combine="score",
     )
 
+    # --- 2026-09-02 Decision Log follow-up (Ryan's per-clip-normalization
+    # ruling): the two competing ``stability_resid_norm`` strategies,
+    # isolated under ``stability_combine="resid_only"`` (task brief) --
+    # "absolute" is already fit above as ``stability_resid_only_full``
+    # (run_arm's own default is stability_resid_norm="absolute", so that
+    # arm IS the control arm for this comparison, not a separate run).
+    for norm in ("quantile", "robust_scale"):
+        arms[f"stability_resid_only_{norm}_full"] = run_arm(
+            f"stability_resid_only_{norm}_full", "stability", False, True,
+            evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
+            stability_combine="resid_only", stability_resid_norm=norm,
+        )
+
     # --- legacy arms, kept and fully fit for comparison -------------------
     # "demote, do not delete" (task brief): slices 2-4's classify+
     # consolidate+gate pipeline is still fit and ablated in full every run,
@@ -1061,6 +1125,7 @@ def fit(
         "stability_and_full", "stability_and_no_exposure",
         "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
         "stability_score_full", "stability_score_no_exposure",
+        "stability_resid_only_quantile_full", "stability_resid_only_robust_scale_full",
     )
     stability_ranked = sorted(
         (arms[n] for n in stability_arm_names),
@@ -1132,6 +1197,8 @@ def fit(
     and_arm, or_arm = arms["stability_and_full"], arms["stability_or_full"]
     resid_only_arm, lapvar_only_arm = arms["stability_resid_only_full"], arms["stability_lapvar_only_full"]
     score_arm = arms["stability_score_full"]
+    resid_only_quantile_arm = arms["stability_resid_only_quantile_full"]
+    resid_only_robust_scale_arm = arms["stability_resid_only_robust_scale_full"]
 
     ablation_verdicts = {
         # Task brief point 3/4: the AND gate judged against EVERY other
@@ -1149,6 +1216,32 @@ def fit(
                 ("stability_and_full", "stability_or_full", "stability_resid_only_full",
                  "stability_lapvar_only_full", "stability_score_full"),
                 key=lambda n: arm_rank_key(arms[n], precision_floor), reverse=True,
+            )
+        ],
+        # 2026-09-02 Decision Log follow-up (Ryan's per-clip-normalization
+        # ruling): each normalized resid_only strategy judged against the
+        # "absolute" control arm on the SAME held-out ranking rule, plus
+        # the raw ranking among all three -- this is the harness's own
+        # answer to "does per-clip normalization beat an absolute
+        # threshold" on THIS shoot; the real deliverable (does it TRANSFER
+        # to the other shoot) is the cross-shoot table this fit's own
+        # numbers get assembled into by the transfer-measurement runner,
+        # not something a single fit() call on one shoot can answer alone.
+        "stability_resid_norm_quantile_vs_absolute": gate_verdict(
+            resid_only_quantile_arm, resid_only_arm, precision_floor,
+        ),
+        "stability_resid_norm_robust_scale_vs_absolute": gate_verdict(
+            resid_only_robust_scale_arm, resid_only_arm, precision_floor,
+        ),
+        "stability_resid_norm_ranking": [
+            {"resid_norm": norm_name, "arm": n, "mean_held_out": arms[n].mean_held_out}
+            for norm_name, n in sorted(
+                (
+                    ("absolute", "stability_resid_only_full"),
+                    ("quantile", "stability_resid_only_quantile_full"),
+                    ("robust_scale", "stability_resid_only_robust_scale_full"),
+                ),
+                key=lambda pair: arm_rank_key(arms[pair[1]], precision_floor), reverse=True,
             )
         ],
         "stability_exposure_gate": gate_verdict(
