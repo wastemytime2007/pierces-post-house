@@ -507,8 +507,13 @@ companion for the header and the run-length-encoded state sequence.**
   long: `tx`, `ty`, `log_scale`, `roll`, `resid`, `peak`, `hf_energy`,
   `lapvar`, `lapvar_norm`, `luma_mean`, `luma_std`, `clip_low`,
   `clip_high`, plus an int8 `state` array and a decimated 64-bin
-  histogram (`int16`, every 15th frame). Audio arrays (`peak_dbfs`,
-  `rms_dbfs`, `clipped`) at their own 20ms rate, in the same file with
+  histogram (**`int32`**, every 15th frame; amended 2026-09-01 after
+  review: the plane is 518,400 pixels, so a single bin can exceed
+  int16's 32,767 and silently wrap negative on black slates and
+  lens-cap frames, exactly the frames the exposure gate exists to
+  catch). Audio arrays (`audio_peak_dbfs`, `audio_rms_dbfs`,
+  `audio_clip_run`; the code's names are authoritative and this
+  document follows them) at their own 20ms rate, in the same file with
   their own length.
 - `<name>.signals.json` — provenance (`cull_id`, `params_id`, ffmpeg
   version, plane size, fps, frame count, sha256 of the npz), the column

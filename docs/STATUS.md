@@ -104,11 +104,14 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 slice 1 committed** (`c2fc65c`; `posthouse/cull/signals.py`,
-   27 tests incl. two deadlock regressions; suite 247/1). Review found
-   and we fixed a stdout/stderr pipe deadlock that only real footage
-   would trigger. Remaining review findings being applied; then slice 2
-   (motion classification). Measured on the real clip: 1.34x realtime
+1. **Phase 4 slice 1 committed** (`c2fc65c`, 27 tests, suite 247/1);
+   **full review fixes in progress**: 8 findings beyond the deadlock,
+   two critical for slice 2 (frames materialized in RAM, ~30 GB on the
+   33-min clip; phase-correlation sign inverted, which would have
+   reversed every pan direction downstream). Also int32 histograms,
+   truthful decode provenance, audio-present-after-decode, cloud-safe
+   test marks, an honest proxy-motion test, collision-proof sidecar
+   names, and FFT/audio perf. Then slice 2 (motion classification). Measured on the real clip: 1.34x realtime
    (below the 4-5x projection, well inside the bar). Real-footage
    proxy check: sharpness shape survives compression (r 0.98) but its
    absolute level and the motion residual do not (r 0.54), so originals

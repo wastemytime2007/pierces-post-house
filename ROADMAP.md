@@ -574,6 +574,36 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Slice 1 full review: 8 verified findings beyond the
+  deadlock, two of them critical for slice 2.** (1) **Memory:** the
+  extractor materialized every decoded frame in RAM before analysis,
+  ~9 GB per 10 minutes; the 33-minute Runnells clip would have been
+  OOM-killed before the first Laplacian. Decode and analysis become one
+  streaming pass. (2) **Sign inversion:** the phase correlation returned
+  displacement with the sign flipped (`fa*conj(fb)`), invisible to
+  tests that use sign-agnostic medians, but slice 2 would have inherited
+  every pan direction, push vs pull, and roll direction backwards.
+  Fixed with direction unit tests; the design's sign-convention pin
+  (pan −5.84 px/frame on Ryan's selects 3/4) is re-measured after the fix
+  and corrected in the design doc. Also: int16 histogram bins wrap on
+  black frames (now int32, design §4 amended); `decode_mode` claimed
+  hardware for ProRes/FFV1 that ffmpeg silently software-decoded (made a
+  hard failure that routes to the fallback); an audio stream with zero
+  samples wrote empty arrays flagged present (present decided after
+  decode); 15 tests would crash rather than skip under the cloud numpy
+  stub (module marked tier2); the proxy-motion test was vacuous
+  (medians of static footage) and is replaced by one asserting the
+  measured truth that proxies do NOT preserve per-frame motion; sidecar
+  filenames collided on DJI card-rollover basenames (sha12 suffix).
+  Perf items taken because they address the 1.34x runtime: FFT spectra
+  cached across frames, rfft2, no complex128 upcast, streamed audio,
+  vectorized windows. Prose in tests/README that claimed the sharpness
+  effect "was measured on real 4K footage in the design doc" was false
+  and now cites §1.9. Verdict on the pattern: the fixtures validated
+  orderings and determinism perfectly and missed every one of these,
+  because they are quiet, small, static, and synthetic; the review and
+  the real clip caught them. Fixture green is necessary, never
+  sufficient.
 - **2026-09-01 — Slice 1 review found a deadlock; fixed and committed
   (`c2fc65c`).** The extractor read frames from ffmpeg's stdout while
   draining stderr only afterwards, so a chatty decode filled the 64 KB
