@@ -239,30 +239,31 @@ def _resolve_clipitem_rate(clipitem: ET.Element, file_entry: dict) -> tuple[int,
     return 30, False
 
 
-def _resolve_conversion_rate(clipitem_rate: tuple[int, bool], file_entry: dict) -> tuple[int, bool]:
-    """Resolve the rate actually used to convert a clipitem's ``<in>``/
-    ``<out>`` frame counts to seconds — an FCP7 conform-to-sequence quirk,
-    not a general revalidation of frame-rate handling.
+def _self_consistent_range(
+    in_frames: int, out_frames: int, rate: tuple[int, bool], duration_frames: Optional[int]
+) -> tuple[float, float, bool]:
+    """Convert ``in_frames``/``out_frames`` to seconds using ``rate``, and
+    report whether the result is self-consistent with ``duration_frames``
+    (also at ``rate``) — i.e. the out point fits inside that duration
+    within :data:`_BOUNDS_EPSILON_SEC`.
 
-    When a clip's native frame rate differs from the sequence it is cut
-    into, Premiere writes the clipitem's own ``<rate>`` as the SEQUENCE's
-    rate (not the source file's), but the ``<in>``/``<out>`` frame numbers
-    are still counted in the SOURCE FILE's native rate. Dividing by the
-    clipitem's declared rate in that case inflates every duration by
-    (native_rate / sequence_rate).
-
-    So: whenever the referenced ``<file>``'s own declared rate differs
-    from the clipitem's declared rate, the file's rate is the correct one
-    to convert with. When they agree (the common, no-mismatch case),
-    behavior is unchanged — this returns the clipitem's rate right back.
+    When ``duration_frames`` is falsy (no duration known for this
+    candidate — e.g. an old-style clipitem with no own ``<duration>``
+    tag), there is nothing to check the range against, so this reports
+    the candidate as fitting *vacuously* — the caller has no basis to
+    reject it, and this preserves pre-existing behavior for XML that
+    never carried the extra duration data this check needs.
     """
-    file_timebase = file_entry.get("timebase")
-    if file_timebase is None:
-        return clipitem_rate
-    file_rate = (file_timebase, file_entry.get("ntsc", False))
-    if file_rate != clipitem_rate:
-        return file_rate
-    return clipitem_rate
+    timebase, ntsc = rate
+    fps = _effective_fps(timebase, ntsc)
+    if fps <= 0:
+        return float("nan"), float("nan"), False
+    in_sec = in_frames / fps
+    out_sec = out_frames / fps
+    if not duration_frames:
+        return in_sec, out_sec, True
+    duration_sec = duration_frames / fps
+    return in_sec, out_sec, out_sec <= duration_sec + _BOUNDS_EPSILON_SEC
 
 
 def parse_answer_key_xml(xml_path: Path) -> list[Range]:
@@ -273,20 +274,42 @@ def parse_answer_key_xml(xml_path: Path) -> list[Range]:
     * ``<clipitem>`` -> ``<file id=...>`` reference reuse (see
       :func:`_collect_file_defs`).
     * Percent-encoded ``<pathurl>`` (``file://localhost/...``), decoded.
-    * ``<in>``/``<out>`` in frames at the clipitem's (or its file's)
-      ``<rate>`` — timebase + ``<ntsc>`` handled per
-      :func:`_effective_fps`. FCP7 conform quirk: when a clip's native
-      frame rate differs from the sequence it is cut into, Premiere
-      writes the clipitem's own ``<rate>`` as the SEQUENCE's rate (not
-      the source file's), while the ``<in>``/``<out>`` frame counts stay
-      in the SOURCE FILE's native rate. Whenever the referenced
-      ``<file>``'s own ``<rate>`` differs from the clipitem's declared
-      rate, the file's rate is used to convert in/out to seconds instead
-      (see :func:`_resolve_conversion_rate`). A bounds check then raises
-      :class:`AnswerKeyParseError` if the resolved out point still
-      exceeds the file's own ``<duration>`` (at the file's own rate) by
-      more than a small epsilon, naming both candidate interpretations,
-      rather than silently emitting an impossible range.
+    * ``<in>``/``<out>`` in frames, converted to seconds by trying two
+      candidate (rate, duration) interpretations in a fixed preference
+      order and using the first that is *self-consistent* — i.e. the
+      resolved out point fits inside that candidate's own declared
+      duration (see :func:`_self_consistent_range`):
+
+      1. The referenced ``<file>``'s own ``<rate>``/``<duration>``. This
+         is the common case, and also the fix for the FCP7
+         conform-to-sequence quirk: when a clip's native frame rate
+         differs from the sequence it is cut into, Premiere writes the
+         clipitem's own ``<rate>`` as the SEQUENCE's rate (not the
+         source file's), while the ``<in>``/``<out>`` frame counts stay
+         in the SOURCE FILE's native rate — so the file's rate is
+         required to convert them correctly.
+      2. The clipitem's OWN ``<rate>``/``<duration>``, tried only if (1)
+         is not self-consistent. This covers a retimed/reinterpreted
+         source (e.g. a clip conformed to play at half rate for slow
+         motion): Premiere then writes that clipitem instance's own
+         ``<duration>`` reflecting the retimed total, which disagrees
+         with the file's own duration even though the declared rate
+         (timebase) may be identical. In this case the frame numbers
+         are proportionally rescaled against the file's REAL duration
+         (``(frame / clipitem_own_duration_frames) * (file_duration_frames
+         / file_rate)``) rather than divided by the clipitem's own
+         (retimed) rate — dividing by the retimed rate would give a
+         position in the retimed timeline (up to ~2x past the file's
+         actual end), not a real seconds-into-the-source-file position,
+         which is the contract every ``Range`` must honor.
+
+      If NEITHER candidate is self-consistent, :class:`AnswerKeyParseError`
+      is raised naming the clipitem, the file, and both candidate
+      interpretations (their seconds values and why each failed) rather
+      than silently emitting an impossible range. A clipitem with no own
+      ``<duration>`` tag (the common case) never engages candidate 2 —
+      behavior is unchanged from before this two-candidate resolution
+      existed.
     * Clipitems with no ``<file>`` child (gaps, titles, adjustment
       layers) are skipped — they carry no source footage.
     * A ``<sequence>`` sitting alongside other sequences under
@@ -371,41 +394,124 @@ def parse_answer_key_xml(xml_path: Path) -> list[Range]:
                 continue  # -1 (point marker) or degenerate range
 
             clipitem_rate = _resolve_clipitem_rate(ci, entry)
-            timebase, ntsc = _resolve_conversion_rate(clipitem_rate, entry)
-            fps = _effective_fps(timebase, ntsc)
-            if fps <= 0:
-                continue
+
+            ci_duration_frames = None
+            ci_duration_el = ci.find("duration")
+            if ci_duration_el is not None and ci_duration_el.text:
+                try:
+                    ci_duration_frames = int(round(float(ci_duration_el.text)))
+                except ValueError:
+                    pass
 
             source_path, source_basename = _decode_pathurl(pathurl)
-            in_sec = in_frames / fps
-            out_sec = out_frames / fps
 
+            file_timebase = entry.get("timebase")
             file_duration_frames = entry.get("duration_frames")
-            if file_duration_frames:
-                file_fps = _effective_fps(
-                    entry.get("timebase", timebase), entry.get("ntsc", ntsc)
+
+            # Candidate 1: the referenced <file>'s own rate/duration — the
+            # common case, and the fix for the sequence-conform quirk (see
+            # module docstring). Tried first.
+            file_rate = None
+            file_ok = False
+            file_in_sec = file_out_sec = None
+            if file_timebase is not None:
+                file_rate = (file_timebase, entry.get("ntsc", False))
+                file_in_sec, file_out_sec, file_ok = _self_consistent_range(
+                    in_frames, out_frames, file_rate, file_duration_frames
                 )
-                if file_fps > 0:
-                    file_duration_sec = file_duration_frames / file_fps
-                    if out_sec > file_duration_sec + _BOUNDS_EPSILON_SEC:
-                        clip_timebase, clip_ntsc = clipitem_rate
-                        clip_fps = _effective_fps(clip_timebase, clip_ntsc)
-                        clip_out_sec = out_frames / clip_fps if clip_fps > 0 else float("nan")
-                        ci_name = ci.findtext("name") or "(unnamed clipitem)"
-                        raise AnswerKeyParseError(
-                            f"{xml_path}: clipitem '{ci_name}' (file "
-                            f"'{source_basename}') has an out point of "
-                            f"{out_sec:.2f}s at the resolved rate "
-                            f"({timebase}fps, ntsc={ntsc}), which exceeds the "
-                            f"referenced file's own duration of "
-                            f"{file_duration_sec:.2f}s ({file_duration_frames} "
-                            f"frames at {entry.get('timebase')}fps). Candidate "
-                            f"interpretations: {out_sec:.2f}s (file's own rate) "
-                            f"vs {clip_out_sec:.2f}s (clipitem's declared rate "
-                            f"{clip_timebase}fps) — neither fits inside the "
-                            f"file's duration; the answer key or this parser's "
-                            f"rate resolution needs a look."
+
+            if file_rate is not None and file_ok:
+                in_sec, out_sec = file_in_sec, file_out_sec
+            else:
+                # Candidate 2: the clipitem's OWN rate/duration — the
+                # retimed-source case (a clip reinterpreted at the source,
+                # e.g. slow motion), tried only because candidate 1 either
+                # doesn't exist (no file rate) or wasn't self-consistent.
+                # `clip_ok` (whether in/out fit inside the clipitem's own
+                # declared duration) is rate-invariant — it only compares
+                # frame counts — so it correctly decides WHICH candidate
+                # wins regardless of what follows.
+                clip_in_sec, clip_out_sec, clip_ok = _self_consistent_range(
+                    in_frames, out_frames, clipitem_rate, ci_duration_frames
+                )
+                if ci_duration_frames and clip_ok and file_rate is not None and file_duration_frames:
+                    # The clipitem's own <duration> is a RETIMED total (see
+                    # module docstring) — frame_number / clipitem_own_rate
+                    # gives a position in the retimed timeline, not a real
+                    # position in the actual source file. Rescale
+                    # proportionally against the file's real duration
+                    # instead: this is rate-agnostic (works for any retime
+                    # ratio, not just an assumed 2x) because it only uses
+                    # the ratio of declared total span to real total span.
+                    file_timebase_disp, file_ntsc_disp = file_rate
+                    file_real_duration_sec = file_duration_frames / _effective_fps(
+                        file_timebase_disp, file_ntsc_disp
+                    )
+                    in_sec = (in_frames / ci_duration_frames) * file_real_duration_sec
+                    out_sec = (out_frames / ci_duration_frames) * file_real_duration_sec
+                elif ci_duration_frames and clip_ok:
+                    # No file duration to rescale against (file_rate is
+                    # None or file_duration_frames is falsy) — nothing to
+                    # rescale to, so the clipitem's own rate is the best
+                    # available real-seconds interpretation.
+                    in_sec, out_sec = clip_in_sec, clip_out_sec
+                elif file_rate is None:
+                    # No file rate at all — fall back to the clipitem's own
+                    # rate with no duration to check against (pre-existing
+                    # default behavior; nothing to raise about).
+                    in_sec, out_sec = clip_in_sec, clip_out_sec
+                else:
+                    # Neither candidate is self-consistent. Candidate 1 only
+                    # reaches here when file_duration_frames was actually
+                    # present (otherwise file_ok was vacuously True above),
+                    # so this is a genuine, reportable disagreement.
+                    ci_name = ci.findtext("name") or "(unnamed clipitem)"
+                    file_timebase_disp, file_ntsc_disp = file_rate
+                    if file_duration_frames:
+                        file_dur_sec = file_duration_frames / _effective_fps(
+                            file_timebase_disp, file_ntsc_disp
                         )
+                        cand1_desc = (
+                            f"in={file_in_sec:.2f}s out={file_out_sec:.2f}s vs "
+                            f"file's own duration {file_dur_sec:.2f}s "
+                            f"({file_duration_frames} frames at "
+                            f"{file_timebase_disp}fps) — out of bounds"
+                        )
+                    else:
+                        cand1_desc = (
+                            f"in={file_in_sec:.2f}s out={file_out_sec:.2f}s "
+                            f"(file has no declared duration to check against)"
+                        )
+                    clip_timebase_disp, clip_ntsc_disp = clipitem_rate
+                    if ci_duration_frames:
+                        clip_dur_sec = ci_duration_frames / _effective_fps(
+                            clip_timebase_disp, clip_ntsc_disp
+                        )
+                        cand2_desc = (
+                            f"in={clip_in_sec:.2f}s out={clip_out_sec:.2f}s vs "
+                            f"clipitem's own duration {clip_dur_sec:.2f}s "
+                            f"({ci_duration_frames} frames at "
+                            f"{clip_timebase_disp}fps) — out of bounds"
+                        )
+                    else:
+                        cand2_desc = (
+                            f"in={clip_in_sec:.2f}s out={clip_out_sec:.2f}s "
+                            f"(clipitem has no own <duration> to check against)"
+                        )
+                    raise AnswerKeyParseError(
+                        f"{xml_path}: clipitem '{ci_name}' (file "
+                        f"'{source_basename}') has no self-consistent "
+                        f"rate/duration interpretation. Candidate 1 — file's "
+                        f"own rate ({file_timebase_disp}fps, "
+                        f"ntsc={file_ntsc_disp}): {cand1_desc}. Candidate 2 — "
+                        f"clipitem's own rate ({clip_timebase_disp}fps, "
+                        f"ntsc={clip_ntsc_disp}): {cand2_desc}. Neither fits; "
+                        f"the answer key or this parser's rate resolution "
+                        f"needs a look."
+                    )
+
+            if in_sec != in_sec or out_sec != out_sec:  # NaN — no valid rate resolved
+                continue
 
             dedup_key = (source_path, round(in_sec * 1000), round(out_sec * 1000))
             if dedup_key in seen:

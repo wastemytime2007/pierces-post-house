@@ -633,6 +633,152 @@ def test_conform_mismatch_does_not_affect_the_no_mismatch_case(premiere_style_xm
 
 
 # ---------------------------------------------------------------------------
+# Retimed-source quirk (Lead-verified, real case found in
+# benchmark's "Historic Valley Junction 0002" answer key): a clipitem's own
+# <rate> matches the file's own <rate> (both 60fps — no conform mismatch),
+# but the clipitem's own <duration> reflects a RETIMED total (the source was
+# reinterpreted, e.g. conformed to half rate for slow motion) that is
+# roughly double the file's own <duration>. The clipitem's in/out fit inside
+# its own (retimed) duration but NOT inside the file's own duration. The fix
+# must fall back to the clipitem's own rate/duration in this case, since the
+# file's own rate/duration is the one that is NOT self-consistent here.
+# Real numbers verified: clipitem duration=31815 (@60fps, ~530s) vs file
+# duration=15911 (@60fps, ~265s); in=30866, out=31195 fit inside 31815 but
+# not inside 15911.
+# ---------------------------------------------------------------------------
+
+_RETIMED_SOURCE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <project>
+    <name>Retimed Source Test</name>
+    <children>
+      <sequence id="sequence-1">
+        <name>Selects</name>
+        <duration>400</duration>
+        <rate><timebase>60</timebase><ntsc>TRUE</ntsc></rate>
+        <media>
+          <video>
+            <track>
+              <clipitem id="clipitem-1">
+                <name>RETIMED_CLIP.MP4</name>
+                <duration>31815</duration>
+                <rate><timebase>60</timebase><ntsc>TRUE</ntsc></rate>
+                <in>30866</in>
+                <out>31195</out>
+                <file id="file-1">
+                  <name>RETIMED_CLIP.MP4</name>
+                  <pathurl>file://localhost/Volumes/video/RETIMED_CLIP.MP4</pathurl>
+                  <rate><timebase>60</timebase><ntsc>TRUE</ntsc></rate>
+                  <duration>15911</duration>
+                </file>
+              </clipitem>
+            </track>
+          </video>
+        </media>
+      </sequence>
+    </children>
+  </project>
+</xmeml>
+"""
+
+
+def test_retimed_source_uses_clipitem_own_duration_when_file_duration_disagrees(tmp_path):
+    """File and clipitem declare the SAME rate (60fps, ntsc) — no conform
+    mismatch — but the clipitem's own <duration> (31815 frames, retimed)
+    disagrees with the file's own <duration> (15911 frames). in=30866/
+    out=31195 only fit inside the clipitem's own duration, not the file's.
+
+    The fix must resolve to the clipitem's own (retimed) interpretation
+    for WHICH candidate wins — but the resulting seconds must be a real
+    position in the file's own timeline, not frame_number divided by the
+    clipitem's own (retimed) rate. That would give a position in the
+    RETIMED 2x-slowed timeline (~514.95s/520.44s), past the file's real,
+    ffprobe-verified duration of ~265.45s — impossible, and dangerous for
+    any downstream consumer that seeks into the real file.
+
+    Instead the frame numbers are proportionally rescaled against the
+    file's real duration: real_seconds = (frame / clipitem_own_duration)
+    * file_real_duration_seconds. Lead hand-verified this exact case:
+    real_in ~= 257.6s, real_out ~= 260.4s, both comfortably inside the
+    file's 265.45s bound."""
+    xml_path = tmp_path / "retimed.xml"
+    xml_path.write_text(_RETIMED_SOURCE_XML, encoding="utf-8")
+
+    fps = 60 * (1000.0 / 1001.0)  # 60fps NTSC-flagged
+    file_real_duration_sec = 15911 / fps
+    expected_in = (30866 / 31815) * file_real_duration_sec
+    expected_out = (31195 / 31815) * file_real_duration_sec
+
+    ranges = parse_answer_key_xml(xml_path)
+    assert len(ranges) == 1
+    r = ranges[0]
+    assert r.source_basename == "RETIMED_CLIP.MP4"
+    assert _close(r.in_sec, expected_in)
+    assert _close(r.out_sec, expected_out)
+    assert r.in_sec < 265.45 and r.out_sec < 265.45  # inside the file's real duration
+    # Hand-verified by the Lead against the real reproduction clip.
+    assert math.isclose(r.in_sec, 257.6, abs_tol=0.2)
+    assert math.isclose(r.out_sec, 260.4, abs_tol=0.2)
+
+
+_NEITHER_CANDIDATE_CONSISTENT_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <project>
+    <name>Neither Candidate Consistent Test</name>
+    <children>
+      <sequence id="sequence-1">
+        <name>Selects</name>
+        <duration>400</duration>
+        <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+        <media>
+          <video>
+            <track>
+              <clipitem id="clipitem-1">
+                <name>DOUBLY_BROKEN.MP4</name>
+                <duration>500</duration>
+                <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+                <in>0</in>
+                <out>2000</out>
+                <file id="file-1">
+                  <name>DOUBLY_BROKEN.MP4</name>
+                  <pathurl>file://localhost/Volumes/video/DOUBLY_BROKEN.MP4</pathurl>
+                  <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+                  <duration>1200</duration>
+                </file>
+              </clipitem>
+            </track>
+          </video>
+        </media>
+      </sequence>
+    </children>
+  </project>
+</xmeml>
+"""
+
+
+def test_bounds_check_raises_naming_both_candidates_when_neither_fits(tmp_path):
+    """out=2000 frames (33.33s @60fps) exceeds BOTH the file's own duration
+    (1200 frames = 20.0s) AND the clipitem's own declared duration (500
+    frames = 8.33s) — there is no self-consistent interpretation at all.
+    Must raise, naming both candidate interpretations and their seconds
+    values, not silently pick one."""
+    xml_path = tmp_path / "neither.xml"
+    xml_path.write_text(_NEITHER_CANDIDATE_CONSISTENT_XML, encoding="utf-8")
+
+    with pytest.raises(AnswerKeyParseError) as excinfo:
+        parse_answer_key_xml(xml_path)
+
+    message = str(excinfo.value)
+    assert "DOUBLY_BROKEN.MP4" in message
+    assert "Candidate 1" in message and "Candidate 2" in message
+    assert "33.3" in message  # resolved out point, both candidates share this rate
+    assert "20.0" in message or "20.00" in message  # file's own duration
+    assert "8.3" in message or "8.33" in message  # clipitem's own duration
+
+
+# ---------------------------------------------------------------------------
 # load_culls
 # ---------------------------------------------------------------------------
 
