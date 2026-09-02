@@ -574,6 +574,38 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Ryan confirmed the asterisk: the two answer keys measure
+  different things, which reframes the asymmetric-transfer finding.**
+  Runnells was marked as a purpose-built teaching example: every
+  technically-usable range, exhaustively, regardless of whether Ryan
+  would actually cut it in. Des Moines is real production selects: Ryan
+  choosing the *best* shots for an actual job, not marking everything
+  that clears the technical bar. That is the line ROADMAP §1 already
+  draws — **technical cull (deterministic: shake, blur, exposure) vs
+  editorial cull (taste: which of several good takes to use)** — and
+  Phase 4 is scoped to the first one only. Des Moines' selects carry
+  editorial taste on top of technical usability (two clean drone passes
+  of one location, only one makes a real edit), which is a fully
+  sufficient explanation for its lower usable fraction (33.6% vs
+  Runnells' 57.7%) and for why fitting on Runnells could not clear its
+  baseline — the detector was being scored against a pickier standard
+  than the one it was trained to meet, not a genuinely different
+  technical distribution.
+  **Consequence: the four options logged in the prior entry (fit per
+  shoot, scope per camera, accept the asymmetry, or investigate the
+  keys) were premature.** Fitting per-shoot or scoping per-camera would
+  tune the detector to match Ryan's editorial taste on Des Moines,
+  which is the wrong target for this phase entirely — Phase 4 does not
+  claim to do editorial culling (ROADMAP §1, from day one). The
+  per-clip normalization work itself stands: it is still correct that
+  thresholds must be scale-free across cameras, and nothing above
+  argues otherwise.
+  **Proposed next step, awaiting Ryan:** a small Runnells-style
+  exhaustive marking pass on ONE Des Moines clip (not the full 73
+  minutes) — every technically-usable range, ignoring whether it would
+  make a real cut, same protocol as Runnells. That produces a clean
+  technical-cull benchmark on a different camera, which is the actual
+  comparison this phase needs and the one the current data cannot give.
 - **2026-09-02 — TRANSFER IS ASYMMETRIC, and per-clip normalization
   does not fix the failing direction. The reason is structural, not a
   tuning problem.** Measured both directions, all three strategies, no

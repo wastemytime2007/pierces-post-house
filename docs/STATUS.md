@@ -104,8 +104,26 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **TRANSFER IS ASYMMETRIC; per-clip normalization is necessary but
-   not sufficient.** Fitting on Des Moines and scoring Runnells beats
+1. **RESOLVED: the "asymmetric transfer" result was measuring two
+   different things, not two different technical distributions.** Ryan
+   confirmed Runnells was an exhaustive teaching mark (every technically
+   usable range) while Des Moines is real production selects (best
+   shots for a job, i.e. technical usability filtered by editorial
+   taste). Phase 4 is technical-cull-only by design (ROADMAP §1), so
+   scoring against Des Moines' editorially-filtered ground truth was
+   the wrong test. The four architecture options from the prior entry
+   (fit per shoot / scope per camera / accept asymmetry) are withdrawn
+   as premature — they would have tuned to Ryan's taste, not fixed a
+   technical gap.
+   **Awaiting Ryan: a small Runnells-style exhaustive marking pass on
+   ONE Des Moines clip**, same protocol as Runnells (mark every
+   technically-usable range, ignore whether it would make a real cut).
+   That gives a clean apples-to-apples technical-cull benchmark on a
+   different camera — the comparison the phase actually needs.
+   The per-clip normalization work (quantile / robust_scale strategies,
+   both fit and cross-validated) stands regardless of this reframe;
+   thresholds being scale-free across cameras remains correct and
+   necessary. Fitting on Des Moines and scoring Runnells beats
    baseline in all three strategies (best: robust_scale P 0.631 /
    R 0.947 / IoU 0.433 vs baseline 0.577/0.392). The reverse direction
    fails in all three, within 0.01 of each other, which shows scale was
