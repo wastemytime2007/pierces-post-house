@@ -574,6 +574,35 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Phase 4 slice 2 built (`posthouse/cull/classify.py`,
+  23 tests, suite 289 passed / 1 skipped), and the Lead's independent
+  check found the thing the slice's own tests could not.** The
+  classifier is correct per frame: synthetic clips with known ground
+  truth classify right, fixtures order correctly, the sign convention
+  holds both ways (camera pans right, content moves left, dx < 0), and
+  classification of an extracted sidecar costs 0.095s. On the two
+  hand-verified windows it looks excellent: **the 14.98-18.85 pan is
+  100% `pan_right` uninterrupted, the 19.19-21.29 tilt is 92%
+  `tilt_down`.**
+  **But those two windows were the Architect's cherry-picked clean
+  examples, and testing against all 26 of Ryan's selects tells a
+  different story.** Measured by the Lead: only **9 of 26** selects are
+  dominated (>=80%) by a single motion class, and his 52 cut points land
+  within 0.5s of a class boundary **69% of the time against 67% for
+  randomly placed cuts** — i.e. the current run structure carries almost
+  **no predictive signal about where he actually cut**. Cause is
+  fragmentation, not misclassification: **463 runs over 235s, one every
+  0.51s, median run 0.20s, 87% of runs shorter than his 1.0s floor** —
+  roughly **18x over-segmented** against his 26 selects, with `drift`
+  supplying 34% of runs from only 12.3% of frames.
+  **Verdict: slice 2 is accepted as a per-frame classifier and is NOT
+  yet evidence for criterion 1.** Turning this into intents is
+  precisely slice 3's job (min-duration, hysteresis at the run level,
+  and the Viterbi transition penalty that exists to buy long runs), and
+  slice 3 now has a concrete target: get from 463 runs to the order of
+  26, and beat the 67% chance baseline on boundary placement. Recorded
+  because "it matched the two windows we checked" is exactly how a
+  detector gets believed before it has earned it.
 - **2026-09-01 — All 9 slice 1 findings fixed and independently
   verified by the Lead** (suite 266 passed / 1 skipped). Measured after
   the fixes, on the real clip: **peak RSS 265 MB** (was ~3.7 GB held for

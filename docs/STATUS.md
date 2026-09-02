@@ -104,14 +104,18 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 slice 1 complete and reviewed** (suite 266/1). All 9
-   findings fixed and Lead-verified on the real clip: peak memory
-   265 MB (was ~31 GB projected for the 33-min clip), 3.23x realtime
-   (was 1.34x), sign convention proven by `np.roll`, histograms int32.
-   Design sign pin and sidecar naming amended to match.
-   **Next: slice 2, motion classification** (static / pan / tilt /
-   push / drift / shake per frame), written against the corrected
-   convention: positive dx is content moving right, positive dy down. Measured on the real clip: 1.34x realtime
+1. **Phase 4 slices 1 and 2 built** (suite 289/1). Slice 1's nine review
+   findings are fixed and verified (265 MB peak, 3.23x realtime, sign
+   convention proven). Slice 2 classifies per frame correctly, but the
+   Lead's check against all 26 selects found it **18x over-segmented**
+   (463 runs, median 0.20s) and its boundaries **no better than chance**
+   at predicting Ryan's cuts (69% vs 67%). Accepted as a classifier,
+   explicitly not yet as evidence for criterion 1.
+   **Next: slice 3, segmentation** — runs to segments via min-duration,
+   run-level hysteresis, and the Viterbi transition penalty, with a
+   concrete target: ~26 segments, not 463, and boundary placement that
+   beats the 67% chance baseline. Emits the first real `culls.json` and
+   the first benchmark score. Measured on the real clip: 1.34x realtime
    (below the 4-5x projection, well inside the bar). Real-footage
    proxy check: sharpness shape survives compression (r 0.98) but its
    absolute level and the motion residual do not (r 0.54), so originals

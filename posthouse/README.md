@@ -490,3 +490,61 @@ motion residual — the stability signal this module's shake detection
 depends on — correlates only r = 0.544 (tx 0.92, ty 0.74). Cite those
 numbers, not a blanket "measured on real footage," for what proxies do
 to this signal set.
+
+## Phase 4 slice 2: per-frame motion classification (`posthouse/cull/classify.py`)
+
+The novel part of the cull (ROADMAP §4 criterion 1: "a select is one
+continuous motion intent from first frame to last"). Consumes a slice 1
+signals sidecar, never raw video, and assigns each analysed frame one of
+eleven motion classes: `static`, `pan_left`, `pan_right`, `tilt_up`,
+`tilt_down`, `push_in`, `pull_out`, `roll`, `drift`, `shake`,
+`undecidable`. No segments and no `culls.json` yet, that is slice 3.
+
+The binding sign convention (design §0's 2026-09-01 sign-pin correction,
+positive dx is content moving right, positive dy is content moving down)
+means a camera's own motion and its content's screen motion are opposite
+in sign: a camera panning right reads as `pan_right` at negative dx, a
+camera tilting down reads as `tilt_down` at negative dy. Six features
+per frame (velocity, axis ratio, log-scale divergence, roll rate, fit
+residual, high-frequency energy), each with its own deterministic cost
+function, argmin picks the raw per-frame label, and a centered
+majority-vote hysteresis window removes single-frame flips before the
+result is run-length encoded. `classify_sidecar(npz_or_source,
+*, params=None)` writes the `state` array and the RLE straight back into
+the existing sidecar pair (npz gains `state`, json gains a `classify`
+block and an updated `npz_sha256`), preserving everything already
+there and reproducing byte-identical npz bytes on a repeat run.
+
+```
+python -m posthouse.cull.classify SIDECAR_OR_SOURCE [--out DIR]
+```
+
+Prints the run-length-encoded class sequence for a human to read, exits
+non-zero listing every problem on failure.
+
+Tested against numpy-driven synthetic clips with exactly known ground
+truth (a fixed textured canvas, exact per-frame crop/zoom/rotation
+offsets piped into ffmpeg only for encoding, not ffmpeg's own filter
+expressions, after those measured non-monotonic on this machine's
+ffmpeg 8.1), a direction test pinning the sign convention both ways, a
+hysteresis test, the `stable.mp4`/`shaky.mp4` fixture orderings, a
+sidecar round-trip (idempotent, preserves pre-existing arrays, refuses a
+sidecar that does not match an explicitly-given source), and a report
+against the real benchmark clip's two hand-verified windows (both
+correctly dominated by a pan and a tilt class respectively).
+
+Two findings worth citing rather than a blanket "it works": an
+`argmin` tie-break bug (every cost function floored at 0 with `relu`
+made a clean single-axis synthetic clip's non-matching classes tie
+exactly with `static`'s near-zero cost, and ties break toward the
+lowest class id, so `static` silently won every time; fixed by letting
+a clearly-cleared threshold go negative instead of flooring at 0), and
+a calibration finding that `push_eps`/`roll_eps` have to satisfy three
+different noise regimes at once, a clean synthetic clip's true signal,
+`stable.mp4`'s own non-zero internal noise floor (`testsrc2` has real
+motion baked into its test pattern despite the "stable" name), and the
+real clip's own phase-correlation noise, two of which sit closer
+together than design §1.3 implies. See `classify.py`'s "Calibration
+finding" docstring section for the numbers and why the chosen defaults
+are validated for fixture ordering, not for real-footage push/pull/roll
+sensitivity, pending slice 4's fit.
