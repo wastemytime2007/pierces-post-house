@@ -574,6 +574,68 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — THE GENERALIZATION TEST FAILED, AND A REAL PARSER BUG
+  WAS FOUND MEASURING IT. Both reported as measured.**
+  Three separate pieces of work landed together; the second and third
+  matter more than the first.
+  **(1) The gate-combination fix.** `fit.py` gained an automatic
+  **grid-edge alarm** (a fitted value landing on its search grid's min
+  or max is now a structured warning in the fit report, so this class of
+  problem can never again require a human to notice it by reading JSON),
+  properly widened grids informed by measured signal percentiles on the
+  real clip (p50 1.14, p90 3.34, p99 10.90 px/frame; the original grid
+  reached only ~p65), and `stability_combine` as a real parameter with
+  five modes (`and`/`or`/`resid_only`/`lapvar_only`/`score`) all fit and
+  cross-validated as first-class arms. Building the `score` mode's test
+  caught a genuine bug: the percentile-rank helper broke ties by array
+  position rather than averaging them, silently injecting a fake
+  time-correlated signal across any constant stretch, which is exactly
+  what a locked-off shot produces. **Result on Runnells: `resid_only`
+  won at P 0.627 / R 0.911 / F1 0.737 / IoU 0.417** — ties the fair-CV
+  crude probe on F1, beats it on recall, does not clear it on precision
+  or IoU. And **every combine mode still pinned its motion parameter to
+  a grid edge**, which points past gate structure at the ranking rule
+  itself (recall-first under a 0.60 precision floor rewards maximum
+  looseness). Logged as an open question, not silently retuned.
+  **(2) A confirmed, load-bearing bug in the answer-key parser.**
+  `parse_answer_key_xml` converted a clipitem's `<in>`/`<out>` frames to
+  seconds using the clipitem's own declared `<rate>`. When Premiere
+  conforms a source into a differently-rated sequence it writes that tag
+  as the SEQUENCE's rate while the frame numbers stay in the SOURCE's
+  native rate, inflating durations by `native/sequence`. **39 of the 60
+  Des Moines sources were affected.** The Lead verified it independently
+  and by arithmetic that proves itself: a clipitem on a 265.4s file
+  declared `out=15390` at a stated 24fps, i.e. 641 seconds, longer than
+  the file it points into and therefore impossible; at the file's real
+  59.94fps it is 256.8s, inside the file. Fixed by resolving against the
+  referenced `<file>`'s own rate on disagreement, plus a **bounds check
+  that now refuses any range extending past its own file's duration**
+  rather than emitting it silently. Runnells parses identically before
+  and after (no mismatch present) — the no-regression check.
+  **Consequence: the Des Moines benchmark is 41.5 minutes of marked-
+  usable footage, not the 73.1 the Lead published on staging.** That
+  README is corrected, with the bug and the arithmetic recorded in it.
+  **(3) The generalization result itself, which is the point.** The
+  Runnells-fitted detector, run unchanged (no re-fitting, per the rule)
+  against Des Moines drone footage, scored **BELOW the select-everything
+  baseline** on precision and IoU: `resid_only` P 0.317 / R 0.714 /
+  IoU 0.255 and `score` P 0.318 / R 0.695 / IoU 0.253, against a
+  baseline of P 0.338 / R 1.000 / IoU 0.300. **A detector fitted on 3.9
+  minutes of one handheld clip does not transfer to gimbal-stabilized
+  aerial footage from different cameras.** Direct supporting evidence
+  from the signals themselves: smoothed motion-residual maxima on Des
+  Moines clips run ~0.5-1.0 px/frame against Runnells' p99 of 10.90, an
+  order of magnitude apart, so an absolute threshold cannot survive the
+  crossing. This is the finding the whole benchmark exists to produce,
+  and the design doc's standing instruction is to say so rather than
+  quietly re-fit on the new footage and call it fixed.
+  **Caveat on that number, stated rather than buried:** it was measured
+  on a 5-clip subset chosen because their ground truth was independently
+  verified correct under the OLD parser. With the parser now fixed, the
+  honest full-dataset number is still owed and is the immediate next
+  step; the Lead does not expect it to reverse the conclusion, since the
+  detector already lost on clips whose truth was known-good, but the
+  real number gets measured rather than assumed.
 - **2026-09-02 — Slice 5 landed the stability detector as production
   code, but its own report didn't reproduce the diagnostic's numbers,
   and the Lead's investigation found something more interesting than a

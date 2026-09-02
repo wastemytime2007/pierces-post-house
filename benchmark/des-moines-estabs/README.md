@@ -68,15 +68,42 @@ Ryan rejected it-it may simply live in the excluded sequence).
 
 ## Numbers (filtered answer key, `answer_key.xml`)
 
+**Corrected 2026-09-02.** The numbers first published here were computed
+with a parser that had a real frame-rate bug, described below. These are
+the corrected figures.
+
 - 7 of 8 location sequences usable: Downtown, Capital Building, Grays
   Lake, Empowerment Bridge, Historic Valley Junction, Ingersoll St., Oak
   Highland Park.
 - 238 select ranges across 60 distinct source clips.
-- Total marked-usable time: **73.1 minutes** (4,386s)-about 20x
+- Total marked-usable time: **41.5 minutes** (2,492s), about 27x
   Runnells' 92.2s.
-- Select duration: min 1.8s, median 12.7s, mean 17.7s, max 119.5s.
+- Select duration: min **0.8s**, median **6.5s**, max **71.3s**.
 - Raw clips in the 7 usable sequences' folders: 119. Of those, **59 are
-  true full-clip rejects**-never selected at all.
+  true full-clip rejects**, never selected at all.
+
+### The frame-rate bug that made the first numbers wrong
+
+Most of this dataset was shot at a different frame rate than the
+project's 23.976fps edit timeline (59.94fps Osmo, 120fps Avata 2, and
+others). When Premiere conforms a source into a sequence at a different
+rate, it writes each clipitem's own `<rate>` tag as the SEQUENCE's rate,
+while the clipitem's `<in>`/`<out>` frame numbers stay counted in the
+SOURCE FILE's native rate. `parse_answer_key_xml` divided by the
+clipitem's declared rate, inflating those durations by
+native_rate / sequence_rate - a factor of 2.5 for a 59.94fps source.
+**39 of the 60 source clips were affected**, which is why the total read
+73.1 minutes instead of the true 41.5.
+
+The arithmetic proves itself: one clipitem on a 265.4s file declared
+`out=15390` at a stated 24fps, which is 641 seconds - longer than the
+file it points into, and therefore impossible. At the file's real
+59.94fps it is 256.8s, inside the file. Fixed in `posthouse/benchmark.py`
+by resolving each clipitem against the referenced `<file>`'s own declared
+rate whenever the two disagree, plus a bounds check that now refuses any
+range extending past its own file's duration rather than emitting it
+silently. Runnells is unaffected (no rate mismatch) and parses
+identically before and after, which is the no-regression check.
 
 ## Status
 

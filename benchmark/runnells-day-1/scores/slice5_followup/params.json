@@ -1,0 +1,81 @@
+{
+  "params_id": "fit-a004fd93611c",
+  "fit_provenance": "fitted:runnells-day-1:cv3-blocks-all-blocks-final",
+  "fit_provenance_detail": {
+    "what_was_fitted": "posthouse.cull.segment.SegmentParams (visual ruleset)",
+    "fitted_on": "runnells-day-1 (/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4), duration 235.3s",
+    "cv_scheme": "3 contiguous ~78.4s time blocks, leave-one-block-out, rotated",
+    "held_out_mean_precision_recall_f1_iou": {
+      "precision": 0.6270163851410914,
+      "recall": 0.9105949688361727,
+      "f1": 0.7370658891538101,
+      "iou": 0.4171411491238868
+    },
+    "held_out_spread": {
+      "precision": 0.15761646843543797,
+      "recall": 0.14386517720855485,
+      "f1": 0.05687751126864882,
+      "iou": 0.14317543974582003
+    },
+    "bootstrap_95pct_interval": {
+      "precision": {
+        "lo": 0.5612778817689713,
+        "hi": 0.7188943502044093,
+        "width": 0.15761646843543797
+      },
+      "recall": {
+        "lo": 0.8211382113821144,
+        "hi": 0.9650033885906693,
+        "width": 0.14386517720855485
+      },
+      "f1": {
+        "lo": 0.7097447480573799,
+        "hi": 0.7666222593260287,
+        "width": 0.05687751126864882
+      },
+      "iou": {
+        "lo": 0.3480358042647174,
+        "hi": 0.49121124401053745,
+        "width": 0.14317543974582003
+      }
+    },
+    "chosen_arm": "stability_resid_only_full",
+    "generalization": "Fitted on ONE clip. Block CV and the block bootstrap measure stability over TIME within this clip only, not transfer to a different camera, operator, lighting, or subject."
+  },
+  "analysis": {
+    "plane_width": 960,
+    "plane_height": 540,
+    "plane_format": "gray",
+    "decode": "hwaccel_videotoolbox",
+    "source_grade": "original",
+    "audio_sr": 48000
+  },
+  "visual": {
+    "consolidation": "stability",
+    "stability_resid_max": 9.0,
+    "stability_lapvar_quantile": 0.3,
+    "stability_smooth_sec": 0.7,
+    "stability_combine": "resid_only",
+    "stability_score_threshold": 0.5,
+    "stability_score_resid_weight": 0.5,
+    "viterbi_lambda": 7.5,
+    "min_run_sec": 1.0,
+    "settle_frames": 8,
+    "settle_frames_static": 4,
+    "min_duration_sec": 1.15,
+    "focus_gate": false,
+    "focus_norm_quantile": 0.35,
+    "focus_hunt_sign_changes_per_sec": 2.4,
+    "focus_hunt_smooth_frames": 9,
+    "focus_hunt_deadband_std": 0.15,
+    "rack_min_ramp_frames": 18,
+    "exposure_gate": true,
+    "clip_low_frac_max": 0.4,
+    "clip_high_frac_max": 0.06,
+    "handle_sec": 1.0,
+    "fit_provenance_note": "fitted by posthouse.cull.fit; see this file's fit_provenance/fit_provenance_detail for the CV scheme and held-out numbers. A disabled gate's own threshold fields (focus_gate=false or exposure_gate=false) were not searched in this run and are carried through unfitted."
+  },
+  "narrative": {
+    "note": "not implemented; design Sec5 slice 5"
+  }
+}

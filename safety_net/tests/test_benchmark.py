@@ -503,6 +503,136 @@ def test_nested_sequence_inside_clipitem_raises_loudly(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# FCP7 conform-to-sequence-rate quirk (Lead-verified bug: a clipitem's own
+# <rate> mirrors the SEQUENCE's rate when the source's native rate differs,
+# but <in>/<out> stay counted in the SOURCE FILE's native rate). Reproduces
+# the exact pattern found in benchmark/des-moines-estabs/answer_key.xml:
+# DJI_20260513155107_0002_D.MP4 is a 60fps file cut into a 24fps sequence,
+# and its clipitem's own <rate> reads 24 (matching the sequence), not 60.
+# ---------------------------------------------------------------------------
+
+_CONFORM_MISMATCH_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <project>
+    <name>Conform Mismatch Test</name>
+    <children>
+      <sequence id="sequence-1">
+        <name>Selects</name>
+        <duration>240</duration>
+        <rate><timebase>24</timebase><ntsc>FALSE</ntsc></rate>
+        <media>
+          <video>
+            <track>
+              <clipitem id="clipitem-1">
+                <name>DJI_MISMATCH.MP4</name>
+                <rate><timebase>24</timebase><ntsc>FALSE</ntsc></rate>
+                <in>0</in>
+                <out>600</out>
+                <file id="file-1">
+                  <name>DJI_MISMATCH.MP4</name>
+                  <pathurl>file://localhost/Volumes/video/DJI_MISMATCH.MP4</pathurl>
+                  <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+                  <duration>1200</duration>
+                </file>
+              </clipitem>
+            </track>
+          </video>
+        </media>
+      </sequence>
+    </children>
+  </project>
+</xmeml>
+"""
+
+
+def test_conform_mismatch_uses_file_native_rate_not_clipitem_rate(tmp_path):
+    """The clipitem's own <rate> (24fps) mirrors the sequence, not the
+    file's native rate (60fps, <file><duration>1200</duration> = 20s).
+    in=0/out=600 is only sensible interpreted at the file's 60fps (10s,
+    well inside the file's 20s duration) — at the clipitem's declared
+    24fps it would be 25s, which exceeds the file's own duration and is
+    impossible. The fix must resolve to the 60fps interpretation."""
+    xml_path = tmp_path / "conform_mismatch.xml"
+    xml_path.write_text(_CONFORM_MISMATCH_XML, encoding="utf-8")
+
+    ranges = parse_answer_key_xml(xml_path)
+    assert len(ranges) == 1
+    r = ranges[0]
+    assert _close(r.in_sec, 0.0)
+    assert _close(r.out_sec, 10.0)  # 600 / 60, NOT 600 / 24 (== 25.0)
+
+
+_NO_MISMATCH_IMPOSSIBLE_XML = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <project>
+    <name>Genuinely Impossible Range Test</name>
+    <children>
+      <sequence id="sequence-1">
+        <name>Selects</name>
+        <duration>240</duration>
+        <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+        <media>
+          <video>
+            <track>
+              <clipitem id="clipitem-1">
+                <name>SHORT_FILE.MP4</name>
+                <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+                <in>0</in>
+                <out>1300</out>
+                <file id="file-1">
+                  <name>SHORT_FILE.MP4</name>
+                  <pathurl>file://localhost/Volumes/video/SHORT_FILE.MP4</pathurl>
+                  <rate><timebase>60</timebase><ntsc>FALSE</ntsc></rate>
+                  <duration>1200</duration>
+                </file>
+              </clipitem>
+            </track>
+          </video>
+        </media>
+      </sequence>
+    </children>
+  </project>
+</xmeml>
+"""
+
+
+def test_bounds_check_catches_genuinely_impossible_range(tmp_path):
+    """Clipitem and file rates AGREE here (both 60fps, no conform
+    mismatch) — out=1300 frames (21.67s) simply exceeds the file's own
+    duration (1200 frames = 20.0s at that same rate). There is no
+    alternate rate interpretation that fixes this; it must raise loudly
+    naming both the clipitem and the candidate durations, rather than
+    silently emitting an impossible range."""
+    xml_path = tmp_path / "impossible.xml"
+    xml_path.write_text(_NO_MISMATCH_IMPOSSIBLE_XML, encoding="utf-8")
+
+    with pytest.raises(AnswerKeyParseError) as excinfo:
+        parse_answer_key_xml(xml_path)
+
+    message = str(excinfo.value)
+    assert "SHORT_FILE.MP4" in message
+    assert "20.0" in message or "20.00" in message  # file's own duration
+    assert "21.6" in message or "21.7" in message  # resolved (impossible) out point
+
+
+def test_conform_mismatch_does_not_affect_the_no_mismatch_case(premiere_style_xml):
+    """Confirms the existing quirks fixture (clipitem rate == file rate
+    throughout) still parses to exactly the same ranges after the fix —
+    the conform-mismatch resolution is a no-op when rates already agree."""
+    ranges = parse_answer_key_xml(premiere_style_xml)
+    assert len(ranges) == 2
+    by_basename = {r.source_basename: r for r in ranges}
+    clip_a = by_basename["Clip A.mov"]
+    assert _close(clip_a.in_sec, 150 / (30 * 1000 / 1001))
+    assert _close(clip_a.out_sec, 450 / (30 * 1000 / 1001))
+    nested = by_basename["NestedClip.mov"]
+    assert _close(nested.in_sec, 1.0)
+    assert _close(nested.out_sec, 3.0)
+
+
+# ---------------------------------------------------------------------------
 # load_culls
 # ---------------------------------------------------------------------------
 

@@ -177,6 +177,10 @@ _ENUM_REJECT_REASON = {
     "settle", "transition", "record_tap", "undecidable",
 }
 
+# Slice 5 follow-up (2026-09-02 investigation): the legal values of
+# ``SegmentParams.stability_combine`` -- see that field's own docstring.
+_STABILITY_COMBINE_MODES = {"and", "or", "resid_only", "lapvar_only", "score"}
+
 
 class SegmentError(Exception):
     """Base class for segmentation failures."""
@@ -254,6 +258,66 @@ class SegmentParams:
     flicker in the sharpness gate the same way it already reduces
     flicker in the motion gate. See the slice 5 report for the full
     reasoning."""
+
+    stability_combine: str = "and"
+    """**Slice 5 follow-up (2026-09-02 Decision Log investigation).** How
+    ``stability_resid_max`` and ``stability_lapvar_quantile`` combine into
+    the per-frame stable/unstable decision:
+
+    * ``"and"`` -- the ORIGINAL shipped gate: both walls must clear
+      (``resid_ok & lapvar_ok``). The investigation found this is worse on
+      IoU (0.442-0.446) than motion residual alone (0.455) -- two strong
+      individual predictors combined adversarially, and the tell was
+      ``stability_resid_max`` fitting to the exact max of its search grid
+      even after a 3x widening (it wants to be disabled, i.e. it wants the
+      AND to degrade toward resid-only, which the AND structure cannot
+      express without literally disabling one arm of itself).
+    * ``"or"`` -- either wall alone suffices (``resid_ok | lapvar_ok``).
+      The natural non-AND alternative; expected (and measured, see
+      :mod:`posthouse.cull.fit`'s ablation) to trade precision for recall
+      more aggressively than the AND does, likely past where it is still
+      useful -- kept as a real, measured candidate, not assumed inferior.
+    * ``"resid_only"`` / ``"lapvar_only"`` -- one signal only, the other
+      ignored entirely. First-class ablation arms (task brief point 4),
+      not just diagnostic numbers: the investigation's own isolated-signal
+      table lives here as reproducible harness output.
+    * ``"score"`` -- **the combined-score structure (task brief point 3,
+      option b).** Neither signal has to individually clear a wall,
+      because there is only one wall: each smoothed signal is converted to
+      its own per-clip PERCENTILE RANK (0=worst, 1=best on that signal,
+      scale-free by construction -- this is also why this mode cannot
+      suffer the same "wants to be disabled" edge-pinning failure the AND
+      gate's absolute ``stability_resid_max`` did, since a percentile rank
+      has nowhere to run to; its own grid is bounded [0, 1] by
+      construction), the two ranks are combined into one score by
+      ``stability_score_resid_weight``, and ONE fitted threshold
+      (``stability_score_threshold``) decides stable/unstable. See
+      :func:`_stability_score` and CULLS Sec4.2's ``params.visual``.
+
+    ``stability_resid_max``/``stability_lapvar_quantile`` are unused (but
+    still validated and carried for provenance) when ``stability_combine``
+    is ``"score"``; ``stability_score_threshold``/
+    ``stability_score_resid_weight`` are unused otherwise."""
+
+    stability_score_threshold: float = 0.5
+    """Only used when ``stability_combine == "score"``: a frame is a
+    stability candidate while its combined percentile-rank score (see
+    ``stability_combine``'s docstring) is ``>=`` this. Scale-free (the
+    score is always in [0, 1] by construction), so 0.5 -- "better than the
+    clip's own median on the weighted combination" -- is a reasoned
+    unfit starting point, not a guess dressed as a number. Fitted for real
+    by :mod:`posthouse.cull.fit`'s stability stage when this mode is
+    selected."""
+
+    stability_score_resid_weight: float = 0.5
+    """Only used when ``stability_combine == "score"``: the weight on the
+    motion-residual rank in the combined score; the lapvar rank gets
+    ``1 - this``. 0.5 (equal weight) is the reasoned unfit starting point
+    -- the investigation found both signals individually strong (IoU
+    0.455 resid alone vs 0.420 lapvar alone), close enough that neither is
+    presumed dominant before fitting. Fitted for real by
+    :mod:`posthouse.cull.fit`'s stability stage when this mode is
+    selected."""
 
     viterbi_lambda: float = 7.5
     """Flat transition penalty for the Viterbi path. CULLS Sec5's worked
@@ -373,6 +437,19 @@ class SegmentParams:
             raise ValueError(f"stability_resid_max must be > 0, got {self.stability_resid_max}")
         if self.stability_smooth_sec <= 0:
             raise ValueError(f"stability_smooth_sec must be > 0, got {self.stability_smooth_sec}")
+        if self.stability_combine not in _STABILITY_COMBINE_MODES:
+            raise ValueError(
+                f"stability_combine must be one of {sorted(_STABILITY_COMBINE_MODES)}, "
+                f"got {self.stability_combine!r}"
+            )
+        if not (0.0 <= self.stability_score_threshold <= 1.0):
+            raise ValueError(
+                f"stability_score_threshold must be in [0, 1], got {self.stability_score_threshold}"
+            )
+        if not (0.0 <= self.stability_score_resid_weight <= 1.0):
+            raise ValueError(
+                f"stability_score_resid_weight must be in [0, 1], got {self.stability_score_resid_weight}"
+            )
 
     def as_contract_dict(self) -> dict:
         """This ruleset's fitted-parameter object for ``params.visual`` /
@@ -966,6 +1043,92 @@ def _run_pipeline(
 # "crude two-signal probe," now production code, see module docstring)
 # ---------------------------------------------------------------------------
 
+def _percentile_rank(x: np.ndarray) -> np.ndarray:
+    """Each element's own fraction-of-the-clip rank in [0, 1] (0 = the
+    smallest value in ``x``, 1 = the largest), AVERAGE-RANK for ties --
+    dependency-free (no scipy in this venv) and, unlike either raw signal,
+    inherently bounded: a percentile rank cannot "want" to run past 1.0 the
+    way an absolute threshold like ``stability_resid_max`` can keep wanting
+    a bigger cap. That boundedness is exactly why :func:`_stability_score`
+    (``stability_combine == "score"``) cannot reproduce the AND gate's
+    edge-pinning failure (2026-09-02 Decision Log investigation).
+
+    **Bug fixed while building the test for this** (caught by
+    ``test_stability_combine_score_lets_a_strong_signal_compensate_a_weak_one``,
+    not by inspection): a naive double-argsort breaks ties by ARRAY
+    POSITION, not by averaging -- a genuinely constant stretch of a signal
+    (a locked-off aerial hold has long constant-lapvar runs; a perfectly
+    static tripod shot can have long constant-resid runs) would silently
+    get a fake, monotonically increasing rank across the tie purely from
+    frame order, which then leaks a spurious time-correlated signal into
+    the combined score. Ties now get the AVERAGE of the positions they
+    span (the standard ``rankdata(method="average")`` convention), so a
+    fully constant array ranks every element at exactly 0.5, not a ramp."""
+    n = len(x)
+    if n <= 1:
+        return np.zeros(n, dtype=np.float64)
+    order = np.argsort(x, kind="stable")
+    sorted_x = x[order]
+    ranks_sorted = np.arange(n, dtype=np.float64)
+    i = 0
+    while i < n:
+        j = i
+        while j + 1 < n and sorted_x[j + 1] == sorted_x[i]:
+            j += 1
+        if j > i:
+            ranks_sorted[i:j + 1] = (i + j) / 2.0
+        i = j + 1
+    ranks = np.empty(n, dtype=np.float64)
+    ranks[order] = ranks_sorted
+    return ranks / (n - 1)
+
+
+def _stability_score(resid_smooth: np.ndarray, lapvar_smooth: np.ndarray, params: SegmentParams) -> np.ndarray:
+    """The combined score for ``stability_combine == "score"`` (task brief
+    point 3, option b): a weighted average of two per-clip percentile
+    ranks -- how good this frame's motion residual is relative to the rest
+    of THIS clip (low resid = good, so the rank is inverted) and how good
+    its sharpness is (high lapvar = good) -- rather than requiring both an
+    absolute residual wall AND an absolute sharpness wall to be cleared
+    independently. One scale-free number in [0, 1]; higher is better."""
+    resid_goodness = 1.0 - _percentile_rank(resid_smooth)
+    lapvar_goodness = _percentile_rank(lapvar_smooth)
+    w = params.stability_score_resid_weight
+    return w * resid_goodness + (1.0 - w) * lapvar_goodness
+
+
+def _stability_stable_mask(
+    resid_smooth: np.ndarray, lapvar_smooth: np.ndarray, params: SegmentParams,
+) -> tuple[np.ndarray, float]:
+    """The per-frame stable/unstable decision for every
+    ``stability_combine`` mode (module docstring / ``SegmentParams.
+    stability_combine``'s own docstring) -- the ONE place this decision is
+    made, shared by :func:`_run_stability_pipeline` and
+    :func:`segment_source`'s diagnostic ``consolidated_runs`` reporting so
+    the two can never drift apart. Returns ``(stable_mask,
+    lapvar_threshold)`` -- the threshold is returned too because rejection
+    detail messages (below) report it even in modes that do not gate on
+    it directly."""
+    lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
+    resid_ok = resid_smooth < params.stability_resid_max
+    lapvar_ok = lapvar_smooth >= lapvar_threshold
+
+    combine = params.stability_combine
+    if combine == "and":
+        stable = resid_ok & lapvar_ok
+    elif combine == "or":
+        stable = resid_ok | lapvar_ok
+    elif combine == "resid_only":
+        stable = resid_ok
+    elif combine == "lapvar_only":
+        stable = lapvar_ok
+    elif combine == "score":
+        stable = _stability_score(resid_smooth, lapvar_smooth, params) >= params.stability_score_threshold
+    else:  # pragma: no cover - unreachable, __post_init__ already validated
+        raise ValueError(f"unknown stability_combine {combine!r}")
+    return stable, lapvar_threshold
+
+
 def _run_stability_pipeline(
     arrays: dict[str, np.ndarray],
     fps: float,
@@ -1014,10 +1177,7 @@ def _run_stability_pipeline(
     resid_smooth = _classify._smooth(resid, smooth_frames)
     lapvar_smooth = _classify._smooth(lapvar_norm, smooth_frames)
 
-    lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
-    resid_ok = resid_smooth < params.stability_resid_max
-    lapvar_ok = lapvar_smooth >= lapvar_threshold
-    stable = resid_ok & lapvar_ok
+    stable, lapvar_threshold = _stability_stable_mask(resid_smooth, lapvar_smooth, params)
 
     if params.exposure_gate:
         exposure_bad_low = clip_low > params.clip_low_frac_max
@@ -1053,13 +1213,19 @@ def _run_stability_pipeline(
                 )
             else:
                 reason = "transition" if dur_sec < params.min_duration_sec else "motion_inconsistent"
-                detail = (
-                    f"{dur_sec:.2f}s span fails the stability threshold: smoothed resid mean "
+                combine_detail = (
+                    f"combine={params.stability_combine}: smoothed resid mean "
                     f"{float(np.mean(resid_smooth[s_in:s_out])):.2f} px/frame vs cap "
                     f"{params.stability_resid_max}, smoothed lapvar_norm median "
                     f"{float(np.median(lapvar_smooth[s_in:s_out])):.2f} vs this clip's own "
                     f"q{params.stability_lapvar_quantile * 100:.0f} floor {lapvar_threshold:.2f}"
+                    if params.stability_combine != "score" else
+                    f"combine=score: mean score "
+                    f"{float(np.mean(_stability_score(resid_smooth, lapvar_smooth, params)[s_in:s_out])):.2f} "
+                    f"vs threshold {params.stability_score_threshold} "
+                    f"(resid_weight={params.stability_score_resid_weight})"
                 )
+                detail = f"{dur_sec:.2f}s span fails the stability threshold: {combine_detail}"
             rejections.append(_Rejection(s_in, s_out, reason, detail))
             continue
 
@@ -1210,8 +1376,7 @@ def segment_source(
         smooth_frames = max(1, int(round(params.stability_smooth_sec * fps)))
         resid_smooth = _classify._smooth(arrays["resid"].astype(np.float64), smooth_frames)
         lapvar_smooth = _classify._smooth(arrays["lapvar_norm"].astype(np.float64), smooth_frames)
-        lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
-        ok_mask = (resid_smooth < params.stability_resid_max) & (lapvar_smooth >= lapvar_threshold)
+        ok_mask, _lapvar_threshold = _stability_stable_mask(resid_smooth, lapvar_smooth, params)
         runs = _rle_from_state_array(ok_mask.astype(np.int8))
     else:
         classify_params = ClassifyParams(**(header.get("classify", {}).get("params", {}) or {}))

@@ -98,6 +98,47 @@ parameter space it needs to explore, and the final chosen arm's actual
 precision is reported plainly either way — nothing is hidden behind the
 floor).
 
+**Slice 5 follow-up (2026-09-02 Decision Log investigation, recorded before
+this module was changed a second time so it cannot be rationalized
+afterwards):** the addendum above shipped the stability detector's AND
+gate (``resid_ok & lapvar_ok``) as production code without checking that
+the AND *structure itself* was sound. It was not. ``stability_resid_max``
+fitted to 2.0, the exact maximum of its 5-point grid; widening the grid 3x
+(through this exact ``fit()`` entry point, not a reimplementation) pushed
+it to 6.0 — the new maximum — again. Isolating each signal in-sample
+showed why: motion residual alone scores IoU 0.455, sharpness alone 0.420,
+BOTH ABOVE the shipped AND gate's 0.446/0.442 — two strong individual
+predictors combined adversarially, each buying precision the other did
+not ask for at the cost of recall neither wanted to give up. Four changes,
+all in this module (task brief):
+
+1. **Automatic edge-value alarm** (:func:`check_grid_edges`) — a fitted
+   parameter landing on its own grid's min or max is now a loud,
+   structured entry in ``fit_report.json``'s top-level ``"warnings"``
+   list, not something a human has to notice by reading ``params.json``.
+2. **The stability grids widened properly**, informed by the real
+   ``resid``/``lapvar_norm`` distributions measured on BOTH benchmark
+   clips, not guessed bigger a third time — see
+   :data:`STABILITY_RESID_MAX_GRID`'s comment for the numbers and the
+   cross-camera finding that motivated point 3.
+3. **A non-AND combination structure, ``stability_combine`` (segment.py),
+   with FIVE modes now fit and ablated as first-class arms**: ``"and"``
+   (the original gate), ``"or"``, ``"resid_only"``, ``"lapvar_only"``, and
+   ``"score"`` — a single fitted threshold over a weighted, per-clip
+   PERCENTILE-RANK combination of the two signals (task brief point 3,
+   option b), chosen over a plain OR because OR was expected (and is now
+   measured, see ``decisive["ablation_verdicts"]``) to trade precision
+   for recall more than helps, while the score structure lets one signal
+   compensate for the other on a single scale-free axis instead of
+   forcing both to independently clear a wall. The arm that ships is
+   whichever combine mode wins the SAME held-out ranking rule every other
+   arm uses (no combine mode is assumed superior going in).
+4. **resid-only and lapvar-only are now explicit ablation arms** in this
+   module (:data:`STAGE_GRID_STABILITY_RESID_ONLY` /
+   ``_LAPVAR_ONLY``), not just numbers in a diagnostic script — the
+   isolated-signal comparison the investigation ran by hand is now
+   permanent, reproducible harness output every time this module runs.
+
 Entry points
 ------------
 * Python API: :func:`fit` (returns a :class:`FitReport`, writes
@@ -338,18 +379,129 @@ STAGE_GRID_EXPOSURE: dict[str, list] = {
     "clip_high_frac_max": [0.03, 0.06, 0.09, 0.12],
 }
 
-# Slice 5: the stability detector's own "motion" stage. Exactly the two
-# parameters the task brief names ("staged, at most 4 params" — this
-# stage uses 2), a 5x5 = 25-point grid bracketing the SegmentParams
-# defaults (design Sec3.3's own worked row, "resid < 1.5, lapvar > q30")
-# in both directions, matching the "25-point grid" the Decision Log's
-# fair-comparison refit of the crude probe itself used.
+# Slice 5 follow-up (2026-09-02 Decision Log investigation): the ORIGINAL
+# 5-point grid here ([0.8, 1.0, 1.2, 1.5, 2.0]) fitted `stability_resid_max`
+# to 2.0, its own maximum; widening 3x to 6.0 through this exact fit()
+# entry point pinned it to 6.0 -- the new maximum -- again. That is the
+# tell that the AND *structure* is wrong (see `stability_combine` below),
+# not that the grid was too narrow -- but the grid genuinely WAS narrow
+# relative to the real signal, and a narrow grid can hide an interior
+# optimum just as easily as it can hide a parameter that wants to be
+# disabled, so it is corrected here too, informed by data rather than
+# guessed bigger a third time (task brief point 2):
+#
+# Measured directly off the cached, already-classified Runnells sidecar
+# (0.7s-smoothed `resid`, exactly the column this stage thresholds),
+# 2026-09-02: p50=1.14, p75=2.09, p90=3.34, p95=4.88, p99=10.90, max=21.34
+# px/frame. The grid below brackets p50 through just past p99 with
+# roughly geometric spacing, i.e. it can now express "barely filters
+# anything" (9.0, above p99) through "keeps only the calmest quarter"
+# (0.8, below p50) -- the ORIGINAL grid's entire span (0.8-2.0) covered
+# only up to roughly the 65th percentile of the real distribution, which
+# is why it had nowhere to go but its own wall.
+#
+# Cross-camera note (measured the same way on two Des Moines Estabs clips,
+# a gimbal-stabilized Mavic 2 and a different-camera Osmo/DJI clip from
+# the same project): their smoothed resid p99 is 0.54 and max is ~1.0 --
+# an order of magnitude below Runnells' own p50. An ABSOLUTE resid cap
+# fitted on one camera's motion-residual scale has no principled reason to
+# transfer to another camera's scale at all; this is direct evidence for
+# `stability_combine == "score"` below, whose percentile-rank
+# normalization is scale-free by construction and therefore does not
+# carry this problem across cameras the way `"and"`/`"or"`/`"resid_only"`
+# structurally must.
+STABILITY_RESID_MAX_GRID: list = [0.8, 1.2, 1.8, 2.7, 4.0, 6.0, 9.0]
+
+# lapvar_quantile is already a per-clip PERCENTILE (bounded [0, 1] by
+# construction), so it cannot pin to a wall the way an absolute threshold
+# can "want to leave the yard" -- it was not the parameter the
+# investigation flagged. Widened only modestly, for the same "give the
+# search somewhere to move" reason, not because it showed the edge tell.
+STABILITY_LAPVAR_QUANTILE_GRID: list = [0.05, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60]
+
 STAGE_GRID_STABILITY: dict[str, list] = {
-    "stability_resid_max": [0.8, 1.0, 1.2, 1.5, 2.0],
-    "stability_lapvar_quantile": [0.10, 0.20, 0.30, 0.40, 0.50],
+    "stability_resid_max": STABILITY_RESID_MAX_GRID,
+    "stability_lapvar_quantile": STABILITY_LAPVAR_QUANTILE_GRID,
+}
+
+# Task brief point 4: resid-only and lapvar-only as explicit, first-class
+# ablation arms (not just diagnostic numbers) -- one free parameter each,
+# same widened grids as above so a fair comparison uses the same search
+# space per signal that the combined arms get.
+STAGE_GRID_STABILITY_RESID_ONLY: dict[str, list] = {"stability_resid_max": STABILITY_RESID_MAX_GRID}
+STAGE_GRID_STABILITY_LAPVAR_ONLY: dict[str, list] = {"stability_lapvar_quantile": STABILITY_LAPVAR_QUANTILE_GRID}
+
+# Task brief point 3: the combined-score structure -- one fitted threshold
+# against a weighted rank combination, in place of two independent walls.
+# Both parameters are already scale-free (percentile ranks and a convex
+# weight are both bounded [0, 1] by construction), so this grid does not
+# need data-informed bounds the way the absolute resid cap did; it is a
+# plain, evenly spaced 7x5 = 35-point bracket around the 0.5/0.5 reasoned
+# default.
+STAGE_GRID_STABILITY_SCORE: dict[str, list] = {
+    # Widened once (this grid's FIRST widening, not a re-widening of an
+    # already-widened one) after the initial [0.30, 0.70] run pinned
+    # `stability_score_threshold` to 0.30, its own min -- checked here
+    # rather than left for a human to notice, exactly per point 1 above.
+    "stability_score_threshold": [0.10, 0.20, 0.30, 0.40, 0.45, 0.50, 0.55, 0.60, 0.70],
+    "stability_score_resid_weight": [0.3, 0.4, 0.5, 0.6, 0.7],
 }
 
 _STAGE_GRIDS = {"focus": STAGE_GRID_FOCUS, "exposure": STAGE_GRID_EXPOSURE}
+
+# Every combine mode's own "motion" stage grid (task brief points 3-4):
+# consulted by fit_one() so each stability_combine value is fit against
+# the search space that actually matches its own free parameters.
+STAGE_GRID_STABILITY_BY_COMBINE: dict[str, dict[str, list]] = {
+    "and": STAGE_GRID_STABILITY,
+    "or": STAGE_GRID_STABILITY,
+    "resid_only": STAGE_GRID_STABILITY_RESID_ONLY,
+    "lapvar_only": STAGE_GRID_STABILITY_LAPVAR_ONLY,
+    "score": STAGE_GRID_STABILITY_SCORE,
+}
+
+
+# ---------------------------------------------------------------------------
+# Grid-edge alarm (task brief point 1, 2026-09-02 Decision Log follow-up)
+# ---------------------------------------------------------------------------
+
+def check_grid_edges(params: SegmentParams, grid: dict[str, list]) -> list[dict]:
+    """After any grid search over ``grid``, flag every parameter whose
+    fitted value in ``params`` lands exactly on the grid's own min or max.
+    This is the automatic version of the check a human missed on
+    ``stability_resid_max`` (fitted to 2.0, the exact max of its original
+    5-point grid, and then to 6.0, the exact max of a 3x-widened one) --
+    "a parameter pinned to the wall of its own search space is not
+    evidence of an optimum" (2026-09-02 Decision Log), now structural
+    rather than something that has to be noticed by reading
+    ``params.json`` by eye. Returns one dict per edge-pinned parameter
+    (empty list if none); each is loud and structured, not a bare string,
+    so a consumer can filter/sort/alert on ``param``/``grid_edge``
+    programmatically."""
+    warnings: list[dict] = []
+    for name, values in grid.items():
+        if not values:
+            continue
+        value = getattr(params, "settle_frames" if name == "settle_frames" else name)
+        vmin, vmax = min(values), max(values)
+        if value == vmin or value == vmax:
+            edge = "min" if value == vmin else "max"
+            warnings.append({
+                "param": name,
+                "value": value,
+                "grid_edge": edge,
+                "grid_min": vmin,
+                "grid_max": vmax,
+                "note": (
+                    f"fitted {name}={value} sits exactly on the {edge} of its search grid "
+                    f"[{vmin}, {vmax}]. A parameter pinned to the wall of its own search space "
+                    "is not evidence of an interior optimum -- it is the signature either of a "
+                    "grid that needs widening AGAIN with a documented reason, or (if widening "
+                    "does not move it off the wall) of a parameter that structurally wants to be "
+                    "disabled, which a wider grid cannot fix (2026-09-02 Decision Log)."
+                ),
+            })
+    return warnings
 
 
 def _apply(params: SegmentParams, name: str, value) -> SegmentParams:
@@ -413,51 +565,59 @@ def fit_one(
     precision_floor: float,
     passes: int,
     stages: tuple[str, ...],
-) -> tuple[SegmentParams, Metrics, dict]:
+    stability_combine: str = "and",
+) -> tuple[SegmentParams, Metrics, dict, list[dict]]:
     """One staged fit (design Sec3.2 point 1's full stage order — motion
     first because it sets the boundaries, then focus, then exposure) on
-    ``train_blocks`` only.
+    ``train_blocks`` only. Returns ``(params, metrics, trace, warnings)`` --
+    ``warnings`` is the flat list of :func:`check_grid_edges` hits across
+    every grid stage this call actually ran (task brief point 1).
 
     Slice 5: ``consolidation == "stability"`` forces ``focus_gate=False``
     regardless of the caller's own ``focus_gate`` argument -- the
     stability path has no focus gate to fit or ablate at all (task brief
     point 1: focus is never a boundary input under this path), so the
     "focus" stage is unconditionally skipped for it and its own "motion"
-    stage fits :data:`STAGE_GRID_STABILITY`'s two parameters
-    (``stability_resid_max``, ``stability_lapvar_quantile``) in place of
-    the legacy consolidation grids. The "exposure" stage is unchanged --
-    the stability path keeps the same exposure gate as the legacy paths.
+    stage fits ``stability_combine``'s own grid (see
+    :data:`STAGE_GRID_STABILITY_BY_COMBINE`) in place of the legacy
+    consolidation grids. The "exposure" stage is unchanged -- the
+    stability path keeps the same exposure gate as the legacy paths.
     """
     is_stability = consolidation == "stability"
     base = SegmentParams(
         consolidation=consolidation,
         focus_gate=False if is_stability else focus_gate,
         exposure_gate=exposure_gate,
+        stability_combine=stability_combine,
     )
     eval_fn = lambda p: evaluator.score(p, train_blocks)  # noqa: E731
 
     trace: dict[str, list[StageTrace]] = {"motion": [], "focus": [], "exposure": []}
+    warnings: list[dict] = []
 
     if "motion" in stages:
         if is_stability:
-            motion_grid = STAGE_GRID_STABILITY
+            motion_grid = STAGE_GRID_STABILITY_BY_COMBINE[stability_combine]
         elif consolidation == "viterbi":
             motion_grid = STAGE_GRID_MOTION_VITERBI
         else:
             motion_grid = STAGE_GRID_MOTION_HYSTERESIS
         params, metrics, trace["motion"] = coordinate_descent(base, motion_grid, eval_fn, precision_floor, passes)
+        warnings.extend(check_grid_edges(params, motion_grid))
     else:
         params, metrics = base, eval_fn(base)
 
     if params.focus_gate and "focus" in stages:
         params, metrics, trace["focus"] = coordinate_descent(params, STAGE_GRID_FOCUS, eval_fn, precision_floor, passes)
+        warnings.extend(check_grid_edges(params, STAGE_GRID_FOCUS))
 
     if exposure_gate and "exposure" in stages:
         params, metrics, trace["exposure"] = coordinate_descent(
             params, STAGE_GRID_EXPOSURE, eval_fn, precision_floor, passes,
         )
+        warnings.extend(check_grid_edges(params, STAGE_GRID_EXPOSURE))
 
-    return params, metrics, trace
+    return params, metrics, trace, warnings
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +630,7 @@ class FoldResult:
     params: SegmentParams
     train_metrics: Metrics
     held_out_metrics: Metrics
+    edge_warnings: list = field(default_factory=list)
 
 
 @dataclass
@@ -484,6 +645,12 @@ class ArmResult:
     mean_held_out: dict  # {"precision":..,"recall":..,"f1":..,"iou":..}
     spread_held_out: dict  # max - min across folds, same keys
     bootstrap: dict  # {"precision": {"lo":..,"hi":..,"width":..}, ...}
+    final_edge_warnings: list = field(default_factory=list)
+    """:func:`check_grid_edges` hits from the FINAL (all-blocks) fit only
+    -- this is the params.json a chosen arm would actually ship, so this
+    is the warning list a consumer cares about (task brief point 1). Each
+    fold's own edge warnings are still recorded on its
+    :class:`FoldResult`, not lost."""
 
 
 def block_bootstrap(held_arrays: dict[str, np.ndarray], n_resamples: int, seed: int) -> dict:
@@ -514,18 +681,21 @@ def run_arm(
     stages: tuple[str, ...],
     n_bootstrap: int,
     seed: int,
+    stability_combine: str = "and",
 ) -> ArmResult:
     folds: list[FoldResult] = []
     for held_out in blocks:
         train_blocks = [b for b in blocks if b.index != held_out.index]
-        params, train_m, _trace = fit_one(
+        params, train_m, _trace, fold_warnings = fit_one(
             consolidation, focus_gate, exposure_gate, evaluator, train_blocks, precision_floor, passes, stages,
+            stability_combine=stability_combine,
         )
         held_m = evaluator.score(params, [held_out])
-        folds.append(FoldResult(held_out.index, params, train_m, held_m))
+        folds.append(FoldResult(held_out.index, params, train_m, held_m, edge_warnings=fold_warnings))
 
-    final_params, final_m, _trace = fit_one(
+    final_params, final_m, _trace, final_warnings = fit_one(
         consolidation, focus_gate, exposure_gate, evaluator, blocks, precision_floor, passes, stages,
+        stability_combine=stability_combine,
     )
 
     metric_names = ("precision", "recall", "f1", "iou")
@@ -538,6 +708,7 @@ def run_arm(
         name=name, consolidation=consolidation, focus_gate=focus_gate, exposure_gate=exposure_gate,
         folds=folds, final_params=final_params, final_in_sample_metrics=final_m,
         mean_held_out=mean_held, spread_held_out=spread_held, bootstrap=boot,
+        final_edge_warnings=final_warnings,
     )
 
 
@@ -703,6 +874,7 @@ class FitReport:
                         "params": asdict(f.params),
                         "train_metrics": f.train_metrics.as_dict(),
                         "held_out_metrics": f.held_out_metrics.as_dict(),
+                        "edge_warnings": f.edge_warnings,
                     }
                     for f in a.folds
                 ],
@@ -711,7 +883,18 @@ class FitReport:
                 "mean_held_out": a.mean_held_out,
                 "spread_held_out": a.spread_held_out,
                 "bootstrap_95pct_interval": a.bootstrap,
+                "final_edge_warnings": a.final_edge_warnings,
             }
+        # Task brief point 1: a loud, structured, TOP-LEVEL warnings list --
+        # every arm's final (all-blocks, "what would ship") edge warnings,
+        # tagged with the arm name, so a consumer does not have to walk
+        # every arm's own nested list to notice one. Empty when no arm's
+        # final fit landed on a grid edge.
+        warnings = [
+            {"arm": name, **w}
+            for name, a in self.arms.items()
+            for w in a.final_edge_warnings
+        ]
         return {
             "fit_id": self.fit_id, "created_at": self.created_at,
             "generator": {"name": "posthouse.cull.fit", "version": FIT_VERSION, "numpy_version": np.__version__},
@@ -725,6 +908,7 @@ class FitReport:
             "fixture_guard": self.fixture_guard,
             "baselines": self.baselines,
             "decisive": self.decisive,
+            "warnings": warnings,
             "generalization_caveat": (
                 "Fitted on ONE clip (one camera, one operator, one property, "
                 "one lighting condition, one morning). Block CV over time and "
@@ -794,18 +978,37 @@ def fit(
 
     arms: dict[str, ArmResult] = {}
 
-    # --- slice 5's headline arms: the stability detector -----------------
-    # focus_gate=False is forced by fit_one() itself for consolidation ==
-    # "stability" regardless of what is passed here; passed False
-    # explicitly anyway so a reader of this call site does not have to
-    # know that to understand it.
-    arms["stability_full"] = run_arm(
-        "stability_full", "stability", False, True,
+    # --- slice 5 follow-up (2026-09-02 investigation), task brief points
+    # 3-4: every stability_combine mode is now a first-class, fully
+    # block-CV'd arm, not a diagnostic script -- "and" is the ORIGINAL
+    # shipped AND-gate structure, "or"/"score" are the combination-rule
+    # candidates the investigation asked for, and "resid_only"/
+    # "lapvar_only" are the isolated-signal ablation arms it also asked
+    # for. focus_gate=False is forced by fit_one() itself for
+    # consolidation == "stability" regardless of what is passed here;
+    # passed False explicitly anyway so a reader of this call site does
+    # not have to know that to understand it. Exposure is ablated
+    # (full/no_exposure) only for "and" and "score", the two combine modes
+    # that are actually plausible headline candidates -- ablating it for
+    # all five would be 10 arms' worth of full 3-fold segment_source runs
+    # for a question ("does exposure gating help") that does not depend
+    # on the combine mode, and the module docstring already bounds runtime
+    # by not fully ablating every combination.
+    for combine in ("and", "or", "resid_only", "lapvar_only", "score"):
+        arms[f"stability_{combine}_full"] = run_arm(
+            f"stability_{combine}_full", "stability", False, True,
+            evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
+            stability_combine=combine,
+        )
+    arms["stability_and_no_exposure"] = run_arm(
+        "stability_and_no_exposure", "stability", False, False,
         evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
+        stability_combine="and",
     )
-    arms["stability_no_exposure"] = run_arm(
-        "stability_no_exposure", "stability", False, False,
+    arms["stability_score_no_exposure"] = run_arm(
+        "stability_score_no_exposure", "stability", False, False,
         evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
+        stability_combine="score",
     )
 
     # --- legacy arms, kept and fully fit for comparison -------------------
@@ -846,11 +1049,21 @@ def fit(
     # ONLY -- Ryan's ratified decision to adopt the stability detector for
     # segment extent (2026-09-02 Decision Log) is not re-litigated by this
     # harness's own ranking rule on every run; it decides only WHICH
-    # stability arm ships (full vs. no-exposure) and whether either
-    # passes the fixture guard. Legacy arms are still ranked and reported
-    # in `all_ranked` / `decisive["legacy_comparison"]` for comparison.
+    # stability arm ships. Slice 5 follow-up (task brief points 3-4)
+    # widens this from "AND, full vs. no-exposure" to every combine mode
+    # this module fits -- "and" is no longer assumed the winner, it is
+    # ranked against "or"/"resid_only"/"lapvar_only"/"score" on the exact
+    # same held-out numbers, and the AND-gate diagnosis is upheld or
+    # overturned by measurement, not by which arms were even considered.
+    # Legacy arms are still ranked and reported in `all_ranked` /
+    # `decisive["legacy_comparison"]` for comparison.
+    stability_arm_names = (
+        "stability_and_full", "stability_and_no_exposure",
+        "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
+        "stability_score_full", "stability_score_no_exposure",
+    )
     stability_ranked = sorted(
-        (arms["stability_full"], arms["stability_no_exposure"]),
+        (arms[n] for n in stability_arm_names),
         key=lambda a: arm_rank_key(a, precision_floor), reverse=True,
     )
     chosen: Optional[ArmResult] = None
@@ -863,7 +1076,7 @@ def fit(
         rejected.append({"arm": arm.name, "problems": probs})
     hard_failure = chosen is None
     if chosen is None:
-        # Both stability arms inverted a sign check — should not happen;
+        # Every stability arm inverted a sign check — should not happen;
         # report loudly rather than silently shipping a broken one, and
         # rather than silently falling back to a legacy arm (that would
         # override Ryan's ratified choice without saying so).
@@ -916,9 +1129,33 @@ def fit(
         "crude_probe": CRUDE_PROBE,
     }
 
+    and_arm, or_arm = arms["stability_and_full"], arms["stability_or_full"]
+    resid_only_arm, lapvar_only_arm = arms["stability_resid_only_full"], arms["stability_lapvar_only_full"]
+    score_arm = arms["stability_score_full"]
+
     ablation_verdicts = {
+        # Task brief point 3/4: the AND gate judged against EVERY other
+        # combine mode on the SAME held-out ranking rule, not assumed --
+        # this is the harness's own, re-measured answer to "is AND the
+        # wrong architecture", every run.
+        "stability_combine_and_vs_or": gate_verdict(and_arm, or_arm, precision_floor),
+        "stability_combine_and_vs_resid_only": gate_verdict(and_arm, resid_only_arm, precision_floor),
+        "stability_combine_and_vs_lapvar_only": gate_verdict(and_arm, lapvar_only_arm, precision_floor),
+        "stability_combine_and_vs_score": gate_verdict(and_arm, score_arm, precision_floor),
+        "stability_combine_ranking": [
+            {"combine": n.replace("stability_", "").replace("_full", ""),
+             "arm": n, "mean_held_out": arms[n].mean_held_out}
+            for n in sorted(
+                ("stability_and_full", "stability_or_full", "stability_resid_only_full",
+                 "stability_lapvar_only_full", "stability_score_full"),
+                key=lambda n: arm_rank_key(arms[n], precision_floor), reverse=True,
+            )
+        ],
         "stability_exposure_gate": gate_verdict(
-            arms["stability_full"], arms["stability_no_exposure"], precision_floor,
+            arms["stability_and_full"], arms["stability_and_no_exposure"], precision_floor,
+        ),
+        "stability_score_exposure_gate": gate_verdict(
+            arms["stability_score_full"], arms["stability_score_no_exposure"], precision_floor,
         ),
         f"{legacy_winner_consolidation}_focus_gate": gate_verdict(
             arms[f"{legacy_winner_consolidation}_full"], arms[f"{legacy_winner_consolidation}_no_focus"], precision_floor,

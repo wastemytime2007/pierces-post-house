@@ -81,6 +81,7 @@ from urllib.parse import unquote
 from .coldfootage import CONTRACT_VERSION, validate_segments_shape
 
 DEFAULT_HANDLE_TOLERANCE_SEC = 1.0
+_BOUNDS_EPSILON_SEC = 0.05  # rounding slack when comparing an out point to a file's own duration
 _ALLOWED_RULESETS = {"narrative", "visual"}
 _MISS_TOP_N = 20
 _FP_TOP_N = 20
@@ -209,6 +210,12 @@ def _collect_file_defs(root: ET.Element) -> dict[str, dict]:
                     pass
             if ntsc_text is not None:
                 entry["ntsc"] = ntsc_text.strip().upper() == "TRUE"
+        duration_el = file_el.find("duration")
+        if duration_el is not None and duration_el.text:
+            try:
+                entry["duration_frames"] = int(round(float(duration_el.text)))
+            except ValueError:
+                pass
     return defs
 
 
@@ -232,6 +239,32 @@ def _resolve_clipitem_rate(clipitem: ET.Element, file_entry: dict) -> tuple[int,
     return 30, False
 
 
+def _resolve_conversion_rate(clipitem_rate: tuple[int, bool], file_entry: dict) -> tuple[int, bool]:
+    """Resolve the rate actually used to convert a clipitem's ``<in>``/
+    ``<out>`` frame counts to seconds — an FCP7 conform-to-sequence quirk,
+    not a general revalidation of frame-rate handling.
+
+    When a clip's native frame rate differs from the sequence it is cut
+    into, Premiere writes the clipitem's own ``<rate>`` as the SEQUENCE's
+    rate (not the source file's), but the ``<in>``/``<out>`` frame numbers
+    are still counted in the SOURCE FILE's native rate. Dividing by the
+    clipitem's declared rate in that case inflates every duration by
+    (native_rate / sequence_rate).
+
+    So: whenever the referenced ``<file>``'s own declared rate differs
+    from the clipitem's declared rate, the file's rate is the correct one
+    to convert with. When they agree (the common, no-mismatch case),
+    behavior is unchanged — this returns the clipitem's rate right back.
+    """
+    file_timebase = file_entry.get("timebase")
+    if file_timebase is None:
+        return clipitem_rate
+    file_rate = (file_timebase, file_entry.get("ntsc", False))
+    if file_rate != clipitem_rate:
+        return file_rate
+    return clipitem_rate
+
+
 def parse_answer_key_xml(xml_path: Path) -> list[Range]:
     """Parse an FCP7 xmeml answer key into usable :class:`Range` objects.
 
@@ -242,7 +275,18 @@ def parse_answer_key_xml(xml_path: Path) -> list[Range]:
     * Percent-encoded ``<pathurl>`` (``file://localhost/...``), decoded.
     * ``<in>``/``<out>`` in frames at the clipitem's (or its file's)
       ``<rate>`` — timebase + ``<ntsc>`` handled per
-      :func:`_effective_fps`.
+      :func:`_effective_fps`. FCP7 conform quirk: when a clip's native
+      frame rate differs from the sequence it is cut into, Premiere
+      writes the clipitem's own ``<rate>`` as the SEQUENCE's rate (not
+      the source file's), while the ``<in>``/``<out>`` frame counts stay
+      in the SOURCE FILE's native rate. Whenever the referenced
+      ``<file>``'s own ``<rate>`` differs from the clipitem's declared
+      rate, the file's rate is used to convert in/out to seconds instead
+      (see :func:`_resolve_conversion_rate`). A bounds check then raises
+      :class:`AnswerKeyParseError` if the resolved out point still
+      exceeds the file's own ``<duration>`` (at the file's own rate) by
+      more than a small epsilon, naming both candidate interpretations,
+      rather than silently emitting an impossible range.
     * Clipitems with no ``<file>`` child (gaps, titles, adjustment
       layers) are skipped — they carry no source footage.
     * A ``<sequence>`` sitting alongside other sequences under
@@ -326,7 +370,8 @@ def parse_answer_key_xml(xml_path: Path) -> list[Range]:
             if in_frames < 0 or out_frames <= in_frames:
                 continue  # -1 (point marker) or degenerate range
 
-            timebase, ntsc = _resolve_clipitem_rate(ci, entry)
+            clipitem_rate = _resolve_clipitem_rate(ci, entry)
+            timebase, ntsc = _resolve_conversion_rate(clipitem_rate, entry)
             fps = _effective_fps(timebase, ntsc)
             if fps <= 0:
                 continue
@@ -334,6 +379,33 @@ def parse_answer_key_xml(xml_path: Path) -> list[Range]:
             source_path, source_basename = _decode_pathurl(pathurl)
             in_sec = in_frames / fps
             out_sec = out_frames / fps
+
+            file_duration_frames = entry.get("duration_frames")
+            if file_duration_frames:
+                file_fps = _effective_fps(
+                    entry.get("timebase", timebase), entry.get("ntsc", ntsc)
+                )
+                if file_fps > 0:
+                    file_duration_sec = file_duration_frames / file_fps
+                    if out_sec > file_duration_sec + _BOUNDS_EPSILON_SEC:
+                        clip_timebase, clip_ntsc = clipitem_rate
+                        clip_fps = _effective_fps(clip_timebase, clip_ntsc)
+                        clip_out_sec = out_frames / clip_fps if clip_fps > 0 else float("nan")
+                        ci_name = ci.findtext("name") or "(unnamed clipitem)"
+                        raise AnswerKeyParseError(
+                            f"{xml_path}: clipitem '{ci_name}' (file "
+                            f"'{source_basename}') has an out point of "
+                            f"{out_sec:.2f}s at the resolved rate "
+                            f"({timebase}fps, ntsc={ntsc}), which exceeds the "
+                            f"referenced file's own duration of "
+                            f"{file_duration_sec:.2f}s ({file_duration_frames} "
+                            f"frames at {entry.get('timebase')}fps). Candidate "
+                            f"interpretations: {out_sec:.2f}s (file's own rate) "
+                            f"vs {clip_out_sec:.2f}s (clipitem's declared rate "
+                            f"{clip_timebase}fps) — neither fits inside the "
+                            f"file's duration; the answer key or this parser's "
+                            f"rate resolution needs a look."
+                        )
 
             dedup_key = (source_path, round(in_sec * 1000), round(out_sec * 1000))
             if dedup_key in seen:

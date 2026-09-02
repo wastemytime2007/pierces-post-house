@@ -1,0 +1,46 @@
+{
+  "clips": [
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0138.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0144.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0145.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Ingersoll Street_4_20_26/Mavic 2/DJI_0041.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Historic Valley Juction/Mavic/DJI_0134.MP4"
+  ],
+  "per_clip": {
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0138.MP4": {
+      "n_segments": 0,
+      "covered_sec": 0,
+      "duration_sec": 81.372958
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0144.MP4": {
+      "n_segments": 3,
+      "covered_sec": 174.17399999999995,
+      "duration_sec": 301.009042
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0145.MP4": {
+      "n_segments": 0,
+      "covered_sec": 0,
+      "duration_sec": 1.042708
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Ingersoll Street_4_20_26/Mavic 2/DJI_0041.MP4": {
+      "n_segments": 3,
+      "covered_sec": 198.78191666666663,
+      "duration_sec": 207.123583
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Historic Valley Juction/Mavic/DJI_0134.MP4": {
+      "n_segments": 9,
+      "covered_sec": 281.1141666666667,
+      "duration_sec": 301.009042
+    }
+  },
+  "n_pred_ranges": 15,
+  "n_truth_ranges": 17,
+  "overall": {
+    "precision": 0.3179742716153887,
+    "recall": 0.6950896336710832,
+    "f1": 0.43634092345135994,
+    "iou": 0.25280644063952823,
+    "predicted_sec": 654.0700833333333,
+    "truth_sec": 267.5589583333333
+  }
+}

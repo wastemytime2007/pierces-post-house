@@ -1,0 +1,64 @@
+{
+  "clips": [
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0138.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Downtown_6_19_26/DJI_20260619103722_0003_D.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Historic Valley Juction/Osmo/DJI_20260513155107_0002_D.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Ingersoll Street_4_20_26/Mavic 2/DJI_0040.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Gray's Lake_4_20_26/Avata 2/DJI_20260420163534_0002_D.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Oak_Highland Park_6_15_26/DJI_0211.MP4",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Ronin 4D/A014C0005_700101_C0B714.MOV",
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Empowerment Bridge_6_16_26/Osmo/DJI_20260616135119_0004_D.MP4"
+  ],
+  "per_clip": {
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Mavic 2/DJI_0138.MP4": {
+      "n_segments": 0,
+      "covered_sec": 0,
+      "duration_sec": 81.372958
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Downtown_6_19_26/DJI_20260619103722_0003_D.MP4": {
+      "n_segments": 1,
+      "covered_sec": 159.04221666666666,
+      "duration_sec": 159.042217
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Historic Valley Juction/Osmo/DJI_20260513155107_0002_D.MP4": {
+      "n_segments": 4,
+      "covered_sec": 263.4965666666667,
+      "duration_sec": 265.448533
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Ingersoll Street_4_20_26/Mavic 2/DJI_0040.MP4": {
+      "n_segments": 2,
+      "covered_sec": 67.93453333333333,
+      "duration_sec": 73.239833
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Gray's Lake_4_20_26/Avata 2/DJI_20260420163534_0002_D.MP4": {
+      "n_segments": 10,
+      "covered_sec": 223.95706666666666,
+      "duration_sec": 231.923358
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Oak_Highland Park_6_15_26/DJI_0211.MP4": {
+      "n_segments": 2,
+      "covered_sec": 62.52913333333334,
+      "duration_sec": 64.631233
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26/Ronin 4D/A014C0005_700101_C0B714.MOV": {
+      "n_segments": 1,
+      "covered_sec": 124.15,
+      "duration_sec": 124.181333
+    },
+    "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Empowerment Bridge_6_16_26/Osmo/DJI_20260616135119_0004_D.MP4": {
+      "n_segments": 2,
+      "covered_sec": 120.00321666666667,
+      "duration_sec": 120.64
+    }
+  },
+  "n_pred_ranges": 22,
+  "n_truth_ranges": 31,
+  "overall": {
+    "precision": 0.19405177597446902,
+    "recall": 0.20989972942861698,
+    "f1": 0.20166487673583244,
+    "iou": 0.10445768669359695,
+    "predicted_sec": 958.5836000000002,
+    "truth_sec": 786.1603749999999
+  }
+}

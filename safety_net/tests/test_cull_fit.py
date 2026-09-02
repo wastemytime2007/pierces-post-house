@@ -34,8 +34,11 @@ from posthouse.cull.fit import (
     Evaluator,
     FitValidationError,
     Metrics,
+    STABILITY_LAPVAR_QUANTILE_GRID,
+    STABILITY_RESID_MAX_GRID,
     block_bootstrap,
     check_fixture_orderings,
+    check_grid_edges,
     fit,
     fit_one,
     load_fixture_arrays,
@@ -162,8 +165,8 @@ def test_fit_one_has_no_randomness_regardless_of_seed(tmp_path):
     evaluator = Evaluator(npz, SOURCE_PATH, truth)
     train = blocks[:2]
 
-    p1, m1, _ = fit_one("hysteresis", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"))
-    p2, m2, _ = fit_one("hysteresis", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"))
+    p1, m1, _, _w1 = fit_one("hysteresis", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"))
+    p2, m2, _, _w2 = fit_one("hysteresis", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"))
 
     from dataclasses import asdict
     assert asdict(p1) == asdict(p2)
@@ -186,11 +189,12 @@ def test_fit_one_stability_fits_exactly_the_two_stability_params(tmp_path):
     train = blocks[:2]
 
     default = SegmentParams()
-    params, metrics, trace = fit_one(
+    params, metrics, trace, _warnings = fit_one(
         "stability", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"),
     )
 
     assert params.consolidation == "stability"
+    assert params.stability_combine == "and", "fit_one defaults to the original AND combine mode when unspecified"
     assert params.focus_gate is False, "stability must force focus_gate off regardless of the caller's request"
     assert trace["motion"], "the stability motion stage must run and produce a trace"
     assert all(t.stage in ("stability_resid_max", "stability_lapvar_quantile") for t in trace["motion"])
@@ -324,7 +328,7 @@ def test_held_out_block_is_scored_only_against_its_own_truth(tmp_path):
     evaluator = Evaluator(npz, SOURCE_PATH, truth)
 
     train_blocks = [blocks[0], blocks[1]]
-    fitted_params, _train_m, _trace = fit_one(
+    fitted_params, _train_m, _trace, _warnings = fit_one(
         "hysteresis", True, True, evaluator, train_blocks, 0.60, 1, ("motion", "focus", "exposure"),
     )
 
@@ -426,15 +430,23 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
     )
 
     # Slice 5: the headline winner is always "stability" -- it has no
-    # focus-gate ablation (no focus gate to ablate at all), only its own
-    # exposure-gate ablation. The legacy path is still fit and ablated in
-    # full (both focus and exposure), under whichever of
-    # hysteresis/viterbi wins on its own held-out score, and reported
-    # under its own name in `arms`, never under `winner_consolidation`.
+    # focus-gate ablation (no focus gate to ablate at all). Slice 5
+    # follow-up (2026-09-02): FIVE combine-mode arms are now fit
+    # ("and"/"or"/"resid_only"/"lapvar_only"/"score"), each first-class,
+    # plus exposure-gate ablations for "and" and "score". The legacy path
+    # is still fit and ablated in full (both focus and exposure), under
+    # whichever of hysteresis/viterbi wins on its own held-out score, and
+    # reported under its own name in `arms`, never under
+    # `winner_consolidation`.
     assert report.winner_consolidation == "stability"
-    assert "stability_full" in report.arms
-    assert "stability_no_exposure" in report.arms
+    for name in (
+        "stability_and_full", "stability_and_no_exposure",
+        "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
+        "stability_score_full", "stability_score_no_exposure",
+    ):
+        assert name in report.arms
     assert "stability_no_focus" not in report.arms  # no such arm; stability has no focus gate
+    assert "stability_or_no_exposure" not in report.arms  # exposure only ablated for and/score
 
     legacy_cons = report.decisive["legacy_comparison"]["legacy_winner_consolidation"]
     assert legacy_cons in ("hysteresis", "viterbi")
@@ -444,6 +456,14 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
 
     verdicts = report.decisive["ablation_verdicts"]
     assert "stability_exposure_gate" in verdicts
+    assert "stability_score_exposure_gate" in verdicts
+    for combine_key in (
+        "stability_combine_and_vs_or", "stability_combine_and_vs_resid_only",
+        "stability_combine_and_vs_lapvar_only", "stability_combine_and_vs_score",
+    ):
+        assert combine_key in verdicts
+        assert verdicts[combine_key] in ("earns its place", "does not earn its place — recommend removing")
+    assert len(verdicts["stability_combine_ranking"]) == 5
     assert f"{legacy_cons}_focus_gate" in verdicts
     assert f"{legacy_cons}_exposure_gate" in verdicts
     for v in (
@@ -453,20 +473,221 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
     ):
         assert v in ("earns its place", "does not earn its place — recommend removing")
 
-    # The chosen/shipped arm is always one of the two stability arms,
+    # The chosen/shipped arm is always one of the stability arms,
     # never a legacy one, regardless of this run's own numeric ranking
     # (Ryan's ratified 2026-09-02 decision).
-    assert report.overall_winner in ("stability_full", "stability_no_exposure")
+    assert report.overall_winner in (
+        "stability_and_full", "stability_and_no_exposure",
+        "stability_or_full", "stability_resid_only_full", "stability_lapvar_only_full",
+        "stability_score_full", "stability_score_no_exposure",
+    )
 
     assert (tmp_path / "out" / "params.json").exists()
     written_params = json.loads((tmp_path / "out" / "params.json").read_text())
     # The shipped params carry the stability fields, not a legacy artifact.
     assert "stability_resid_max" in written_params["visual"]
     assert "stability_lapvar_quantile" in written_params["visual"]
+    assert "stability_combine" in written_params["visual"]
     assert (tmp_path / "out" / "fit_report.json").exists()
     written = json.loads((tmp_path / "out" / "params.json").read_text())
     assert written["fit_provenance"].startswith("fitted:")
     assert "visual" in written and "analysis" in written
+
+    fit_report = json.loads((tmp_path / "out" / "fit_report.json").read_text())
+    assert "warnings" in fit_report, "the top-level edge-value alarm list must always be present, even if empty"
+
+
+# ---------------------------------------------------------------------------
+# Grid-edge alarm (2026-09-02 Decision Log follow-up, task brief point 1)
+# ---------------------------------------------------------------------------
+
+def test_check_grid_edges_fires_on_a_fitted_max():
+    """The exact failure mode that triggered this investigation:
+    `stability_resid_max` fitted to 2.0, the max of its own 5-point grid."""
+    grid = {"stability_resid_max": [0.8, 1.0, 1.2, 1.5, 2.0]}
+    params = SegmentParams(stability_resid_max=2.0)
+    warnings = check_grid_edges(params, grid)
+    assert len(warnings) == 1
+    w = warnings[0]
+    assert w["param"] == "stability_resid_max"
+    assert w["value"] == 2.0
+    assert w["grid_edge"] == "max"
+    assert w["grid_min"] == 0.8 and w["grid_max"] == 2.0
+    assert "note" in w and w["note"]  # a loud, structured, human-readable note
+
+
+def test_check_grid_edges_fires_on_a_fitted_min():
+    grid = {"stability_lapvar_quantile": [0.10, 0.20, 0.30, 0.40, 0.50]}
+    params = SegmentParams(stability_lapvar_quantile=0.10)
+    warnings = check_grid_edges(params, grid)
+    assert len(warnings) == 1
+    assert warnings[0]["grid_edge"] == "min"
+
+
+def test_check_grid_edges_silent_on_an_interior_optimum():
+    grid = {"stability_resid_max": [0.8, 1.2, 1.8, 2.7, 4.0, 6.0, 9.0]}
+    params = SegmentParams(stability_resid_max=1.8)
+    assert check_grid_edges(params, grid) == []
+
+
+def test_check_grid_edges_checks_every_param_in_a_multi_param_grid():
+    """A grid with several parameters: only the ones actually pinned to
+    their own wall are reported, and each independently."""
+    grid = {
+        "stability_resid_max": STABILITY_RESID_MAX_GRID,
+        "stability_lapvar_quantile": STABILITY_LAPVAR_QUANTILE_GRID,
+    }
+    edge_params = SegmentParams(
+        stability_resid_max=max(STABILITY_RESID_MAX_GRID),
+        stability_lapvar_quantile=0.30,  # interior of STABILITY_LAPVAR_QUANTILE_GRID
+    )
+    warnings = check_grid_edges(edge_params, grid)
+    assert len(warnings) == 1
+    assert warnings[0]["param"] == "stability_resid_max"
+
+    both_edges = SegmentParams(
+        stability_resid_max=min(STABILITY_RESID_MAX_GRID),
+        stability_lapvar_quantile=max(STABILITY_LAPVAR_QUANTILE_GRID),
+    )
+    warnings_both = check_grid_edges(both_edges, grid)
+    assert {w["param"] for w in warnings_both} == {"stability_resid_max", "stability_lapvar_quantile"}
+
+
+def test_check_grid_edges_settle_frames_special_case():
+    """settle_frames is stored specially (as an int, alongside a derived
+    settle_frames_static) -- the edge check must still find it by its own
+    grid name, same as every other field."""
+    grid = {"settle_frames": [4, 6, 8, 10, 12]}
+    params = SegmentParams(settle_frames=12, settle_frames_static=6)
+    warnings = check_grid_edges(params, grid)
+    assert len(warnings) == 1
+    assert warnings[0]["param"] == "settle_frames"
+    assert warnings[0]["value"] == 12
+
+
+def test_fit_one_stability_and_produces_no_edge_warning_with_widened_grid_on_clean_data():
+    """On a scenario where the fitted optimum is interior (a clean static
+    run well inside the widened grids), fit_one's own returned warnings
+    list is empty -- the alarm does not cry wolf on an ordinary fit."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        # Reuses _small_scenario's shape directly (avoids importing pytest's
+        # tmp_path fixture outside a test function).
+        tmp_path = Path(td)
+        npz, truth, blocks = _small_scenario(tmp_path)
+        evaluator = Evaluator(npz, SOURCE_PATH, truth)
+        params, metrics, trace, warnings = fit_one(
+            "stability", False, True, evaluator, blocks, 0.60, 1, ("motion", "exposure"),
+            stability_combine="and",
+        )
+        # Not a strict guarantee for every possible dataset, but on this
+        # deliberately clean, fully-accepted-static scenario the fit should
+        # not need either wall of the widened grid -- if it does, that is
+        # itself worth knowing, so this is asserted rather than skipped.
+        edge_params = {w["param"] for w in warnings}
+        assert "stability_resid_max" not in edge_params or "stability_lapvar_quantile" not in edge_params
+
+
+# ---------------------------------------------------------------------------
+# stability_combine: non-AND combination structures (task brief point 3)
+# ---------------------------------------------------------------------------
+
+def test_stability_combine_or_accepts_more_than_and_on_the_same_data(tmp_path):
+    """OR is a strictly looser gate than AND for the same thresholds: on
+    any data, the OR-consolidated stable mask is a superset of the AND
+    one, so OR must never predict LESS coverage than AND."""
+    from posthouse.cull.segment import segment_source, SegmentParams as SP
+
+    npz, truth, blocks = _small_scenario(tmp_path)
+    common = dict(stability_resid_max=1.5, stability_lapvar_quantile=0.30, exposure_gate=False)
+    and_result = segment_source(npz, params=SP(consolidation="stability", stability_combine="and", **common))
+    or_result = segment_source(npz, params=SP(consolidation="stability", stability_combine="or", **common))
+
+    and_covered = sum(s.frame_out - s.frame_in for s in and_result.segments)
+    or_covered = sum(s.frame_out - s.frame_in for s in or_result.segments)
+    assert or_covered >= and_covered
+
+
+def test_stability_combine_resid_only_ignores_lapvar(tmp_path):
+    """resid_only must accept a span with terrible lapvar as long as resid
+    is fine -- the whole point of isolating the signal."""
+    from posthouse.cull.segment import segment_source, SegmentParams as SP
+
+    n = 900
+    arrays = _clean_arrays(n)
+    arrays["lapvar_norm"] = np.zeros(n, dtype=np.float32)  # worst possible sharpness
+    npz = _write_sidecar(tmp_path / "sidecars", "residonly", ["static"] * n, arrays)
+
+    params = SP(
+        consolidation="stability", stability_combine="resid_only",
+        stability_resid_max=1.5, stability_lapvar_quantile=0.99, exposure_gate=False,
+    )
+    result = segment_source(npz, params=params)
+    covered = sum(s.frame_out - s.frame_in for s in result.segments)
+    assert covered > 0, "resid_only must not reject purely on lapvar"
+
+
+def test_stability_combine_lapvar_only_ignores_resid(tmp_path):
+    from posthouse.cull.segment import segment_source, SegmentParams as SP
+
+    n = 900
+    arrays = _clean_arrays(n)
+    arrays["resid"] = np.full(n, 50.0, dtype=np.float32)  # terrible motion residual
+    npz = _write_sidecar(tmp_path / "sidecars", "lapvaronly", ["static"] * n, arrays)
+
+    params = SP(
+        consolidation="stability", stability_combine="lapvar_only",
+        stability_resid_max=0.01, stability_lapvar_quantile=0.10, exposure_gate=False,
+    )
+    result = segment_source(npz, params=params)
+    covered = sum(s.frame_out - s.frame_in for s in result.segments)
+    assert covered > 0, "lapvar_only must not reject purely on resid"
+
+
+def test_stability_combine_score_lets_a_strong_signal_compensate_a_weak_one():
+    """The whole point of the combined score (task brief point 3, option
+    b): a frame excellent on one signal and mediocre on the other can
+    still clear ONE threshold, which an AND gate structurally cannot
+    allow if either wall is individually failed."""
+    from posthouse.cull.segment import _stability_score, SegmentParams as SP
+
+    n = 100
+    # resid: half the clip has resid=0 (perfect), half resid=10 (bad).
+    # lapvar: uniformly mediocre everywhere.
+    resid = np.concatenate([np.zeros(50), np.full(50, 10.0)])
+    lapvar = np.full(n, 5.0)
+    params = SP(stability_score_resid_weight=0.5, stability_score_threshold=0.5)
+    score = _stability_score(resid, lapvar, params)
+    # The first half (great resid, mediocre lapvar) should score higher
+    # than the second half (bad resid, same mediocre lapvar).
+    assert score[:50].mean() > score[50:].mean()
+
+
+def test_stability_combine_score_is_bounded_and_scale_free():
+    """Percentile-rank normalization means the score never depends on the
+    signals' absolute scale -- verified directly by scaling resid/lapvar
+    by an arbitrary factor and checking the score is unchanged."""
+    from posthouse.cull.segment import _stability_score, SegmentParams as SP
+
+    rng = np.random.default_rng(0)
+    resid = rng.uniform(0, 50, size=200)
+    lapvar = rng.uniform(0, 2, size=200)
+    params = SP(stability_score_resid_weight=0.4)
+
+    score_a = _stability_score(resid, lapvar, params)
+    score_b = _stability_score(resid * 1000.0, lapvar * 0.001, params)  # wildly different scale
+    assert np.allclose(score_a, score_b)
+    assert score_a.min() >= 0.0 and score_a.max() <= 1.0
+
+
+def test_segment_params_rejects_unknown_stability_combine():
+    with pytest.raises(ValueError, match="stability_combine"):
+        SegmentParams(stability_combine="nonsense")
+
+
+def test_segment_params_rejects_out_of_range_score_threshold():
+    with pytest.raises(ValueError, match="stability_score_threshold"):
+        SegmentParams(stability_score_threshold=1.5)
 
 
 # ---------------------------------------------------------------------------

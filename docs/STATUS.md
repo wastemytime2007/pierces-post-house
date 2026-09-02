@@ -104,7 +104,26 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Slice 5 shipped (demote classifier to labeller, stability detector
+1. **THE GENERALIZATION TEST FAILED, which is the most important result
+   so far.** The Runnells-fitted detector, run unchanged against the Des
+   Moines drone footage, scored BELOW select-everything on precision and
+   IoU (P 0.317 / R 0.714 / IoU 0.255 vs baseline P 0.338 / R 1.000 /
+   IoU 0.300). Motion-residual magnitudes differ by an order of
+   magnitude between the two shoots, so an absolute threshold cannot
+   cross between them. Fitting on one clip does not transfer, now
+   demonstrated rather than assumed.
+   Also landed: the grid-edge alarm, widened grids, five selectable
+   gate-combination modes (`resid_only` wins on Runnells at P 0.627 /
+   R 0.911 / IoU 0.417), and a confirmed answer-key parser bug that had
+   inflated 39 of 60 Des Moines sources (that benchmark is really 41.5
+   minutes of usable footage, not 73.1; README corrected).
+   **Immediate next: re-measure Des Moines on the full dataset with the
+   corrected parser** (the failing number came from a 5-clip subset
+   chosen under the old parser). Then the real question this forces:
+   whether a per-clip normalized or adaptive threshold can cross shoots
+   at all, versus fitting per-shoot, versus the cull being scoped per
+   camera. That is a design decision for Ryan, not a tuning pass.
+2. **Slice 5 shipped (demote classifier to labeller, stability detector
    as segment extent) but the Lead's follow-up found the gate
    COMBINATION is the problem, not just the thresholds.** Production
    held-out: P 0.669 / R 0.804 / IoU 0.436 (329 tests, verified). Both

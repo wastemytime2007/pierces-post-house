@@ -1,0 +1,190 @@
+{
+  "contract_version": 1,
+  "manifest_id": "e638d63f-ea7a-4095-ad95-1f8972709835",
+  "revision": 1,
+  "created_at": "2026-09-02T16:11:24Z",
+  "updated_at": "2026-09-02T16:11:24Z",
+  "generator": {
+    "name": "posthouse.pm",
+    "version": "0.1.0",
+    "precut_pin": "e035fbaf1fe63bfb0647917af142304b4470d00d"
+  },
+  "project": {
+    "name": "Des Moines Estabs",
+    "slug": "des-moines-estabs",
+    "root_dir": "benchmark/des-moines-estabs",
+    "client": {
+      "name": "SoldFast"
+    },
+    "project_type": "other",
+    "shoot_dates": [
+      "1979-12-31",
+      "2026-04-20",
+      "2026-05-13",
+      "2026-05-27",
+      "2026-06-15",
+      "2026-06-16",
+      "2026-06-19"
+    ]
+  },
+  "sources": [
+    {
+      "id": "broll-downtown-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Downtown_6_19_26",
+      "display_name": "Downtown",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 11,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 4187113294
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-capital-building-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Capital_05_27_26",
+      "display_name": "Capital Building",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 26,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 347827193891
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-gray-s-lake-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Gray's Lake_4_20_26",
+      "display_name": "Gray's Lake",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 10,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 13978824991
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-empowerment-bridge-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Empowerment Bridge_6_16_26",
+      "display_name": "Empowerment Bridge",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 6,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 19175089053
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-historic-valley-junction-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Historic Valley Juction",
+      "display_name": "Historic Valley Junction",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 8,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 37265631847
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-ingersoll-st-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Ingersoll Street_4_20_26",
+      "display_name": "Ingersoll St.",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 12,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 16859917594
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    },
+    {
+      "id": "broll-oak-highland-park-01",
+      "path": "/Volumes/video/2026/SoldFast/Soldfast Iowa/Des Moines_Estabs/Oak_Highland Park_6_15_26",
+      "display_name": "Oak Highland Park",
+      "kind": "broll",
+      "added_at": "2026-09-02T16:11:24Z",
+      "media": {
+        "video_count": 9,
+        "audio_count": 0,
+        "image_count": 0,
+        "other_count": 0,
+        "total_bytes": 16392661302
+      },
+      "inference": {
+        "camera_tags": [],
+        "method": "camera_inference@e035fbaf1fe63bfb0647917af142304b4470d00d",
+        "agrees_with_declaration": true
+      }
+    }
+  ],
+  "default_includes": [],
+  "handoffs": [
+    {
+      "role": "project_manager",
+      "action": "emitted",
+      "at": "2026-09-02T16:11:24Z",
+      "revision": 1,
+      "agent": "posthouse.pm/0.1.0"
+    }
+  ],
+  "validation": {
+    "ran_at": "2026-09-02T16:11:24Z",
+    "mode": "handoff",
+    "errors": [],
+    "warnings": [
+      "source broll-downtown-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "source broll-capital-building-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "source broll-gray-s-lake-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "source broll-empowerment-bridge-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "source broll-historic-valley-junction-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "source broll-ingersoll-st-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "source broll-oak-highland-park-01: lives on a different volume than project.root_dir — may become unmountable later",
+      "brand is absent — no brand assets staged for this project"
+    ]
+  }
+}
