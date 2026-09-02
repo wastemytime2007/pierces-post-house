@@ -574,6 +574,125 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — A full working session on real footage: Ryan's direct
+  correction of the detector, three rounds of honest feature testing,
+  a two-part parser bug in the tool that reads his corrections, and a
+  real blind spot in the benchmark itself.** Summarized in order.
+  1. **Ryan corrected the detector's output by hand in Premiere and
+     gave concrete, specific criticism**, not vague dissatisfaction:
+     the cuts were arbitrary with no discernible reason to open or
+     close where they did; motion needs judging by its *shape over
+     time* (a pan developing over a few seconds is intentional, the
+     same displacement in half a second is a jerk; a pan that
+     oscillates on the perpendicular axis while panning is shake
+     wearing a pan's clothes, even if net motion looks clean); and
+     high-frame-rate B-roll should be evaluated as if conformed to
+     delivery rate, since the same motion plays out slower once
+     retimed. He also asked directly whether `claude-video-vision`
+     would help, given the pipeline works frame-by-frame.
+  2. **Video-vision evaluated and scoped as diagnostic-only, not
+     production.** Our phase-correlation signals already sample at the
+     source's native rate (60/frame for this footage); a vision tool
+     sampling a few times a second would have LESS temporal resolution
+     for exactly the jerk/oscillation judgments requested, not more.
+     Right role for it: spot-checking a specific disputed moment by
+     eye while diagnosing, never a per-frame production dependency
+     (ground rule 3, deterministic before generative, stands).
+  3. **Feasibility discussion, honestly graded rather than assumed.**
+     Distinguished "useful triage tool" (bounded time-series feature
+     classification, well-understood problem class, real evidence
+     already in hand of predictive individual signals) from "fully
+     autonomous, no review needed" (a much higher bar the project was
+     never actually aiming for — "the AI does the comprehension, the
+     editor does the editing" was the founding principle). Corrected
+     the "train on every possible movement" framing: this is fitting
+     4-8 scalar thresholds via cross-validation, not a data-hungry
+     model: a handful of well-chosen minimal pairs would matter far
+     more than exhaustive coverage, and only after cheaper validation
+     against data already in hand.
+  4. **Three rounds of honest feature testing against real ground
+     truth, reported plainly at each step, before asking for any more
+     of Ryan's time.** Round 1 (raw jerk + naive single-axis "purity"):
+     jerk near chance (Runnells AUC 0.51); purity consistently
+     BACKWARDS (0.43 mean) — diagnosed directly against real data: 8 of
+     Ryan's first 10 Runnells selects are COMPOUND motion (both axes
+     genuinely active), so "orthogonal axis should be quiet" was false
+     as a general rule for how he actually shoots. Round 2 (circular
+     direction-stability instead of axis purity): still weak/mixed
+     (Runnells 0.535), and the Lead caught a real methodological flaw
+     in the test itself — one fixed motion-detection floor across
+     clips whose scales differ 10x, the identical mistake already paid
+     for once in the per-clip-normalization work. Round 3 (same
+     feature, per-clip floor using each clip's own quiet-moment
+     percentile): **floors measured at 0.014 to 1.967 px/frame (140x
+     spread, confirming the confound was real), and direction-stability
+     at a 1-second window reached AUC 0.714 on Runnells** — a real,
+     non-chance signal on the one clip with trustworthy ground truth,
+     though still inconsistent on the Des Moines set (0.20-0.71),
+     entangled with the still-unresolved editorial-contamination
+     question there. Recorded as genuine progress, not proof, and the
+     right next input identified as the still-outstanding clean drone
+     answer key, not a fourth blind variation.
+  5. **Ryan then gave the real drone answer key directly**, correcting
+     the detector's own output by hand in Premiere rather than marking
+     from scratch — see the entry immediately below for the parser work
+     that was needed to actually read it, the granularity finding it
+     surfaced, and the fix that came out of it.
+- **2026-09-02 — Reading Ryan's real corrected cuts took two parser
+  fixes, and the SCORE of his correction against the original detector
+  output exposed a genuine blind spot in the benchmark itself.**
+  1. **The Lead lost the thread once, caught it when Ryan asked about
+     it directly, and fixed it properly rather than guessing.** Ryan's
+     corrected XML failed to parse; a clarifying question was asked and
+     the conversation moved on to the broader methodology discussion
+     without circling back. When Ryan asked "is the footage I cut not a
+     clean answer key," that was the prompt to actually resolve it.
+  2. **Root cause, worked out by hand before dispatching a fix**: one
+     clipitem declared its own duration as almost exactly double the
+     referenced file's declared duration (31,815 vs 15,911 frames,
+     both at 60fps) — the signature of a clip genuinely retimed at the
+     source (matching exactly what Ryan had asked for: high-frame-rate
+     B-roll conformed to delivery rate). Fix: a self-consistency check
+     tried in order — does the file's own rate/duration bound this
+     clipitem's in/out; if not, does the clipitem's own rate/duration.
+     Whichever is internally consistent wins, handling both this case
+     and the earlier, different sequence-conform bug without regressing
+     either.
+  3. **First version of that fix was still wrong, and the Lead caught
+     it by checking the real numbers rather than trusting a clean
+     parse.** It correctly identified WHICH clips were retimed but left
+     their seconds in the retimed (2x-slowed) timeline instead of
+     rescaling back to real position in the source file — 15 of 28
+     ranges landed past the file's real 265.45s duration, up to 520s.
+     Sent back with the exact correcting formula
+     (`real_seconds = frame / clip_own_duration_frames *
+     file_real_duration_seconds`, rate-agnostic, doesn't assume a
+     specific conform ratio) and a hand-verified expected value for the
+     specific clipitem. Second version matched the hand calculation
+     almost exactly (expected ~257.6-260.4s, actual 257.53-260.28s);
+     all 28 ranges now fit inside the real file, and both previously-
+     recorded real answer keys (Runnells, Des Moines) are unchanged.
+  4. **Scoring the detector's original 4-blob output against Ryan's now-
+     correctly-parsed 28 real cuts produced a score that looked almost
+     respectable — P=0.727, R=0.993, IoU=0.593, beating select-
+     everything's P=0.635 — while being exactly the "arbitrary cuts,
+     basically unusable" output Ryan had already told us it was.** The
+     detector's 4 giant segments (avg 66s, one spanning 154s) happened
+     to cover 99% of Ryan's real 168.7s of usable footage simply because
+     63.5% of this clip is usable, so almost any coarse "keep most of
+     it" strategy scores well on overlap. **Precision, recall, and IoU
+     were never able to see that the detector had done none of the real
+     culling work — they only measure time overlap, never segment count
+     or size.** This is the same blind spot from the opposite direction
+     as slice 2's 463-run over-fragmentation, now confirmed to hide
+     both failure modes. Fixed (see the immediately following commit):
+     `granularity_ratio` (4/26≈0.154 here) plus `under_segmentation_
+     events`/`over_segmentation_events`, additive to `Score`, naming the
+     specific offending segment and which real cuts it swallowed (the
+     154s blob alone: 15 distinct truth segments across 49.2s of real
+     gaps) — a specific, actionable finding no bare P/R/IoU number could
+     surface. Suite 363 passed / 1 skipped, verified independently
+     against the real case before commit.
 - **2026-09-02 — Ryan confirmed the asterisk: the two answer keys measure
   different things, which reframes the asymmetric-transfer finding.**
   Runnells was marked as a purpose-built teaching example: every

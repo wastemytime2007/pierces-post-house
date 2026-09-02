@@ -6,31 +6,52 @@ everything in flight.
 
 ## Current stage — see § Done for the latest slice
 
-**PHASES 0 THROUGH 3 COMPLETE. Phase 4 (Assistant Editor cull) in
-design.** Benchmark v1 has a real answer key (clip 0006, 26 selects)
-and a recorded select-everything baseline to beat: P 0.577 / R 1.000 /
-F1 0.732 / IoU 0.392. The Architect is designing the cull's signal
-stack, segmentation, and culls.json contract against Ryan's criteria
-(motion intent per select; clear focus, rack allowed) before any build.
+**PHASES 0 THROUGH 3 COMPLETE. Phase 4 (Assistant Editor cull) deep in
+iteration, not yet shipped.** Slices 1-5 all built and reviewed;
+significant real-footage findings at every stage; the benchmark itself
+has been hardened twice this session (a real parser bug, a real
+granularity blind spot). Where the cull's accuracy actually stands
+right now, in one line: **a per-clip-normalized direction-stability
+feature reaches a real, non-chance AUC of 0.714 on the one clip with
+trustworthy ground truth (Runnells)** — genuine signal, not yet a
+shipped detector, and not yet proven to generalize to the drone
+footage.
 
-Earlier stage summary: **PHASES 0, 1, AND 2 ALL COMPLETE, nothing deferred.** Phase 0's last
-Tier-2 gap (real-footage audio sync) closed with a real measurement:
-4ms offset error, score 11.55 vs threshold 10.0 on manufactured real
-speech. Phase 1's heavy-dep harvest wrappers (transcribe, index, sync)
-shipped against the real venv. Phase 2's Project Manager runs headless,
-verified end to end on a realistic fake shoot including a late-footage
-re-run. Suite: 186 passed / 1 skipped (~50s on the Mac; Tier-2 tests
-carry a `tier2` marker so cloud runs can deselect them).
+**The single most important finding of the session**: precision/
+recall/IoU can score a detector well while it does none of the real
+work. A 4-blob detector that just kept most of a clip scored
+P=0.727/R=0.993/IoU=0.593 (beating select-everything) against Ryan's
+real, hand-corrected answer key for that clip, while being exactly the
+"arbitrary cuts, basically unusable" output Ryan had already told us it
+was — because 63.5% of that clip is genuinely usable, so covering most
+of it scores fine on pure overlap regardless of whether the cuts mean
+anything. Fixed: `granularity_ratio` and `under_segmentation_events`/
+`over_segmentation_events` are now part of every score, naming the
+specific offending segment and which real cuts it swallowed. This
+same blind spot had already hidden the opposite failure earlier in
+the session (463-run over-fragmentation on Runnells). Every future
+Phase 4 score must be read alongside these, not just P/R/IoU.
+
+**Two real parser bugs found and fixed on real footage this session**,
+both because a review or a direct hand-check caught a wrong number
+before it was trusted: an FCP7 frame-rate resolution bug (self-
+consistency check needed for retimed/conformed clips, not just the
+earlier sequence-rate-mismatch case) and, before that, the Des Moines
+answer-key frame-rate inflation bug. Neither would have been caught by
+tests on synthetic fixtures alone — both needed real, messy Premiere
+exports.
 
 Product pivoted (2026-09-01): the end product is a new role-driven app;
 PreCut is the component donor. See ROADMAP §6 for the phase plan.
 
-**What's next, and what it needs from Ryan:** the Assistant Editor is
-the Phase 4 flagship and the roadmap gates it on Phase 3, the benchmark
-— which is blocked on Ryan nominating one finished past project (raw
-footage plus his delivered edit). Without it there is no answer key to
-measure the cull against, and the cull is exactly the skill that must
-not be tuned by vibes.
+**What's next:** slice 4 (fitting) is being retried with the corrected
+direction-stability feature and the exact scoring the granularity check
+now requires — a "good score" is no longer trustworthy without checking
+segment count/size too. The still-open question from the transfer study
+(does anything here generalize past Runnells) remains unresolved and
+is the next real test once a clean drone-footage answer key exists —
+Ryan's hand-corrected Historic Valley Junction cuts are exactly that,
+now correctly parsed and ready to score against.
 
 ## In progress
 
@@ -101,186 +122,16 @@ not be tuned by vibes.
   needed. Removes real complexity from the eventual Phase 4 design.
   Manifest's `people` field simplified back to a plain intake roster.
   *(This commit.)*
-
-## Next (in order)
-
-1. **RESOLVED: the "asymmetric transfer" result was measuring two
-   different things, not two different technical distributions.** Ryan
-   confirmed Runnells was an exhaustive teaching mark (every technically
-   usable range) while Des Moines is real production selects (best
-   shots for a job, i.e. technical usability filtered by editorial
-   taste). Phase 4 is technical-cull-only by design (ROADMAP §1), so
-   scoring against Des Moines' editorially-filtered ground truth was
-   the wrong test. The four architecture options from the prior entry
-   (fit per shoot / scope per camera / accept asymmetry) are withdrawn
-   as premature — they would have tuned to Ryan's taste, not fixed a
-   technical gap.
-   **Awaiting Ryan: a small Runnells-style exhaustive marking pass on
-   ONE Des Moines clip**, same protocol as Runnells (mark every
-   technically-usable range, ignore whether it would make a real cut).
-   That gives a clean apples-to-apples technical-cull benchmark on a
-   different camera — the comparison the phase actually needs.
-   The per-clip normalization work (quantile / robust_scale strategies,
-   both fit and cross-validated) stands regardless of this reframe;
-   thresholds being scale-free across cameras remains correct and
-   necessary. Fitting on Des Moines and scoring Runnells beats
-   baseline in all three strategies (best: robust_scale P 0.631 /
-   R 0.947 / IoU 0.433 vs baseline 0.577/0.392). The reverse direction
-   fails in all three, within 0.01 of each other, which shows scale was
-   never the binding constraint there. Diagnosed: Runnells is 57.7%
-   usable, Des Moines 33.6%, and per-clip usable fraction on Des Moines
-   runs 0% to 52%. A detector fitted where most footage is usable keeps
-   too generously for footage where most is not. The `quantile`
-   strategy's constant-fraction assumption, flagged as a weakness
-   before it was built, is directly falsified by that 0-52% spread.
-   **Ryan's decision needed** (all defensible, none silently taken):
-   fit per shoot (cheap now the harness exists), scope per camera or
-   footage type, accept asymmetric transfer and always fit on the
-   denser shoot, or first test whether the usable-fraction gap is an
-   artifact of the two answer keys being made differently (purpose-built
-   marking pass vs a real job's organized selects) rather than a real
-   property of the footage.
-2. **THE GENERALIZATION TEST FAILED, which is the most important result
-   so far.** The Runnells-fitted detector, run unchanged against the Des
-   Moines drone footage, scored BELOW select-everything on precision and
-   IoU (P 0.317 / R 0.714 / IoU 0.255 vs baseline P 0.338 / R 1.000 /
-   IoU 0.300). Motion-residual magnitudes differ by an order of
-   magnitude between the two shoots, so an absolute threshold cannot
-   cross between them. Fitting on one clip does not transfer, now
-   demonstrated rather than assumed.
-   Also landed: the grid-edge alarm, widened grids, five selectable
-   gate-combination modes (`resid_only` wins on Runnells at P 0.627 /
-   R 0.911 / IoU 0.417), and a confirmed answer-key parser bug that had
-   inflated 39 of 60 Des Moines sources (that benchmark is really 41.5
-   minutes of usable footage, not 73.1; README corrected).
-   **Immediate next: re-measure Des Moines on the full dataset with the
-   corrected parser** (the failing number came from a 5-clip subset
-   chosen under the old parser). Then the real question this forces:
-   whether a per-clip normalized or adaptive threshold can cross shoots
-   at all, versus fitting per-shoot, versus the cull being scoped per
-   camera. That is a design decision for Ryan, not a tuning pass.
-2. **Slice 5 shipped (demote classifier to labeller, stability detector
-   as segment extent) but the Lead's follow-up found the gate
-   COMBINATION is the problem, not just the thresholds.** Production
-   held-out: P 0.669 / R 0.804 / IoU 0.436 (329 tests, verified). Both
-   signals (motion residual, sharpness) are individually strong
-   in-sample (IoU 0.455 and 0.420 alone, both far above select-
-   everything's 0.392), but requiring BOTH (the shipped AND-gate)
-   scores IoU 0.442, below either alone. A fitted parameter pinned to
-   the edge of its grid even after 3x widening was the tell.
-   **Next: re-dispatch to (a) widen grids with an automatic edge-value
-   alarm, (b) add resid-only/lapvar-only ablation arms, (c) test a
-   non-AND combination rule, (d) re-measure held-out and against Des
-   Moines Estabs.**
-2. **Benchmark v2 candidate staged: Des Moines Estabs** (real drone
-   project, 8 shoot days, 73.1 min / 238 selects / 60 sources / 59 true
-   full-clip rejects, at `benchmark/des-moines-estabs/`). A genuinely
-   different shoot from Runnells (aerial, gimbal-stabilized, 12.7s
-   median select vs 3.4s), so scoring against it is the strongest
-   generalization test available once slice 5 lands - stronger than the
-   small Runnells held-out strip, because it is different footage, not
-   just unseen time in the same footage. One sequence excluded (nested
-   sub-sequences the shipped guard correctly refused rather than
-   silently over-count); caveat open with Ryan on whether organized
-   `_Culled` sequences carry the same ground-truth weight as a
-   purpose-built marking pass.
-2. **Phase 4 slice 4 done, and it says SIMPLIFY.** Fitted honestly with
-   block CV, the full pipeline scores held-out **P 0.634 / R 0.838 /
-   IoU 0.387**. The Lead re-fitted the crude two-threshold probe under
-   the identical scheme (the slice had compared held-out against
-   in-sample, which was unfair) and it scores **P 0.635 / R 0.881 /
-   IoU 0.428** — a tie on precision and a win on everything else, from
-   two parameters. The pre-committed rule fires: simplify the detector
-   rather than add parameters. Ablation also confirmed the focus gate
-   does not earn its place. Slice 1's extractor is the foundation of
-   both detectors and is not in question; what loses is the boundary
-   machinery on top of it (classification, consolidation, gates).
-   **Next: slice 5 rescoped — adopt the stability-threshold detector for
-   segment extent, demote the motion classifier to a labeller (its
-   labels are useful on a Premiere clip name even though its boundaries
-   are not), then re-measure.**
-2. **Phase 4 slices 1 to 3 built** (suite 302/1). Slice 3 emits real
-   `culls.json` and the first benchmark score, and the score is an
-   honest negative: **P 0.628 / R 0.553 / IoU 0.334, below the crude
-   two-signal probe (0.701 / 0.775 / 0.459)**. Consolidation succeeded
-   (463 runs to 65, median 2.90s; boundaries beat chance 38.5% vs 28.7%
-   for the first time). The Lead diagnosed the loss: **the focus gate
-   rejected 73% of Ryan's marked-usable footage** and, isolated, costs
-   24 points of recall while buying no precision (gate off: 0.644 /
-   0.791 / 0.407). Even so the pipeline still trails the crude probe on
-   IoU.
-   **Next: slice 4, the fitting harness** — and it is now the slice
-   where this design must prove it earns its complexity. Staged fits of
-   at most four parameters, contiguous-block CV, block bootstrap, and
-   the non-overfittable fixture ordering guards. If honest fitting
-   cannot beat two thresholds, the finding is to simplify the detector,
-   not to add parameters. Measured on the real clip: 1.34x realtime
-   (below the 4-5x projection, well inside the bar). Real-footage
-   proxy check: sharpness shape survives compression (r 0.98) but its
-   absolute level and the motion residual do not (r 0.54), so originals
-   stay required. Slices 2 to 6 per `PHASE4_CULL_DESIGN.md` §5.
-2. **Ryan, highest-value optional ask (~20 min):** mark about 5 minutes
-   of the 33-minute clip `DJI_20260430071514_0005_D.MP4` as a held-out
-   validation strip that is never fitted on. It turns "fitted on one
-   clip, generalization unknown" into one honest held-out measurement.
-3. **Ryan, 13 design questions with recommendations** in
-   `PHASE4_CULL_DESIGN.md` §6 and `CULLS.md` §8 (e.g. pan decelerating
-   into a hold: one select or two; slow push = movement or static;
-   minimum select length; rack focus ending out of focus). The Lead is
-   proceeding on the recommendations; override any at any time.
-2. Unblocked while waiting on the benchmark (neither sets a threshold,
-   so neither risks tuning by feel): (a) the cull's **signal-extraction
-   layer** — per-frame motion magnitude (ffmpeg `vidstabdetect` or
-   optical flow), Laplacian blur, exposure histograms, audio peaks,
-   emitted as a signals file and checked against the safety-net
-   fixtures, which were built with exactly this failure taxonomy
-   (stable/shaky/blurred/under/over-exposed); (b) the Phase 3 scoring
-   harness scaffold — answer-key format plus precision/recall scorer,
-   runnable the moment a real project is nominated. Thresholds that turn
-   signals into segments are NOT set until the benchmark exists.
-3. **Ryan (when ready):** nominate the benchmark project (blocks
-   Phase 3, not Phase 2). Also pending: ratify the "internal tool
-   first, product maybe later" and "review happens in Premiere"
-   assumptions from the gameplan discussion.
-
-- 2026-09-01 — **Phase 3 scoring harness shipped and reviewed.**
-  `posthouse/benchmark.py`: Premiere-export parser, time-overlap
-  P/R/IoU with independently-dilated tolerance, per-ruleset and
-  truth-scope handling, largest-misses report, CLI. Review found 8
-  verified defects (3 load-bearing: gap-merging dilation, wrong-clip
-  basename credit, untrimmed nests), all fixed with regression tests;
-  truth scope added for the partial answer key. Suite 220 passed /
-  1 skipped; arithmetic and real-key parse hand-verified by the Lead.
-  Ryan's answer key (clip 0006, 26 selects, 39% usable) staged and
-  parsing exactly. *(This commit.)*
-- 2026-09-01 — **Benchmark v1 staged (Runnells Day 1) and the PM's
-  first real-footage run.** Manifest at `benchmark/runnells-day-1/`
-  (paths only; media stays on `RDOSS_2025`). The real run exposed two
-  bugs fixtures could not: proxies + `._*` sidecars counted as footage
-  (6 videos for a 2-clip shoot, phantom July date) and a stale census
-  surviving re-runs. Both fixed, regression-tested, and re-validated on
-  the drive: 2 videos, one shoot date, refresh on re-run with frozen
-  ids. PM tests 23 passed. *(This commit.)*
-- 2026-09-01 — **Phase 1 complete; Phase 0's sync gap closed.** Heavy-dep
-  harvest wrappers `posthouse/harvest/{transcribe,index,sync}.py` with
-  8 Tier-2 tests; suite 186 passed / 1 skipped, verified by the Lead.
-  Sync recovered a known 1.5s offset to within 4ms at score 11.55 vs
-  SCORE_USE 10.0 on real TTS speech; the index was proven by feeding it
-  to PreCut's own `load_broll_library`; transcription reuses PreCut's
-  phrase chunking and on-disk shape. Vision tagging opt-in, off by
-  default, no network in tests. Full findings in the Decision Log.
-  *(This commit.)*
-- 2026-09-01 — **Phase 2 slice 3 shipped; PHASE 2 COMPLETE.**
-  `posthouse/projectmanager.py` — census, unsupported aggregation,
-  harvested camera inference with the real pin, shoot dates from file
-  timestamps, brand-asset staging into `Brand Assets`, Brand Brief
-  generation, append-only handoff record, and a hard handoff-validation
-  gate before anything is written. 21 tests; suite 178 passed /
-  1 skipped. Verified by the Lead on a realistic fake shoot including a
-  late-footage re-run (revision 1→2, prior source ids frozen, exactly
-  one new file on disk, footage never copied). Also amended contract
-  §4.2 to drop the now-incorrect "delivery_targets is empty" warning,
-  caught by watching the real run. *(This commit.)*
+- 2026-09-01 — **Phase 2 slice 1: manifest builder/validator shipped.**
+  `posthouse/manifest.py` — build/load/save/validate, source-ID minting
+  per contract §5 (frozen, never renumbered), two-moment validation
+  (intake warns / handoff rejects, exhaustive), atomic writes,
+  contract_version refusal, CLI. 64 new tests; suite 124 passed /
+  1 skipped, verified independently by the Lead. High-effort code
+  review found 2 real defects (undetected nested-source kind conflicts;
+  person-ID docstring/implementation mismatch) — both fixed with
+  regression tests before commit. Four contract-gap judgment calls
+  logged in ROADMAP's Decision Log.
 - 2026-09-01 — **Phase 2 slice 2: Brand Brief generator shipped.**
   `posthouse/brandbrief.py` — font extraction from name tables, macOS
   install status, deterministic palette, README + brand-card PNG inside
@@ -292,17 +143,117 @@ not be tuned by vibes.
   tests — em dashes in generated copy, bare counts instead of named
   files with reasons, and a vivid orange labelled "neutral" — all fixed
   with regression tests. Out of scope this slice: PDF summarization and
-  the frame-0 marker. *(This commit.)*
-- 2026-09-01 — **Phase 2 slice 1: manifest builder/validator shipped.**
-  `posthouse/manifest.py` — build/load/save/validate, source-ID minting
-  per contract §5 (frozen, never renumbered), two-moment validation
-  (intake warns / handoff rejects, exhaustive), atomic writes,
-  contract_version refusal, CLI. 64 new tests; suite 124 passed /
-  1 skipped, verified independently by the Lead. High-effort code
-  review found 2 real defects (undetected nested-source kind conflicts;
-  person-ID docstring/implementation mismatch) — both fixed with
-  regression tests before commit. Four contract-gap judgment calls
-  logged in ROADMAP's Decision Log. *(This commit.)*
+  the frame-0 marker.
+- 2026-09-01 — **Phase 2 slice 3 shipped; PHASE 2 COMPLETE.**
+  `posthouse/projectmanager.py` — census, unsupported aggregation,
+  harvested camera inference with the real pin, shoot dates from file
+  timestamps, brand-asset staging into `Brand Assets`, Brand Brief
+  generation, append-only handoff record, and a hard handoff-validation
+  gate before anything is written. 21 tests; suite 178 passed /
+  1 skipped. Verified by the Lead on a realistic fake shoot including a
+  late-footage re-run (revision 1→2, prior source ids frozen, exactly
+  one new file on disk, footage never copied). Also amended contract
+  §4.2 to drop the now-incorrect "delivery_targets is empty" warning,
+  caught by watching the real run.
+- 2026-09-01 — **Phase 1 complete; Phase 0's sync gap closed.** Heavy-dep
+  harvest wrappers `posthouse/harvest/{transcribe,index,sync}.py` with
+  8 Tier-2 tests; suite 186 passed / 1 skipped, verified by the Lead.
+  Sync recovered a known 1.5s offset to within 4ms at score 11.55 vs
+  SCORE_USE 10.0 on real TTS speech; the index was proven by feeding it
+  to PreCut's own `load_broll_library`; transcription reuses PreCut's
+  phrase chunking and on-disk shape. Vision tagging opt-in, off by
+  default, no network in tests.
+- 2026-09-01 — **Benchmark v1 staged (Runnells Day 1) and the PM's
+  first real-footage run.** Manifest at `benchmark/runnells-day-1/`
+  (paths only; media stays on `RDOSS_2025`). The real run exposed two
+  bugs fixtures could not: proxies + `._*` sidecars counted as footage
+  (6 videos for a 2-clip shoot, phantom July date) and a stale census
+  surviving re-runs. Both fixed, regression-tested, and re-validated on
+  the drive: 2 videos, one shoot date, refresh on re-run with frozen
+  ids. PM tests 23 passed.
+- 2026-09-01 — **Phase 3 scoring harness shipped and reviewed.**
+  `posthouse/benchmark.py`: Premiere-export parser, time-overlap
+  P/R/IoU with independently-dilated tolerance, per-ruleset and
+  truth-scope handling, largest-misses report, CLI. Review found 8
+  verified defects (3 load-bearing: gap-merging dilation, wrong-clip
+  basename credit, untrimmed nests), all fixed with regression tests;
+  truth scope added for the partial answer key. Suite 220 passed /
+  1 skipped; arithmetic and real-key parse hand-verified by the Lead.
+  Ryan's answer key (clip 0006, 26 selects, 39% usable) staged and
+  parsing exactly.
+- 2026-09-02 — **Phase 4 slices 1-5 built, reviewed, and honestly
+  measured.** Signal extractor (slice 1: memory bug and a sign-inversion
+  bug caught by review before shipping, fixed and verified); per-frame
+  motion classifier (slice 2: correct per-frame, 18x over-fragmented
+  when consolidated — accepted as a labeller, not a boundary-setter);
+  segmentation (slice 3: first real culls.json and first honest
+  benchmark score, below the crude two-threshold probe); fitting (slice
+  4: the pre-committed rule fired — two thresholds beat the full
+  classify+consolidate+gate pipeline on a fair held-out comparison, so
+  the detector was simplified rather than given more parameters);
+  stability detector adopted as production (slice 5: classifier demoted
+  to a labeller only, as Ryan approved). Full detail and every number in
+  ROADMAP's 2026-09-02 entries — not duplicated here.
+- 2026-09-02 — **Benchmark v2 candidate staged: Des Moines Estabs**
+  (real 8-day drone project, 41.5 min usable after a parser fix, 59
+  true full-clip rejects). Cross-shoot transfer tested both directions:
+  fit-on-Des-Moines transfers to Runnells, the reverse does not, and
+  per-clip normalization (quantile + robust_scale, both shipped) did
+  not close that gap on its own — until Ryan confirmed the real cause:
+  Runnells is an exhaustive technical mark, Des Moines is real
+  production selects filtered by editorial taste, so the two answer
+  keys were never measuring the same thing. The four architecture
+  options considered at the time (fit per shoot / per camera / accept
+  asymmetry) are withdrawn as premature for that reason.
+- 2026-09-02 — **Ryan corrected the detector by hand and gave concrete
+  motion criteria** (shape-over-time, not just magnitude; frame-rate-
+  aware B-roll interpretation). Video-vision evaluated and scoped as a
+  diagnostic aid only — our native-rate signal sampling already exceeds
+  what sparse frame extraction could offer for jerk/oscillation
+  judgments. Three rounds of feature testing against real ground truth,
+  each reported honestly before asking for more of Ryan's time: raw
+  axis-purity was backwards (falsified by real data — most of Ryan's
+  intentional moves are compound, multi-axis motion); direction-
+  stability with a per-clip-normalized floor reached a real AUC of
+  0.714 on Runnells, genuine signal, not yet proven to generalize.
+- 2026-09-02 — **Two parser bugs found and fixed reading real Premiere
+  exports; a real benchmark blind spot found and fixed as a result.**
+  Getting Ryan's hand-corrected cuts to parse needed a self-consistency
+  rate-resolution fix (retimed clips) plus a rescale correction caught
+  by hand-checking the numbers rather than trusting a clean parse.
+  Scoring the original detector against those real cuts then exposed
+  that precision/recall/IoU cannot see segment count or size: a 4-blob
+  detector scored P=0.727/R=0.993/IoU=0.593 — beating select-everything
+  — while doing none of the real culling work. Fixed: `granularity_
+  ratio` and `under/over_segmentation_events` are now part of every
+  score. Suite 363 passed / 1 skipped. *(926a3d6, e36e2c9.)*
+
+## Next (in order)
+
+1. **Re-run slice 4 fitting** with the direction-stability feature
+   (0.714 AUC on Runnells) and read every result through the new
+   granularity metrics, not just P/R/IoU — a "good score" is no longer
+   trustworthy on its own after today's finding.
+2. **Score against Ryan's real Historic Valley Junction cuts** (now
+   correctly parsed, 28 ranges) as the first real drone-footage
+   technical-cull test — this is a materially stronger generalization
+   check than the Des Moines Estabs set, which is now known to carry
+   editorial contamination (real production selects, not an exhaustive
+   technical mark).
+3. Optional, not blocking: Ryan marking ~5 minutes of the unmarked
+   33-minute Runnells clip `DJI_20260430071514_0005_D.MP4` as a
+   held-out validation strip never fitted on.
+4. Not yet revisited: the 13 open design questions in
+   `PHASE4_CULL_DESIGN.md` §6 / `CULLS.md` §8 (pan-into-a-hold split,
+   slow push classification, minimum select length, rack focus ending
+   out of focus, etc). The pipeline they were written against
+   (classifier-driven consolidation) has since been superseded by the
+   stability detector, so some may now be moot — worth a pass once the
+   detector's real-footage generalization question above is settled,
+   not before.
+5. Low priority, still technically open from the original gameplan
+   discussion: ratify the "internal tool first, product maybe later"
+   and "review happens in Premiere" assumptions with Ryan.
 
 ## Attempts ledger
 
