@@ -1,0 +1,68 @@
+Pierce's Post House. Benchmark report.
+Handle tolerance: 1.00s
+
+OVERALL
+-------
+Precision: 0.606
+Recall:    0.471
+F1:        0.530
+IoU:       0.297
+Predicted: 97.4s across 1 sources
+Truth:     92.2s
+
+Largest misses (truth ranges under 50% covered):
+  - DJI_20260430075045_0006_D.MP4 [182.8s to 189.4s] (6.5s), coverage 23%
+  - DJI_20260430075045_0006_D.MP4 [95.7s to 100.5s] (4.8s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [111.1s to 115.8s] (4.7s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [66.5s to 70.8s] (4.4s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [143.3s to 147.0s] (3.7s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [105.2s to 108.2s] (3.0s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [77.7s to 81.7s] (4.0s), coverage 32%
+  - DJI_20260430075045_0006_D.MP4 [89.1s to 91.6s] (2.5s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [168.0s to 170.5s] (2.5s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [164.2s to 166.2s] (2.0s), coverage 0%
+
+Largest false positives:
+  - DJI_20260430075045_0006_D.MP4 [190.4s to 193.8s] (3.4s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [131.8s to 135.1s] (3.3s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [50.5s to 53.8s] (3.3s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [136.1s to 138.9s] (2.8s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [232.0s to 234.4s] (2.4s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [24.8s to 28.9s] (1.9s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [47.5s to 49.3s] (1.8s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [117.2s to 119.1s] (1.8s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [215.9s to 219.1s] (1.6s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [82.4s to 84.3s] (1.5s not in truth)
+
+RULESET: visual
+---------------
+Precision: 0.606
+Recall:    0.471
+F1:        0.530
+IoU:       0.297
+Predicted: 97.4s across 1 sources
+Truth:     92.2s
+
+Largest misses (truth ranges under 50% covered):
+  - DJI_20260430075045_0006_D.MP4 [182.8s to 189.4s] (6.5s), coverage 23%
+  - DJI_20260430075045_0006_D.MP4 [95.7s to 100.5s] (4.8s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [111.1s to 115.8s] (4.7s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [66.5s to 70.8s] (4.4s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [143.3s to 147.0s] (3.7s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [105.2s to 108.2s] (3.0s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [77.7s to 81.7s] (4.0s), coverage 32%
+  - DJI_20260430075045_0006_D.MP4 [89.1s to 91.6s] (2.5s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [168.0s to 170.5s] (2.5s), coverage 0%
+  - DJI_20260430075045_0006_D.MP4 [164.2s to 166.2s] (2.0s), coverage 0%
+
+Largest false positives:
+  - DJI_20260430075045_0006_D.MP4 [190.4s to 193.8s] (3.4s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [131.8s to 135.1s] (3.3s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [50.5s to 53.8s] (3.3s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [136.1s to 138.9s] (2.8s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [232.0s to 234.4s] (2.4s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [24.8s to 28.9s] (1.9s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [47.5s to 49.3s] (1.8s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [117.2s to 119.1s] (1.8s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [215.9s to 219.1s] (1.6s not in truth)
+  - DJI_20260430075045_0006_D.MP4 [82.4s to 84.3s] (1.5s not in truth)

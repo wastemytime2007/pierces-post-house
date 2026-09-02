@@ -104,18 +104,22 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 slices 1 and 2 built** (suite 289/1). Slice 1's nine review
-   findings are fixed and verified (265 MB peak, 3.23x realtime, sign
-   convention proven). Slice 2 classifies per frame correctly, but the
-   Lead's check against all 26 selects found it **18x over-segmented**
-   (463 runs, median 0.20s) and its boundaries **no better than chance**
-   at predicting Ryan's cuts (69% vs 67%). Accepted as a classifier,
-   explicitly not yet as evidence for criterion 1.
-   **Next: slice 3, segmentation** — runs to segments via min-duration,
-   run-level hysteresis, and the Viterbi transition penalty, with a
-   concrete target: ~26 segments, not 463, and boundary placement that
-   beats the 67% chance baseline. Emits the first real `culls.json` and
-   the first benchmark score. Measured on the real clip: 1.34x realtime
+1. **Phase 4 slices 1 to 3 built** (suite 302/1). Slice 3 emits real
+   `culls.json` and the first benchmark score, and the score is an
+   honest negative: **P 0.628 / R 0.553 / IoU 0.334, below the crude
+   two-signal probe (0.701 / 0.775 / 0.459)**. Consolidation succeeded
+   (463 runs to 65, median 2.90s; boundaries beat chance 38.5% vs 28.7%
+   for the first time). The Lead diagnosed the loss: **the focus gate
+   rejected 73% of Ryan's marked-usable footage** and, isolated, costs
+   24 points of recall while buying no precision (gate off: 0.644 /
+   0.791 / 0.407). Even so the pipeline still trails the crude probe on
+   IoU.
+   **Next: slice 4, the fitting harness** — and it is now the slice
+   where this design must prove it earns its complexity. Staged fits of
+   at most four parameters, contiguous-block CV, block bootstrap, and
+   the non-overfittable fixture ordering guards. If honest fitting
+   cannot beat two thresholds, the finding is to simplify the detector,
+   not to add parameters. Measured on the real clip: 1.34x realtime
    (below the 4-5x projection, well inside the bar). Real-footage
    proxy check: sharpness shape survives compression (r 0.98) but its
    absolute level and the motion residual do not (r 0.54), so originals

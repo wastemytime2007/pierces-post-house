@@ -548,3 +548,63 @@ together than design §1.3 implies. See `classify.py`'s "Calibration
 finding" docstring section for the numbers and why the chosen defaults
 are validated for fixture ordering, not for real-footage push/pull/roll
 sensitivity, pending slice 4's fit.
+
+## Phase 4 slice 3: runs to segments (`posthouse/cull/segment.py`)
+
+The gate slice. The Lead measured slice 2's raw output on the real clip
+at 463 runs over 235.3s (one every 0.51s, median 0.20s) with boundaries
+carrying no signal about where Ryan actually cut (69% vs 67% chance).
+Applying minimum-duration filtering to that directly would delete
+almost everything, so this module first CONSOLIDATES runs into intents,
+then applies design §2.2's settle/min-duration/class-gate/quality-gate/
+handle pipeline, then writes a contract-valid `culls.json` (visual
+ruleset only; narrative is slice 5).
+
+Two consolidation paths, chosen with `--consolidation`:
+
+* `hysteresis` (default): iteratively absorb any run shorter than
+  `min_run_sec` into whichever neighbour has the greater duration, to a
+  fixed point.
+* `viterbi`: a single-penalty Viterbi decode over the same per-frame
+  class costs `classify.py` already computes (reused directly, not
+  duplicated).
+
+Neither is fitted; every threshold lives in one `SegmentParams`
+dataclass with a documented, reasoned default (several lifted from
+`CULLS.md` §5's worked example) and `params.visual.fit_provenance_note`
+says so in the output file.
+
+```
+python -m posthouse.cull.segment SIDECAR --manifest M --out DIR [--consolidation viterbi|hysteresis]
+```
+
+Measured on the real benchmark clip (`DJI_20260430075045_0006_D.MP4`):
+
+| | hysteresis | viterbi |
+| --- | --- | --- |
+| consolidated runs (was 463) | 65 | 104 |
+| median run duration (was 0.20s) | 2.90s | 1.84s |
+| accepted segments | 38 | 41 |
+| boundary hit rate vs Ryan's 52 cut points (0.5s tolerance) | 38.5% | 40.4% |
+| same, random-cut baseline (200 draws) | 28.7% | 30.9% |
+| benchmark P / R / F1 / IoU | 0.628 / 0.553 / 0.588 / 0.334 | 0.606 / 0.471 / 0.530 / 0.297 |
+
+Both paths cut runs by roughly 5 to 7 times and put boundary placement
+meaningfully above chance for the first time (slice 2's raw output was
+statistically indistinguishable from chance). Both still land below the
+recorded crude two-signal probe baseline (P 0.701 / R 0.775 / IoU
+0.459) on recall, mostly from the `soft` (focus) and `too_short` gates
+firing on roughly half the consolidated runs, expected and reported,
+not tuned away, since fitting is slice 4's job and this slice's
+thresholds are explicitly unfit defaults.
+
+One real bug found and fixed while measuring on the real clip, not on a
+synthetic fixture: the focus-hunt gate's design-specified "sign changes
+per second" check is unusable as a raw sign-change count on real
+footage (99.6% of frames tripped it unsmoothed, 31% even after a full
+second of smoothing) because per-frame Laplacian variance carries small
+high-frequency noise that crosses zero constantly. It shipped first,
+measured zero accepted segments end to end, and was replaced with a
+Schmitt-trigger (deadband) crossing count scaled to the clip's own
+residual noise floor. See `segment.py`'s `_hunt_rate_per_sec` docstring
+for the numbers.

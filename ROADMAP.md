@@ -574,6 +574,50 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — Phase 4 slice 3 built (`posthouse/cull/segment.py`,
+  13 tests, suite 302 passed / 1 skipped): the first real `culls.json`,
+  the first Cold Footage sequence, and the first honest benchmark score.
+  The score is a NEGATIVE result and is recorded as one.**
+  - **Consolidation worked.** Slice 2's 463 runs (median 0.20s) become
+    **65 runs, median 2.90s** (hysteresis) or 104 (Viterbi), and
+    boundary placement **beat chance for the first time**: 38.5% of
+    Ryan's 52 cut points within 0.5s of a boundary against a 28.7%
+    random baseline (Viterbi 40.4% vs 30.9%). Slice 2 was 69% vs 67%,
+    i.e. nothing. Hysteresis wins on every metric, so it is the default.
+  - **But the full pipeline scored P 0.628 / R 0.553 / IoU 0.334, BELOW
+    the crude two-signal probe (P 0.701 / R 0.775 / IoU 0.459).** A
+    1200-line detector losing to six grid points on two signals is a
+    real finding, not a footnote.
+  - **The Lead diagnosed the cause rather than assuming slice 4 would
+    fix it.** The focus gate rejected **67.6s, which is 73% of Ryan's
+    entire 92.2s of marked-usable footage**, and was the primary killer
+    of seven of the eight selects that scored 0% coverage. Isolating it
+    (one parameter, four points, to find a cause, NOT a grid search for
+    a good number) gives **P 0.644 / R 0.791 / IoU 0.407 with the gate
+    effectively off**: it costs 24 points of recall and buys *no*
+    precision. It is pure loss at its unfitted default, exactly the
+    outcome design §1.4 warned about when it proved an absolute
+    sharpness threshold impossible on footage spanning lapvar 100 to
+    4890.
+  - **Even with that gate off, the pipeline still trails the crude probe
+    on precision and IoU.** Fair caveat, stated so it is not used as an
+    excuse: the probe's numbers were six grid points read off this same
+    clip, so they are mildly self-fitted, while slice 3 is entirely
+    unfitted. The comparison is not clean. It is still the bar.
+  - **Consequence for slice 4:** fitting is no longer a polish step, it
+    is where this design proves it earns its complexity. If honest
+    fitting with block CV still cannot beat two thresholds, that is
+    evidence to simplify the detector, not to add parameters. Recorded
+    now, before fitting, so the conclusion cannot be rationalized later.
+  - Bug found on real footage that fixtures could not surface: the
+    focus-hunt gate's literal "sign changes per second" spec trips on
+    99.6% of frames unsmoothed and 31% after a second of smoothing, so
+    the first build produced **zero** accepted segments end to end.
+    Fixed with a Schmitt-trigger crossing count scaled to the clip's own
+    noise floor. Flagged scope cuts: `analysis_sec` is 0.0 because
+    slice 1's sidecar does not record it (a slice 1 gap), and the full
+    CULLS §7 validator beyond tiling, shared-shape and the ruleset enum
+    is not implemented this slice.
 - **2026-09-01 — Phase 4 slice 2 built (`posthouse/cull/classify.py`,
   23 tests, suite 289 passed / 1 skipped), and the Lead's independent
   check found the thing the slice's own tests could not.** The
