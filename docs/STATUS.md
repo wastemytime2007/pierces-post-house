@@ -289,6 +289,19 @@ Ryan's call on where to spend effort next.
   widened/` as a documented alternative, not a silent regression. Suite
   223 passed / 1 skipped, re-verified after the grid change.
 
+- 2026-09-02 — **Agent-proficiency work (outside this repo's code).** Ryan
+  supplied four talks/clips as resources; consumed in full. Acted on them:
+  global `~/.claude/CLAUDE.md` gained four always-on working rules; the
+  existing `agent-guardrails` skill gained the two lessons this session
+  taught (slice by outcome not component; documentation is not progress).
+  Two new skills built and verified: `verified-quotes` (machine-checks
+  transcript quotes against source SRTs — port proven faithful by A/B against
+  the original script on identical input) and `footage-analysis` (cut-rhythm
+  measurement plus the FCP7/xmeml parsing gotchas and the granularity blind
+  spot from this week). In THIS repo: required reading cut from 2,258 lines
+  to 179 (progressive disclosure table), and rule 5 replaced — it still said
+  "no code yet, we are in planning."
+
 ## Next (in order)
 
 1. **Ryan's call**: where to spend effort next. The grid-edge theory is
