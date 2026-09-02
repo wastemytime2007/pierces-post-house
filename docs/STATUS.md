@@ -104,7 +104,20 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Benchmark v2 candidate staged: Des Moines Estabs** (real drone
+1. **Slice 5 shipped (demote classifier to labeller, stability detector
+   as segment extent) but the Lead's follow-up found the gate
+   COMBINATION is the problem, not just the thresholds.** Production
+   held-out: P 0.669 / R 0.804 / IoU 0.436 (329 tests, verified). Both
+   signals (motion residual, sharpness) are individually strong
+   in-sample (IoU 0.455 and 0.420 alone, both far above select-
+   everything's 0.392), but requiring BOTH (the shipped AND-gate)
+   scores IoU 0.442, below either alone. A fitted parameter pinned to
+   the edge of its grid even after 3x widening was the tell.
+   **Next: re-dispatch to (a) widen grids with an automatic edge-value
+   alarm, (b) add resid-only/lapvar-only ablation arms, (c) test a
+   non-AND combination rule, (d) re-measure held-out and against Des
+   Moines Estabs.**
+2. **Benchmark v2 candidate staged: Des Moines Estabs** (real drone
    project, 8 shoot days, 73.1 min / 238 selects / 60 sources / 59 true
    full-clip rejects, at `benchmark/des-moines-estabs/`). A genuinely
    different shoot from Runnells (aerial, gimbal-stabilized, 12.7s

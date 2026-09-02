@@ -43,11 +43,13 @@ from posthouse.cull.segment import (
     _Run,
     _consolidate_hysteresis,
     _consolidate_viterbi,
+    _label_motion_intent,
     _run_pipeline,
     boundary_hit_fraction,
     segment_source,
     write_culls,
 )
+from posthouse.cull.classify import STATE_NAMES
 
 pytestmark = pytest.mark.tier2
 
@@ -260,7 +262,10 @@ def test_focus_hunt_rejection(tmp_path):
     states = ["static"] * n
     npz = _write_sidecar(tmp_path / "sidecars", "huntcase", states, arrays)
 
-    params = SegmentParams(min_run_sec=0.01)
+    # The focus-hunt gate is legacy-only (slice 5 removed it as a
+    # boundary input under "stability", the new default) -- exercised
+    # here explicitly under "hysteresis".
+    params = SegmentParams(min_run_sec=0.01, consolidation="hysteresis")
     result = segment_source(npz, params=params)
 
     assert not result.segments
@@ -309,6 +314,205 @@ def test_viterbi_consolidation_absorbs_spurious_drift(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Slice 5: the stability threshold detector (default consolidation)
+# ---------------------------------------------------------------------------
+
+def test_stability_clean_window_bounded_by_high_residual_noise(tmp_path):
+    """Known boundary case #1 (slice 5 brief): a clean stable window
+    bounded on both sides by high-residual noise must become exactly one
+    accepted segment, with "stability_onset"/"stability_loss" boundary
+    reasons (not clip_start/clip_end -- the noisy regions are not at the
+    very edge of the clip)."""
+    n = 600  # 20s @ 30fps
+    arrays = _clean_arrays(n)
+    # Bad on both sides: resid far above the default cap (1.5).
+    arrays["resid"][:150] = 6.0
+    arrays["resid"][450:] = 6.0
+    states = ["shake"] * 150 + ["static"] * 300 + ["shake"] * 150
+    npz = _write_sidecar(tmp_path / "sidecars", "stab_clean", states, arrays)
+
+    result = segment_source(npz, params=SegmentParams())  # default = stability
+    assert result.consolidation == "stability"
+
+    assert len(result.segments) == 1, [(s.frame_in, s.frame_out) for s in result.segments]
+    seg = result.segments[0]
+    # Smoothing (0.7s = 21 frames @ 30fps) blurs the exact boundary a
+    # little; allow a generous tolerance well inside the 150-frame bad
+    # regions on either side.
+    assert abs(seg.frame_in - 150) <= 25, seg.frame_in
+    assert abs(seg.frame_out - 450) <= 25, seg.frame_out
+    assert seg.boundary_reason_in == "stability_onset"
+    assert seg.boundary_reason_out == "stability_loss"
+
+
+def test_stability_sharpness_dip_mid_run_splits(tmp_path):
+    """Known boundary case #2 (slice 5 brief): a window that is otherwise
+    stable (low, constant resid) but whose sharpness (lapvar_norm) dips
+    well below this clip's own fitted quantile mid-run must SPLIT into
+    two accepted segments with a rejection in between."""
+    n = 900  # 30s @ 30fps
+    arrays = _clean_arrays(n)
+    # A 3.0s dip in sharpness, well below the default 30th-percentile
+    # floor (the rest of the clip is a constant lapvar_norm=1.0).
+    arrays["lapvar_norm"][400:490] = 0.02
+    states = ["static"] * n
+    npz = _write_sidecar(tmp_path / "sidecars", "stab_dip", states, arrays)
+
+    result = segment_source(npz, params=SegmentParams())
+    assert len(result.segments) == 2, [(s.frame_in, s.frame_out) for s in result.segments]
+    first, second = sorted(result.segments, key=lambda s: s.frame_in)
+    assert first.frame_out < 400
+    assert second.frame_in > 400
+
+    dip_rejections = [
+        r for r in result.rejections
+        if r.frame_in < 490 and r.frame_out > 400 and r.reason in ("motion_inconsistent", "transition")
+    ]
+    assert dip_rejections, [r.reason for r in result.rejections]
+
+
+def test_stability_focus_signals_computed_but_do_not_gate(tmp_path):
+    """A rapidly-oscillating, motion-adjusted focus signal that
+    ``test_focus_hunt_rejection`` proves rejects an otherwise-clean run
+    under the LEGACY focus gate must NOT reject anything under the
+    stability path (default consolidation): focus is computed and
+    reported (the ``focus`` dict is still populated) but never gates a
+    boundary (task brief point 1)."""
+    n = 300
+    arrays = _clean_arrays(n)
+    arrays["lapvar_norm"][:] = np.where(np.arange(n) % 2 == 0, 0.3, 1.8).astype(np.float32)
+    states = ["static"] * n
+    npz = _write_sidecar(tmp_path / "sidecars", "stab_hunt", states, arrays)
+
+    # Sanity: the SAME signal rejects everything under the legacy path
+    # (this is exactly test_focus_hunt_rejection's own scenario).
+    legacy = segment_source(npz, params=SegmentParams(min_run_sec=0.01, consolidation="hysteresis"))
+    assert not legacy.segments
+    assert any(r.reason == "focus_hunt" for r in legacy.rejections)
+
+    # Under stability (default): no focus_hunt reason exists in this
+    # path's vocabulary at all, and the window is accepted.
+    result = segment_source(npz, params=SegmentParams())
+    assert result.consolidation == "stability"
+    assert not any(r.reason == "focus_hunt" for r in result.rejections)
+    assert result.segments, "the alternating focus signal must not reject the window under stability"
+    # Still informational: the focus dict is populated on the accepted segment.
+    assert result.segments[0].focus_shape in ("steady", "rack_in", "rack_out")
+
+
+def test_stability_exposure_gate_still_splits(tmp_path):
+    """The exposure gate is unchanged under stability (it earned its
+    place, kept): a sustained overexposed/underexposed span still splits
+    an otherwise-stable candidate."""
+    n = 600
+    arrays = _clean_arrays(n)
+    arrays["clip_low"][250:350] = 0.9  # far above the default 0.31 cap
+    states = ["static"] * n
+    npz = _write_sidecar(tmp_path / "sidecars", "stab_exposure", states, arrays)
+
+    result = segment_source(npz, params=SegmentParams())
+    assert len(result.segments) == 2, [(s.frame_in, s.frame_out) for s in result.segments]
+    first, second = sorted(result.segments, key=lambda s: s.frame_in)
+    assert first.boundary_reason_out == "exposure_fault"
+    assert second.boundary_reason_in == "exposure_recovered"
+    assert any(r.reason == "underexposed" for r in result.rejections)
+
+
+def test_stability_exposure_gate_disabled_is_never_flagged(tmp_path):
+    """``exposure_gate=False`` under stability: no frame is ever flagged
+    underexposed/overexposed (mirrors the legacy path's own ablation
+    switch, task brief point 1's "same exposure gate")."""
+    n = 600
+    arrays = _clean_arrays(n)
+    arrays["clip_low"][250:350] = 0.99
+    states = ["static"] * n
+    npz = _write_sidecar(tmp_path / "sidecars", "stab_exposure_off", states, arrays)
+
+    result = segment_source(npz, params=SegmentParams(exposure_gate=False))
+    assert len(result.segments) == 1
+    assert not any(r.reason in ("underexposed", "overexposed") for r in result.rejections)
+
+
+# ---------------------------------------------------------------------------
+# Slice 5: the classifier as labeller (majority vote, dominant class)
+# ---------------------------------------------------------------------------
+
+def test_label_motion_intent_dominant_class_by_frame_count():
+    state = np.array(
+        [STATE_NAMES.index("pan_right")] * 5
+        + [STATE_NAMES.index("pan_left")] * 3
+        + [STATE_NAMES.index("shake")] * 2,
+        dtype=np.int8,
+    )
+    intent, confidence = _label_motion_intent(state, 0, len(state))
+    assert intent == "pan_right"
+    assert confidence == pytest.approx(0.5)  # 5 of 10 frames, shake included in the denominator
+
+
+def test_label_motion_intent_tie_breaks_toward_lower_state_id():
+    """pan_left (STATE_ID 1) and pan_right (STATE_ID 2) tied at 4 frames
+    each; static (STATE_ID 0) is not part of the tie. Documented,
+    deterministic tie-break: the lower STATE_ID wins (``np.argmax``'s own
+    first-occurrence-wins behaviour on ties)."""
+    state = np.array(
+        [STATE_NAMES.index("static")] * 2
+        + [STATE_NAMES.index("pan_left")] * 4
+        + [STATE_NAMES.index("pan_right")] * 4,
+        dtype=np.int8,
+    )
+    intent, confidence = _label_motion_intent(state, 0, len(state))
+    assert intent == "pan_left"
+    assert confidence == pytest.approx(0.4)
+
+
+def test_label_motion_intent_excludes_shake_and_undecidable_from_the_vote():
+    """shake/undecidable together outnumber every legal class in this
+    window, but neither is eligible to win -- the labeller must still
+    pick the (legal) minority class, static."""
+    state = np.array(
+        [STATE_NAMES.index("shake")] * 6
+        + [STATE_NAMES.index("undecidable")] * 3
+        + [STATE_NAMES.index("static")] * 4,
+        dtype=np.int8,
+    )
+    intent, confidence = _label_motion_intent(state, 0, len(state))
+    assert intent == "static"
+    assert confidence == pytest.approx(4 / 13)
+
+
+def test_label_motion_intent_falls_back_to_drift_when_window_is_all_illegal():
+    state = np.array(
+        [STATE_NAMES.index("shake")] * 5 + [STATE_NAMES.index("undecidable")] * 5, dtype=np.int8,
+    )
+    intent, confidence = _label_motion_intent(state, 0, len(state))
+    assert intent == "drift"
+    assert confidence == pytest.approx(0.0)
+
+
+def test_labeling_applied_uniformly_regardless_of_consolidation_mode(tmp_path):
+    """The task brief's "wire the labeling step in for all modes": a
+    segment produced by the LEGACY viterbi path is labelled from the
+    sidecar's own already-committed ``state`` array, NOT from whatever
+    class viterbi's own decode (which recomputes fresh from the raw
+    motion arrays, independent of `state` -- see `_consolidate_viterbi`)
+    assigned to the run. Built so the two clearly disagree: the raw
+    arrays drive a confident pan_right by viterbi's own decode, but the
+    sidecar's committed `state` array (as if an earlier classify.py run
+    used different params) is "static" throughout -- if this refactor
+    had left any leftover `run.state`-based assignment, this segment
+    would read "pan_right"; the shared labeller must produce "static"."""
+    n = 300
+    arrays = _clean_arrays(n)
+    arrays["tx_norm_src_width"][:] = -20.0  # drives viterbi's OWN decode to pan_right
+    states = ["static"] * n  # the sidecar's already-committed classification
+    npz = _write_sidecar(tmp_path / "sidecars", "label_uniform", states, arrays)
+
+    result = segment_source(npz, params=SegmentParams(consolidation="viterbi", viterbi_lambda=7.5))
+    assert len(result.segments) == 1
+    assert result.segments[0].motion_intent == "static"
+
+
+# ---------------------------------------------------------------------------
 # Handles: clamp at source bounds, may overlap a neighbour
 # ---------------------------------------------------------------------------
 
@@ -330,8 +534,16 @@ def test_handles_clamp_at_source_bounds(tmp_path, monkeypatch):
     npz = _write_sidecar(tmp_path / "sidecars", "handles", states, arrays, source_path=source_file)
     manifest_path = _minimal_manifest(tmp_path, source_dir)
 
+    # This scenario is specifically a motion-CLASS boundary (static ->
+    # pan_right); the stability detector (slice 5's default) does not
+    # split on a class change at all -- it only splits on the smoothed
+    # resid/lapvar thresholds, which this fixture holds constant across
+    # both classes -- so this is exercised explicitly under "hysteresis".
     out_dir = tmp_path / "out"
-    result = write_culls(npz, manifest_path, out_dir, params=SegmentParams(min_run_sec=0.01))
+    result = write_culls(
+        npz, manifest_path, out_dir,
+        params=SegmentParams(min_run_sec=0.01, consolidation="hysteresis"),
+    )
 
     data = json.loads(result.master_path.read_text())
     segs = sorted(data["segments"], key=lambda s: s["in_sec"])

@@ -1,0 +1,393 @@
+{
+  "overall": {
+    "label": "overall",
+    "precision": 0.6797254619835266,
+    "recall": 0.8277858176555717,
+    "f1": 0.7464847592570566,
+    "iou": 0.4518167456556082,
+    "predicted_sec": 153.08626666666666,
+    "truth_sec": 92.22546666666665,
+    "overlap_sec": 76.34293333333332,
+    "per_source": {
+      "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4": {
+        "source_key": "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4",
+        "display_name": "DJI_20260430075045_0006_D.MP4",
+        "precision": 0.6797254619835266,
+        "recall": 0.8277858176555717,
+        "f1": 0.7464847592570566,
+        "iou": 0.4518167456556082,
+        "predicted_sec": 153.08626666666666,
+        "truth_sec": 92.22546666666665,
+        "overlap_sec": 76.34293333333332
+      }
+    },
+    "largest_misses": [
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 77.74433333333333,
+        "out_sec": 81.74833333333333,
+        "duration_sec": 4.004000000000005,
+        "coverage": 0.0,
+        "uncovered_sec": 4.004000000000005
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 105.17173333333334,
+        "out_sec": 108.17473333333334,
+        "duration_sec": 3.003,
+        "coverage": 0.0,
+        "uncovered_sec": 3.003
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 89.089,
+        "out_sec": 91.62486666666666,
+        "duration_sec": 2.5358666666666636,
+        "coverage": 0.14473684210525992,
+        "uncovered_sec": 2.168833333333339
+      }
+    ],
+    "largest_false_positives": [
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 112.17873333333334,
+        "out_sec": 121.25446666666667,
+        "duration_sec": 9.075733333333332,
+        "false_positive_sec": 4.472133333333332
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 147.71423333333334,
+        "out_sec": 163.3632,
+        "duration_sec": 15.648966666666666,
+        "false_positive_sec": 4.0393666666666945
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 190.42356666666666,
+        "out_sec": 198.3982,
+        "duration_sec": 7.974633333333344,
+        "false_positive_sec": 3.938266666666692
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 214.68113333333335,
+        "out_sec": 231.7315,
+        "duration_sec": 17.050366666666662,
+        "false_positive_sec": 3.7704333333333295
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 48.848800000000004,
+        "out_sec": 52.41903333333333,
+        "duration_sec": 3.570233333333327,
+        "false_positive_sec": 3.570233333333327
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 171.50466666666668,
+        "out_sec": 178.81196666666668,
+        "duration_sec": 7.307299999999998,
+        "false_positive_sec": 3.0707333333333224
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 139.30583333333334,
+        "out_sec": 146.98016666666666,
+        "duration_sec": 7.674333333333323,
+        "false_positive_sec": 2.970633333333325
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 56.589866666666666,
+        "out_sec": 59.426033333333336,
+        "duration_sec": 2.8361666666666707,
+        "false_positive_sec": 2.8361666666666707
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 133.56676666666667,
+        "out_sec": 136.10263333333333,
+        "duration_sec": 2.5358666666666636,
+        "false_positive_sec": 2.5358666666666636
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 36.87016666666667,
+        "out_sec": 48.4484,
+        "duration_sec": 11.57823333333333,
+        "false_positive_sec": 2.4691333333333247
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 179.44593333333333,
+        "out_sec": 182.44893333333334,
+        "duration_sec": 3.0030000000000143,
+        "false_positive_sec": 2.337666666666678
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 0.0,
+        "out_sec": 5.872533333333333,
+        "duration_sec": 5.872533333333333,
+        "false_positive_sec": 2.3366666666666673
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 52.5525,
+        "out_sec": 54.421033333333334,
+        "duration_sec": 1.8685333333333318,
+        "false_positive_sec": 1.8685333333333318
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 212.74586666666667,
+        "out_sec": 214.54766666666666,
+        "duration_sec": 1.8017999999999859,
+        "false_positive_sec": 1.8017999999999859
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 201.36783333333332,
+        "out_sec": 212.07853333333333,
+        "duration_sec": 10.710700000000003,
+        "false_positive_sec": 1.569233333333301
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 23.990633333333335,
+        "out_sec": 28.261566666666667,
+        "duration_sec": 4.270933333333332,
+        "false_positive_sec": 1.302299999999999
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 12.7127,
+        "out_sec": 15.7157,
+        "duration_sec": 3.003,
+        "false_positive_sec": 1.2689333333333332
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 93.66023333333334,
+        "out_sec": 99.63286666666667,
+        "duration_sec": 5.972633333333334,
+        "false_positive_sec": 1.068733333333327
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 16.683333333333334,
+        "out_sec": 22.989633333333334,
+        "duration_sec": 6.3063,
+        "false_positive_sec": 1.0353666666666683
+      },
+      {
+        "source": "DJI_20260430075045_0006_D.MP4",
+        "in_sec": 91.25783333333334,
+        "out_sec": 93.12636666666667,
+        "duration_sec": 1.8685333333333318,
+        "false_positive_sec": 0.5015000000000072
+      }
+    ],
+    "unmatched_predicted_sources": [],
+    "unscored_predicted_sources": []
+  },
+  "rulesets": {
+    "visual": {
+      "label": "visual",
+      "precision": 0.6797254619835266,
+      "recall": 0.8277858176555717,
+      "f1": 0.7464847592570566,
+      "iou": 0.4518167456556082,
+      "predicted_sec": 153.08626666666666,
+      "truth_sec": 92.22546666666665,
+      "overlap_sec": 76.34293333333332,
+      "per_source": {
+        "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4": {
+          "source_key": "/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/First Walkthrough After Taking Over/Osmo/DJI_20260430075045_0006_D.MP4",
+          "display_name": "DJI_20260430075045_0006_D.MP4",
+          "precision": 0.6797254619835266,
+          "recall": 0.8277858176555717,
+          "f1": 0.7464847592570566,
+          "iou": 0.4518167456556082,
+          "predicted_sec": 153.08626666666666,
+          "truth_sec": 92.22546666666665,
+          "overlap_sec": 76.34293333333332
+        }
+      },
+      "largest_misses": [
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 77.74433333333333,
+          "out_sec": 81.74833333333333,
+          "duration_sec": 4.004000000000005,
+          "coverage": 0.0,
+          "uncovered_sec": 4.004000000000005
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 105.17173333333334,
+          "out_sec": 108.17473333333334,
+          "duration_sec": 3.003,
+          "coverage": 0.0,
+          "uncovered_sec": 3.003
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 89.089,
+          "out_sec": 91.62486666666666,
+          "duration_sec": 2.5358666666666636,
+          "coverage": 0.14473684210525992,
+          "uncovered_sec": 2.168833333333339
+        }
+      ],
+      "largest_false_positives": [
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 112.17873333333334,
+          "out_sec": 121.25446666666667,
+          "duration_sec": 9.075733333333332,
+          "false_positive_sec": 4.472133333333332
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 147.71423333333334,
+          "out_sec": 163.3632,
+          "duration_sec": 15.648966666666666,
+          "false_positive_sec": 4.0393666666666945
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 190.42356666666666,
+          "out_sec": 198.3982,
+          "duration_sec": 7.974633333333344,
+          "false_positive_sec": 3.938266666666692
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 214.68113333333335,
+          "out_sec": 231.7315,
+          "duration_sec": 17.050366666666662,
+          "false_positive_sec": 3.7704333333333295
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 48.848800000000004,
+          "out_sec": 52.41903333333333,
+          "duration_sec": 3.570233333333327,
+          "false_positive_sec": 3.570233333333327
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 171.50466666666668,
+          "out_sec": 178.81196666666668,
+          "duration_sec": 7.307299999999998,
+          "false_positive_sec": 3.0707333333333224
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 139.30583333333334,
+          "out_sec": 146.98016666666666,
+          "duration_sec": 7.674333333333323,
+          "false_positive_sec": 2.970633333333325
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 56.589866666666666,
+          "out_sec": 59.426033333333336,
+          "duration_sec": 2.8361666666666707,
+          "false_positive_sec": 2.8361666666666707
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 133.56676666666667,
+          "out_sec": 136.10263333333333,
+          "duration_sec": 2.5358666666666636,
+          "false_positive_sec": 2.5358666666666636
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 36.87016666666667,
+          "out_sec": 48.4484,
+          "duration_sec": 11.57823333333333,
+          "false_positive_sec": 2.4691333333333247
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 179.44593333333333,
+          "out_sec": 182.44893333333334,
+          "duration_sec": 3.0030000000000143,
+          "false_positive_sec": 2.337666666666678
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 0.0,
+          "out_sec": 5.872533333333333,
+          "duration_sec": 5.872533333333333,
+          "false_positive_sec": 2.3366666666666673
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 52.5525,
+          "out_sec": 54.421033333333334,
+          "duration_sec": 1.8685333333333318,
+          "false_positive_sec": 1.8685333333333318
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 212.74586666666667,
+          "out_sec": 214.54766666666666,
+          "duration_sec": 1.8017999999999859,
+          "false_positive_sec": 1.8017999999999859
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 201.36783333333332,
+          "out_sec": 212.07853333333333,
+          "duration_sec": 10.710700000000003,
+          "false_positive_sec": 1.569233333333301
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 23.990633333333335,
+          "out_sec": 28.261566666666667,
+          "duration_sec": 4.270933333333332,
+          "false_positive_sec": 1.302299999999999
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 12.7127,
+          "out_sec": 15.7157,
+          "duration_sec": 3.003,
+          "false_positive_sec": 1.2689333333333332
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 93.66023333333334,
+          "out_sec": 99.63286666666667,
+          "duration_sec": 5.972633333333334,
+          "false_positive_sec": 1.068733333333327
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 16.683333333333334,
+          "out_sec": 22.989633333333334,
+          "duration_sec": 6.3063,
+          "false_positive_sec": 1.0353666666666683
+        },
+        {
+          "source": "DJI_20260430075045_0006_D.MP4",
+          "in_sec": 91.25783333333334,
+          "out_sec": 93.12636666666667,
+          "duration_sec": 1.8685333333333318,
+          "false_positive_sec": 0.5015000000000072
+        }
+      ],
+      "unmatched_predicted_sources": [],
+      "unscored_predicted_sources": []
+    }
+  },
+  "handle_tolerance_sec": 1.0,
+  "unmatched_predicted_sources": [],
+  "unscored_predicted_sources": []
+}

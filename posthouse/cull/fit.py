@@ -1,4 +1,25 @@
-"""posthouse.cull.fit — Phase 4 slice 4: the fitting harness.
+"""posthouse.cull.fit — Phase 4 slices 4-5: the fitting harness.
+
+**Slice 5 addendum (2026-09-02 Decision Log, recorded before this module
+was changed so it cannot be rationalized afterwards):** fitted honestly
+under the SAME 3-block CV/bootstrap/fixture-guard/ranking-rule machinery
+this module already built, a plain 2-parameter stability threshold
+detector (motion residual capped, sharpness above a per-clip quantile)
+scored **P 0.635 / R 0.881 / IoU 0.428** held-out, beating the full
+classify+consolidate+gate pipeline's **P 0.634 / R 0.838 / IoU 0.387**.
+Per that finding's own recommendation ("demote, do not delete"), this
+module now fits :class:`~posthouse.cull.segment.SegmentParams`'s
+``"stability"`` mode (``stability_resid_max``,
+``stability_lapvar_quantile`` — exactly the two parameters, see
+:data:`STAGE_GRID_STABILITY`) as the HEADLINE arm whose ``params.json``
+ships, with the SAME exposure-gate ablation the legacy path already had
+(the exposure gate earned its place; kept). The legacy hysteresis/viterbi
+arms are still fit and ablated in full, for comparison — nothing from
+slices 2-4 is deleted, per "demote, do not delete" — but the module never
+lets a legacy arm's numeric ranking override the stability path as the
+arm that ships: that call was Ryan's, made once, on the fair-comparison
+numbers above, not something re-litigated by this harness's own ranking
+rule every run.
 
 ``docs/design/PHASE4_CULL_DESIGN.md`` §3 in full (the plan implemented
 here) and §1.4; ``docs/contracts/CULLS.md`` §4.2 (the ``params`` /
@@ -121,9 +142,26 @@ FIXTURE_NAMES = ("stable", "shaky", "blurred", "underexposed", "overexposed")
 
 # Recorded 2026-09-01 in ROADMAP.md's Decision Log, before this module was
 # written, so it cannot be rationalized after the fact (task brief).
+# NOTE (2026-09-02, see the module docstring's slice 5 addendum): these
+# ORIGINAL numbers compared a HELD-OUT fitted pipeline against the crude
+# probe's OWN IN-SAMPLE score -- an unfair comparison the Lead caught and
+# corrected the same day. Kept here, unmodified, as the historical record
+# of what slice 4 actually reported (demote, do not delete); the FAIR,
+# apples-to-apples numbers that slice 5 is measured against are
+# CRUDE_PROBE_FAIR_CV / FITTED_PIPELINE_SLICES_2_4_FAIR_CV below.
 CRUDE_PROBE = {"precision": 0.701, "recall": 0.775, "iou": 0.459}
 BASELINE_SELECT_ALL = {"precision": 0.577, "recall": 1.000, "iou": 0.392}
 BASELINE_SLICE3_DEFAULT = {"precision": 0.628, "recall": 0.553, "iou": 0.334}
+
+# Recorded 2026-09-02 in ROADMAP.md's Decision Log (the slice 4 fair
+# comparison, and this module's slice 5 task brief): the crude probe
+# RE-FITTED under the identical 3-block CV / bootstrap / precision-floor
+# scheme this module already applies to every other arm, and the fitted
+# full pipeline's own held-out score under that same scheme. This is the
+# honest bar slice 5's stability arm is measured against, not CRUDE_PROBE
+# above.
+CRUDE_PROBE_FAIR_CV = {"precision": 0.635, "recall": 0.881, "f1": 0.737, "iou": 0.428}
+FITTED_PIPELINE_SLICES_2_4_FAIR_CV = {"precision": 0.634, "recall": 0.838, "f1": 0.710, "iou": 0.387}
 
 
 class FitError(Exception):
@@ -300,6 +338,17 @@ STAGE_GRID_EXPOSURE: dict[str, list] = {
     "clip_high_frac_max": [0.03, 0.06, 0.09, 0.12],
 }
 
+# Slice 5: the stability detector's own "motion" stage. Exactly the two
+# parameters the task brief names ("staged, at most 4 params" — this
+# stage uses 2), a 5x5 = 25-point grid bracketing the SegmentParams
+# defaults (design Sec3.3's own worked row, "resid < 1.5, lapvar > q30")
+# in both directions, matching the "25-point grid" the Decision Log's
+# fair-comparison refit of the crude probe itself used.
+STAGE_GRID_STABILITY: dict[str, list] = {
+    "stability_resid_max": [0.8, 1.0, 1.2, 1.5, 2.0],
+    "stability_lapvar_quantile": [0.10, 0.20, 0.30, 0.40, 0.50],
+}
+
 _STAGE_GRIDS = {"focus": STAGE_GRID_FOCUS, "exposure": STAGE_GRID_EXPOSURE}
 
 
@@ -367,19 +416,40 @@ def fit_one(
 ) -> tuple[SegmentParams, Metrics, dict]:
     """One staged fit (design Sec3.2 point 1's full stage order — motion
     first because it sets the boundaries, then focus, then exposure) on
-    ``train_blocks`` only."""
-    base = SegmentParams(consolidation=consolidation, focus_gate=focus_gate, exposure_gate=exposure_gate)
+    ``train_blocks`` only.
+
+    Slice 5: ``consolidation == "stability"`` forces ``focus_gate=False``
+    regardless of the caller's own ``focus_gate`` argument -- the
+    stability path has no focus gate to fit or ablate at all (task brief
+    point 1: focus is never a boundary input under this path), so the
+    "focus" stage is unconditionally skipped for it and its own "motion"
+    stage fits :data:`STAGE_GRID_STABILITY`'s two parameters
+    (``stability_resid_max``, ``stability_lapvar_quantile``) in place of
+    the legacy consolidation grids. The "exposure" stage is unchanged --
+    the stability path keeps the same exposure gate as the legacy paths.
+    """
+    is_stability = consolidation == "stability"
+    base = SegmentParams(
+        consolidation=consolidation,
+        focus_gate=False if is_stability else focus_gate,
+        exposure_gate=exposure_gate,
+    )
     eval_fn = lambda p: evaluator.score(p, train_blocks)  # noqa: E731
 
     trace: dict[str, list[StageTrace]] = {"motion": [], "focus": [], "exposure": []}
 
     if "motion" in stages:
-        motion_grid = STAGE_GRID_MOTION_VITERBI if consolidation == "viterbi" else STAGE_GRID_MOTION_HYSTERESIS
+        if is_stability:
+            motion_grid = STAGE_GRID_STABILITY
+        elif consolidation == "viterbi":
+            motion_grid = STAGE_GRID_MOTION_VITERBI
+        else:
+            motion_grid = STAGE_GRID_MOTION_HYSTERESIS
         params, metrics, trace["motion"] = coordinate_descent(base, motion_grid, eval_fn, precision_floor, passes)
     else:
         params, metrics = base, eval_fn(base)
 
-    if focus_gate and "focus" in stages:
+    if params.focus_gate and "focus" in stages:
         params, metrics, trace["focus"] = coordinate_descent(params, STAGE_GRID_FOCUS, eval_fn, precision_floor, passes)
 
     if exposure_gate and "exposure" in stages:
@@ -723,23 +793,43 @@ def fit(
     evaluator = Evaluator(npz_path, source_path, truth_all)
 
     arms: dict[str, ArmResult] = {}
+
+    # --- slice 5's headline arms: the stability detector -----------------
+    # focus_gate=False is forced by fit_one() itself for consolidation ==
+    # "stability" regardless of what is passed here; passed False
+    # explicitly anyway so a reader of this call site does not have to
+    # know that to understand it.
+    arms["stability_full"] = run_arm(
+        "stability_full", "stability", False, True,
+        evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
+    )
+    arms["stability_no_exposure"] = run_arm(
+        "stability_no_exposure", "stability", False, False,
+        evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
+    )
+
+    # --- legacy arms, kept and fully fit for comparison -------------------
+    # "demote, do not delete" (task brief): slices 2-4's classify+
+    # consolidate+gate pipeline is still fit and ablated in full every run,
+    # so the comparison this module reports is a live, re-measured one,
+    # not a frozen historical claim.
     for consolidation in ("hysteresis", "viterbi"):
         arms[f"{consolidation}_full"] = run_arm(
             f"{consolidation}_full", consolidation, True, True,
             evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
         )
 
-    winner_consolidation = max(
+    legacy_winner_consolidation = max(
         ("hysteresis", "viterbi"),
         key=lambda c: arm_rank_key(arms[f"{c}_full"], precision_floor),
     )
 
-    arms[f"{winner_consolidation}_no_focus"] = run_arm(
-        f"{winner_consolidation}_no_focus", winner_consolidation, False, True,
+    arms[f"{legacy_winner_consolidation}_no_focus"] = run_arm(
+        f"{legacy_winner_consolidation}_no_focus", legacy_winner_consolidation, False, True,
         evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
     )
-    arms[f"{winner_consolidation}_no_exposure"] = run_arm(
-        f"{winner_consolidation}_no_exposure", winner_consolidation, True, False,
+    arms[f"{legacy_winner_consolidation}_no_exposure"] = run_arm(
+        f"{legacy_winner_consolidation}_no_exposure", legacy_winner_consolidation, True, False,
         evaluator, blocks, precision_floor, passes, stages, n_bootstrap, seed,
     )
 
@@ -750,10 +840,22 @@ def fit(
     )
     fixture_arrays = load_fixture_arrays(fx_dir, Path(out_dir) / "_fixtures_work")
 
-    ranked = sorted(arms.values(), key=lambda a: arm_rank_key(a, precision_floor), reverse=True)
+    all_ranked = sorted(arms.values(), key=lambda a: arm_rank_key(a, precision_floor), reverse=True)
+
+    # The arm that SHIPS (params.json) is chosen from the stability arms
+    # ONLY -- Ryan's ratified decision to adopt the stability detector for
+    # segment extent (2026-09-02 Decision Log) is not re-litigated by this
+    # harness's own ranking rule on every run; it decides only WHICH
+    # stability arm ships (full vs. no-exposure) and whether either
+    # passes the fixture guard. Legacy arms are still ranked and reported
+    # in `all_ranked` / `decisive["legacy_comparison"]` for comparison.
+    stability_ranked = sorted(
+        (arms["stability_full"], arms["stability_no_exposure"]),
+        key=lambda a: arm_rank_key(a, precision_floor), reverse=True,
+    )
     chosen: Optional[ArmResult] = None
     rejected: list[dict] = []
-    for arm in ranked:
+    for arm in stability_ranked:
         probs = check_fixture_orderings(fixture_arrays, arm.final_params)
         if not probs:
             chosen = arm
@@ -761,46 +863,79 @@ def fit(
         rejected.append({"arm": arm.name, "problems": probs})
     hard_failure = chosen is None
     if chosen is None:
-        # Every arm inverted a sign check — should not happen; report loudly
-        # rather than silently shipping the highest-ranked-but-broken one.
-        chosen = ranked[0]
+        # Both stability arms inverted a sign check — should not happen;
+        # report loudly rather than silently shipping a broken one, and
+        # rather than silently falling back to a legacy arm (that would
+        # override Ryan's ratified choice without saying so).
+        chosen = stability_ranked[0]
 
     fixture_guard = {
-        "checked_arms_in_rank_order": [a.name for a in ranked],
+        "checked_arms_in_rank_order": [a.name for a in all_ranked],
+        "stability_arms_checked_in_rank_order": [a.name for a in stability_ranked],
         "chosen_arm": chosen.name,
         "hard_failure_all_arms_rejected": hard_failure,
         "rejected": rejected,
     }
 
+    winner_consolidation = "stability"
     overall_winner = chosen.name
+
+    legacy_best = max(
+        (arms[f"{legacy_winner_consolidation}_full"], arms[f"{legacy_winner_consolidation}_no_focus"],
+         arms[f"{legacy_winner_consolidation}_no_exposure"]),
+        key=lambda a: arm_rank_key(a, precision_floor),
+    )
 
     decisive = {
         "chosen_arm": overall_winner,
         "held_out_mean": chosen.mean_held_out,
         "held_out_spread": chosen.spread_held_out,
         "bootstrap_95pct_interval": chosen.bootstrap,
-        "crude_probe": CRUDE_PROBE,
-        "beats_crude_probe_precision": chosen.mean_held_out["precision"] >= CRUDE_PROBE["precision"],
-        "beats_crude_probe_recall": chosen.mean_held_out["recall"] >= CRUDE_PROBE["recall"],
-        "beats_crude_probe_iou": chosen.mean_held_out["iou"] >= CRUDE_PROBE["iou"],
+        "crude_probe_fair_cv": CRUDE_PROBE_FAIR_CV,
+        "fitted_pipeline_slices_2_4_fair_cv": FITTED_PIPELINE_SLICES_2_4_FAIR_CV,
+        "beats_crude_probe_precision": chosen.mean_held_out["precision"] >= CRUDE_PROBE_FAIR_CV["precision"],
+        "beats_crude_probe_recall": chosen.mean_held_out["recall"] >= CRUDE_PROBE_FAIR_CV["recall"],
+        "beats_crude_probe_iou": chosen.mean_held_out["iou"] >= CRUDE_PROBE_FAIR_CV["iou"],
         "beats_crude_probe_overall": (
-            chosen.mean_held_out["precision"] >= CRUDE_PROBE["precision"]
-            and chosen.mean_held_out["recall"] >= CRUDE_PROBE["recall"]
-            and chosen.mean_held_out["iou"] >= CRUDE_PROBE["iou"]
+            chosen.mean_held_out["precision"] >= CRUDE_PROBE_FAIR_CV["precision"]
+            and chosen.mean_held_out["recall"] >= CRUDE_PROBE_FAIR_CV["recall"]
+            and chosen.mean_held_out["iou"] >= CRUDE_PROBE_FAIR_CV["iou"]
         ),
+        "legacy_comparison": {
+            "legacy_winner_consolidation": legacy_winner_consolidation,
+            "legacy_best_arm": legacy_best.name,
+            "legacy_best_held_out_mean": legacy_best.mean_held_out,
+            "stability_beats_legacy_best": (
+                arm_rank_key(chosen, precision_floor) >= arm_rank_key(legacy_best, precision_floor)
+            ),
+        },
+        # Deprecated in favour of the fair-CV baselines above; kept only
+        # so a consumer reading an old field name does not get a KeyError
+        # (this module's own historical numbers, unmodified -- see the
+        # NOTE on CRUDE_PROBE above).
+        "crude_probe": CRUDE_PROBE,
     }
 
     ablation_verdicts = {
-        f"{winner_consolidation}_focus_gate": gate_verdict(
-            arms[f"{winner_consolidation}_full"], arms[f"{winner_consolidation}_no_focus"], precision_floor,
+        "stability_exposure_gate": gate_verdict(
+            arms["stability_full"], arms["stability_no_exposure"], precision_floor,
         ),
-        f"{winner_consolidation}_exposure_gate": gate_verdict(
-            arms[f"{winner_consolidation}_full"], arms[f"{winner_consolidation}_no_exposure"], precision_floor,
+        f"{legacy_winner_consolidation}_focus_gate": gate_verdict(
+            arms[f"{legacy_winner_consolidation}_full"], arms[f"{legacy_winner_consolidation}_no_focus"], precision_floor,
         ),
-        "consolidation_path": (
-            f"{winner_consolidation} beats "
-            f"{'viterbi' if winner_consolidation == 'hysteresis' else 'hysteresis'} "
+        f"{legacy_winner_consolidation}_exposure_gate": gate_verdict(
+            arms[f"{legacy_winner_consolidation}_full"], arms[f"{legacy_winner_consolidation}_no_exposure"], precision_floor,
+        ),
+        "legacy_consolidation_path": (
+            f"{legacy_winner_consolidation} beats "
+            f"{'viterbi' if legacy_winner_consolidation == 'hysteresis' else 'hysteresis'} "
             f"on mean held-out score"
+        ),
+        "stability_vs_legacy": (
+            "stability arm ships regardless of this run's own numeric ranking "
+            "(Ryan's ratified 2026-09-02 decision, not re-litigated per run); "
+            f"this run's stability arm {'also outranks' if decisive['legacy_comparison']['stability_beats_legacy_best'] else 'does NOT outrank'} "
+            f"the best legacy arm ({legacy_best.name}) under the harness's own ranking rule"
         ),
     }
     decisive["ablation_verdicts"] = ablation_verdicts
@@ -808,6 +943,8 @@ def fit(
     baselines = {
         "select_all": BASELINE_SELECT_ALL,
         "crude_probe": CRUDE_PROBE,
+        "crude_probe_fair_cv": CRUDE_PROBE_FAIR_CV,
+        "fitted_pipeline_slices_2_4_fair_cv": FITTED_PIPELINE_SLICES_2_4_FAIR_CV,
         "slice3_shipped_default": BASELINE_SLICE3_DEFAULT,
     }
 

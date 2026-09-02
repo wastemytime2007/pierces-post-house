@@ -574,6 +574,52 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Slice 5 landed the stability detector as production
+  code, but its own report didn't reproduce the diagnostic's numbers,
+  and the Lead's investigation found something more interesting than a
+  bug: the two-signal AND-gate is the wrong architecture, not just the
+  wrong thresholds.** Production held-out score: P 0.669 / R 0.804 /
+  IoU 0.436 (vs the diagnostic's P 0.635 / R 0.881 / IoU 0.428).
+  Diagnosed step by step:
+  1. **`stability_resid_max` fitted to 2.0, exactly the maximum of its
+     5-point search grid** `[0.8, 1.0, 1.2, 1.5, 2.0]`. A parameter
+     pinned to the wall of its own search space is not evidence of an
+     optimum.
+  2. Widened the grid 3x (`resid_max` to 6.0) using the real production
+     `fit()` entry point, not a reimplementation. The fitted value
+     **climbed to 6.0 — the new maximum — again.** Widening the fence
+     doesn't stop the parameter from wanting to leave the yard.
+  3. **That is the tell that the parameter wants to be disabled, not
+     that the range was too narrow**, so the Lead isolated each signal
+     directly (in-sample, on the real clip):
+     | config | P | R | IoU |
+     | --- | --- | --- | --- |
+     | both signals disabled (= select-everything) | 0.577 | 1.000 | 0.392 |
+     | **motion residual alone** | 0.678 | 0.852 | **0.455** |
+     | **sharpness alone** | 0.641 | 0.813 | 0.420 |
+     | both required together (AND, the shipped structure) | 0.700 | 0.740 | 0.446 |
+     | AND + exposure gate (exactly what shipped) | 0.703 | 0.721 | 0.442 |
+     **Both signals are individually real** (each clears select-
+     everything by a wide margin). **Requiring both at once is worse on
+     IoU than motion residual alone.** The AND combination doesn't add
+     the two signals' value, it subtracts recall from each to buy
+     precision neither asked for. That is an architecture defect in how
+     the gates compose, not a threshold that needs a wider search.
+  **New finding on top of slice 4's, not a replacement for it:** slice 4
+  proved classification-and-consolidation loses to two thresholds.
+  This shows the two thresholds themselves are being combined wrong.
+  **Consequence for the next pass, scoped and dispatched, not
+  hand-patched:** (a) widen both grids properly so no fitted value can
+  land on an edge undetected — and alarm on it when it does, this
+  should never again require a manual check to notice; (b) add
+  resid-only and lapvar-only as first-class ablation arms alongside
+  full/no-focus/no-exposure, since the ablation table's own job is to
+  catch exactly this and it didn't have the arms to; (c) consider a
+  combination rule beyond strict AND (e.g. a summed or weighted score
+  against one threshold) as an explicit, measured candidate rather than
+  an assumption; (d) re-fit, re-measure held-out, and score the result
+  against the newly staged Des Moines Estabs benchmark — the real
+  generalization test.
 - **2026-09-02 — Benchmark v2 candidate staged: Des Moines Estabs, a
   real drone (establishing-shot) project across 8 shoot days.** Ryan
   provided a Premiere export of already-organized `_Culled` sequences

@@ -171,6 +171,65 @@ def test_fit_one_has_no_randomness_regardless_of_seed(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Slice 5: fitting the stability detector's two parameters
+# ---------------------------------------------------------------------------
+
+def test_fit_one_stability_fits_exactly_the_two_stability_params(tmp_path):
+    """The stability arm's own "motion" stage searches
+    ``stability_resid_max``/``stability_lapvar_quantile`` only (the task
+    brief's "two fitted parameters"), forces ``focus_gate=False``
+    regardless of what is passed in, and leaves every legacy-only field
+    (``min_run_sec``, ``viterbi_lambda``, ``settle_frames``) untouched at
+    its shipped default."""
+    npz, truth, blocks = _small_scenario(tmp_path)
+    evaluator = Evaluator(npz, SOURCE_PATH, truth)
+    train = blocks[:2]
+
+    default = SegmentParams()
+    params, metrics, trace = fit_one(
+        "stability", True, True, evaluator, train, 0.60, 1, ("motion", "focus", "exposure"),
+    )
+
+    assert params.consolidation == "stability"
+    assert params.focus_gate is False, "stability must force focus_gate off regardless of the caller's request"
+    assert trace["motion"], "the stability motion stage must run and produce a trace"
+    assert all(t.stage in ("stability_resid_max", "stability_lapvar_quantile") for t in trace["motion"])
+    assert not trace["focus"], "no focus stage runs for the stability arm (there is no focus gate to fit)"
+    # Legacy-only fields untouched at their shipped defaults.
+    assert params.min_run_sec == default.min_run_sec
+    assert params.viterbi_lambda == default.viterbi_lambda
+    assert params.settle_frames == default.settle_frames
+
+
+def test_fit_stability_reproducible_with_fixed_seed(tmp_path):
+    """Same CV/bootstrap machinery, same fixed-seed reproducibility
+    contract as the legacy arms (test_fixed_seed_reproduces_fixed_params),
+    now asserted for the stability arm specifically."""
+    npz, truth, blocks = _small_scenario(tmp_path)
+    evaluator = Evaluator(npz, SOURCE_PATH, truth)
+
+    arm_a = run_arm(
+        "stability_full", "stability", False, True, evaluator, blocks,
+        precision_floor=0.60, passes=1, stages=("motion", "focus", "exposure"),
+        n_bootstrap=200, seed=42,
+    )
+    arm_b = run_arm(
+        "stability_full", "stability", False, True, evaluator, blocks,
+        precision_floor=0.60, passes=1, stages=("motion", "focus", "exposure"),
+        n_bootstrap=200, seed=42,
+    )
+
+    from dataclasses import asdict
+    assert asdict(arm_a.final_params) == asdict(arm_b.final_params)
+    assert arm_a.mean_held_out == arm_b.mean_held_out
+    assert arm_a.bootstrap == arm_b.bootstrap
+
+    # Same 3-block CV contract the legacy arms use: exactly one held-out
+    # fold per block.
+    assert sorted(f.held_out_block for f in arm_a.folds) == [0, 1, 2]
+
+
+# ---------------------------------------------------------------------------
 # 2. Fixture-ordering guard rejects a deliberately inverted parameter set
 # ---------------------------------------------------------------------------
 
@@ -366,18 +425,44 @@ def test_fit_reports_gate_ablation_both_arms(tmp_path):
         seed=0, n_bootstrap=200, stages=("motion", "focus", "exposure"),
     )
 
-    winner_cons = report.winner_consolidation
-    assert f"{winner_cons}_full" in report.arms
-    assert f"{winner_cons}_no_focus" in report.arms
-    assert f"{winner_cons}_no_exposure" in report.arms
+    # Slice 5: the headline winner is always "stability" -- it has no
+    # focus-gate ablation (no focus gate to ablate at all), only its own
+    # exposure-gate ablation. The legacy path is still fit and ablated in
+    # full (both focus and exposure), under whichever of
+    # hysteresis/viterbi wins on its own held-out score, and reported
+    # under its own name in `arms`, never under `winner_consolidation`.
+    assert report.winner_consolidation == "stability"
+    assert "stability_full" in report.arms
+    assert "stability_no_exposure" in report.arms
+    assert "stability_no_focus" not in report.arms  # no such arm; stability has no focus gate
+
+    legacy_cons = report.decisive["legacy_comparison"]["legacy_winner_consolidation"]
+    assert legacy_cons in ("hysteresis", "viterbi")
+    assert f"{legacy_cons}_full" in report.arms
+    assert f"{legacy_cons}_no_focus" in report.arms
+    assert f"{legacy_cons}_no_exposure" in report.arms
 
     verdicts = report.decisive["ablation_verdicts"]
-    assert f"{winner_cons}_focus_gate" in verdicts
-    assert f"{winner_cons}_exposure_gate" in verdicts
-    for v in (verdicts[f"{winner_cons}_focus_gate"], verdicts[f"{winner_cons}_exposure_gate"]):
+    assert "stability_exposure_gate" in verdicts
+    assert f"{legacy_cons}_focus_gate" in verdicts
+    assert f"{legacy_cons}_exposure_gate" in verdicts
+    for v in (
+        verdicts["stability_exposure_gate"],
+        verdicts[f"{legacy_cons}_focus_gate"],
+        verdicts[f"{legacy_cons}_exposure_gate"],
+    ):
         assert v in ("earns its place", "does not earn its place — recommend removing")
 
+    # The chosen/shipped arm is always one of the two stability arms,
+    # never a legacy one, regardless of this run's own numeric ranking
+    # (Ryan's ratified 2026-09-02 decision).
+    assert report.overall_winner in ("stability_full", "stability_no_exposure")
+
     assert (tmp_path / "out" / "params.json").exists()
+    written_params = json.loads((tmp_path / "out" / "params.json").read_text())
+    # The shipped params carry the stability fields, not a legacy artifact.
+    assert "stability_resid_max" in written_params["visual"]
+    assert "stability_lapvar_quantile" in written_params["visual"]
     assert (tmp_path / "out" / "fit_report.json").exists()
     written = json.loads((tmp_path / "out" / "params.json").read_text())
     assert written["fit_provenance"].startswith("fitted:")

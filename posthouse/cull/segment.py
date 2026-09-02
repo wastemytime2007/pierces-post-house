@@ -14,30 +14,75 @@ CONSOLIDATES runs into intents (Sec 2.1), then applies Sec 2.2's
 settle/min-duration/class-gate/quality-gate/handle pipeline to the
 consolidated runs, then writes a contract-valid ``culls.json``.
 
-Consolidation (design Sec 2.1), two paths behind ``SegmentParams.consolidation``
+Consolidation / extent detection (design Sec 2.1), three paths behind
+``SegmentParams.consolidation``
 -------------------------------------------------------------------------------
-* ``"hysteresis"`` -- the design's "slice-1 stand-in": iteratively absorb
-  any run shorter than ``min_run_sec`` into whichever neighbour has the
-  greater total duration, re-merging adjacent same-class runs after each
-  absorption, to a fixed point (no run left below the threshold, or only
-  one run remains). Simple to review, simple to explain when it misfires.
-* ``"viterbi"`` -- a single-penalty Viterbi decode over the SAME per-frame
-  class costs :mod:`posthouse.cull.classify` already computes (reused
-  directly via its private ``_all_costs``/``_smooth`` rather than adding
-  new public surface to a module that does not mutate anything here --
-  classify.py already exposes exactly the pieces needed and nothing about
+* ``"stability"`` -- **the default as of slice 5.** Not a consolidation
+  over classified runs at all: a direct, per-frame threshold test on two
+  smoothed signals (motion residual capped, sharpness above a per-clip
+  quantile), matching what the Decision Log (2026-09-02) recorded as the
+  "crude two-signal probe" that beat the whole classify+consolidate+gate
+  pipeline held-out (P 0.635/R 0.881/IoU 0.428 vs P 0.634/R 0.838/
+  IoU 0.387) once both were fitted and measured under the identical
+  block-CV scheme. Per that finding's recommendation ("demote, do not
+  delete"), this is now real production code, not a diagnostic script:
+  the same 0.7s smoothing window and ``min_duration_sec`` floor as the
+  diagnostic, the SAME exposure gate as the legacy paths (it earned its
+  place -- kept), and deliberately NO focus gate as a boundary input (it
+  did not earn its place -- removed as a segmentation input, though focus
+  signals are still computed and reported). The motion classifier plays
+  no role in deciding *where* a select opens or closes under this path --
+  see "Labeling" below for what it is used for instead. See
+  :func:`_run_stability_pipeline`.
+* ``"hysteresis"`` -- legacy (slice 3), kept reachable, not deleted: the
+  design's "slice-1 stand-in": iteratively absorb any run shorter than
+  ``min_run_sec`` into whichever neighbour has the greater total
+  duration, re-merging adjacent same-class runs after each absorption, to
+  a fixed point (no run left below the threshold, or only one run
+  remains). Simple to review, simple to explain when it misfires.
+* ``"viterbi"`` -- legacy (slice 3), kept reachable, not deleted: a
+  single-penalty Viterbi decode over the SAME per-frame class costs
+  :mod:`posthouse.cull.classify` already computes (reused directly via
+  its private ``_all_costs``/``_smooth`` rather than adding new public
+  surface to a module that does not mutate anything here -- classify.py
+  already exposes exactly the pieces needed and nothing about
   loading/smoothing needed to change to reuse them). Emission cost per
   frame per class from classify's cost matrix; a flat transition penalty
   ``viterbi_lambda`` for any class change, 0 for staying. Boundaries are
   where the decoded label changes.
 
-Neither is fitted here (ROADMAP Sec5 / design Sec5 slice 4's job). Every
-default in :class:`SegmentParams` is a **reasoned, documented, unfit
-default** -- several are lifted directly from CULLS.md Sec5's worked
-example, which the contract itself calls "illustrative shapes" but which
-are real, physically-reasoned numbers, not arbitrary ones. ``params.visual``
+None of the three is fitted here (ROADMAP Sec5 / design Sec5 slice 4's
+job, extended by slice 5 to the stability path -- see
+:mod:`posthouse.cull.fit`). Every default in :class:`SegmentParams` is a
+**reasoned, documented, unfit default** -- several are lifted directly
+from CULLS.md Sec5's worked example, which the contract itself calls
+"illustrative shapes" but which are real, physically-reasoned numbers,
+not arbitrary ones; the stability thresholds are lifted from
+``docs/design/PHASE4_CULL_DESIGN.md`` Sec 3.3's own grid table (the
+"resid < 1.5, lapvar > q30" row, its best-IoU point). ``params.visual``
 records ``fit_provenance_note: "defaults, not fitted"`` on top of the
 contract's own ``fit_provenance: "default"`` enum value.
+
+Labeling (slice 5's "demote the classifier to a labeller")
+-------------------------------------------------------------------------------
+Regardless of which of the three paths above decided a segment's
+``frame_in``/``frame_out``, :func:`_label_motion_intent` assigns
+``motion_intent`` (and ``motion_confidence``) by majority vote, BY FRAME
+COUNT, over :mod:`posthouse.cull.classify`'s already-committed per-frame
+``state`` array within that already-decided window -- never used to open,
+close, split, or reject a candidate, only to name one after the fact.
+``shake``/``undecidable`` are excluded from the vote (neither is a legal
+``motion_intent`` -- CULLS Sec 4.3's enum, CULLS Sec 7 REJECT 4); ties are
+broken toward the lower ``STATE_ID`` (``np.argmax``'s own
+first-occurrence-wins behaviour on a tie, the same determinism convention
+``classify._hysteresis_smooth`` and this module's own
+``_consolidate_hysteresis`` both already use). This is applied uniformly
+to every accepted segment from every consolidation path -- "wire the
+labeling step in for all modes" (task brief) -- which also changes what
+``motion_confidence`` means versus slices 2-4: it is now the label vote's
+own frame-count fraction ("how cleanly the window fits that one intent",
+CULLS Sec 4.3's own description), not the mean phase-correlation peak
+:func:`_score_block` used to write there.
 
 Sec 2.2's pipeline, as implemented here (visual ruleset only)
 ---------------------------------------------------------------
@@ -119,10 +164,12 @@ _ENUM_MOTION_INTENT = set(_MOTION_INTENT_NAMES)
 _ENUM_BOUNDARY_IN = {
     "clip_start", "motion_change", "settle", "focus_regained",
     "exposure_recovered", "audio_start", "speech_start", "prior_reject_ended",
+    "stability_onset",  # slice 5: CULLS.md Sec4.3 amended to add this value
 }
 _ENUM_BOUNDARY_OUT = {
     "clip_end", "motion_change", "shake_onset", "focus_lost", "focus_hunt",
     "exposure_fault", "audio_fault", "speech_end", "recompose",
+    "stability_loss",  # slice 5: CULLS.md Sec4.3 amended to add this value
 }
 _ENUM_REJECT_REASON = {
     "shake", "motion_inconsistent", "focus_hunt", "soft", "underexposed",
@@ -168,9 +215,45 @@ class SegmentParams:
     -- neither is benchmark fitting.
     """
 
-    # --- consolidation (design Sec2.1) ----------------------------------
-    consolidation: str = "hysteresis"
-    """"hysteresis" or "viterbi" -- see module docstring."""
+    # --- consolidation / extent detection (design Sec2.1) -----------------
+    consolidation: str = "stability"
+    """"stability" (default, slice 5), "hysteresis", or "viterbi" -- see
+    module docstring. "stability" is the headline path per the 2026-09-02
+    Decision Log; "hysteresis"/"viterbi" are kept reachable for comparison
+    (demote, do not delete), never silently dropped."""
+
+    stability_resid_max: float = 1.5
+    """px/frame, the (``stability_smooth_sec``-smoothed) motion residual
+    cap: a frame is a stability candidate only while smoothed ``resid``
+    stays below this. Design Sec3.3's own grid table, "resid < 1.5,
+    lapvar > q30" row -- its best-IoU point among the four rows quoted
+    there (P 0.701/R 0.775/IoU 0.459), read directly off that table as a
+    reasoned unfit default, exactly how this module's other legacy
+    defaults were sourced from CULLS Sec5's worked example. Fitted for
+    real by :mod:`posthouse.cull.fit`'s stability stage."""
+
+    stability_lapvar_quantile: float = 0.30
+    """Per-clip percentile (0..1) of the (smoothed) ``lapvar_norm``
+    column: a frame is a stability candidate only while its smoothed
+    sharpness clears this clip's own quantile. Same source as
+    ``stability_resid_max`` -- design Sec3.3's "q30" row. Per-clip
+    relative, not absolute, for the same reason design Sec1.4 gives for
+    every other sharpness threshold in this module (measured medians on
+    the benchmark clip run 100 to 4890 across accepted selects)."""
+
+    stability_smooth_sec: float = 0.7
+    """Smoothing window, in seconds, applied to both ``resid`` and
+    ``lapvar_norm`` before thresholding -- design Sec3.3's own diagnostic
+    parameter ("a 0.7s smoothing window"), converted to frames via
+    ``round(stability_smooth_sec * fps)`` so it is resolution/fps
+    independent. JUDGMENT CALL (flagged, not in the design doc): the
+    design's own prose describes only "a 0.7s smoothing window" for the
+    probe as a whole and does not say whether lapvar was smoothed by the
+    same window or read raw per-frame; this module smooths both signals
+    by the same window for consistency and to reduce single-frame
+    flicker in the sharpness gate the same way it already reduces
+    flicker in the motion gate. See the slice 5 report for the full
+    reasoning."""
 
     viterbi_lambda: float = 7.5
     """Flat transition penalty for the Viterbi path. CULLS Sec5's worked
@@ -269,9 +352,9 @@ class SegmentParams:
     neighbouring select (Ryan's Q4 ruling, design Sec2.2 point 5)."""
 
     def __post_init__(self) -> None:
-        if self.consolidation not in ("hysteresis", "viterbi"):
+        if self.consolidation not in ("stability", "hysteresis", "viterbi"):
             raise ValueError(
-                f"consolidation must be 'hysteresis' or 'viterbi', got {self.consolidation!r}"
+                f"consolidation must be 'stability', 'hysteresis', or 'viterbi', got {self.consolidation!r}"
             )
         if self.min_duration_sec < 1.0:
             raise ValueError(
@@ -282,6 +365,14 @@ class SegmentParams:
             raise ValueError("settle_frames and settle_frames_static must be >= 0")
         if self.handle_sec < 0:
             raise ValueError("handle_sec must be >= 0")
+        if not (0.0 <= self.stability_lapvar_quantile <= 1.0):
+            raise ValueError(
+                f"stability_lapvar_quantile must be in [0, 1], got {self.stability_lapvar_quantile}"
+            )
+        if self.stability_resid_max <= 0:
+            raise ValueError(f"stability_resid_max must be > 0, got {self.stability_resid_max}")
+        if self.stability_smooth_sec <= 0:
+            raise ValueError(f"stability_smooth_sec must be > 0, got {self.stability_smooth_sec}")
 
     def as_contract_dict(self) -> dict:
         """This ruleset's fitted-parameter object for ``params.visual`` /
@@ -525,6 +616,73 @@ def _focus_shape(residual_slice: np.ndarray, rack_min_ramp_frames: int) -> str:
     return "steady"
 
 
+def _score_block(
+    f_in: int, f_out: int, *,
+    resid: np.ndarray, lapvar_norm: np.ndarray, clip_low: np.ndarray,
+    clip_high: np.ndarray, peak: np.ndarray, resid_eps_ref: float,
+) -> dict:
+    """Per-segment ``scores`` (CULLS Sec4.3): shared between every
+    consolidation path (slice 5 -- previously a closure private to
+    ``_run_pipeline``, pulled to module scope so :func:`_run_stability_pipeline`
+    does not duplicate it). ``motion_confidence`` here is a legacy
+    leftover (mean phase-correlation peak) always overwritten by
+    :func:`_label_motion_intent`'s own vote-fraction value once labeling
+    runs -- see the module docstring's "Labeling" section."""
+    sl = slice(f_in, f_out)
+    motion_consistency = float(np.clip(1.0 - float(np.mean(resid[sl])) / resid_eps_ref, 0.0, 1.0))
+    focus_score = float(np.clip(float(np.median(lapvar_norm[sl])), 0.0, 1.0))
+    exposure_score = float(np.clip(
+        1.0 - max(float(np.median(clip_low[sl])), float(np.median(clip_high[sl]))), 0.0, 1.0,
+    ))
+    motion_confidence = float(np.clip(float(np.mean(peak[sl])), 0.0, 1.0))
+    return {
+        "motion_consistency": motion_consistency, "focus_score": focus_score,
+        "exposure_score": exposure_score, "motion_confidence": motion_confidence,
+    }
+
+
+def _label_motion_intent(state: np.ndarray, frame_in: int, frame_out: int) -> tuple[str, float]:
+    """Slice 5: the classifier as labeller. Dominant motion class BY FRAME
+    COUNT within ``[frame_in, frame_out)`` of the already-classified
+    ``state`` array, restricted to legal ``motion_intent`` values --
+    ``shake``/``undecidable`` are excluded from the vote entirely (CULLS
+    Sec4.3's enum has no room for either; design Sec2.2 point 3 already
+    treats them as never-open classes). Ties broken toward the lower
+    ``STATE_ID`` via ``np.argmax``'s own first-occurrence-wins behaviour --
+    the same determinism convention ``classify._hysteresis_smooth`` and
+    this module's own ``_consolidate_hysteresis`` already use, documented
+    once here rather than three times.
+
+    Returns ``(motion_intent, motion_confidence)`` where confidence is the
+    winning class's own frame-count fraction of the WHOLE window
+    (including shake/undecidable frames in the denominator -- a window
+    that is 40% pan_right and 60% shake is genuinely less confidently
+    "pan_right" than one that is 90% pan_right and 10% shake, and the
+    denominator should reflect that).
+
+    Falls back to ``"drift"`` at confidence 0.0 in the degenerate case
+    where every frame in the window is shake/undecidable (should not
+    happen for a window any detector actually accepted, since a
+    stability-accepted window has already cleared the motion-residual
+    cap, and a legacy-accepted window already failed the shake class
+    gate by construction) -- ``drift`` is design Sec6 Q2's "a consistent
+    slow handheld wander with no dominant axis," the closest legal intent
+    to "no clean class present."
+    """
+    n = frame_out - frame_in
+    if n <= 0:
+        return "drift", 0.0
+    window = state[frame_in:frame_out]
+    counts = np.bincount(window.astype(np.int64), minlength=len(STATE_NAMES)).astype(np.int64)
+    for closed in _CLOSED_CLASSES:
+        counts[STATE_ID[closed]] = 0
+    if int(counts.sum()) == 0:
+        return "drift", 0.0
+    winner = int(np.argmax(counts))
+    confidence = float(counts[winner]) / n
+    return STATE_NAMES[winner], confidence
+
+
 # ---------------------------------------------------------------------------
 # Pipeline result types
 # ---------------------------------------------------------------------------
@@ -653,19 +811,6 @@ def _run_pipeline(
     rejections: list[_Rejection] = []
     first_accepted_emitted = False
 
-    def _score_block(f_in: int, f_out: int) -> dict:
-        sl = slice(f_in, f_out)
-        motion_consistency = float(np.clip(1.0 - float(np.mean(resid[sl])) / resid_eps_ref, 0.0, 1.0))
-        focus_score = float(np.clip(float(np.median(lapvar_norm[sl])), 0.0, 1.0))
-        exposure_score = float(np.clip(
-            1.0 - max(float(np.median(clip_low[sl])), float(np.median(clip_high[sl]))), 0.0, 1.0,
-        ))
-        motion_confidence = float(np.clip(float(np.mean(peak[sl])), 0.0, 1.0))
-        return {
-            "motion_consistency": motion_consistency, "focus_score": focus_score,
-            "exposure_score": exposure_score, "motion_confidence": motion_confidence,
-        }
-
     for idx, run in enumerate(runs):
         state_name = STATE_NAMES[run.state]
         frame_in, frame_out = run.frame_in, run.frame_out
@@ -790,11 +935,14 @@ def _run_pipeline(
             else:
                 b_out = "motion_change"
 
-            scores = _score_block(s_in, s_out)
+            scores = _score_block(
+                s_in, s_out, resid=resid, lapvar_norm=lapvar_norm, clip_low=clip_low,
+                clip_high=clip_high, peak=peak, resid_eps_ref=resid_eps_ref,
+            )
 
             segments.append(_Segment(
                 frame_in=s_in, frame_out=s_out,
-                motion_intent=state_name,
+                motion_intent="",  # filled in by the shared labeling pass, segment_source()
                 boundary_reason_in=b_in, boundary_reason_out=b_out,
                 focus_shape=shape,
                 lapvar_median=float(np.median(lapvar[s_in:s_out])),
@@ -809,6 +957,163 @@ def _run_pipeline(
                 motion_confidence=scores["motion_confidence"],
             ))
             first_accepted_emitted = True
+
+    return segments, rejections
+
+
+# ---------------------------------------------------------------------------
+# Stability threshold detector (slice 5's headline path -- design Sec2.1's
+# "crude two-signal probe," now production code, see module docstring)
+# ---------------------------------------------------------------------------
+
+def _run_stability_pipeline(
+    arrays: dict[str, np.ndarray],
+    fps: float,
+    analysed_frames: int,
+    params: SegmentParams,
+) -> tuple[list[_Segment], list[_Rejection]]:
+    """Direct, per-frame threshold test on two smoothed signals -- NOT a
+    consolidation over classified runs (no settle trim, no class gate:
+    design Sec3.3's diagnostic explicitly had "no classification, no
+    shape analysis, no settle logic"). The SAME exposure gate as the
+    legacy path (:func:`_run_pipeline`, ``params.exposure_gate``) applies
+    -- it earned its place. There is deliberately no focus gate here at
+    all: focus is only ever computed for the informational ``focus``
+    dict on an accepted segment, never used to accept, reject, or split
+    one (task brief point 1).
+
+    Rejection-reason judgment call (flagged, see the slice 5 report for
+    the full account): the task brief names
+    "too_short/transition/underexposed/overexposed" as this detector's
+    rejections. A span that fails the stability test is reported as
+    ``"transition"`` when it is SHORT (< ``min_duration_sec`` -- design's
+    own worked example already uses "transition" for exactly this: the
+    0.34s gap between Ryan's #3 and #4) and as ``"motion_inconsistent"``
+    when it is not (design's own worked example's OTHER rejection --
+    46.45-66.47s of "20.0s of walking coverage" -- uses this exact reason
+    for a sustained, non-brief failure of the same underlying test). Both
+    are pre-existing CULLS.md Sec4.5 enum values already used by the
+    legacy path for materially the same distinction (a brief transition
+    vs. a sustained disqualification), so this is read as the more
+    defensible generalization of the brief's four-word list rather than
+    forcing every non-brief stability failure into a word ("transition")
+    whose own contract-worked-example usage is specifically about
+    brevity.
+    """
+    lapvar_norm = arrays["lapvar_norm"].astype(np.float64)
+    lapvar = arrays["lapvar"].astype(np.float64)
+    luma_mean = arrays["luma_mean"].astype(np.float64)
+    clip_low = arrays["clip_low"].astype(np.float64)
+    clip_high = arrays["clip_high"].astype(np.float64)
+    resid = arrays["resid"].astype(np.float64)
+    peak = arrays.get("peak", np.zeros(analysed_frames)).astype(np.float64)
+    vx = arrays["tx_norm_src_width"].astype(np.float64)
+    vy = arrays["ty_norm_src_width"].astype(np.float64)
+
+    smooth_frames = max(1, int(round(params.stability_smooth_sec * fps)))
+    resid_smooth = _classify._smooth(resid, smooth_frames)
+    lapvar_smooth = _classify._smooth(lapvar_norm, smooth_frames)
+
+    lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
+    resid_ok = resid_smooth < params.stability_resid_max
+    lapvar_ok = lapvar_smooth >= lapvar_threshold
+    stable = resid_ok & lapvar_ok
+
+    if params.exposure_gate:
+        exposure_bad_low = clip_low > params.clip_low_frac_max
+        exposure_bad_high = clip_high > params.clip_high_frac_max
+    else:
+        exposure_bad_low = np.zeros(analysed_frames, dtype=bool)
+        exposure_bad_high = np.zeros(analysed_frames, dtype=bool)
+
+    ok = stable & ~exposure_bad_low & ~exposure_bad_high
+    bad_mask = ~ok
+
+    # Focus is informational only in this path -- computed for the
+    # `focus` dict, never consulted to accept/reject/split (task brief).
+    focus_residual = _focus_residual(vx, vy, lapvar_norm)
+
+    resid_eps_ref = ClassifyParams().resid_eps
+    spans = _split_by_mask(0, analysed_frames, bad_mask)
+
+    segments: list[_Segment] = []
+    rejections: list[_Rejection] = []
+
+    for span_i, (s_in, s_out, is_bad) in enumerate(spans):
+        dur_sec = (s_out - s_in) / fps
+
+        if is_bad:
+            exp_low_frac = float(np.mean(exposure_bad_low[s_in:s_out]))
+            exp_high_frac = float(np.mean(exposure_bad_high[s_in:s_out]))
+            if params.exposure_gate and (exp_low_frac > 0.0 or exp_high_frac > 0.0):
+                reason = "underexposed" if exp_low_frac >= exp_high_frac else "overexposed"
+                detail = (
+                    f"{dur_sec:.2f}s span: clip_{'low' if reason == 'underexposed' else 'high'}"
+                    f"_frac exceeds fitted max on {max(exp_low_frac, exp_high_frac) * 100:.0f}% of frames"
+                )
+            else:
+                reason = "transition" if dur_sec < params.min_duration_sec else "motion_inconsistent"
+                detail = (
+                    f"{dur_sec:.2f}s span fails the stability threshold: smoothed resid mean "
+                    f"{float(np.mean(resid_smooth[s_in:s_out])):.2f} px/frame vs cap "
+                    f"{params.stability_resid_max}, smoothed lapvar_norm median "
+                    f"{float(np.median(lapvar_smooth[s_in:s_out])):.2f} vs this clip's own "
+                    f"q{params.stability_lapvar_quantile * 100:.0f} floor {lapvar_threshold:.2f}"
+                )
+            rejections.append(_Rejection(s_in, s_out, reason, detail))
+            continue
+
+        if dur_sec < params.min_duration_sec:
+            rejections.append(_Rejection(
+                s_in, s_out, "too_short",
+                f"{dur_sec:.2f}s stable span below min_duration_sec={params.min_duration_sec}",
+            ))
+            continue
+
+        shape = _focus_shape(focus_residual[s_in:s_out], params.rack_min_ramp_frames)
+
+        def _span_is_exposure(a: int, b: int) -> bool:
+            return bool(params.exposure_gate and (
+                bool(exposure_bad_low[a:b].any()) or bool(exposure_bad_high[a:b].any())
+            ))
+
+        if s_in == 0:
+            b_in = "clip_start"
+        elif span_i > 0 and spans[span_i - 1][2]:
+            prev_s_in, prev_s_out = spans[span_i - 1][0], spans[span_i - 1][1]
+            b_in = "exposure_recovered" if _span_is_exposure(prev_s_in, prev_s_out) else "stability_onset"
+        else:
+            b_in = "stability_onset"
+
+        if s_out == analysed_frames:
+            b_out = "clip_end"
+        elif span_i < len(spans) - 1:
+            next_s_in, next_s_out = spans[span_i + 1][0], spans[span_i + 1][1]
+            b_out = "exposure_fault" if _span_is_exposure(next_s_in, next_s_out) else "stability_loss"
+        else:
+            b_out = "stability_loss"
+
+        scores = _score_block(
+            s_in, s_out, resid=resid, lapvar_norm=lapvar_norm, clip_low=clip_low,
+            clip_high=clip_high, peak=peak, resid_eps_ref=resid_eps_ref,
+        )
+
+        segments.append(_Segment(
+            frame_in=s_in, frame_out=s_out,
+            motion_intent="",  # filled in by the shared labeling pass, segment_source()
+            boundary_reason_in=b_in, boundary_reason_out=b_out,
+            focus_shape=shape,
+            lapvar_median=float(np.median(lapvar[s_in:s_out])),
+            lapvar_normalized=float(np.median(lapvar_norm[s_in:s_out])),
+            motion_adjusted=True,
+            mean_luma=float(np.median(luma_mean[s_in:s_out])),
+            clip_low_frac=float(np.max(clip_low[s_in:s_out])),
+            clip_high_frac=float(np.max(clip_high[s_in:s_out])),
+            motion_consistency=scores["motion_consistency"],
+            focus_score=scores["focus_score"],
+            exposure_score=scores["exposure_score"],
+            motion_confidence=scores["motion_confidence"],
+        ))
 
     return segments, rejections
 
@@ -892,14 +1197,40 @@ def segment_source(
             [f"sidecar {npz_path} has no usable fps/frames (fps={fps}, frames={analysed_frames})"]
         )
 
-    classify_params = ClassifyParams(**(header.get("classify", {}).get("params", {}) or {}))
-
-    if params.consolidation == "hysteresis":
-        runs = _consolidate_hysteresis(arrays["state"], fps, params)
+    if params.consolidation == "stability":
+        # No classified-run consolidation at all (module docstring) --
+        # `consolidated_runs` is still populated, purely for the same
+        # diagnostic reporting legacy modes give (n_runs,
+        # median_run_duration_sec): the RLE of the frame-level
+        # stable/unstable mask BEFORE any min-duration filtering, so "how
+        # many candidate spans did the threshold test itself produce" is
+        # still inspectable the same way "how many consolidated runs" is
+        # for the legacy paths.
+        segs, rejs = _run_stability_pipeline(arrays, fps, analysed_frames, params)
+        smooth_frames = max(1, int(round(params.stability_smooth_sec * fps)))
+        resid_smooth = _classify._smooth(arrays["resid"].astype(np.float64), smooth_frames)
+        lapvar_smooth = _classify._smooth(arrays["lapvar_norm"].astype(np.float64), smooth_frames)
+        lapvar_threshold = float(np.percentile(lapvar_smooth, 100.0 * params.stability_lapvar_quantile))
+        ok_mask = (resid_smooth < params.stability_resid_max) & (lapvar_smooth >= lapvar_threshold)
+        runs = _rle_from_state_array(ok_mask.astype(np.int8))
     else:
-        runs = _consolidate_viterbi(arrays, classify_params, params.viterbi_lambda)
+        classify_params = ClassifyParams(**(header.get("classify", {}).get("params", {}) or {}))
+        if params.consolidation == "hysteresis":
+            runs = _consolidate_hysteresis(arrays["state"], fps, params)
+        else:
+            runs = _consolidate_viterbi(arrays, classify_params, params.viterbi_lambda)
+        segs, rejs = _run_pipeline(runs, arrays, fps, analysed_frames, params)
 
-    segs, rejs = _run_pipeline(runs, arrays, fps, analysed_frames, params)
+    # Labeling (slice 5, module docstring's "Labeling" section): applied
+    # uniformly to every accepted segment from every consolidation path,
+    # AFTER extent is fully decided -- the classifier never influences
+    # frame_in/frame_out, only the name attached to an already-decided
+    # window.
+    for seg in segs:
+        seg.motion_intent, seg.motion_confidence = _label_motion_intent(
+            arrays["state"], seg.frame_in, seg.frame_out,
+        )
+
     rejs = _merge_adjacent_rejections(rejs)
 
     return SegmentResult(
@@ -1198,7 +1529,7 @@ def _main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("sidecar", type=Path, help="Path to a .signals.npz sidecar (already classified).")
     parser.add_argument("--manifest", required=True, type=Path, help="Project Manifest JSON.")
     parser.add_argument("--out", required=True, type=Path, help="Output directory for culls.json.")
-    parser.add_argument("--consolidation", choices=("viterbi", "hysteresis"), default="hysteresis")
+    parser.add_argument("--consolidation", choices=("stability", "viterbi", "hysteresis"), default="stability")
     parser.add_argument("--ruleset", choices=("visual",), default="visual")
 
     args = parser.parse_args(argv)
