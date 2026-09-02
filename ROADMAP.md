@@ -574,6 +574,38 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Benchmark v2 candidate staged: Des Moines Estabs, a
+  real drone (establishing-shot) project across 8 shoot days.** Ryan
+  provided a Premiere export of already-organized `_Culled` sequences
+  plus the raw footage on `/Volumes/video`. Genuinely different from
+  Runnells in every way that matters for generalization: gimbal-
+  stabilized aerial rather than handheld, a different camera (DJI Mavic
+  2), 8 dates instead of 1, select durations an order of magnitude
+  longer (median 12.7s vs 3.4s), and 119 raw clips instead of 2 -
+  giving **59 true full-clip rejects**, ground truth Runnells could
+  never produce (a single continuous clip has no "never touched"
+  case).
+  **The nested-sequence guard slice 3 built for exactly this situation
+  caught a real defect on the first real file that could trip it**: one
+  sequence (`Downtown Night Shoot_Culled`) nests 8 sub-sequences,
+  almost certainly mask/grade adjustment layers, and the parser refused
+  rather than silently over-count. Resolved conservatively: that one
+  sequence (16 clips, ~0.7 of 74.5 total minutes) is excluded from both
+  the select and full-clip-reject ground truth in the staged answer
+  key, by removing the element rather than inventing trim math for the
+  nest - a wrong derived range would be a silently poisoned ground
+  truth, the worst failure mode a benchmark can have. Building a real,
+  tested flattener is future work if this recurs; the original
+  unfiltered export is kept as the source of record.
+  **Staged at `benchmark/des-moines-estabs/`**, parses cleanly through
+  the shipped harness. Not yet scored - that is the natural next step
+  once slice 5 lands, and it is a materially stronger generalization
+  test than the small held-out strip on Runnells' 33-minute clip,
+  precisely because it is a different shoot. One caveat carried
+  forward, not yet resolved with Ryan: these are organized-selects
+  sequences from a real job, not a purpose-built marking pass the way
+  Runnells was, so their fitness as ground truth is a reasonable
+  inference, not yet a ratified fact.
 - **2026-09-02 — PHASE 4 SLICE 4: the pre-committed rule fires. Two
   thresholds beat the whole detector, so the detector gets simplified.**
   `posthouse/cull/fit.py` (15 tests) implements the design's fitting

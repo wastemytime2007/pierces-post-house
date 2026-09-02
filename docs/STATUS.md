@@ -104,7 +104,19 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 slice 4 done, and it says SIMPLIFY.** Fitted honestly with
+1. **Benchmark v2 candidate staged: Des Moines Estabs** (real drone
+   project, 8 shoot days, 73.1 min / 238 selects / 60 sources / 59 true
+   full-clip rejects, at `benchmark/des-moines-estabs/`). A genuinely
+   different shoot from Runnells (aerial, gimbal-stabilized, 12.7s
+   median select vs 3.4s), so scoring against it is the strongest
+   generalization test available once slice 5 lands - stronger than the
+   small Runnells held-out strip, because it is different footage, not
+   just unseen time in the same footage. One sequence excluded (nested
+   sub-sequences the shipped guard correctly refused rather than
+   silently over-count); caveat open with Ryan on whether organized
+   `_Culled` sequences carry the same ground-truth weight as a
+   purpose-built marking pass.
+2. **Phase 4 slice 4 done, and it says SIMPLIFY.** Fitted honestly with
    block CV, the full pipeline scores held-out **P 0.634 / R 0.838 /
    IoU 0.387**. The Lead re-fitted the crude two-threshold probe under
    the identical scheme (the slice had compared held-out against
