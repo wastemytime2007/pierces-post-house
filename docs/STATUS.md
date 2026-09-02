@@ -104,7 +104,22 @@ not be tuned by vibes.
 
 ## Next (in order)
 
-1. **Phase 4 slices 1 to 3 built** (suite 302/1). Slice 3 emits real
+1. **Phase 4 slice 4 done, and it says SIMPLIFY.** Fitted honestly with
+   block CV, the full pipeline scores held-out **P 0.634 / R 0.838 /
+   IoU 0.387**. The Lead re-fitted the crude two-threshold probe under
+   the identical scheme (the slice had compared held-out against
+   in-sample, which was unfair) and it scores **P 0.635 / R 0.881 /
+   IoU 0.428** — a tie on precision and a win on everything else, from
+   two parameters. The pre-committed rule fires: simplify the detector
+   rather than add parameters. Ablation also confirmed the focus gate
+   does not earn its place. Slice 1's extractor is the foundation of
+   both detectors and is not in question; what loses is the boundary
+   machinery on top of it (classification, consolidation, gates).
+   **Next: slice 5 rescoped — adopt the stability-threshold detector for
+   segment extent, demote the motion classifier to a labeller (its
+   labels are useful on a Premiere clip name even though its boundaries
+   are not), then re-measure.**
+2. **Phase 4 slices 1 to 3 built** (suite 302/1). Slice 3 emits real
    `culls.json` and the first benchmark score, and the score is an
    honest negative: **P 0.628 / R 0.553 / IoU 0.334, below the crude
    two-signal probe (0.701 / 0.775 / 0.459)**. Consolidation succeeded

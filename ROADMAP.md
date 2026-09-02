@@ -574,6 +574,54 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — PHASE 4 SLICE 4: the pre-committed rule fires. Two
+  thresholds beat the whole detector, so the detector gets simplified.**
+  `posthouse/cull/fit.py` (15 tests) implements the design's fitting
+  plan: staged coordinate descent, at most 4 free parameters per stage,
+  3 contiguous time blocks, fit on two and score on the held-out third,
+  10k-resample block bootstrap, non-overfittable fixture ordering
+  guards, recall-first ranking under a 0.60 precision floor, and gate
+  ablation as a first-class output.
+  - **Ablation confirmed the Lead's pre-fit diagnosis: the focus gate
+    does not earn its place.** Held out, removing it goes from
+    P 0.601 / R 0.707 to **P 0.634 / R 0.838**. The exposure gate earns
+    its place but only just, and on a floor-sensitive margin.
+    Hysteresis beats Viterbi, narrowly.
+  - **The slice's own comparison was unfair and the Lead corrected it.**
+    It scored the fitted pipeline HELD-OUT against the crude probe's
+    IN-SAMPLE numbers, which systematically favours the probe's opponent
+    being measured the harder way. Re-fitting the probe under the
+    identical scheme (same blocks, same folds, same rule, 25-point grid
+    on its two parameters) gives the honest comparison:
+    | detector | P | R | F1 | IoU |
+    | --- | --- | --- | --- | --- |
+    | crude probe, 2 thresholds | 0.635 | **0.881** | **0.737** | **0.428** |
+    | full pipeline, slices 2-4 | 0.634 | 0.838 | 0.710 | 0.387 |
+  - **Verdict: two thresholds on two signals tie the pipeline on
+    precision and beat it on recall, F1 and IoU.** Per the rule recorded
+    before fitting began, the finding is to **simplify the detector, not
+    to add parameters.** Recorded plainly rather than rationalised.
+  - **What this does and does not condemn.** Slice 1's signal extractor
+    is the foundation of BOTH detectors and is not in question. What
+    failed to earn its place is the machinery built on top of it for
+    BOUNDARY PLACEMENT: the 11-class motion classification, the
+    consolidation stage, the settle/class gates, and the focus gate.
+    Note also that the winning probe sets its sharpness threshold at the
+    10th percentile, i.e. it barely uses sharpness at all: **the working
+    signal is motion stability alone.**
+  - **The uncomfortable implication for criterion 1, stated rather than
+    buried:** Ryan's stated rule is one motion intent per select, and we
+    built classification to serve it. On his actual marks, a plain
+    stability threshold predicts better than intent classification does.
+    Either our implementation of the criterion is poor, or what he marks
+    is driven more by stability than by intent type. Both are worth
+    knowing; neither is settled by one clip.
+  - **Recommendation carried to slice 5: demote, do not delete.** Adopt
+    the simple stability-threshold detector for segment EXTENT, and keep
+    the motion classifier only as a LABELLER, because "pan, 3.9s" on a
+    Premiere clip name is genuinely useful to Ryan even though its
+    boundaries lose to a threshold. That keeps every measured win and
+    drops what measurement says is not paying for itself.
 - **2026-09-01 — Phase 4 slice 3 built (`posthouse/cull/segment.py`,
   13 tests, suite 302 passed / 1 skipped): the first real `culls.json`,
   the first Cold Footage sequence, and the first honest benchmark score.

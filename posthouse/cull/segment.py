@@ -201,6 +201,18 @@ class SegmentParams:
     is 1.23s)."""
 
     # --- focus gate (design Sec1.4 / Sec2.2 point 4) ----------------------
+    focus_gate: bool = True
+    """Slice 4 addition (task brief): whether the focus quality gate runs
+    at all. When ``False``, no frame is ever judged ``soft`` or
+    ``focus_hunt`` -- the run pipeline behaves as if every frame passed
+    focus, and the six ``focus_*``/``rack_min_ramp_frames`` fields below
+    are unused (their values are still carried in ``as_contract_dict()``
+    for provenance, but they gate nothing). This is what lets
+    ``fit.py`` score "focus gate enabled" against "focus gate disabled"
+    on equal footing, per the Lead's finding that the focus gate is the
+    dominant error source (rejected 73% of Ryan's marked-usable footage
+    for a 24-point recall cost and no precision gain)."""
+
     focus_norm_quantile: float = 0.35
     """CULLS Sec5 worked example. The percentile (of this clip's own
     motion-adjusted, per-clip-normalized focus residual) below which a
@@ -238,6 +250,12 @@ class SegmentParams:
     noise."""
 
     # --- exposure gate (design Sec1.5 / Sec2.2 point 4) --------------------
+    exposure_gate: bool = True
+    """Slice 4 addition (task brief), mirroring ``focus_gate``: whether the
+    exposure quality gate runs at all. When ``False``, no frame is ever
+    judged ``underexposed``/``overexposed`` and ``clip_low_frac_max``/
+    ``clip_high_frac_max`` gate nothing (still carried for provenance)."""
+
     clip_low_frac_max: float = 0.31
     clip_high_frac_max: float = 0.06
     """CULLS Sec5 worked example. A sustained per-frame clipped-fraction
@@ -610,14 +628,24 @@ def _run_pipeline(
     vy = arrays["ty_norm_src_width"].astype(np.float64)
 
     focus_residual = _focus_residual(vx, vy, lapvar_norm)
-    soft_threshold = float(np.percentile(focus_residual, 100.0 * params.focus_norm_quantile))
-    soft_frame = focus_residual < soft_threshold
-    hunt_rate = _hunt_rate_per_sec(
-        focus_residual, fps, params.focus_hunt_smooth_frames, params.focus_hunt_deadband_std,
-    )
-    hunting_frame = hunt_rate > params.focus_hunt_sign_changes_per_sec
-    exposure_bad_low = clip_low > params.clip_low_frac_max
-    exposure_bad_high = clip_high > params.clip_high_frac_max
+    if params.focus_gate:
+        soft_threshold = float(np.percentile(focus_residual, 100.0 * params.focus_norm_quantile))
+        soft_frame = focus_residual < soft_threshold
+        hunt_rate = _hunt_rate_per_sec(
+            focus_residual, fps, params.focus_hunt_smooth_frames, params.focus_hunt_deadband_std,
+        )
+        hunting_frame = hunt_rate > params.focus_hunt_sign_changes_per_sec
+    else:
+        # Gate ablation (slice 4 task brief): focus never rejects or
+        # splits a candidate -- every frame passes.
+        soft_frame = np.zeros(analysed_frames, dtype=bool)
+        hunting_frame = np.zeros(analysed_frames, dtype=bool)
+    if params.exposure_gate:
+        exposure_bad_low = clip_low > params.clip_low_frac_max
+        exposure_bad_high = clip_high > params.clip_high_frac_max
+    else:
+        exposure_bad_low = np.zeros(analysed_frames, dtype=bool)
+        exposure_bad_high = np.zeros(analysed_frames, dtype=bool)
 
     resid_eps_ref = ClassifyParams().resid_eps
 
