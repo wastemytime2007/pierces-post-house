@@ -71,6 +71,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field, asdict
@@ -85,6 +86,7 @@ _BOUNDS_EPSILON_SEC = 0.05  # rounding slack when comparing an out point to a fi
 _ALLOWED_RULESETS = {"narrative", "visual"}
 _MISS_TOP_N = 20
 _FP_TOP_N = 20
+_GRANULARITY_EVENT_TOP_N = 20
 
 
 class BenchmarkError(Exception):
@@ -712,6 +714,146 @@ def _coverage_of(one: Interval, covering: list[Interval]) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Granularity: segment counts, duration distributions, and the
+# under-/over-segmentation events precision/recall/IoU cannot see.
+#
+# precision/recall/IoU are purely time-overlap measures: they never look
+# at how many pieces the covered time is split into. That let a real
+# failure hide in plain sight (Historic Valley Junction, 2026-09-02): a
+# detector producing 4 giant blobs (one spanning 154s) that happened to
+# blanket most of Ryan's 28 real, granular selects scored a healthy
+# P/R/IoU despite doing almost none of the actual culling work. The
+# fields and events below are diagnostic, not a gate — no pass/fail
+# threshold is invented here; the report reader judges the number.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DurationStats:
+    """Duration distribution of a set of (already-merged) segments."""
+    count: int
+    median_sec: float
+    mean_sec: float
+    p10_sec: float
+    p90_sec: float
+
+
+def _percentile(sorted_vals: list[float], pct: float) -> float:
+    """Linear-interpolation percentile (matches numpy's default 'linear'
+    method) over an already-sorted list. ``pct`` is 0..1."""
+    n = len(sorted_vals)
+    if n == 1:
+        return sorted_vals[0]
+    k = (n - 1) * pct
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_vals[int(k)]
+    return sorted_vals[int(f)] * (c - k) + sorted_vals[int(c)] * (k - f)
+
+
+def _duration_stats(intervals: list[Interval]) -> Optional[DurationStats]:
+    """Duration distribution of ``intervals`` (median, mean, p10, p90), or
+    ``None`` when there are no segments to describe (an empty predicted or
+    truth set for a source)."""
+    if not intervals:
+        return None
+    durations = sorted(e - s for s, e in intervals)
+    n = len(durations)
+    return DurationStats(
+        count=n,
+        median_sec=_percentile(durations, 0.5),
+        mean_sec=sum(durations) / n,
+        p10_sec=_percentile(durations, 0.10),
+        p90_sec=_percentile(durations, 0.90),
+    )
+
+
+def _granularity_ratio(predicted_count: int, truth_count: int) -> Optional[float]:
+    """predicted_segment_count / truth_segment_count. ``None`` only in the
+    degenerate 0-truth-segments case (no truth at all to divide by) —
+    never raised as ZeroDivisionError, and never emitted as a JSON-illegal
+    infinity."""
+    if truth_count == 0:
+        return None
+    return predicted_count / truth_count
+
+
+def _find_under_segmentation_events(
+    pred_intervals: list[Interval],
+    truth_intervals: list[Interval],
+    handle_tolerance_sec: float,
+    display: str,
+) -> list[dict]:
+    """For each PREDICTED segment (raw span), find how many DISTINCT
+    merged truth segments it overlaps. 2+ overlapped truth segments with a
+    real gap between them (wider than ``handle_tolerance_sec``, so this is
+    never just edge-tolerance noise) means the predicted segment fused
+    together footage Ryan actually treated as separate selects — the
+    Historic Valley Junction failure mode. Sorted most-severe first, same
+    fields-and-sorting spirit as ``largest_misses``/``largest_false_positives``."""
+    events: list[dict] = []
+    truth_sorted = sorted(truth_intervals)
+    for ps, pe in sorted(pred_intervals):
+        overlapped = [t for t in truth_sorted if min(pe, t[1]) > max(ps, t[0])]
+        if len(overlapped) < 2:
+            continue
+        swallowed_gap_sec = sum(
+            s2 - e1
+            for (_, e1), (s2, _) in zip(overlapped, overlapped[1:])
+            if s2 - e1 > handle_tolerance_sec
+        )
+        if swallowed_gap_sec <= 0:
+            continue
+        events.append({
+            "source": display,
+            "predicted_in_sec": ps,
+            "predicted_out_sec": pe,
+            "predicted_duration_sec": pe - ps,
+            "truth_segment_count": len(overlapped),
+            "truth_segments": [{"in_sec": s, "out_sec": e} for s, e in overlapped],
+            "swallowed_gap_sec": swallowed_gap_sec,
+        })
+    events.sort(key=lambda ev: ev["swallowed_gap_sec"], reverse=True)
+    return events
+
+
+def _find_over_segmentation_events(
+    pred_intervals: list[Interval],
+    truth_intervals: list[Interval],
+    handle_tolerance_sec: float,
+    display: str,
+) -> list[dict]:
+    """The symmetric case: a single merged TRUTH segment covered by 2+
+    separate PREDICTED segments with a real internal gap between them
+    (wider than ``handle_tolerance_sec``) not present in truth — the
+    detector cut where Ryan did not. Sorted most-severe first."""
+    events: list[dict] = []
+    pred_sorted = sorted(pred_intervals)
+    for ts, te in sorted(truth_intervals):
+        overlapped = [p for p in pred_sorted if min(te, p[1]) > max(ts, p[0])]
+        if len(overlapped) < 2:
+            continue
+        split_gap_sec = sum(
+            s2 - e1
+            for (_, e1), (s2, _) in zip(overlapped, overlapped[1:])
+            if s2 - e1 > handle_tolerance_sec
+        )
+        if split_gap_sec <= 0:
+            continue
+        events.append({
+            "source": display,
+            "truth_in_sec": ts,
+            "truth_out_sec": te,
+            "truth_duration_sec": te - ts,
+            "predicted_segment_count": len(overlapped),
+            "predicted_segments": [{"in_sec": s, "out_sec": e} for s, e in overlapped],
+            "split_gap_sec": split_gap_sec,
+        })
+    events.sort(key=lambda ev: ev["split_gap_sec"], reverse=True)
+    return events
+
+
+# ---------------------------------------------------------------------------
 # Scoring
 # ---------------------------------------------------------------------------
 
@@ -726,6 +868,11 @@ class PerSourceScore:
     predicted_sec: float
     truth_sec: float
     overlap_sec: float
+    predicted_segment_count: int = 0
+    truth_segment_count: int = 0
+    granularity_ratio: Optional[float] = None
+    predicted_duration_stats: Optional[DurationStats] = None
+    truth_duration_stats: Optional[DurationStats] = None
 
 
 @dataclass
@@ -743,6 +890,13 @@ class ScoreBlock:
     largest_false_positives: list[dict] = field(default_factory=list)
     unmatched_predicted_sources: list[dict] = field(default_factory=list)
     unscored_predicted_sources: list[dict] = field(default_factory=list)
+    predicted_segment_count: int = 0
+    truth_segment_count: int = 0
+    granularity_ratio: Optional[float] = None
+    predicted_duration_stats: Optional[DurationStats] = None
+    truth_duration_stats: Optional[DurationStats] = None
+    under_segmentation_events: list[dict] = field(default_factory=list)
+    over_segmentation_events: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -846,6 +1000,10 @@ def _score_block(
     false_positives: list[dict] = []
     unmatched_predicted_sources: list[dict] = []
     unscored_predicted_sources: list[dict] = []
+    under_segmentation_events: list[dict] = []
+    over_segmentation_events: list[dict] = []
+    all_pred_intervals: list[Interval] = []
+    all_truth_intervals: list[Interval] = []
 
     for key, (preds, truths, display) in groups.items():
         if not truths:
@@ -878,16 +1036,33 @@ def _score_block(
         union = predicted_sec + truth_sec - overlap_raw
         iou = 1.0 if union <= 0 else overlap_raw / union
 
+        predicted_segment_count = len(pred_intervals)
+        truth_segment_count = len(truth_intervals)
+
         per_source[key] = PerSourceScore(
             source_key=key, display_name=display,
             precision=precision, recall=recall, f1=f1, iou=iou,
             predicted_sec=predicted_sec, truth_sec=truth_sec, overlap_sec=overlap_raw,
+            predicted_segment_count=predicted_segment_count,
+            truth_segment_count=truth_segment_count,
+            granularity_ratio=_granularity_ratio(predicted_segment_count, truth_segment_count),
+            predicted_duration_stats=_duration_stats(pred_intervals),
+            truth_duration_stats=_duration_stats(truth_intervals),
         )
 
         total_predicted += predicted_sec
         total_truth += truth_sec
         total_overlap_raw += overlap_raw
         total_overlap_precision += overlap_precision
+        all_pred_intervals.extend(pred_intervals)
+        all_truth_intervals.extend(truth_intervals)
+
+        under_segmentation_events.extend(
+            _find_under_segmentation_events(pred_intervals, truth_intervals, handle_tolerance_sec, display)
+        )
+        over_segmentation_events.extend(
+            _find_over_segmentation_events(pred_intervals, truth_intervals, handle_tolerance_sec, display)
+        )
 
         # Largest misses: each individual truth range (not the merged
         # source total) that is under 50% covered by predicted footage.
@@ -930,6 +1105,11 @@ def _score_block(
     false_positives.sort(key=lambda f: f["false_positive_sec"], reverse=True)
     unmatched_predicted_sources.sort(key=lambda u: u["predicted_sec"], reverse=True)
     unscored_predicted_sources.sort(key=lambda u: u["predicted_sec"], reverse=True)
+    under_segmentation_events.sort(key=lambda ev: ev["swallowed_gap_sec"], reverse=True)
+    over_segmentation_events.sort(key=lambda ev: ev["split_gap_sec"], reverse=True)
+
+    predicted_segment_count_overall = len(all_pred_intervals)
+    truth_segment_count_overall = len(all_truth_intervals)
 
     return ScoreBlock(
         label=label,
@@ -940,6 +1120,13 @@ def _score_block(
         largest_false_positives=false_positives[:_FP_TOP_N],
         unmatched_predicted_sources=unmatched_predicted_sources,
         unscored_predicted_sources=unscored_predicted_sources,
+        predicted_segment_count=predicted_segment_count_overall,
+        truth_segment_count=truth_segment_count_overall,
+        granularity_ratio=_granularity_ratio(predicted_segment_count_overall, truth_segment_count_overall),
+        predicted_duration_stats=_duration_stats(all_pred_intervals),
+        truth_duration_stats=_duration_stats(all_truth_intervals),
+        under_segmentation_events=under_segmentation_events[:_GRANULARITY_EVENT_TOP_N],
+        over_segmentation_events=over_segmentation_events[:_GRANULARITY_EVENT_TOP_N],
     )
 
 
@@ -1022,7 +1209,45 @@ def _format_block_text(block: ScoreBlock, heading: str) -> str:
         f"Predicted: {block.predicted_sec:.1f}s across {len(block.per_source)} sources",
         f"Truth:     {block.truth_sec:.1f}s",
         "",
+        f"Granularity: {block.predicted_segment_count} predicted segments vs "
+        f"{block.truth_segment_count} truth segments"
+        + (
+            f" (ratio {block.granularity_ratio:.2f}; near 1.0 is healthy, "
+            f"well below flags under-segmentation, well above flags over-segmentation)"
+            if block.granularity_ratio is not None else ""
+        ),
     ]
+    if block.predicted_duration_stats:
+        d = block.predicted_duration_stats
+        lines.append(
+            f"  Predicted segment duration: median {d.median_sec:.1f}s, mean {d.mean_sec:.1f}s, "
+            f"p10 {d.p10_sec:.1f}s, p90 {d.p90_sec:.1f}s"
+        )
+    if block.truth_duration_stats:
+        d = block.truth_duration_stats
+        lines.append(
+            f"  Truth segment duration:     median {d.median_sec:.1f}s, mean {d.mean_sec:.1f}s, "
+            f"p10 {d.p10_sec:.1f}s, p90 {d.p90_sec:.1f}s"
+        )
+    lines.append("")
+    if block.under_segmentation_events:
+        lines.append("Under-segmentation (one predicted segment swallows multiple distinct truth segments):")
+        for ev in block.under_segmentation_events[:10]:
+            lines.append(
+                f"  - {ev['source']} [{ev['predicted_in_sec']:.1f}s to {ev['predicted_out_sec']:.1f}s] "
+                f"({ev['predicted_duration_sec']:.1f}s) swallows {ev['truth_segment_count']} truth "
+                f"segments, {ev['swallowed_gap_sec']:.1f}s of real gap lost"
+            )
+        lines.append("")
+    if block.over_segmentation_events:
+        lines.append("Over-segmentation (one truth segment split across multiple predicted segments):")
+        for ev in block.over_segmentation_events[:10]:
+            lines.append(
+                f"  - {ev['source']} [{ev['truth_in_sec']:.1f}s to {ev['truth_out_sec']:.1f}s] "
+                f"({ev['truth_duration_sec']:.1f}s) split into {ev['predicted_segment_count']} predicted "
+                f"segments, {ev['split_gap_sec']:.1f}s of gap not present in truth"
+            )
+        lines.append("")
     if block.largest_misses:
         lines.append("Largest misses (truth ranges under 50% covered):")
         for m in block.largest_misses[:10]:

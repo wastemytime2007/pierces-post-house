@@ -1015,3 +1015,173 @@ def test_cli_exits_nonzero_and_lists_every_problem(tmp_path):
     # the per-segment problem, not just whichever one raised first.
     assert "contract_version" in result.stderr
     assert "missing source_path" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Group 4 — granularity awareness (2026-09-02: P/R/IoU never look at
+# segment count or size, which hid the Historic Valley Junction failure
+# in plain sight — a 4-blob detector scored a healthy P/R/IoU against
+# Ryan's 26-28 real, granular selects because its blobs happened to cover
+# most of the truth. These fields and events are diagnostic, not a gate.)
+# ---------------------------------------------------------------------------
+
+HISTORIC_VALLEY_JUNCTION_ANSWER_KEY = Path(
+    "/Users/pierce/Desktop/Pierce Cut Historic Valley Junction 0002 (detector picks).xml"
+)
+
+
+@pytest.mark.skipif(
+    not HISTORIC_VALLEY_JUNCTION_ANSWER_KEY.exists(),
+    reason="real answer key only present on Ryan's Mac desktop",
+)
+def test_historic_valley_junction_4_blob_detector_shows_under_segmentation():
+    """The real regression case the Lead diagnosed 2026-09-02: a detector
+    producing 4 giant blobs (avg 66s, one spanning 154s) against Ryan's 28
+    hand-corrected ranges (avg 6s) scored P 0.727 / R 0.993 / IoU 0.593 --
+    comfortably above select-everything -- while having done essentially
+    none of the real culling work. Granularity awareness must make that
+    visible: a low ratio, and an under-segmentation event for the blob
+    that swallows the most distinct truth ranges."""
+    truth = parse_answer_key_xml(HISTORIC_VALLEY_JUNCTION_ANSWER_KEY)
+    source_path = truth[0].source_path
+    predicted = [
+        Range(source_path, 0.00, 13.71),
+        Range(source_path, 14.88, 35.99),
+        Range(source_path, 36.27, 190.56),
+        Range(source_path, 191.06, 265.45),
+    ]
+    result = score(predicted, truth, handle_tolerance_sec=1.0)
+    block = result.overall
+
+    assert block.predicted_segment_count == 4
+    # 28 ranges in the answer key, some touching and merged by the shared
+    # merge logic -- this asserts against that logic's actual output, not
+    # the raw pre-merge range count.
+    assert block.truth_segment_count >= 20
+    assert block.granularity_ratio is not None and block.granularity_ratio < 0.2
+
+    assert block.under_segmentation_events, (
+        "the 4-blob detector must surface at least one under-segmentation event"
+    )
+    swallowed = [
+        ev for ev in block.under_segmentation_events
+        if ev["predicted_in_sec"] < 40.0 and ev["predicted_out_sec"] > 180.0
+    ]
+    assert swallowed, "the 36.27-190.56 blob must be reported as swallowing multiple truth segments"
+    ev = swallowed[0]
+    assert ev["truth_segment_count"] >= 2
+    assert ev["swallowed_gap_sec"] > 0.0
+    for t in ev["truth_segments"]:
+        assert 36.27 - 1e-6 <= t["in_sec"]
+        assert t["out_sec"] <= 190.56 + 1e-6
+
+
+def test_over_segmentation_fires_on_a_fragmented_single_truth_segment():
+    """The symmetric failure (slice 2's 463-runs-over-26-selects
+    over-fragmentation, also invisible to P/R/IoU): many small predicted
+    pieces covering what is really one continuous truth segment, with
+    real gaps between the pieces that are not present in truth."""
+    truth = [Range("clipA.mov", 0.0, 30.0)]
+    predicted = [
+        Range("clipA.mov", 0.0, 5.0),
+        Range("clipA.mov", 7.0, 12.0),
+        Range("clipA.mov", 14.0, 19.0),
+        Range("clipA.mov", 21.0, 26.0),
+        Range("clipA.mov", 28.0, 30.0),
+    ]
+    result = score(predicted, truth, handle_tolerance_sec=1.0)
+    block = result.overall
+
+    assert block.predicted_segment_count == 5
+    assert block.truth_segment_count == 1
+    assert block.granularity_ratio is not None and block.granularity_ratio >= 4.0
+
+    assert block.over_segmentation_events, "fragmenting one truth segment into 5 pieces must be reported"
+    ev = block.over_segmentation_events[0]
+    assert ev["predicted_segment_count"] == 5
+    assert _close(ev["truth_in_sec"], 0.0, tol=1e-9)
+    assert _close(ev["truth_out_sec"], 30.0, tol=1e-9)
+    assert ev["split_gap_sec"] > 0.0
+
+
+def test_well_behaved_output_does_not_cry_wolf():
+    """Predicted segment counts/sizes roughly matching truth's must NOT
+    trip either event list, and the ratio must land near 1.0 -- proving
+    the granularity check does not fire on ordinary, healthy output."""
+    truth = [
+        Range("clipA.mov", 0.0, 5.0),
+        Range("clipA.mov", 10.0, 15.0),
+        Range("clipA.mov", 20.0, 25.0),
+        Range("clipA.mov", 30.0, 35.0),
+        Range("clipA.mov", 40.0, 45.0),
+    ]
+    predicted = [
+        Range("clipA.mov", 0.1, 4.9),
+        Range("clipA.mov", 10.2, 14.8),
+        Range("clipA.mov", 20.0, 25.0),
+        Range("clipA.mov", 30.1, 34.9),
+        Range("clipA.mov", 40.2, 44.8),
+    ]
+    result = score(predicted, truth, handle_tolerance_sec=1.0)
+    block = result.overall
+
+    assert block.predicted_segment_count == 5
+    assert block.truth_segment_count == 5
+    assert _close(block.granularity_ratio, 1.0, tol=1e-9)
+    assert block.under_segmentation_events == []
+    assert block.over_segmentation_events == []
+
+
+def test_duration_stats_and_segment_counts_reported_per_source_and_overall():
+    """Segment counts and duration distribution (median/mean/p10/p90) are
+    additive fields on both PerSourceScore and the overall ScoreBlock."""
+    truth = [Range("clipA.mov", 0.0, 4.0), Range("clipA.mov", 10.0, 12.0)]
+    predicted = [Range("clipA.mov", 0.0, 4.0), Range("clipA.mov", 10.0, 12.0)]
+    result = score(predicted, truth, handle_tolerance_sec=0.5)
+    block = result.overall
+
+    assert block.predicted_segment_count == 2
+    assert block.truth_segment_count == 2
+    assert block.predicted_duration_stats.count == 2
+    assert _close(block.predicted_duration_stats.mean_sec, 3.0, tol=1e-9)  # (4 + 2) / 2
+    assert _close(block.predicted_duration_stats.median_sec, 3.0, tol=1e-9)
+
+    per_source = next(iter(block.per_source.values()))
+    assert per_source.predicted_segment_count == 2
+    assert per_source.truth_segment_count == 2
+    assert _close(per_source.granularity_ratio, 1.0, tol=1e-9)
+    assert per_source.predicted_duration_stats is not None
+    assert per_source.truth_duration_stats is not None
+
+
+def test_granularity_fields_do_not_break_existing_scoring_semantics():
+    """Backward compatibility: every existing precision/recall/IoU/F1
+    assertion this module already relies on must still hold with the
+    granularity fields present -- re-runs the identical-sets and
+    dilation-gap scenarios and checks both the old and new fields."""
+    truth = [Range("clipA.mov", 0.0, 10.0)]
+    predicted = [Range("clipA.mov", 0.0, 10.0)]
+    result = score(predicted, truth, handle_tolerance_sec=1.0)
+    assert result.overall.precision == 1.0
+    assert result.overall.recall == 1.0
+    assert result.overall.f1 == 1.0
+    assert result.overall.predicted_segment_count == 1
+    assert result.overall.truth_segment_count == 1
+
+
+def test_write_report_text_has_no_em_dash_including_granularity_lines(tmp_path):
+    truth = [Range("clipA.mov", 0.0, 30.0)]
+    predicted = [
+        Range("clipA.mov", 0.0, 5.0),
+        Range("clipA.mov", 7.0, 12.0),
+        Range("clipA.mov", 14.0, 19.0),
+        Range("clipA.mov", 21.0, 26.0),
+        Range("clipA.mov", 28.0, 30.0),
+    ]
+    result = score(predicted, truth, handle_tolerance_sec=1.0)
+    _, txt_path = write_report(result, tmp_path)
+    text = txt_path.read_text(encoding="utf-8")
+
+    assert "—" not in text  # no em dash anywhere, including the new granularity lines
+    assert "Granularity:" in text
+    assert "Over-segmentation" in text
