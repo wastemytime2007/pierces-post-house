@@ -302,6 +302,28 @@ Ryan's call on where to spend effort next.
   to 179 (progressive disclosure table), and rule 5 replaced — it still said
   "no code yet, we are in planning."
 
+- 2026-09-02 — **`posthouse/moments.py`: transcript query to verified moments to
+  Premiere sequence.** The first slice that joins the two halves. Loads 270
+  Runnells Whisper transcripts (word-level timings), resolves 268 to real media,
+  ranks segments by IDF-weighted term overlap, machine-verifies every quote via
+  the `verified-quotes` skill, and emits the coldfootage segments contract plus
+  an FCP7 XML. 20 new tests; suite 243 passed / 1 skipped. Measured: retrieval
+  recall@1 40.5%, @5 66.7%, @10 73.8% against 42 gold-chunk `why` descriptions;
+  XML round-trips through `parse_answer_key_xml` to the exact input ranges;
+  0 of 40 returned moments overlapped a Whisper hallucination loop. Two bugs
+  found by the verifier on the first real run and fixed with regressions
+  (Frankenstein quotes from merged non-adjacent segments; bare timecodes
+  reading as TIMECODE_MISMATCH). Known limit: 29% of this corpus is audio-only
+  lav/interview material the exporter cannot place; those moments are surfaced
+  and labelled, not dropped, and need `harvest/sync.py` to reach a timeline.
+  **Not yet checked by Ryan** — demo at `~/Desktop/Moments_Demo_Runnells/`.
+- 2026-09-02 — **Agent Studio doctrine ported to skills; `studio.py` left dead.**
+  Four new global skills (`soldfast-content-funnels`, `longform-story-craft`,
+  `footage-assembly-method`, `hook-writing`) consolidated from 15+ scattered
+  files, plus `loop_detector.py` added to `verified-quotes` (import fixed, and
+  it found one Runnells transcript that is 91% hallucination loops). Agent
+  Studio itself untouched and read-only throughout.
+
 ## Next (in order)
 
 1. **Ryan's call**: where to spend effort next. The grid-edge theory is
