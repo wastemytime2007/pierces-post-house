@@ -574,6 +574,32 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02 — Ryan's ruling on the generalization failure: normalize
+  per clip so thresholds adapt to each shoot.** Not per-shoot fitting,
+  not per-camera scoping. The Lead flagged, before building, that
+  "normalize per clip" has two meanings that fail differently, so both
+  are implemented as competing arms and measurement chooses:
+  - **`quantile`** — threshold at a fitted per-clip quantile of the
+    smoothed residual, mirroring how `stability_lapvar_quantile`
+    already works. Scale-free, but assumes a roughly constant *fraction*
+    of every clip is usable, so a uniformly excellent clip still loses
+    the top (1-q) fraction. That weakness is real and gets reported
+    rather than hidden. Drone footage, being long and mostly usable, is
+    exactly where it should hurt.
+  - **`robust_scale`** — normalize by a per-clip robust statistic
+    (median/MAD) and threshold in those units. Scale-free AND not
+    fraction-fixed: a uniformly good clip stays mostly selected, a
+    uniformly bad one mostly rejected. Expected to be the better fit for
+    Ryan's actual footage mix, but not assumed.
+  `absolute` is kept as the control arm. **The deliverable is not the
+  implementation, it is the transfer table: fit on Runnells score on Des
+  Moines, and fit on Des Moines score on Runnells, both directions,
+  because a strategy that transfers one way only is not transfer.** The
+  brief states explicitly that if no strategy beats select-everything on
+  the shoot it was NOT fitted on, that gets reported as a finding, since
+  it would mean per-clip normalization is insufficient and the real
+  options become per-shoot fitting or per-camera scoping — Ryan's call,
+  not one to make silently in a tuning pass.
 - **2026-09-02 — THE GENERALIZATION TEST FAILED, AND A REAL PARSER BUG
   WAS FOUND MEASURING IT. Both reported as measured.**
   Three separate pieces of work landed together; the second and third
