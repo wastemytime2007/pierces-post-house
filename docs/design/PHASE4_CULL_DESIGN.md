@@ -36,6 +36,22 @@ His key already demonstrates criterion 1 without being told to. Selects
 That is the spec, on his own data: two selects, one dropped transition,
 a boundary placed where the axis changed and nowhere else.
 
+**Sign-pin correction, 2026-09-01 (Lead, after the slice 1 review).**
+The numbers above were measured with a phase correlation that returned
+displacement **sign-inverted** (`fa*conj(fb)`); the review caught it and
+slice 1 now uses `fb*conj(fa)`, verified against `np.roll` (content
+right 5 / down 3 gives dx=+5.000, dy=+3.000). Re-measured on the real
+clip at the shipped 960-wide analysis plane: the pan window averages
+**dx = −13.32 px/frame** and the tilt window **dy = −6.66 px/frame**.
+The table's magnitudes stand once scaled from the 480-wide plane it
+used (960/480 = 2x: −5.84 → −11.68, −2.78 → −5.56, the residual
+difference being window edges and the sub-pixel refinement), and the
+**signs are unchanged** — a leftward pan and a downward tilt both read
+negative. Anything downstream that cares about direction (slice 2's
+classifier, `push_in` vs `pull_out`, roll handedness) must be written
+against the corrected convention: **positive dx means frame content
+moved right, positive dy means it moved down.**
+
 ## 1. Signal layer
 
 ### 1.1 The analysis decode
@@ -503,7 +519,11 @@ a chore to scrub — so 0.70 is the floor, not the goal.
 **Format: NumPy `.npz` (compressed) for the numbers, plus a small JSON
 companion for the header and the run-length-encoded state sequence.**
 
-- `<name>.signals.npz` — one float32 array per signal, `analysed_frames`
+- `<name>.<sha12>.signals.npz` (the first 12 hex chars of the source's
+  sha256; amended 2026-09-01 after review, because DJI card rollover
+  produces `100MEDIA/DJI_0006.MP4` and `101MEDIA/DJI_0006.MP4`, whose
+  bare basenames would silently overwrite each other in one output
+  directory) — one float32 array per signal, `analysed_frames`
   long: `tx`, `ty`, `log_scale`, `roll`, `resid`, `peak`, `hf_energy`,
   `lapvar`, `lapvar_norm`, `luma_mean`, `luma_std`, `clip_low`,
   `clip_high`, plus an int8 `state` array and a decimated 64-bin

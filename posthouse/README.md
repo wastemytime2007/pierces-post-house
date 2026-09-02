@@ -449,11 +449,17 @@ present) in 20ms windows for peak dBFS, RMS dBFS, and clip-run length; a
 silent source gets an explicit "no audio stream" marker rather than a
 crash or a fabricated empty array.
 
-The sidecar is `<out_dir>/<name>.signals.npz` (the signal arrays) plus
-`<name>.signals.json` (provenance, column dictionary, sha256 of both the
-source file and the npz), written tempfile-then-`os.replace`. Same
-source file, same decode mode, twice in a row produces byte-identical
-npz bytes and an identical header apart from the run timestamp.
+The sidecar is `<out_dir>/<name>.<sha12>.signals.npz` (the signal arrays)
+plus `<name>.<sha12>.signals.json` (provenance, column dictionary,
+sha256 of both the source file and the npz), written
+tempfile-then-`os.replace`. `<sha12>` is the first 12 hex characters of
+the source's own sha256, which keeps two same-basename files (an SD-card
+rollover, e.g. `100MEDIA/DJI_0006.MP4` and `101MEDIA/DJI_0006.MP4`) from
+overwriting one another's sidecar in a shared `out_dir` —
+`posthouse.cull.signals.sidecar_paths()` is the one place this naming
+rule lives. Same source file, same decode mode, twice in a row produces
+byte-identical npz bytes and an identical header apart from the run
+timestamp.
 
 ```
 python -m posthouse.cull.signals extract SOURCE --out DIR \
@@ -469,10 +475,18 @@ blurred trails stable on Laplacian variance, underexposed and
 overexposed each lead their own clipped-fraction), the frame-count
 invariant, determinism, and the proxy-vs-source agreement gate ROADMAP
 §4 requires (a CRF-28 540p proxy of a fixture, built with PreCut's own
-proxy_manager settings). One real finding from that gate, recorded in
+proxy_manager settings). Two real findings from that gate, recorded in
 `safety_net/tests/test_cull_signals.py`: the sharpness side of the
 disagreement does not reproduce on these synthetic `testsrc2` fixtures
-(they are too smooth at 640x360 for CRF-28 to visibly damage), while the
-motion-agreement and audio-disagreement sides both hold as designed —
-noted as a fixture limitation, not a retraction of the no-proxies rule,
-which was measured on real 4K footage in the design doc itself.
+(they are too smooth at 640x360 for CRF-28 to visibly damage), and
+per-frame motion does NOT agree between original and proxy on
+`shaky.mp4` (measured ty correlation 0.28, roll correlation 0.45) even
+though coarse median-level motion looks close — both noted as findings,
+not retractions of the no-proxies rule. Design §1.9's real-footage
+measurement (added after slice 1 shipped, against the real benchmark
+clip and PreCut's own proxy) is the actual evidence: sharpness absolute
+level drops 30% but its per-frame shape survives (r = 0.983), while the
+motion residual — the stability signal this module's shake detection
+depends on — correlates only r = 0.544 (tx 0.92, ty 0.74). Cite those
+numbers, not a blanket "measured on real footage," for what proxies do
+to this signal set.

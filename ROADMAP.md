@@ -574,6 +574,28 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-01 — All 9 slice 1 findings fixed and independently
+  verified by the Lead** (suite 266 passed / 1 skipped). Measured after
+  the fixes, on the real clip: **peak RSS 265 MB** (was ~3.7 GB held for
+  this clip, ~31 GB projected for the 33-minute one) and **3.23x
+  realtime, up from 1.34x** — the FFT work (spectra cached across
+  frames, `rfft2`, no complex128 upcast) more than doubled throughput,
+  so the Runnells day now analyses in about 12 minutes. Sign convention
+  verified directly (`np.roll` right 5 / down 3 returns dx=+5.000,
+  dy=+3.000) and the histogram verified int32 with an exact 518,400
+  count on a black frame. Design §1.3's sign pin corrected with
+  re-measured values (pan −13.32 px/frame, tilt −6.66 at the shipped
+  960-wide plane; magnitudes consistent with the old 480-wide table
+  after scaling, signs unchanged) and the convention stated for slice 2:
+  **positive dx means content moved right, positive dy means down.**
+  Design §4 and CULLS §6 amended for the `<sha12>` sidecar name, with
+  `sidecar_paths()` named as the single constructor of that path.
+  Two honest notes from the fix work: ffmpeg's muxers refuse to keep a
+  genuinely packetless audio track, so the zero-sample case is tested at
+  the unit level against the documented contract rather than with a real
+  file; and hardware decode needs the probed pixel format
+  (`p010le` for 10-bit, `nv12` otherwise) since no single fixed format
+  works across both.
 - **2026-09-01 — Slice 1 full review: 8 verified findings beyond the
   deadlock, two of them critical for slice 2.** (1) **Memory:** the
   extractor materialized every decoded frame in RAM before analysis.

@@ -12,13 +12,40 @@ Decode (design §1.1)
 ---------------------
 One ffmpeg pipe per file, decoding the ORIGINAL source (never a proxy —
 see "Why not proxies" below), scaled to a 960x540 8-bit gray plane,
-emitted as rawvideo on a pipe and consumed frame by frame in numpy. No
-intermediate file is ever written. VideoToolbox hardware decode
-(``-hwaccel videotoolbox``) is used when available (detected once per
-process and cached); a hardware-decode failure falls back to software
-decode with a logged note on stderr — it never crashes the run. Decode
-mode, ffmpeg version, and the source's own fps/duration/frame count are
+emitted as rawvideo on a pipe and consumed frame by frame in numpy —
+genuinely one frame at a time: decode and per-frame analysis run in the
+same streaming pass, and at most the current and previous decoded frames
+are ever alive together (code review, 2026-09-01: an earlier version
+called ``list(...)`` over the frame generator before analysis, which
+held every decoded frame in memory at once — 9.3 GB for a 10-minute clip,
+~30 GB for the 33-minute Runnells clip. Fixed by folding decode and
+analysis into one generator-driven loop with growable preallocated output
+arrays; see ``_SignalArrays``). No intermediate file is ever written.
+VideoToolbox hardware decode (``-hwaccel videotoolbox``) is used when
+available (detected once per process and cached); a hardware-decode
+failure — including a codec VideoToolbox silently cannot accelerate, see
+below — falls back to software decode with a logged note on stderr — it
+never crashes the run, and a failed hardware attempt's partial output is
+discarded, never accumulated alongside the software retry. Decode mode,
+ffmpeg version, and the source's own fps/duration/frame count are
 recorded in the sidecar header.
+
+**Making a silent software fallback inside ffmpeg itself hard, not just
+possible** (code review, 2026-09-01): ``-hwaccel videotoolbox`` alone
+exits 0 and still emits frames for codecs VideoToolbox cannot decode in
+hardware (ProRes, for one) — ffmpeg quietly falls back to its own
+software decoder underneath, so the sidecar would record
+``hwaccel_videotoolbox`` for a run that used no hardware at all. Passing
+``-hwaccel_output_format videotoolbox_vld`` and downloading the decoded
+frame explicitly (``hwdownload,format=<fmt>,scale=...,format=gray``,
+``<fmt>`` chosen from the probed pixel format — ``p010le`` for a 10-bit
+source, ``nv12`` otherwise, since ``hwdownload`` needs the exact native
+hardware pixel format and there is no single one that covers both bit
+depths) makes an unsupported codec fail loudly (measured: ffmpeg 8.1
+exits 234 on a ProRes source with zero frames written) instead of falling
+back invisibly, so ``_decode_and_analyze``'s existing "zero frames or an
+exception" fallback rule now actually triggers for these codecs and the
+recorded decode mode is trustworthy.
 
 Global motion (design §1.2)
 ----------------------------
@@ -44,6 +71,19 @@ where every block is weak still produces a (poorly-conditioned, high
 is kept as its own per-frame signal (``resid``) — it is what
 distinguishes a rigid camera move (fits the model) from a jolt or
 subject motion (does not).
+
+**Sign convention (fixed by code review, 2026-09-01):** ``(dx, dy)`` is
+the shift of the CURRENT frame relative to the PREVIOUS one — a content
+shift to the right or down between frames must yield positive ``dx``/
+``dy``. An earlier version's cross-power spectrum was built as
+``fa * conj(fb)`` (``fa`` = previous frame's spectrum, ``fb`` = current),
+which is the textbook formula for "shift needed to move ``b`` onto
+``a``" — i.e. exactly the negative of what this module documents and
+what ``tx``/``ty``/``log_scale``/``roll`` are built from. Fixed by
+building the cross-power spectrum the other way, ``fb * conj(fa)``; see
+``test_phase_correlate_sign_convention_matches_docstring`` for the
+``np.roll``-based proof and the corresponding ``log_scale``/``roll``
+sign tests.
 
 A per-frame ``hf_energy`` (high-frequency band energy) is computed
 after the full per-frame series is assembled, as a windowed high-pass
@@ -85,7 +125,10 @@ Exposure (design §1.5)
 ------------------------
 Luma mean/std, clipped-low fraction (< 16/255), clipped-high fraction
 (> 239/255), and a decimated 64-bin histogram (every 15th frame,
-int16), all from the same gray analysis plane.
+int32 — code review, 2026-09-01: int16 wraps once a single frame's
+518,400-pixel count concentrates into one bin above 32,767, e.g. an
+all-black frame's bin 0; int32 has no such ceiling for any plane size
+this module uses), all from the same gray analysis plane.
 
 Audio (design §1.6)
 ---------------------
@@ -99,10 +142,19 @@ contract's segment-level ``clipped_frac`` is a different, later-stage
 quantity computed by the segmenter, not this array). A source with no
 audio stream (checked via ffprobe before ever invoking the audio pipe,
 never by parsing an ffmpeg error string) gets an explicit ``"audio":
-None`` marker in the sidecar header and no audio arrays in the npz —
-never a crash, never a silently-empty array pretending to be real
-measurements. Speech presence is explicitly NOT part of this slice
-(design §1.6, §5 slice 5 — it reuses ``posthouse.harvest.transcribe``).
+{"present": false, "note": "no audio stream"}`` marker in the sidecar
+header and no audio arrays in the npz — never a crash, never a
+silently-empty array pretending to be real measurements. A source that
+DOES carry an audio stream but decodes to zero samples (code review,
+2026-09-01: a packetless audio track is real and reproducible, not
+hypothetical) gets the same treatment under its own distinct note
+(``"audio stream present but decoded to zero samples"``) rather than the
+previous behaviour of writing empty ``audio_*`` arrays and claiming
+``n_windows: 0`` — ``present`` is decided AFTER decode, from
+``samples.size > 0``, never from the ffprobe stream check alone, and
+nothing here ever calls ``np.max``/``np.mean`` on an empty array. Speech
+presence is explicitly NOT part of this slice (design §1.6, §5 slice 5 —
+it reuses ``posthouse.harvest.transcribe``).
 
 Why not proxies (ROADMAP §4, design §1.1 "why this is not a proxy
 shortcut")
@@ -123,21 +175,31 @@ global motion and clear disagreement on sharpness and audio peaks.
 
 Sidecar (design §4, contract §6)
 ----------------------------------
-``<out_dir>/<source_name>.signals.npz`` — one float32 array per video
-signal, ``analysed_frames`` long (``tx``, ``ty``,
+``<out_dir>/<source_name>.<sha12>.signals.npz`` — one float32 array per
+video signal, ``analysed_frames`` long (``tx``, ``ty``,
 ``tx_norm_src_width``, ``ty_norm_src_width``, ``log_scale``, ``roll``,
 ``resid``, ``peak``, ``hf_energy``, ``lapvar``, ``lapvar_norm``,
 ``luma_mean``, ``luma_std``, ``clip_low``, ``clip_high``), plus a
-decimated ``hist64`` (int16, one row per 15th frame) and, when the
-source has an audio stream, ``audio_peak_dbfs`` / ``audio_rms_dbfs`` /
-``audio_clip_run`` at their own 20ms rate. This slice does not write a
-``state`` array or a run-length-encoded state sequence — those belong
-to the classifier (slice 2) and segmenter (slice 3), which do not exist
-yet; writing a placeholder state array here would misrepresent
-unclassified frames as classified. ``<out_dir>/<source_name>.signals.json``
-carries provenance (ffmpeg/numpy versions, decode mode, plane size,
-source fps/duration/frame count, the source's sha256, a run
-timestamp), the column dictionary with units, and the audio presence
+decimated ``hist64`` (int32, one row per 15th frame) and, when the
+source has an audio stream that decodes to at least one sample,
+``audio_peak_dbfs`` / ``audio_rms_dbfs`` / ``audio_clip_run`` at their
+own 20ms rate. ``<sha12>`` is the first 12 hex characters of the
+source's own sha256 (code review, 2026-09-01: a bare
+``<source_name>.signals.npz`` collides across directories that share a
+basename — an SD-card rollover from a DJI Osmo produces
+``100MEDIA/DJI_0006.MP4`` and ``101MEDIA/DJI_0006.MP4``, two different
+files, and writing both into one flat ``out_dir`` would silently
+overwrite one sidecar with the other via ``os.replace``. ``sidecar_paths()``
+is the one place this naming rule lives; slice 3 calls it to find a
+source's sidecar rather than reconstructing the pattern itself). This
+slice does not write a ``state`` array or a run-length-encoded state
+sequence — those belong to the classifier (slice 2) and segmenter
+(slice 3), which do not exist yet; writing a placeholder state array
+here would misrepresent unclassified frames as classified.
+``<out_dir>/<source_name>.<sha12>.signals.json`` carries provenance
+(ffmpeg/numpy versions, decode mode, plane size, source
+fps/duration/frame count, the source's sha256, a run timestamp), the
+column dictionary with units, and the audio presence
 marker. Written tempfile-then-``os.replace`` for both files, exactly as
 ``posthouse.manifest`` and ``posthouse.coldfootage``'s siblings do.
 Determinism: given the same source file and the same ``decode`` mode,
@@ -171,11 +233,12 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+from posthouse._util import atomic_write_bytes, now_iso
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -321,6 +384,21 @@ class ProbeInfo:
     height: int
     nb_frames: Optional[int]
     has_audio: bool
+    pix_fmt: str = ""
+
+
+def _hwdownload_format_for(pix_fmt: str) -> str:
+    """The exact pixel format to hand ``hwdownload`` for a hardware-decoded
+    frame of this source (code review, 2026-09-01). ``hwdownload`` needs the
+    frame's real native format, not a negotiable target — passing the wrong
+    one, or a ``fmt1|fmt2`` alternative list, fails the filter graph rather
+    than picking the working option (measured on ffmpeg 8.1). VideoToolbox
+    downloads an 8-bit 4:2:0 source as ``nv12`` and a 10-bit one as
+    ``p010le``; every source this pipeline sees is one or the other. A
+    10-bit source's ffprobe ``pix_fmt`` always carries a ``10`` marker
+    (``yuv420p10le``, ``p010le``, ...); an 8-bit one never does.
+    """
+    return "p010le" if "10" in pix_fmt else "nv12"
 
 
 def _probe_source(source_path: Path) -> ProbeInfo:
@@ -376,6 +454,7 @@ def _probe_source(source_path: Path) -> ProbeInfo:
         height=int(video.get("height") or 0),
         nb_frames=nb_frames,
         has_audio=audio is not None,
+        pix_fmt=str(video.get("pix_fmt") or ""),
     )
 
 
@@ -391,19 +470,28 @@ def sha256_file(path: Path) -> str:
 # Video decode: one ffmpeg pipe, consumed frame by frame
 # ---------------------------------------------------------------------------
 
-def _video_decode_cmd(ffmpeg: str, source_path: Path, hwaccel: bool) -> list[str]:
+def _video_decode_cmd(
+    ffmpeg: str, source_path: Path, hwaccel: bool, hwdownload_format: str = "nv12",
+) -> list[str]:
     # -nostdin: ffmpeg must never wait on a terminal for input; a batch cull
     # has no one at the keyboard.
     cmd = [ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-y"]
     if hwaccel:
-        cmd += ["-hwaccel", "videotoolbox"]
-    cmd += [
-        "-threads", "1",
-        "-i", str(source_path),
-        "-vf", f"scale={ANALYSIS_WIDTH}:{ANALYSIS_HEIGHT},format=gray",
-        "-f", "rawvideo", "-pix_fmt", "gray",
-        "pipe:1",
-    ]
+        # -hwaccel_output_format + an explicit hwdownload (rather than plain
+        # -hwaccel videotoolbox alone) is required to make an unsupported
+        # codec fail loudly instead of ffmpeg silently falling back to
+        # software underneath while still exiting 0 (code review,
+        # 2026-09-01; see the module docstring's "Decode" section).
+        cmd += ["-hwaccel", "videotoolbox", "-hwaccel_output_format", "videotoolbox_vld"]
+    cmd += ["-threads", "1", "-i", str(source_path)]
+    if hwaccel:
+        vf = (
+            f"hwdownload,format={hwdownload_format},"
+            f"scale={ANALYSIS_WIDTH}:{ANALYSIS_HEIGHT},format=gray"
+        )
+    else:
+        vf = f"scale={ANALYSIS_WIDTH}:{ANALYSIS_HEIGHT},format=gray"
+    cmd += ["-vf", vf, "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]
     return cmd
 
 
@@ -454,37 +542,9 @@ def _iter_gray_frames(cmd: list[str]):
                     )
 
 
-def _decode_all_frames(source_path: Path, decode: str) -> tuple[list, str]:
-    """Decode every frame, with the auto/forced hwaccel-then-software
-    fallback (design §1.1: "never crash"). Returns (frames, decode_mode_used).
-    """
-    ffmpeg = _ffmpeg_path()
-    if ffmpeg is None:
-        raise SignalsError("ffmpeg not found on PATH or common install locations")
-
-    want_hw = decode in ("auto", "videotoolbox")
-    if want_hw and decode == "auto":
-        want_hw = _videotoolbox_available()
-
-    if want_hw:
-        try:
-            frames = list(_iter_gray_frames(_video_decode_cmd(ffmpeg, source_path, hwaccel=True)))
-            if frames:
-                return frames, "hwaccel_videotoolbox"
-            print(
-                f"note: hardware decode of {source_path} produced 0 frames, "
-                f"falling back to software decode",
-                file=sys.stderr,
-            )
-        except SignalsError as e:
-            print(
-                f"note: hardware decode of {source_path} failed ({e}); "
-                f"falling back to software decode",
-                file=sys.stderr,
-            )
-
-    frames = list(_iter_gray_frames(_video_decode_cmd(ffmpeg, source_path, hwaccel=False)))
-    return frames, "software"
+# _decode_all_frames (materialize-then-analyze) is gone — see
+# _decode_and_analyze below, which streams decode and analysis together in
+# one pass (code review, 2026-09-01 memory finding).
 
 
 # ---------------------------------------------------------------------------
@@ -499,12 +559,15 @@ def _hann_window(size: int) -> np.ndarray:
     return np.outer(w1d, w1d)
 
 
-def _block_centers() -> list[tuple[int, int]]:
+@functools.lru_cache(maxsize=1)
+def _block_centers() -> tuple[tuple[int, int], ...]:
     """3x3 grid of block top-left (y, x) positions within the analysis
     plane, evenly spaced so each BLOCK_SIZE block stays fully in-bounds.
     Overlapping blocks are fine (there is no tiling requirement) — the
     plane is shorter than GRID*BLOCK_SIZE in height, so the vertical
-    positions overlap while the horizontal ones do not.
+    positions overlap while the horizontal ones do not. Cached (code
+    review, 2026-09-01 perf finding): the grid depends only on module
+    constants, so recomputing it every frame was pure waste.
     """
     def _positions(extent: int) -> list[int]:
         max_start = extent - BLOCK_SIZE
@@ -514,23 +577,48 @@ def _block_centers() -> list[tuple[int, int]]:
 
     ys = _positions(ANALYSIS_HEIGHT)
     xs = _positions(ANALYSIS_WIDTH)
-    return [(y, x) for y in ys for x in xs]
+    return tuple((y, x) for y in ys for x in xs)
 
 
-def _phase_correlate(prev_block: np.ndarray, cur_block: np.ndarray) -> tuple[float, float, float]:
-    """Sub-pixel (dx, dy, confidence) shift of cur_block relative to
-    prev_block, via FFT phase correlation on Hann-windowed blocks.
+def _block_spectrum(block: np.ndarray) -> np.ndarray:
+    """Hann-windowed real FFT (``rfft2``) of one block — the shared
+    building block of ``_phase_correlate`` and the per-frame streaming loop.
+
+    ``rfft2`` (half-spectrum, real input) rather than ``fft2`` (code review,
+    2026-09-01 perf finding): the input is always real, ``rfft2``/``irfft2``
+    is a bit-exact match for the ``fft2``/``ifft2`` cross-power-spectrum
+    peak (verified numerically, max abs difference ~1e-16) at roughly half
+    the wall time, and it composes with caching a frame's block spectra to
+    reuse as the *previous* frame's spectra on the next iteration — the
+    same block was being FFT'd twice per pair before this (once as "cur"
+    for frame i, again as "prev" for frame i+1).
     """
-    window = _hann_window(prev_block.shape[0])
-    a = prev_block.astype(np.float32) * window
-    b = cur_block.astype(np.float32) * window
+    window = _hann_window(block.shape[0])
+    return np.fft.rfft2(block.astype(np.float32) * window)
 
-    fa = np.fft.fft2(a)
-    fb = np.fft.fft2(b)
-    cross = fa * np.conj(fb)
+
+def _correlate_spectra(
+    fa: np.ndarray, fb: np.ndarray, block_shape: tuple[int, int],
+) -> tuple[float, float, float]:
+    """Sub-pixel (dx, dy, confidence): the shift of the frame whose
+    (already Hann-windowed, already FFT'd) spectrum is ``fb`` relative to
+    the frame whose spectrum is ``fa`` — i.e. ``fa`` is the PREVIOUS
+    frame's block spectrum and ``fb`` is the CURRENT one, per this
+    module's documented convention (module docstring, "Global motion").
+
+    Sign convention (fixed by code review, 2026-09-01): the cross-power
+    spectrum is built as ``fb * conj(fa)``, not ``fa * conj(fb)``. The
+    latter is the textbook formula for "the shift that would move ``b``
+    onto ``a``," which is exactly the negative of "the shift of ``b``
+    relative to ``a``" that this function (and tx/ty/log_scale/roll, which
+    are fit from its output) documents and requires — a rightward or
+    downward content shift between frames must yield positive dx/dy. See
+    ``test_phase_correlate_sign_convention_matches_docstring``.
+    """
+    cross = fb * np.conj(fa)
     mag = np.abs(cross)
     mag[mag < 1e-8] = 1e-8
-    r = np.fft.ifft2(cross / mag).real
+    r = np.fft.irfft2(cross / mag, s=block_shape)
 
     h, w = r.shape
     peak_idx = np.unravel_index(np.argmax(r), r.shape)
@@ -557,6 +645,19 @@ def _phase_correlate(prev_block: np.ndarray, cur_block: np.ndarray) -> tuple[flo
     return dx + dx_sub, dy + dy_sub, confidence
 
 
+def _phase_correlate(prev_block: np.ndarray, cur_block: np.ndarray) -> tuple[float, float, float]:
+    """Sub-pixel (dx, dy, confidence) shift of cur_block relative to
+    prev_block, via FFT phase correlation on Hann-windowed blocks. A thin
+    convenience wrapper over ``_block_spectrum``/``_correlate_spectra`` for
+    callers (and tests) that have raw blocks rather than cached spectra;
+    the streaming per-frame loop calls the two halves directly so each
+    block's spectrum is computed exactly once per frame, not once per pair.
+    """
+    fa = _block_spectrum(prev_block)
+    fb = _block_spectrum(cur_block)
+    return _correlate_spectra(fa, fb, prev_block.shape)
+
+
 def _fit_similarity(
     positions: list[tuple[float, float]],
     shifts: list[tuple[float, float]],
@@ -569,6 +670,16 @@ def _fit_similarity(
     consecutive frames):
         dx_i = tx + log_scale * px_i - roll * py_i
         dy_i = ty + roll      * px_i + log_scale * py_i
+
+    Sign convention (pinned by test, code review 2026-09-01): a push-in
+    (increasing magnification) moves content OUTWARD from the frame
+    center between frames, the same sign as each block's own position, so
+    ``log_scale`` is POSITIVE for a zoom-in — see
+    ``test_fit_similarity_log_scale_sign_convention_zoom_in_is_positive``.
+    ``roll``'s sign is pinned relative to this same model by
+    ``test_fit_similarity_roll_sign_convention_is_self_consistent``, which
+    is what matters for internal consistency (a sign flip here would
+    invert every roll-derived signal without any test noticing).
     """
     n = len(positions)
     weights = np.array(
@@ -601,10 +712,10 @@ def _fit_similarity(
 
     predicted = A @ solution
     residuals = b - predicted
-    if w.sum() > 0:
-        resid = float(np.sqrt(np.average(residuals ** 2, weights=w)))
-    else:
-        resid = float(np.sqrt(np.mean(residuals ** 2)))
+    # w.sum() > 0 always holds here (weights is forced to all-ones above
+    # when its sum would otherwise be <= 0), so the unweighted branch this
+    # used to have was dead code (code review, 2026-09-01) — removed.
+    resid = float(np.sqrt(np.average(residuals ** 2, weights=w)))
 
     mean_peak = float(np.mean(confidences)) if confidences else 0.0
     return tx, ty, log_scale, roll, resid, mean_peak
@@ -664,7 +775,12 @@ def _exposure_stats(frame: np.ndarray) -> tuple[float, float, float, float, np.n
     clip_low = float(np.count_nonzero(frame < CLIP_LOW_THRESHOLD * 255.0)) / total
     clip_high = float(np.count_nonzero(frame > CLIP_HIGH_THRESHOLD * 255.0)) / total
     hist, _ = np.histogram(frame, bins=HIST_BINS, range=(0, 256))
-    return mean, std, clip_low, clip_high, hist.astype(np.int16)
+    # int32, not int16 (code review, 2026-09-01): a single bin can hold up
+    # to ANALYSIS_WIDTH*ANALYSIS_HEIGHT == 518,400 pixels (e.g. an
+    # all-black frame's bin 0), which overflows int16's 32,767 ceiling and
+    # wraps to a negative count. int32's ceiling is ~2.1 billion — no
+    # analysis-plane size this module uses can reach it.
+    return mean, std, clip_low, clip_high, hist.astype(np.int32)
 
 
 # ---------------------------------------------------------------------------
@@ -673,7 +789,7 @@ def _exposure_stats(frame: np.ndarray) -> tuple[float, float, float, float, np.n
 
 def _audio_decode_cmd(ffmpeg: str, source_path: Path) -> list[str]:
     return [
-        ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+        ffmpeg, "-hide_banner", "-nostdin", "-loglevel", "error", "-y",
         "-threads", "1",
         "-i", str(source_path),
         "-vn", "-ac", "1", "-ar", str(AUDIO_SAMPLE_RATE),
@@ -682,45 +798,275 @@ def _audio_decode_cmd(ffmpeg: str, source_path: Path) -> list[str]:
     ]
 
 
-def _extract_audio_signals(source_path: Path, ffmpeg: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Returns (peak_dbfs, rms_dbfs, clip_run) arrays, one value per 20ms
-    window, from the ORIGINAL audio track (never a proxy's re-encode)."""
-    cmd = _audio_decode_cmd(ffmpeg, source_path)
-    result = subprocess.run(cmd, capture_output=True, timeout=600)
-    if result.returncode != 0:
-        raise SignalsError(
-            f"ffmpeg audio decode exited {result.returncode}: "
-            f"{result.stderr.decode('utf-8', 'replace').strip()}"
-        )
-    samples = np.frombuffer(result.stdout, dtype=np.float32)
-    if samples.size == 0:
-        return (np.zeros(0, dtype=np.float32),) * 3  # type: ignore[return-value]
+# Samples read per streaming chunk, in whole windows (code review, 2026-09-01
+# perf finding): the original implementation slurped the entire decoded PCM
+# stream into one array before computing anything — ~691 MB/hour of mono
+# float32 at 48kHz. Reading in bounded chunks and reducing each chunk to its
+# (tiny) per-20ms-window stats immediately means the only thing that grows
+# with clip length is the ~50-windows/sec output, not the raw audio.
+_AUDIO_CHUNK_WINDOWS = 4096
+_AUDIO_CHUNK_BYTES = _AUDIO_CHUNK_WINDOWS * AUDIO_WINDOW_SAMPLES * 4  # float32
 
-    n_windows = int(math.ceil(samples.size / AUDIO_WINDOW_SAMPLES))
-    pad = n_windows * AUDIO_WINDOW_SAMPLES - samples.size
-    if pad:
-        samples = np.pad(samples, (0, pad), mode="constant")
-    windows = samples.reshape(n_windows, AUDIO_WINDOW_SAMPLES)
 
+def _windowed_audio_stats(windows: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorized per-window (peak_dbfs, rms_dbfs, clip_run) for a
+    ``(n_windows, AUDIO_WINDOW_SAMPLES)`` block of samples (code review,
+    2026-09-01 perf finding: the original clip-run computation was a
+    Python ``for`` loop over ``n_windows``, which scales with clip length;
+    this is a cumulative-run trick over the fixed
+    ``AUDIO_WINDOW_SAMPLES`` (960) columns instead, so cost is independent
+    of how many windows are passed in — verified numerically equivalent to
+    the original per-window ``np.diff``-of-run-boundaries method).
+    """
     eps = 1e-9
     peak = np.max(np.abs(windows), axis=1)
     peak_dbfs = 20.0 * np.log10(np.maximum(peak, eps))
     rms = np.sqrt(np.mean(windows ** 2, axis=1))
     rms_dbfs = 20.0 * np.log10(np.maximum(rms, eps))
 
-    clipped_mask = np.abs(windows) >= AUDIO_CLIP_THRESHOLD
-    clip_run = np.zeros(n_windows, dtype=np.float32)
-    for i in range(n_windows):
-        row = clipped_mask[i]
-        if not row.any():
-            continue
-        # longest run of consecutive True values in this window
-        changes = np.diff(np.concatenate(([0], row.view(np.int8), [0])))
-        starts = np.flatnonzero(changes == 1)
-        ends = np.flatnonzero(changes == -1)
-        clip_run[i] = float(np.max(ends - starts)) if len(starts) else 0.0
+    clipped = (np.abs(windows) >= AUDIO_CLIP_THRESHOLD).astype(np.int32)
+    run_lengths = np.zeros_like(clipped)
+    run_lengths[:, 0] = clipped[:, 0]
+    for j in range(1, clipped.shape[1]):
+        run_lengths[:, j] = (run_lengths[:, j - 1] + 1) * clipped[:, j]
+    clip_run = run_lengths.max(axis=1).astype(np.float32)
 
     return peak_dbfs.astype(np.float32), rms_dbfs.astype(np.float32), clip_run
+
+
+def _extract_audio_signals(
+    source_path: Path, ffmpeg: str,
+) -> Optional[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """Streams the ORIGINAL audio track (never a proxy's re-encode) through
+    ffmpeg in bounded chunks and returns (peak_dbfs, rms_dbfs, clip_run)
+    arrays, one value per 20ms window — or ``None`` if the stream decoded
+    to zero samples (code review, 2026-09-01: a stream that ffprobe reports
+    as present but that carries no packets, or a `-t 0` / degenerate mux,
+    is real and reproducible, not hypothetical — see
+    ``test_audio_stream_present_with_zero_samples_is_not_marked_present``).
+    Callers decide ``present`` from this return value, never from the
+    ffprobe stream check alone.
+    """
+    cmd = _audio_decode_cmd(ffmpeg, source_path)
+    # stderr to a temp file, same reasoning as the video decode pipe: a
+    # long/noisy audio decode must never risk a full-pipe deadlock against
+    # our own stdout-draining loop.
+    with tempfile.TemporaryFile(prefix="posthouse-ffmpeg-audio-stderr-") as errf:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf)
+        assert proc.stdout is not None
+        leftover = b""
+        peak_chunks: list[np.ndarray] = []
+        rms_chunks: list[np.ndarray] = []
+        clip_chunks: list[np.ndarray] = []
+        completed = False
+        try:
+            while True:
+                raw = proc.stdout.read(_AUDIO_CHUNK_BYTES)
+                if not raw:
+                    break
+                leftover += raw
+                usable_samples = (len(leftover) // 4 // AUDIO_WINDOW_SAMPLES) * AUDIO_WINDOW_SAMPLES
+                usable_bytes = usable_samples * 4
+                if usable_bytes == 0:
+                    continue
+                block = np.frombuffer(leftover[:usable_bytes], dtype=np.float32)
+                leftover = leftover[usable_bytes:]
+                windows = block.reshape(-1, AUDIO_WINDOW_SAMPLES)
+                p, r, c = _windowed_audio_stats(windows)
+                peak_chunks.append(p)
+                rms_chunks.append(r)
+                clip_chunks.append(c)
+            completed = True
+        finally:
+            if not completed:
+                proc.kill()
+                proc.stdout.close()
+                proc.wait(timeout=60)
+            else:
+                proc.stdout.close()
+                returncode = proc.wait(timeout=60)
+                if returncode != 0:
+                    errf.seek(0)
+                    tail = errf.read()[-4000:].decode("utf-8", "replace").strip()
+                    raise SignalsError(
+                        f"ffmpeg audio decode exited {returncode}: {tail}"
+                    )
+
+    # Final partial window (fewer than AUDIO_WINDOW_SAMPLES samples left
+    # over): zero-pad it, exactly as the original whole-buffer implementation
+    # padded its last window.
+    if leftover:
+        pad = AUDIO_WINDOW_SAMPLES * 4 - len(leftover)
+        block = np.frombuffer(leftover + b"\x00" * pad, dtype=np.float32)
+        windows = block.reshape(1, AUDIO_WINDOW_SAMPLES)
+        p, r, c = _windowed_audio_stats(windows)
+        peak_chunks.append(p)
+        rms_chunks.append(r)
+        clip_chunks.append(c)
+
+    if not peak_chunks:
+        return None  # decoded to zero samples — present iff samples.size > 0
+
+    return (
+        np.concatenate(peak_chunks),
+        np.concatenate(rms_chunks),
+        np.concatenate(clip_chunks),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Streaming decode + per-frame analysis: one pass, bounded memory
+# ---------------------------------------------------------------------------
+#
+# Code review, 2026-09-01 (CRITICAL): an earlier version called
+# ``list(_iter_gray_frames(cmd))`` before any analysis ran, materializing
+# every decoded 518,400-byte frame at once — ~9.3 GB for a 10-minute clip,
+# ~30 GB for the 33-minute Runnells clip (OOM). ``_SignalArrays`` below
+# preallocates (and grows) only the per-frame SCALAR outputs, and
+# ``_run_decode_and_analyze`` consumes the frame generator directly,
+# computing each frame's signals as it arrives and never retaining a
+# decoded frame past the iteration that produced it — motion needs no
+# retained raw frame at all, only the previous frame's (much smaller)
+# cached block spectra (see ``_block_spectrum``).
+
+class _SignalArrays:
+    """Preallocated, growable storage for one decode pass's per-frame
+    scalar signals. Starts at the probe's own frame-count estimate and
+    doubles on overflow (a probe under-estimate, e.g. a missing
+    ``nb_frames`` tag, must not crash a multi-hour decode) — the pattern
+    mirrors a growable list, but keeps the payload in typed numpy arrays
+    rather than boxed Python floats.
+    """
+
+    _FIELDS = (
+        "tx", "ty", "log_scale", "roll", "resid", "peak",
+        "lapvar", "luma_mean", "luma_std", "clip_low", "clip_high",
+    )
+
+    def __init__(self, capacity: int):
+        capacity = max(int(capacity), 1)
+        self._capacity = capacity
+        self.count = 0
+        for field_name in self._FIELDS:
+            setattr(self, field_name, np.zeros(capacity, dtype=np.float64))
+        self.hist_rows: list[np.ndarray] = []
+        self.hist_frame_idx: list[int] = []
+
+    def ensure(self, index: int) -> None:
+        if index < self._capacity:
+            return
+        new_capacity = max(index + 1, self._capacity * 2)
+        for field_name in self._FIELDS:
+            old = getattr(self, field_name)
+            grown = np.zeros(new_capacity, dtype=np.float64)
+            grown[: old.size] = old
+            setattr(self, field_name, grown)
+        self._capacity = new_capacity
+
+    def trim(self) -> dict[str, np.ndarray]:
+        """The final per-signal arrays, sliced to the frames actually
+        decoded (``count``), never the preallocated capacity."""
+        return {field_name: getattr(self, field_name)[: self.count] for field_name in self._FIELDS}
+
+
+def _run_decode_and_analyze(
+    cmd: list[str], positions: list[tuple[float, float]], capacity_hint: int,
+) -> tuple[_SignalArrays, int]:
+    """Run one decode pass and compute every per-frame signal in the same
+    streaming loop. Returns (arrays, frame_count); raises SignalsError if
+    ffmpeg exits non-zero (the caller decides whether that means "fall
+    back to software" or "genuinely failed").
+    """
+    arrs = _SignalArrays(capacity_hint)
+    block_positions = _block_centers()
+    prev_block_spectra: Optional[list[np.ndarray]] = None
+    count = 0
+
+    for i, frame in _iter_gray_frames(cmd):
+        arrs.ensure(i)
+
+        arrs.lapvar[i] = _laplacian_variance(frame)
+        mean, std, clip_low, clip_high, hist = _exposure_stats(frame)
+        arrs.luma_mean[i] = mean
+        arrs.luma_std[i] = std
+        arrs.clip_low[i] = clip_low
+        arrs.clip_high[i] = clip_high
+        if i % HIST_DECIMATION == 0:
+            arrs.hist_rows.append(hist)
+            arrs.hist_frame_idx.append(i)
+
+        cur_block_spectra = [
+            _block_spectrum(frame[by:by + BLOCK_SIZE, bx:bx + BLOCK_SIZE])
+            for (by, bx) in block_positions
+        ]
+
+        if prev_block_spectra is None:
+            arrs.tx[i] = arrs.ty[i] = arrs.log_scale[i] = arrs.roll[i] = arrs.resid[i] = 0.0
+            arrs.peak[i] = 0.0
+        else:
+            shifts = []
+            confidences = []
+            for fa, fb in zip(prev_block_spectra, cur_block_spectra):
+                dx, dy, conf = _correlate_spectra(fa, fb, (BLOCK_SIZE, BLOCK_SIZE))
+                shifts.append((dx, dy))
+                confidences.append(conf)
+            (arrs.tx[i], arrs.ty[i], arrs.log_scale[i], arrs.roll[i],
+             arrs.resid[i], arrs.peak[i]) = _fit_similarity(positions, shifts, confidences)
+
+        # `frame` and the previous iteration's `frame`/`prev_block_spectra`
+        # are the only per-frame data ever alive; `frame` itself is dropped
+        # here and only its (much smaller) block spectra survive to the
+        # next iteration.
+        prev_block_spectra = cur_block_spectra
+        count = i + 1
+        arrs.count = count
+
+    return arrs, count
+
+
+def _decode_and_analyze(
+    source_path: Path, decode: str, probe: ProbeInfo, positions: list[tuple[float, float]],
+) -> tuple[_SignalArrays, str]:
+    """Decode every frame and compute its per-frame signals in one
+    streaming pass, with the auto/forced hwaccel-then-software fallback
+    (design §1.1: "never crash"). A failed or empty hardware attempt's
+    ``_SignalArrays`` is abandoned (never merged with, or read alongside,
+    the software retry's arrays) before decoding restarts from frame 0 in
+    software — so a partial hardware pass never doubles memory use either.
+    Returns (arrays, decode_mode_used).
+    """
+    ffmpeg = _ffmpeg_path()
+    if ffmpeg is None:
+        raise SignalsError("ffmpeg not found on PATH or common install locations")
+
+    capacity_hint = probe.nb_frames or max(1, round(probe.duration_sec * probe.fps)) or 64
+
+    want_hw = decode in ("auto", "videotoolbox")
+    if want_hw and decode == "auto":
+        want_hw = _videotoolbox_available()
+
+    if want_hw:
+        hwdownload_format = _hwdownload_format_for(probe.pix_fmt)
+        cmd = _video_decode_cmd(ffmpeg, source_path, hwaccel=True, hwdownload_format=hwdownload_format)
+        try:
+            arrs, count = _run_decode_and_analyze(cmd, positions, capacity_hint)
+            if count > 0:
+                return arrs, "hwaccel_videotoolbox"
+            print(
+                f"note: hardware decode of {source_path} produced 0 frames, "
+                f"falling back to software decode",
+                file=sys.stderr,
+            )
+        except SignalsError as e:
+            print(
+                f"note: hardware decode of {source_path} failed ({e}); "
+                f"falling back to software decode",
+                file=sys.stderr,
+            )
+
+    cmd = _video_decode_cmd(ffmpeg, source_path, hwaccel=False)
+    arrs, count = _run_decode_and_analyze(cmd, positions, capacity_hint)
+    return arrs, "software"
 
 
 # ---------------------------------------------------------------------------
@@ -772,18 +1118,31 @@ def _validate_inputs(source_path: Path, out_dir: Path, decode: str) -> list[str]
     return problems
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+def sidecar_paths(
+    source_path: Path, out_dir: Path, sha256: Optional[str] = None,
+) -> tuple[Path, Path]:
+    """The (npz_path, json_path) sidecar pair for ``source_path`` in
+    ``out_dir`` — the one place this naming rule lives, so slice 3 (and
+    anything else that needs to find an already-written sidecar) calls
+    this instead of reconstructing the pattern.
+
+    Includes the first 12 hex characters of the source's sha256 (code
+    review, 2026-09-01): a bare ``<name>.signals.npz`` collides across
+    directories that share a basename — an SD-card rollover from a DJI
+    Osmo produces ``100MEDIA/DJI_0006.MP4`` and ``101MEDIA/DJI_0006.MP4``,
+    two different files that would silently overwrite one sidecar with the
+    other via ``os.replace`` if both landed in one flat ``out_dir``.
+
+    Args:
+        sha256: pass the already-computed hash to skip re-hashing a
+            potentially large source file; computed here if omitted.
+    """
+    if sha256 is None:
+        sha256 = sha256_file(source_path)
+    sha12 = sha256[:12]
+    npz_path = out_dir / f"{source_path.name}.{sha12}.signals.npz"
+    json_path = out_dir / f"{source_path.name}.{sha12}.signals.json"
+    return npz_path, json_path
 
 
 def extract_signals(
@@ -797,8 +1156,9 @@ def extract_signals(
 
     Args:
         source_path: the ORIGINAL media file to analyse. Never a proxy.
-        out_dir: directory to write ``<source name>.signals.npz`` and
-            ``.signals.json`` into (created if missing).
+        out_dir: directory to write ``<source name>.<sha12>.signals.npz``
+            and ``.signals.json`` into (created if missing; see
+            ``sidecar_paths()``).
         decode: ``"auto"`` (hardware if available, else software),
             ``"videotoolbox"`` (hardware, falling back to software on
             failure), or ``"software"`` (never attempts hardware decode).
@@ -823,59 +1183,34 @@ def extract_signals(
     probe = _probe_source(source_path)
     timings["probe"] = time.monotonic() - t0
 
-    t0 = time.monotonic()
-    frames, decode_mode = _decode_all_frames(source_path, decode)
-    timings["decode_and_analyse_video"] = time.monotonic() - t0
-    # (video decode and per-frame signal computation happen in the same
-    # pass below; the timing split reflects that "decode_and_analyse_video"
-    # is decoder-bound per the design's own measurement — see design §7.)
-
     positions = [
         (x + BLOCK_SIZE / 2.0 - ANALYSIS_WIDTH / 2.0, y + BLOCK_SIZE / 2.0 - ANALYSIS_HEIGHT / 2.0)
         for (y, x) in _block_centers()
     ]
 
-    n = len(frames)
-    tx = np.zeros(n, dtype=np.float64)
-    ty = np.zeros(n, dtype=np.float64)
-    log_scale = np.zeros(n, dtype=np.float64)
-    roll = np.zeros(n, dtype=np.float64)
-    resid = np.zeros(n, dtype=np.float64)
-    peak = np.zeros(n, dtype=np.float64)
-    lapvar = np.zeros(n, dtype=np.float64)
-    luma_mean = np.zeros(n, dtype=np.float64)
-    luma_std = np.zeros(n, dtype=np.float64)
-    clip_low = np.zeros(n, dtype=np.float64)
-    clip_high = np.zeros(n, dtype=np.float64)
-    hist_rows: list[np.ndarray] = []
-    hist_frame_idx: list[int] = []
-
     t0 = time.monotonic()
-    prev_frame = None
-    for i, frame in frames:
-        lapvar[i], = (_laplacian_variance(frame),)
-        luma_mean[i], luma_std[i], clip_low[i], clip_high[i], hist = _exposure_stats(frame)
-        if i % HIST_DECIMATION == 0:
-            hist_rows.append(hist)
-            hist_frame_idx.append(i)
+    arrs, decode_mode = _decode_and_analyze(source_path, decode, probe, positions)
+    timings["decode_and_analyse_video"] = time.monotonic() - t0
+    # This key genuinely covers both decode and per-frame analysis (code
+    # review, 2026-09-01): they now run in one streaming pass, not the
+    # separate decode-then-analyse stages an earlier version measured
+    # separately while mislabelling only the decode stage as "and_analyse".
 
-        if prev_frame is None:
-            tx[i] = ty[i] = log_scale[i] = roll[i] = resid[i] = 0.0
-            peak[i] = 0.0
-        else:
-            shifts = []
-            confidences = []
-            for (by, bx) in _block_centers():
-                prev_block = prev_frame[by:by + BLOCK_SIZE, bx:bx + BLOCK_SIZE]
-                cur_block = frame[by:by + BLOCK_SIZE, bx:bx + BLOCK_SIZE]
-                dx, dy, conf = _phase_correlate(prev_block, cur_block)
-                shifts.append((dx, dy))
-                confidences.append(conf)
-            tx[i], ty[i], log_scale[i], roll[i], resid[i], peak[i] = _fit_similarity(
-                positions, shifts, confidences
-            )
-        prev_frame = frame
-    timings["per_frame_signals"] = time.monotonic() - t0
+    n = arrs.count
+    signals = arrs.trim()
+    tx = signals["tx"]
+    ty = signals["ty"]
+    log_scale = signals["log_scale"]
+    roll = signals["roll"]
+    resid = signals["resid"]
+    peak = signals["peak"]
+    lapvar = signals["lapvar"]
+    luma_mean = signals["luma_mean"]
+    luma_std = signals["luma_std"]
+    clip_low = signals["clip_low"]
+    clip_high = signals["clip_high"]
+    hist_rows = arrs.hist_rows
+    hist_frame_idx = arrs.hist_frame_idx
 
     t0 = time.monotonic()
     p90 = float(np.percentile(lapvar, 90)) if n else 0.0
@@ -888,14 +1223,22 @@ def extract_signals(
     ty_norm = ty * scale_to_src
     timings["derived_signals"] = time.monotonic() - t0
 
-    has_audio = probe.has_audio
-    audio_peak_dbfs = audio_rms_dbfs = audio_clip_run = None
-    if has_audio:
+    has_audio_stream = probe.has_audio
+    audio_result: Optional[tuple[np.ndarray, np.ndarray, np.ndarray]] = None
+    if has_audio_stream:
         t0 = time.monotonic()
         ffmpeg = _ffmpeg_path()
         assert ffmpeg is not None
-        audio_peak_dbfs, audio_rms_dbfs, audio_clip_run = _extract_audio_signals(source_path, ffmpeg)
+        audio_result = _extract_audio_signals(source_path, ffmpeg)
         timings["audio"] = time.monotonic() - t0
+    # `present` is decided AFTER decode, from whether any samples actually
+    # came out (code review, 2026-09-01) — a stream ffprobe reports as
+    # present but that decodes to zero samples (a packetless audio track,
+    # or a degenerate mux) is NOT "present" here, and gets its own header
+    # note rather than being conflated with "no audio stream at all."
+    has_audio = audio_result is not None
+    if has_audio:
+        audio_peak_dbfs, audio_rms_dbfs, audio_clip_run = audio_result
 
     arrays: dict[str, np.ndarray] = {
         "tx": tx.astype(np.float32),
@@ -913,7 +1256,7 @@ def extract_signals(
         "luma_std": luma_std.astype(np.float32),
         "clip_low": clip_low.astype(np.float32),
         "clip_high": clip_high.astype(np.float32),
-        "hist64": (np.stack(hist_rows) if hist_rows else np.zeros((0, HIST_BINS))).astype(np.int16),
+        "hist64": (np.stack(hist_rows) if hist_rows else np.zeros((0, HIST_BINS))).astype(np.int32),
         "hist64_frame_index": np.array(hist_frame_idx, dtype=np.int32),
     }
     if has_audio:
@@ -922,9 +1265,7 @@ def extract_signals(
         arrays["audio_clip_run"] = audio_clip_run
 
     src_sha256 = sha256_file(source_path)
-
-    npz_path = out_dir / f"{source_path.name}.signals.npz"
-    json_path = out_dir / f"{source_path.name}.signals.json"
+    npz_path, json_path = sidecar_paths(source_path, out_dir, sha256=src_sha256)
 
     # Serialize the npz to bytes first (via a BytesIO buffer) so
     # determinism holds regardless of what tempfile name np.savez_compressed
@@ -934,7 +1275,7 @@ def extract_signals(
     buf = io.BytesIO()
     np.savez_compressed(buf, **arrays)
     npz_bytes = buf.getvalue()
-    _atomic_write_bytes(npz_path, npz_bytes)
+    atomic_write_bytes(npz_path, npz_bytes)
 
     header = {
         "generator": {
@@ -943,7 +1284,7 @@ def extract_signals(
             "ffmpeg_version": _ffmpeg_version(),
             "numpy_version": np.__version__,
         },
-        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "created_at": now_iso(),
         "source": {
             "path": str(source_path),
             "sha256": src_sha256,
@@ -965,6 +1306,8 @@ def extract_signals(
         "audio": (
             {"present": True, "window_sec": AUDIO_WINDOW_SEC, "n_windows": int(audio_peak_dbfs.size)}
             if has_audio else
+            {"present": False, "note": "audio stream present but decoded to zero samples"}
+            if has_audio_stream else
             {"present": False, "note": "no audio stream"}
         ),
         "npz_sha256": hashlib.sha256(npz_bytes).hexdigest(),
@@ -996,7 +1339,7 @@ def extract_signals(
         ),
     }
     header_bytes = (json.dumps(header, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    _atomic_write_bytes(json_path, header_bytes)
+    atomic_write_bytes(json_path, header_bytes)
 
     return SignalsResult(
         source_path=source_path,

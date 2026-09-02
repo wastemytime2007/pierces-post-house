@@ -320,7 +320,7 @@ what §4 of the roadmap asks the segmenter to find.
       "fps": 29.97002997,
       "width": 3840, "height": 2160,
       "analysed_frames": 7052,
-      "signals_path": "signals/aroll-osmo-01/DJI_20260430075045_0006_D.MP4.signals.npz",
+      "signals_path": "signals/aroll-osmo-01/DJI_20260430075045_0006_D.MP4.1f3c9a4b7e2d.signals.npz",
       "signals_sha256": "9a1f…c7d2",
       "analysis_sec": 33.6
     }
@@ -438,8 +438,14 @@ the reasoning behind both are in `docs/design/PHASE4_CULL_DESIGN.md` §4.
 The contract's part is only this:
 
 - One sidecar per analysed **file**, at
-  `analysis/signals/<source_id>/<rel_path>.signals.npz`, with a
-  human-readable companion `<…>.signals.json` beside it.
+  `analysis/signals/<source_id>/<rel_path>.<sha12>.signals.npz`, with a
+  human-readable companion `<…>.signals.json` beside it. `<sha12>` is
+  the first 12 hex chars of the source file's sha256 (amended
+  2026-09-01: DJI card rollover yields `100MEDIA/DJI_0006.MP4` and
+  `101MEDIA/DJI_0006.MP4`, and bare basenames would silently overwrite
+  one another). `posthouse.cull.signals.sidecar_paths(source, out_dir)`
+  is the one place that name is constructed; readers call it rather
+  than rebuilding the string.
 - `sources[].signals_path` is relative to the culls file's directory, so
   the whole `analysis/` tree moves with the project.
 - `sources[].signals_sha256` pins it. A report that cannot verify the
