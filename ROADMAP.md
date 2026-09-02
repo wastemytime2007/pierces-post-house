@@ -576,10 +576,14 @@ with Ryan touching only the intake and the checkpoints.
   implementation) can start.
 - **2026-09-01 — Slice 1 full review: 8 verified findings beyond the
   deadlock, two of them critical for slice 2.** (1) **Memory:** the
-  extractor materialized every decoded frame in RAM before analysis,
-  ~9 GB per 10 minutes; the 33-minute Runnells clip would have been
-  OOM-killed before the first Laplacian. Decode and analysis become one
-  streaming pass. (2) **Sign inversion:** the phase correlation returned
+  extractor materialized every decoded frame in RAM before analysis.
+  Lead verified the arithmetic against the real probed clips: **31.0 GB
+  for the 33-minute clip, 34.6 GB for the Runnells day.** The trap is
+  that this Mac has 206 GB, so it would have *worked* here and looked
+  fine, then died on a longer interview or any smaller machine. A bug
+  that passes on the developer's hardware and fails on the job is worse
+  than one that fails immediately. Decode and analysis become one
+  streaming pass holding two frames. (2) **Sign inversion:** the phase correlation returned
   displacement with the sign flipped (`fa*conj(fb)`), invisible to
   tests that use sign-agnostic medians, but slice 2 would have inherited
   every pan direction, push vs pull, and roll direction backwards.
