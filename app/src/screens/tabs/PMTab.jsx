@@ -138,34 +138,6 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
     });
   }, [subscribe, submitting, runPipeline]);
 
-  // Coverage analysis (windowed sync rescue, 2026-09-03) -- separate
-  // subscribe effect since it's not tied to the Organize submit cycle.
-  const [coverage, setCoverage] = useState(null);
-  const [coverageLoading, setCoverageLoading] = useState(false);
-  const [coverageError, setCoverageError] = useState(null);
-
-  useEffect(() => {
-    return subscribe((ev) => {
-      if (ev.type === "pair_coverage_analyzed") {
-        setCoverage(ev); setCoverageLoading(false); setCoverageError(null);
-      } else if (ev.type === "error" && coverageLoading) {
-        setCoverageError(ev.message); setCoverageLoading(false);
-      }
-    });
-  }, [subscribe, coverageLoading]);
-
-  const analyzeCoverage = useCallback(async (pair) => {
-    setCoverage(null); setCoverageError(null); setCoverageLoading(true);
-    try {
-      await sendCommand({
-        type: "analyze_pair_coverage",
-        aroll_proxy: pair.arollProxyFull || pair.arollFull,
-        audio_file: pair.audioFull,
-      });
-    } catch (e) {
-      setCoverageError(String(e)); setCoverageLoading(false);
-    }
-  }, []);
 
   // Every currently-declared path, across all four zones, mapped to which
   // zone it's under -- used to catch cross-zone duplicates before they
@@ -359,11 +331,11 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
   const hasCompletedPipeline = activePipelineJobs.some(([, j]) => j.status === "done");
   const canAdvanceToIdeas = hasCompletedPipeline && !hasRunning && onGoToIdeas;
 
-  // Audio sync preview selection (absorbed from AETab)
+  // Audio sync preview selection (absorbed from AETab) -- purely "which
+  // pair is loaded in the player below," unrelated to coverage analysis
+  // (WeakPairsPanel owns that entirely; see its own note on why this was
+  // split apart 2026-09-03).
   const [selectedPair, setSelectedPair] = useState(null);
-  useEffect(() => {
-    setCoverage(null); setCoverageError(null); setCoverageLoading(false);
-  }, [selectedPair?.key]);
 
   return (
     <div className="pm-tab">
@@ -514,68 +486,60 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
             distinct Assistant Editor work, it's the same review the
             Ingest/PM merge already covers. */}
         {project.audio_sync?.pairs?.length > 0 && (
-          <div className="sync-resync-bar">
-            <button
-              className="btn btn-ghost"
-              disabled={hasRunning}
-              onClick={() => runPipeline({
-                run_proxies: false, run_transcription: false,
-                run_tagging: false, run_audio_index: false,
-                run_audio_sync: true, force_audio_sync: true,
-              })}
-            >
-              Re-sync audio (ignore cached results)
-            </button>
-            <span className="sync-resync-hint">
-              sync_project() caches by source paths — a plain "Run
-              pipeline" click returns the same result until something
-              actually changes. Use this to force a real recompute.
-            </span>
-          </div>
-        )}
-        <SyncMatrix
-          pairs={_collectLivePairs(jobs)}
-          syncState={project.audio_sync}
-          liveStatus={_liveSyncStatus(jobs)}
-          onSelectPair={project.audio_sync?.pairs?.length
-            ? (pair, key) => setSelectedPair({ pair, key })
-            : undefined}
-          selectedKey={selectedPair?.key}
-        />
-        {project.audio_sync?.pairs?.length > 0 && (
-          <WeakPairsPanel
-            pairs={project.audio_sync.pairs}
-            selectedKey={selectedPair?.key}
-            onAnalyze={(pair, key) => {
-              setSelectedPair({ pair, key });
-              analyzeCoverage(pair);
-            }}
-          />
-        )}
-        {project.audio_sync?.pairs?.length > 0 && (
-          <div className="ae-tab-preview">
-            <AudioSyncPreview pair={selectedPair?.pair} />
-            {selectedPair?.pair?.audioFull && (
-              <div className="coverage-panel">
-                <button
-                  className="btn btn-ghost"
-                  disabled={coverageLoading}
-                  onClick={() => analyzeCoverage(selectedPair.pair)}
-                >
-                  {coverageLoading ? "Analyzing…" : "Find usable stretches (for a weak/wrong pair)"}
-                </button>
-                <p className="coverage-panel-hint">
-                  For a pair the matrix scored weak or wrong because the
-                  subject left the room, came back, or was on the phone
-                  elsewhere — this looks for shorter stretches that DO
-                  correlate, at one consistent offset. Reference only: it
-                  doesn't change the score or offset shown above.
-                </p>
-                {coverageError && <pre className="pm-tab-error">{coverageError}</pre>}
-                {coverage && <CoverageResult coverage={coverage} />}
-              </div>
-            )}
-          </div>
+          <>
+            <SectionHeader
+              title="1. Sync results"
+              hint={
+                <>
+                  Scores from PreCut's own audio sync. If you've added or
+                  changed footage, use <strong>Re-sync</strong> below —
+                  a plain "Run pipeline" click reuses the cached result
+                  and won't recompute anything.
+                </>
+              }
+            />
+            <div className="sync-resync-bar">
+              <button
+                className="btn btn-ghost"
+                disabled={hasRunning}
+                onClick={() => runPipeline({
+                  run_proxies: false, run_transcription: false,
+                  run_tagging: false, run_audio_index: false,
+                  run_audio_sync: true, force_audio_sync: true,
+                })}
+              >
+                Re-sync (ignore cached results)
+              </button>
+            </div>
+            <SyncMatrix
+              pairs={_collectLivePairs(jobs)}
+              syncState={project.audio_sync}
+              liveStatus={_liveSyncStatus(jobs)}
+              onSelectPair={(pair, key) => setSelectedPair({ pair, key })}
+              selectedKey={selectedPair?.key}
+            />
+
+            <SectionHeader
+              title="2. Preview a pair"
+              hint="Click any cell above to load it here and play it back."
+            />
+            <div className="ae-tab-preview">
+              <AudioSyncPreview pair={selectedPair?.pair} />
+            </div>
+
+            <SectionHeader
+              title="3. Fix a weak pair"
+              hint={
+                <>
+                  For a pair scored weak above because the subject left
+                  the room, came back, or was on the phone elsewhere —
+                  finds shorter stretches that DO line up. Reference
+                  only: never changes the score/offset in the matrix.
+                </>
+              }
+            />
+            <WeakPairsPanel pairs={project.audio_sync.pairs} subscribe={subscribe} />
+          </>
         )}
 
         <TranscriptsSection project={project} />
@@ -675,6 +639,20 @@ function TranscriptRow({ row }) {
   );
 }
 
+// Ryan: the sync review area had three buttons with no clear relationship
+// between them ("really confusing on what all the buttons are for").
+// These headers exist so each block visibly answers "what is this for
+// and how does it relate to the others" without relying on prose in a
+// hint paragraph nobody reads.
+function SectionHeader({ title, hint }) {
+  return (
+    <div className="sync-section-header">
+      <div className="sync-section-title">{title}</div>
+      {hint && <div className="sync-section-hint">{hint}</div>}
+    </div>
+  );
+}
+
 // Mirrors precut_pipeline/audio_sync.py's SCORE_USE. A pair below this
 // (and not cross-validation-promoted) is what the coverage feature
 // exists for -- surfaced explicitly here so finding it doesn't depend on
@@ -682,36 +660,84 @@ function TranscriptRow({ row }) {
 const SCORE_USE = 10.0;
 
 /**
- * WeakPairsPanel — Ryan: "Im not seeing a Analyze Coverage button." Real
- * cause: the button only appeared after clicking a matrix cell, and the
- * empty-preview hint said "click a RELIABLE pair" -- exactly the pairs
- * that don't need this feature. This panel lists every weak/unreliable
- * pair explicitly, unconditionally, each with its own working button --
- * no implicit "did you know cells are clickable" required.
+ * WeakPairsPanel — second attempt (2026-09-03). First attempt shared
+ * global `selectedPair`/`coverage` state with the preview player above,
+ * which Ryan reported as "really confusing... theres the ability to
+ * click on the actual audio files, under that there is individual clips
+ * with find usable stretches, under that there is an Analyze Audio
+ * button" -- three overlapping entry points for one action, plus a real
+ * bug: selecting a pair here also drove the preview player's
+ * `selectedPair`, whose reset effect fired on the SAME click and wiped
+ * the "Analyzing..." state before any result could show. "It doesn't
+ * seem to be doing anything" was that bug, not a backend failure.
+ *
+ * Fully self-contained now: owns its own subscribe listener and its own
+ * per-pair-key state (`{[key]: {loading, result, error}}`), sends its
+ * own command, renders its own result directly under the row that
+ * triggered it. Doesn't touch `selectedPair`/the preview player at all
+ * -- clicking here can never affect, or be affected by, clicking a
+ * matrix cell above.
  */
-function WeakPairsPanel({ pairs, selectedKey, onAnalyze }) {
+function WeakPairsPanel({ pairs, subscribe }) {
+  const [byKey, setByKey] = useState({});
+
+  useEffect(() => {
+    return subscribe((ev) => {
+      if (ev.type === "pair_coverage_analyzed") {
+        const key = `${_basename(ev.aroll_proxy)}|${_basename(ev.audio_file)}`;
+        setByKey((prev) => ({ ...prev, [key]: { loading: false, result: ev, error: null } }));
+      }
+      // Note: this backend's "error" event carries no pair identity, so
+      // a coverage-analysis failure can't be reliably matched to a row
+      // here (it would incorrectly guess whichever row is loading). Left
+      // as a known gap rather than a wrong guess; loading state alone
+      // still tells the user something didn't come back.
+    });
+  }, [subscribe]);
+
   const weak = pairs
     .filter((p) => !(p.score >= SCORE_USE || p.promoted_via_consistency))
     .map((p) => _toResolvedPair(p));
 
   if (weak.length === 0) return null;
 
+  const analyze = async (pair, key) => {
+    setByKey((prev) => ({ ...prev, [key]: { loading: true, result: null, error: null } }));
+    try {
+      await sendCommand({
+        type: "analyze_pair_coverage",
+        aroll_proxy: pair.arollProxyFull || pair.arollFull,
+        audio_file: pair.audioFull,
+      });
+    } catch (e) {
+      setByKey((prev) => ({ ...prev, [key]: { loading: false, result: null, error: String(e) } }));
+    }
+  };
+
   return (
     <div className="weak-pairs-panel">
-      <div className="weak-pairs-title">
-        {weak.length} weak/unreliable pair{weak.length === 1 ? "" : "s"} — try "Find usable stretches" below
-      </div>
-      {weak.map(({ pair, key }) => (
-        <div key={key} className={`weak-pair-row ${selectedKey === key ? "selected" : ""}`}>
-          <span className="weak-pair-names" title={`${pair.arollFull} | ${pair.audioFull}`}>
-            {pair.aroll} ↔ {pair.audio}
-          </span>
-          <span className="weak-pair-score">score {pair.score?.toFixed(1) ?? "—"}</span>
-          <button className="btn btn-ghost" onClick={() => onAnalyze(pair, key)}>
-            Find usable stretches
-          </button>
-        </div>
-      ))}
+      {weak.map(({ pair, key }) => {
+        const state = byKey[key];
+        return (
+          <div key={key} className="weak-pair-row-wrap">
+            <div className="weak-pair-row">
+              <span className="weak-pair-names" title={`${pair.arollFull} | ${pair.audioFull}`}>
+                {pair.aroll} ↔ {pair.audio}
+              </span>
+              <span className="weak-pair-score">score {pair.score?.toFixed(1) ?? "—"}</span>
+              <button
+                className="btn btn-ghost"
+                disabled={state?.loading}
+                onClick={() => analyze(pair, key)}
+              >
+                {state?.loading ? "Analyzing… (can take a minute or two)" : "Find usable stretches"}
+              </button>
+            </div>
+            {state?.error && <pre className="pm-tab-error">{state.error}</pre>}
+            {state?.result && <CoverageResult coverage={state.result} />}
+          </div>
+        );
+      })}
     </div>
   );
 }
