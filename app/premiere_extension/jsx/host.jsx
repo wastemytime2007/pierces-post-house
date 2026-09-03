@@ -17,9 +17,26 @@
 
 var TAG_PATTERN = /\[INTERPRET TO ([\d.]+)fps\]\s*$/;
 var FPS_TOLERANCE = 0.01; // fps
+var LOG_PATH = Folder.userData.fsName + "/posthouse_interpreter.log";
 
 function ping() {
     return JSON.stringify({ ok: true });
+}
+
+/**
+ * The extension is invisible now (no panel, no menu entry — see
+ * manifest.xml) so this log file is the only way to see what it did.
+ */
+function writeLog(line) {
+    try {
+        var f = new File(LOG_PATH);
+        f.open("a");
+        f.writeln("[" + new Date().toString() + "] " + line);
+        f.close();
+    } catch (e) {
+        // Nothing to fall back to if logging itself fails; never let
+        // logging break the actual interpretation work.
+    }
 }
 
 /**
@@ -77,8 +94,10 @@ function scanAndInterpret() {
             interp.frameRate = targetFps;
             item.setFootageInterpretation(interp);
             result.processed.push({ name: item.name, targetFps: targetFps });
+            writeLog("Interpreted -> " + targetFps.toFixed(3) + "fps: " + item.name);
         } catch (e) {
             result.errors.push({ name: item.name, error: e.toString() });
+            writeLog("ERROR on " + item.name + ": " + e.toString());
         }
     }
 

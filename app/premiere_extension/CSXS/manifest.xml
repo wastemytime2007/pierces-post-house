@@ -44,20 +44,26 @@
           <ScriptPath>./jsx/host.jsx</ScriptPath>
         </Resources>
         <Lifecycle>
-          <AutoVisible>true</AutoVisible>
+          <!--
+            No manual open, ever: AutoVisible=false plus StartOn means
+            Premiere loads and starts running this extension's index.html
+            the moment it launches (ApplicationActivate), with no window,
+            no menu entry, nothing for Ryan to click. See
+            posthouse_interpreter.log (written by jsx/host.jsx) for
+            what it's doing, since there's no panel to watch anymore.
+          -->
+          <AutoVisible>false</AutoVisible>
+          <StartOn>
+            <Event>com.adobe.csxs.events.ApplicationActivate</Event>
+          </StartOn>
         </Lifecycle>
         <UI>
-          <Type>Panel</Type>
-          <Menu>Post House — B-Roll Interpreter</Menu>
+          <Type>Custom</Type>
           <Geometry>
             <Size>
-              <Height>360</Height>
-              <Width>320</Width>
+              <Height>1</Height>
+              <Width>1</Width>
             </Size>
-            <MinSize>
-              <Height>200</Height>
-              <Width>260</Width>
-            </MinSize>
           </Geometry>
         </UI>
       </DispatchInfo>

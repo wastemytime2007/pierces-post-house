@@ -2,22 +2,17 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Post House — B-Roll Interpreter</title>
-  <style>
-    body { font: 12px -apple-system, sans-serif; background: #1e1e1e; color: #ddd; margin: 0; padding: 10px; }
-    h1 { font-size: 13px; margin: 0 0 8px; color: #fff; }
-    #status { color: #8bc; margin-bottom: 8px; }
-    #log { list-style: none; margin: 0; padding: 0; }
-    #log li { padding: 3px 0; border-bottom: 1px solid #333; }
-    .done { color: #6c6; }
-    .skip { color: #888; }
-    .err { color: #e66; }
-  </style>
+  <title>Post House — B-Roll Interpreter (background)</title>
 </head>
 <body>
-  <h1>B-Roll Interpreter</h1>
-  <div id="status">Watching for tagged clips…</div>
-  <ul id="log"></ul>
+  <!--
+    No visible UI on purpose: this extension has no panel and no
+    Window > Extensions menu entry (see CSXS/manifest.xml). Premiere
+    loads this page invisibly at launch (StartOn ApplicationActivate)
+    and index.js just keeps polling in the background. Check
+    ~/Library/Application Support/posthouse_interpreter.log for what
+    it's actually doing.
+  -->
   <script src="./src/CSInterface.js"></script>
   <script src="./index.js"></script>
 </body>
