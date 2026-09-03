@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Optional
 from xml.dom import minidom
@@ -1174,13 +1174,49 @@ def export_multi_timeline(
         bin_children(aroll_bin).appendChild(master)
 
     # ---- B-roll library master clips
+    #
+    # 2026-09-03 (Ryan, after two real-Premiere-tested approaches failed):
+    # "First get the xml to import all framerates above the 29.97 or
+    # 23.976 two times... If imported footage is greater than selected
+    # end framerate, then import those footage clips twice." Step one of
+    # two, deliberately: this only proves the mechanical duplication --
+    # the SAME physical file appearing as two separate Project-panel
+    # items. Actually triggering Interpret Footage on the second one is
+    # a separate, not-yet-attempted step (see
+    # posthouse/broll_interpret.py's module docstring for the two
+    # approaches already tried and falsified in real Premiere: a
+    # declared-rate XML mismatch, and sequence-placement frame math).
+    # The duplicate's display name calls out which rate it needs so it's
+    # unambiguous which of the two items in the bin needs the manual
+    # (for now) Interpret Footage step.
     if broll_library:
+        from posthouse.broll_interpret import (
+            compute_target_fps, needs_interpretation, probe_native_fps,
+        )
+        aroll_native = [f for p in aroll_paths if (f := probe_native_fps(p))]
+        broll_native = [e.fps for e in broll_library if getattr(e, "fps", None)]
+        target_fps = compute_target_fps(aroll_native + broll_native)
+
         for i, entry in enumerate(broll_library):
             master_id, file_id = broll_lib_ids[i]
             master = _build_broll_master_for_entry(
                 doc, entry, master_id, file_id, _next_mc_clipitem,
             )
             bin_children(broll_bin).appendChild(master)
+
+            if target_fps and needs_interpretation(entry.fps, target_fps):
+                dup_master_id = f"masterclip-{next_master}"
+                dup_file_id = f"file-{next_file}"
+                next_master += 1
+                next_file += 1
+                dup_entry = replace(
+                    entry,
+                    display_name=f"{entry.display_name} [INTERPRET TO {target_fps:.3f}fps]",
+                )
+                dup_master = _build_broll_master_for_entry(
+                    doc, dup_entry, dup_master_id, dup_file_id, _next_mc_clipitem,
+                )
+                bin_children(broll_bin).appendChild(dup_master)
 
     # ---- Audio / Source Audio, Music, SFX -------------------------------
     audio_top_bin = make_bin(doc, "Audio")

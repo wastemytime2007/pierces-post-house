@@ -1,4 +1,4 @@
-"""posthouse.broll_interpret — B-roll frame-rate interpretation for export.
+"""posthouse.broll_interpret — B-roll frame-rate interpretation decisions.
 
 **Genuinely new capability, not harvested.** Confirmed PreCut has nothing
 like this: its exporter declares every clip's own probed native rate and
@@ -16,53 +16,44 @@ all exports will happen in 24(23.976) or 30(29.97)... based on the footage
 captured we'd export in whichever the smallest captured framerate was."
 A-roll is never touched by any of this, regardless of its own native rate.
 
-**How this actually works — two real approaches tried, the first
-overturned by real evidence, not by reasoning:**
+**Two real approaches tried and falsified in actual Premiere, not by
+reasoning:**
 
-1. A naive FCP7 XML rate-mismatch declaration does NOT work — tested
-   directly in real Premiere, which re-probes the actual media and
-   ignores a declared rate that doesn't match it.
+1. Declaring a mismatched rate directly in the FCP7 XML — tested, and
+   Premiere re-probes the actual media and ignores it.
 
-2. `ffmpeg -itsscale <ratio> -c copy` DOES genuinely retime a file (real
-   presentation-timestamp rescaling, no re-encode, verified via raw
-   frame-level PTS inspection to be mathematically exact) — but Ryan
-   caught the real cost before this shipped: it means a full-resolution
-   duplicate of every clip needing interpretation, permanently, on
-   already-tight footage storage ("does this mean we're going to be
-   duplicating footage files on the drive and eating up more space?").
-   Right concern, and this repo doesn't keep the code for that path —
-   it's in git history (search for `itsscale`) if ever genuinely needed.
+2. Reproducing Ryan's own real "duplicate the Project-panel item, apply
+   Interpret Footage to one" workflow as sequence-clipitem frame math
+   (the interpreted instance's duration set to the clip's raw frame
+   count against the sequence's rate, matching what his own real FCP7
+   XML export of that workflow appeared to show). Built as a pre-placed
+   "B-Roll (Interpreted)" reference sequence, verified structurally
+   correct against real files — and still wrong: Ryan tested it and it
+   didn't reproduce the effect. His own correction: "Interpretation
+   doesn't happen at the sequence level, it happens at the clip/footage
+   level. The sequence being set at a different framerate doesn't make
+   the clips on that sequence interpret to that framerate." Whatever
+   Premiere's own export was actually encoding, it wasn't reproducible
+   by fabricating the same numbers from outside a live Premiere session.
+   Neither of the two things I've tried survived real-Premiere testing —
+   two failures on the same problem, so this file no longer carries
+   either implementation (search git history for `itsscale` or
+   `build_broll_reference_sequence` if ever revisiting them).
 
-3. **What ships**: Ryan's own real Premiere workflow doesn't duplicate
-   media either — he duplicates the Project-panel ITEM (same file, zero
-   extra disk), then applies Interpret Footage to one duplicate. He sent
-   a real FCP7 XML export of exactly that. Reading it closely settled
-   the actual mechanism: Interpret Footage is NOT expressed anywhere in
-   the static bin/master `<clip>`/`<file>` block — both duplicates in
-   his export declare the identical native 60fps. The only place the
-   effect shows up is in the frame math of a clipitem ALREADY placed on
-   a sequence: the interpreted instance's `duration`/`out` equals the
-   clip's raw frame count taken at face value against the sequence's
-   rate (490 real frames "become" 490 timeline frames at 30fps = 2x real
-   time), while the untouched instance gets Premiere's ordinary
-   real-time-preserving conform (490 native 60fps frames -> 245 frames
-   at 30fps, real duration unchanged). Ryan confirmed the interpreted
-   STATE does persist on that Project-panel item across future drops in
-   his live Premiere session — but that's Premiere's own internal
-   project database remembering it, invisible to a statically generated
-   XML with no live session behind it. A generated file cannot inject
-   that persistent bin-level state.
-
-Given that, `build_broll_reference_sequence` below builds a pre-placed
-reference sequence — same pattern this codebase already uses for "All
-Synced A-Roll" — where every B-roll clip is placed once with the correct
-frame math baked in (interpreted ones using raw-frame-count timing,
-native ones using normal real-time-preserving timing), referencing the
-SAME original media, zero extra disk. The tradeoff, stated plainly: this
-requires pulling B-roll from that reference sequence, not the raw
-B-Roll Library bin directly — dragging straight from the bin comes in at
-native speed like any other untouched clip, since that state can't be
-attached to a bin item in a static export.
+**What's being built now, one proven step at a time, per Ryan's own
+plan** (2026-09-03): "Instead of thinking of this as one movement that
+does everything, what if we tackle it one problem at a time. First get
+the xml to import all framerates above the [target] two times... If
+imported footage is greater than selected end framerate, then import
+those footage clips twice. Then we tackle the next step which is finding
+a way to select the secondarily imported footage clips and handle the
+modify-interpret footage function within premiere." This module supplies
+only the DECISION logic (what's the target rate, does a given clip need
+it) for step one — the actual XML duplication lives in
+`precut_pipeline/multi_exporter.py`'s B-roll master-clip loop, since
+duplicating bin entries is structural to that loop, not something
+postprocessable from outside it. Step two (actually triggering Interpret
+Footage on the duplicate) is not yet attempted.
 
 **Target rate**: the numeric minimum native fps among ALL real footage
 declared in the project (both A-roll and B-roll) — not a rounding/family
@@ -76,8 +67,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any, List, Optional
-from xml.dom import minidom
+from typing import List, Optional
 
 DEFAULT_TOLERANCE = 0.02  # 2%: a clip already essentially AT the target
                           # (e.g. 29.97 vs a computed target of 29.970297)
@@ -122,154 +112,3 @@ def needs_interpretation(native_fps: float, target_fps: float,
     if native_fps is None or target_fps is None or target_fps <= 0:
         return False
     return native_fps > target_fps * (1 + tolerance)
-
-
-def build_broll_reference_sequence(
-    doc: minidom.Document,
-    entries: List[Any],
-    aroll_paths: List[Path],
-    *,
-    sequence_id: str = "sequence-broll-interpreted",
-    sequence_name: str = "B-Roll (Interpreted)",
-    ffprobe: str = "ffprobe",
-) -> Optional[minidom.Element]:
-    """Build the "B-Roll (Interpreted)" reference sequence: every entry in
-    `entries` (a `precut_pipeline.multi_exporter.BrollLibraryEntry` list --
-    typed `Any` so this module never imports that donor-owned class)
-    placed end-to-end on V1, each with the frame math that reproduces
-    Premiere's real Interpret Footage effect for clips above the
-    project's target rate (see module docstring for how this was
-    verified), and ordinary real-time-correct placement for clips already
-    at or below it.
-
-    Returns None if there's nothing to place (empty library, or no valid
-    fps data to compute a target from) -- caller should skip inserting
-    anything in that case rather than write an empty sequence.
-
-    Mints its own master-clip and file ids under a `broll-ref-` prefix,
-    deliberately a different namespace than `export_multi_timeline`'s own
-    bare `masterclip-N`/`file-N` counters -- avoids needing to know or
-    thread through whatever that function's internal counters ended at
-    for the same document.
-    """
-    from precut_pipeline.bin_builders import (  # local import: keeps this
-        _build_full_video_file, _build_rate, _append_text,           # module import-safe even for callers
-    )                                                                 # that never use this function
-
-    if not entries:
-        return None
-
-    aroll_native = [f for p in aroll_paths if (f := probe_native_fps(p, ffprobe))]
-    broll_native = [e.fps for e in entries if getattr(e, "fps", None)]
-    target_fps = compute_target_fps(aroll_native + broll_native)
-    if target_fps is None:
-        return None
-
-    from precut_pipeline.exporter import detect_frame_rate  # donor's own rate-snapping helper
-    seq_rate = detect_frame_rate(target_fps)
-
-    # Build the track's clipitems first so the real total duration is known
-    # before the <sequence> element (which wants <duration> before <rate>,
-    # per FCP7's own element order) gets constructed.
-    track = doc.createElement("track")
-
-    next_master = 1
-    next_file = 1
-    next_mc_clipitem = [0]
-
-    def _next_mc_id() -> str:
-        next_mc_clipitem[0] += 1
-        return f"broll-ref-mc-clipitem-{next_mc_clipitem[0]}"
-
-    timeline_cursor = 0
-    total_duration = 0
-    for entry in entries:
-        native_fps = getattr(entry, "fps", None)
-        duration_sec = getattr(entry, "duration_sec", None)
-        if not native_fps or not duration_sec:
-            continue
-
-        interpreted = needs_interpretation(native_fps, target_fps)
-        if interpreted:
-            # The actual effect (verified against Ryan's real Premiere
-            # export): treat every real captured frame as one frame of
-            # the target rate. frame_count is the exact real frame count
-            # when known (ffprobe'd at tag time); duration_sec * native_fps
-            # is the fallback, matching how the rest of this codebase
-            # already prefers an exact frame_count over a derived one.
-            duration_frames = int(round(
-                entry.frame_count if getattr(entry, "frame_count", None)
-                else duration_sec * native_fps
-            ))
-        else:
-            # Ordinary real-time-preserving placement: however many
-            # target-rate frames this clip's real duration occupies.
-            duration_frames = int(round(duration_sec * target_fps))
-        if duration_frames <= 0:
-            continue
-
-        master_id = f"broll-ref-masterclip-{next_master}"
-        file_id = f"broll-ref-file-{next_file}"
-        next_master += 1
-        next_file += 1
-
-        # The master clip itself always declares the file's TRUE native
-        # rate -- only the SEQUENCE clipitem's frame math carries the
-        # interpretation. This mirrors Ryan's own reference export
-        # exactly (both his duplicated master clips stayed at native
-        # 60fps; only the placed clipitem's numbers differed).
-        native_rate = detect_frame_rate(native_fps)
-        file_el = _build_full_video_file(
-            doc, file_id=file_id, pathurl=_path_to_url(entry.original_path),
-            name=Path(entry.original_path).name,
-            duration_frames=int(round(duration_sec * native_fps)),
-            timebase=native_rate.timebase, ntsc=native_rate.ntsc,
-            width=int(getattr(entry, "width", 1920) or 1920),
-            height=int(getattr(entry, "height", 1080) or 1080),
-            has_audio=bool(getattr(entry, "has_audio", False)),
-            audio_samplerate=getattr(entry, "audio_samplerate", None) or 48000,
-            audio_channels=getattr(entry, "audio_channels", None) or 2,
-            audio_depth=getattr(entry, "audio_depth", None) or 16,
-        )
-
-        clipitem = doc.createElement("clipitem")
-        clipitem.setAttribute("id", _next_mc_id())
-        _append_text(doc, clipitem, "masterclipid", master_id)
-        _append_text(doc, clipitem, "name", Path(entry.original_path).name)
-        _append_text(doc, clipitem, "enabled", "TRUE")
-        _append_text(doc, clipitem, "duration", str(duration_frames))
-        clipitem.appendChild(_build_rate(doc, seq_rate.timebase, seq_rate.ntsc))
-        _append_text(doc, clipitem, "start", str(timeline_cursor))
-        _append_text(doc, clipitem, "end", str(timeline_cursor + duration_frames))
-        _append_text(doc, clipitem, "in", "0")
-        _append_text(doc, clipitem, "out", str(duration_frames))
-        clipitem.appendChild(file_el)
-        track.appendChild(clipitem)
-
-        timeline_cursor += duration_frames
-        total_duration = timeline_cursor
-
-    if timeline_cursor == 0:
-        return None
-
-    sequence = doc.createElement("sequence")
-    sequence.setAttribute("id", sequence_id)
-    _append_text(doc, sequence, "name", sequence_name)
-    _append_text(doc, sequence, "duration", str(total_duration))
-    sequence.appendChild(_build_rate(doc, seq_rate.timebase, seq_rate.ntsc))
-    video = doc.createElement("video")
-    video.appendChild(track)
-    media = doc.createElement("media")
-    media.appendChild(video)
-    sequence.appendChild(media)
-
-    return sequence
-
-
-def _path_to_url(path: str) -> str:
-    """Reproduced from precut_pipeline/exporter.py (relative-import
-    package; kept local here to avoid a fragile cross-package import for
-    one helper)."""
-    from urllib.parse import quote
-    abs_path = str(Path(path).resolve())
-    return f"file://localhost{quote(abs_path, safe='/')}"
