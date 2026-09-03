@@ -1830,3 +1830,34 @@ with Ryan touching only the intake and the checkpoints.
   PARKED (three failed detector approaches, real footage, see
   `docs/STATUS.md`) -- lifting the role gate doesn't itself unpark
   that; it would need its own explicit go-ahead.
+- **2026-09-03 -- B-roll culling feasibility checked before committing
+  time, per Ryan's request: real architectural conflict found, cull
+  stays parked on a second, independent ground, and subject grouping
+  stays parked alongside it by Ryan's explicit choice.** Ryan's
+  concern: does frame-rate interpretation (the feature just shipped)
+  break in/out points computed before import? Investigation found the
+  frame-index math itself is fine in the abstract (frame N is still
+  frame N after interpretation), but Ryan corrected that with a real
+  Premiere test: "In premiere, if i pull in and out points on a clip to
+  a timeline and then modify and interpret that footage those in and
+  out points are no longer accurate." The real mechanism is sequencing,
+  not math -- interpreting a clip AFTER a trimmed instance already sits
+  on a timeline invalidates that trim. The shipped B-roll duplication
+  feature avoids this by accident of workflow (interprets a whole,
+  unplaced master; Ryan trims manually afterward, already-interpreted).
+  A cull feature would pre-place TRIMMED segments via XML import, then
+  our own invisible extension interprets afterward -- the exact
+  corrupting order. Fixing it would mean extending live-Premiere
+  scripting to place cull segments itself, post-interpretation, not
+  static XML -- a real, unproven lift, layered on top of cull's
+  pre-existing, independent blocker (3 failed detector approaches, real
+  footage, "three failures" rule). Net: cull stays parked on BOTH
+  grounds. Asked Ryan whether subject grouping ("per-subject cold-footage
+  sequences" per Sec 3 -- downstream of cull output, same trimmed-
+  placement exposure) should be rescoped to whole-clip bins (same safe
+  untrimmed-master pattern as the shipped duplication feature, buildable
+  now) or left tied to cull. Ryan's choice: leave it tied to cull -- it
+  stays parked alongside cull, not rescoped. Redirecting to AE transcript
+  flagging next: confirmed clean of this problem (A-roll only, never
+  interpreted; renders on existing synced sequences, no new trimmed
+  placement).

@@ -604,9 +604,9 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | Project Manager (intake, manifest, dual-use, brand assets) | **Signed off** (Task 1.0/1.1) |
 | AE: sync (+ coverage rescue) | **Signed off**, automatic |
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
-| AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; needs its own explicit unpark decision, not just the gate lift |
-| AE: subject grouping (per-subject cold-footage sequences) | Not started — B+, clusters existing CLIP tags |
-| AE: transcript flagging (color-coded storyline ranges) | Not started — B+, new rendering of existing story-angle output |
+| AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
+| AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
+| AE: transcript flagging (color-coded storyline ranges) | Not started — B+, new rendering of existing story-angle output. Confirmed clean of the interpretation problem: operates on A-roll (never frame-rate interpreted) and existing synced sequences, no new trimmed placement. **Next up.** |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
