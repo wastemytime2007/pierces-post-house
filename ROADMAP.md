@@ -1,18 +1,24 @@
 # Pierce's Post House — Roadmap
 
-An AI post-production house, delivered as a **new application** whose
-experience mirrors how a real post house runs: the user (Ryan — the
-supervisor, and the client) briefs the **Project Manager**, watches the
-PM hand off to the **Assistant Editor**, and so on down the chain, with
-supervisor checkpoints between stations.
+An AI post-production house, delivered as **one application, forked from
+PreCut's own Tauri/React/Python codebase** — not a separate app, and never
+two apps to open. Its experience mirrors how a real post house runs: the
+user (Ryan — the supervisor, and the client) briefs the **Project
+Manager**, watches the PM hand off to the **Assistant Editor**, and so on
+down the chain, with supervisor checkpoints between stations, all inside
+that one fork.
 
-**PreCut is the component donor, not the permanent foundation.** It has
-already crossed hurdles we will not re-cross — the FCP7 XML quirks, sync
+**PreCut's own repo (`~/precut-checkout`) is the protected donor, read
+from and copied from, never committed to or modified.** It has already
+crossed hurdles we will not re-cross — the FCP7 XML quirks, sync
 thresholds, proxy conventions, tagging vocabulary, additive DB
 migrations, the Tauri/Python app plumbing, macOS distribution. Those
-solutions get **harvested** into the new app, not rebuilt. PreCut itself
-stays untouched and working as Ryan's production tool until the new app
-supersedes it role by role.
+solutions get **harvested** — copied into the fork and extended — never
+reimplemented from scratch. PreCut itself stays untouched and running as
+Ryan's separate production tool for as long as he needs it, entirely
+independent of the fork's own development. See the Decision Log
+(2026-09-03, "one app, not two") for Ryan's own correction of an earlier,
+wrong two-app framing of this same document.
 
 This document is the working plan. It gets edited as decisions are made —
 settled calls move to the Decision Log at the bottom, in the same commit
@@ -1660,3 +1666,26 @@ with Ryan touching only the intake and the checkpoints.
   no CEP/UXP panel code; markers replace B-roll clips until matching
   precision is proven; API key (not OAuth) for Claude; deterministic
   motion tags. (Item 5 of that doc superseded per above.)
+- **2026-09-03 — Task 1.1 (Project Manager tab) signed off by Ryan:**
+  "I'm good with it." Covers the drag-and-drop source UI, dual-use
+  checklist, the AppleDouble-sidecar fix, the cross-kind-duplicate
+  blocking, and the "Company Branding" rename — full detail in
+  `docs/STATUS.md` § Done. Task 2.1 (Assistant Editor) is next per
+  `CLAUDE.md` §8.
+- **2026-09-03 — Dual-use B-roll frame-rate conform: real requirement,
+  captured for later, not scheduled.** In the same message as the Task
+  1.1 sign-off, Ryan gave the concrete spec for a confirmed gap (see
+  `docs/STATUS.md`'s 2026-09-03 frame-rate finding: PreCut does not do
+  this today for either roll kind). His words verbatim: "We want any
+  framerate that doesn't match the intended export framerate to be
+  interpreted to that framerate for items labeled b-roll. And if its
+  a-roll and b-roll, those items will need to be duplicated in the
+  project panel of premiere so that one can be interpreted and the
+  other stays the same." Reading: B-roll clips get retimed/conformed to
+  the project's export frame rate on ingest; A-roll never does; a
+  dual-use source (both A-roll and B-roll per the manifest's
+  `dual_use` flag) needs to exist as **two separate items in Premiere's
+  Project panel** — one left at native rate for A-roll use, one
+  conformed for B-roll use — not a single shared master clip. This is
+  an Assistant Editor / export-pipeline concern (Phase 4), not Project
+  Manager scope; no task is opened for it yet.

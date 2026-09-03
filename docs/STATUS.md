@@ -360,10 +360,8 @@ because this session violated them once each.
   `projectmanager.py`, `posthouse/README.md`, and both contract docs) —
   done, tested (224 passed / 1 skipped, non-tier2), and confirmed live in
   the running app. Suite and commit: *(20682fb.)*
-  **Not yet done:** an explicit final sign-off statement from Ryan on the
-  renamed build — his last messages were positive ("I'm good with it") plus
-  the rename request and a separate future-facing note, not yet a stated
-  "this is done." Asking for that confirmation is next.
+  **Signed off by Ryan, 2026-09-03**: "I'm good with it." Task 1.1 is
+  complete.
 - 2026-09-03 — **Confirmed (not assumed): PreCut does NOT interpret B-roll
   footage to a different/preselected frame rate than A-roll for dual-use
   sources.** Ryan's belief going in: "the dual use should remember that
@@ -386,8 +384,13 @@ because this session violated them once each.
   ("Markers-only; V2 stays omitted per Drop 3.7+"), so even a working
   version of the behavior Ryan described wouldn't currently reach an
   actual B-roll clip. **Conclusion: this is a real gap, not something
-  PreCut already does — worth designing for when dual-use B-roll actually
-  gets placed on a timeline, not before.**
+  PreCut already does.** Ryan then gave the concrete spec for it in the
+  same message as Task 1.1's sign-off (see ROADMAP Decision Log,
+  2026-09-03): B-roll conforms to the export frame rate, A-roll never
+  does, and a dual-use source needs to exist as **two separate items in
+  Premiere's Project panel** (one native, one conformed) — not a shared
+  master clip. Captured for Phase 4 (Assistant Editor); not scheduled,
+  not started.
 
 ## Next (in order)
 
@@ -397,17 +400,19 @@ not written here as committed work until this one is signed off — writing
 them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
 against, just shifted to "Next."
 
-Task 1.0 is signed off (see § Done, 2026-09-03). Task 1.1 is code-complete,
-tested, and run successfully by Ryan on a real folder through three rounds
-of his own feedback (see § Done, 2026-09-03) — the one remaining step is
-his explicit final sign-off on the renamed build, not further building.
+Task 1.0 and Task 1.1 are both signed off by Ryan (see § Done, 2026-09-03).
 
-1. **Get Ryan's explicit sign-off on Task 1.1**, now that the "Company
-   Branding" rename is live in the running app. Show him the frame-rate
-   finding above at the same time (a confirmed real gap, not urgent, not
-   yet scoped as a task). Only after that sign-off does Task 2.1
-   (Assistant Editor: wrap PreCut's audio sync on one A-roll/lav pair)
-   get written in here.
+1. **Task 2.1 — Assistant Editor: wrap PreCut's audio sync on one
+   A-roll/lav pair.** Per `CLAUDE.md` §7 (prove on one unit before
+   scaling): one real A-roll clip and its one matching lav/audio file,
+   nothing broader, until Ryan has reviewed and confirmed the result.
+   `precut-capabilities` skill must be reloaded before writing any code
+   for this — confirm what PreCut's existing sync code already does
+   before adding to it. Scope, UI surface, and exact sign-off criteria
+   are not yet defined — that's the first thing to nail down with Ryan
+   before code, per his own process rule ("we work on one thing at a
+   time... you don't move to the next thing until i have seen reviewed
+   tested each role").
 
 ## Attempts ledger
 
