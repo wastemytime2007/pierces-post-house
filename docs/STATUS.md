@@ -204,7 +204,23 @@ because this session violated them once each.
   fix: the short-clip case ~12s (was already fast), the worst real case
   in this project (both ~30min files against each other) ~63s (was on
   track for several minutes) — offsets unchanged on both. *(d2ad077.)*
-  **Not yet verified in the app for real-time responsiveness.**
+  **Fifth round: multi-click starvation, root-caused and fixed with a
+  real (not reasoned-about) test.** Ryan: "The first one analyzed but
+  the other 5 just say starting... and arent loading." Each click still
+  spawned its own raw thread doing CPU-bound correlation (plus reading a
+  long file off the same external drive) — six competing starved
+  everything but the one that ran first; the other five never got far
+  enough to emit even one progress event. Fixed with a single background
+  worker pulling from a queue, one request at a time. Verified by
+  actually firing 3 requests at the real handler and capturing every
+  emitted event (not just reasoning about the fix): confirmed request 2
+  doesn't start until request 1's "analyzed" event fires, request 3 not
+  until request 2's, every window of every request actually progressing,
+  in that exact serialized order. New "queued (N ahead)" state shown
+  before a request runs. Also caught and fixed an ordering race in that
+  same test: the very first request could emit "started" before "queued"
+  if the worker grabbed it before the caller finished emitting.
+  *(711a268.)* **Not yet verified in the app under real UI clicks.**
 
 ## Done
 
