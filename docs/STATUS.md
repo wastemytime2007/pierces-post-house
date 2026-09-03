@@ -160,9 +160,28 @@ because this session violated them once each.
   it. Added `WeakPairsPanel`: every pair below `SCORE_USE` is now listed
   explicitly and unconditionally below the matrix with its own "Find
   usable stretches" button, no implicit clickability knowledge required.
-  *(d1cb8be.)* **Not yet verified in the app** — needs Ryan to confirm
-  both the re-sync button and the now-visible coverage button actually
-  work as intended.
+  *(d1cb8be.)*
+  **Third round, both a real bug and real UX confusion, both fixed:**
+  Ryan: "It doesn't seem to be doing anything. But it's also really
+  confusing on what all the buttons are for... click on the actual audio
+  files, under that... individual clips with the find useable stretches
+  button, under that... an Analyze Audio button." The "doesn't seem to be
+  doing anything" part was a genuine bug, not confusion: `WeakPairsPanel`
+  called `setSelectedPair()` (to also load the pair into the preview
+  player) in the same click that started the analysis; the preview
+  player's own effect reset coverage/loading/error state whenever
+  `selectedPair` changed, firing on that same click and wiping the
+  "Analyzing…" flag right after it was set. The confusion part was real
+  too — three overlapping entry points (matrix click, panel row, a
+  second button that appeared once a pair was selected) for one action.
+  Fixed by separation, not more labels: `WeakPairsPanel` is now fully
+  self-contained (own subscribe listener, own per-pair-key state, own
+  inline result under the triggering row) and doesn't touch
+  `selectedPair`/the preview player at all — the two actions can no
+  longer interfere with each other by construction. Removed the
+  redundant second button entirely. Added three numbered section headers
+  (Sync results / Preview a pair / Fix a weak pair). *(15037b4.)*
+  **Not yet verified in the app.**
 
 ## Done
 
