@@ -62,39 +62,49 @@ because this session violated them once each.
 
 ## In progress
 
-- **Task 2.1 — Assistant Editor tab: code-complete, not yet Ryan-verified.**
-  Reuses PreCut's existing `SyncMatrix.jsx` and `sync_project()` output
-  (`project.audio_sync`) unchanged for the results grid; adds a new
-  `AudioSyncPreview.jsx` player (PreCut's frontend had no video/audio
-  playback anywhere before this) so a synced pair can be confirmed by ear,
-  not just by score. Does not re-run sync — reviews what Ingest already
-  computed. Enabled Tauri's asset protocol (scoped to `/Volumes/**` and
-  `$HOME/**`) so `convertFileSrc` can serve real footage to a player.
-  *(837bd3a.)* Verified so far: full safety_net suite 370 passed / 1
-  skipped; `npm run tauri dev` compiles and runs clean alongside the real
-  PreCut.app; `vite build` clean. **Not verified: actual use in the app.**
-  I have no way to click through the Tauri window myself — Ryan needs to
-  run it against Runnells Day 1 (2 A-roll clips × 4 audio files across two
-  mic units, already staged), click a reliable pair, and confirm the
-  preview actually plays in sync, before this can move to § Done.
-
-- **Post-sign-off correction to Task 1.1: PM tab and Ingest tab's source
-  declaration merged into one, per Ryan's report, code-complete, not yet
-  Ryan-verified.** Ryan, after using the signed-off Task 1.1 build: "Ingest
-  is asking half of the same questions as the project manager tab. Which
-  folders of footage to look at and what category they belong to. The
-  ingest tab should just merge with the project manager tab." Real finding:
-  PMTab and IngestTab held two independent records of the same A-roll/
-  B-roll/Source-Audio declarations — PMTab's own local state for the
-  manifest, IngestTab's `project.sources` for PreCut's actual pipeline —
-  so declaring a folder meant doing it twice. Fixed: PMTab is now the only
-  place footage gets declared; it calls PreCut's own `add_source`/
-  `remove_source` directly (same commands IngestTab used to call), so
-  `project.sources` is the single source of truth Ingest reads and runs
-  the pipeline against. "Assets" stays local/manifest-only in PMTab
-  (PreCut has no such kind). *(454bd05.)* Verified: `vite build` clean,
-  `npm run tauri dev` compiles and runs clean. **Not yet verified in the
-  app** — same limitation as above, needs Ryan's hands-on check.
+- **Task 1.1/2.1 converged into one tab: "Project," code-complete, not yet
+  Ryan-verified.** History, each step driven by Ryan actually using the
+  previous one: (1) PMTab and IngestTab held two independent records of
+  the same A-roll/B-roll/Source-Audio declarations, so footage got
+  declared twice — merged so PMTab is the only place that happens,
+  calling PreCut's own `add_source`/`remove_source` directly *(454bd05,
+  broken up into c8f994e after a staging mistake — see below)*. (2) Ryan
+  then reported three more real problems in one message: Ingest didn't
+  make sense as a separate tab any more; Organize should auto-start
+  processing instead of requiring a second click; run_pipeline never
+  tagged dual-use footage as B-roll; and after syncing, the Assistant
+  Editor tab was just showing the same thing Ingest did. All four
+  addressed:
+  - **Real backend bug, not UI**: PreCut's `add_source` is path-keyed
+    with exactly one kind per path, so a dual-use A-roll folder never
+    appeared in `sources_by_kind("broll")` for `pipeline.py`'s B-roll
+    collection — no wiring of the checkbox could have fixed this without
+    a model change. Fixed: `SourceFolder.dual_use` field,
+    `Project.set_dual_use()`, and `_collect_videos` unions in dual_use
+    A-roll sources when collecting "broll". Verified with a scripted
+    before/after check (empty broll collection before the flag, includes
+    the file — same SourceFolder object — immediately after).
+  - IngestTab.jsx and AETab.jsx deleted; their content (run-pipeline
+    button/modal, progress, transcripts, SyncMatrix + AudioSyncPreview)
+    absorbed into PMTab.jsx. ProjectView now has two tabs: Project and
+    Ideas. Ryan's own read: none of it was ever distinct Ingest or
+    Assistant Editor work.
+  - Organize now auto-fires `run_pipeline` on manifest-write success,
+    with the same defaults the manual modal used.
+  *(c8f994e — this is the second of two commits: the first, b9b8de9,
+  shipped with only file deletions because `git add` aborted on an
+  already-removed pathspec before staging the real changes, same mistake
+  as this session's earlier `ea6d093`; caught immediately and fixed with
+  an honest follow-up commit, not a silent amend.)*
+  Verified: the scripted dual-use check above; `vite build` clean
+  (61→59 modules); `npm run tauri dev` compiles and runs clean alongside
+  the real PreCut.app with no Python tracebacks in the startup log.
+  **Not yet verified in the app** — I have no way to click through the
+  Tauri window myself. Ryan needs to run this on a real project (Runnells
+  Day 1, or a real dual-use shoot) and confirm: Organize actually starts
+  processing, a dual-use clip gets tagged as B-roll, and the sync review
+  now living under Project still works the way it did under the old AE
+  tab.
 
 ## Done
 
@@ -432,54 +442,23 @@ not written here as committed work until this one is signed off — writing
 them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
 against, just shifted to "Next."
 
-Task 1.0 and Task 1.1 are both signed off by Ryan (see § Done, 2026-09-03).
+Task 1.0 is signed off by Ryan (see § Done, 2026-09-03). Task 1.1 was
+signed off once, then substantially rebuilt across two more rounds of
+Ryan's direct use and feedback (see § In progress) — those rebuilds
+absorbed what was tracked here as a separate "Task 2.1" (Assistant
+Editor sync review) entirely into the same tab, per Ryan's own
+conclusion that it was never distinct AE work. There is no separate
+Task 2.1 any more.
 
-1. **Task 2.1 — Assistant Editor tab, wrapping PreCut's existing
-   `sync_project()` unchanged, proven on one real shoot.**
-   Scope corrected 2026-09-03: an earlier draft of this task wrongly
-   said "one A-roll/lav pair." Ryan corrected it — PreCut's
-   `sync_project()` (`precut_pipeline/audio_sync.py:662`) already runs
-   the full cross product, every A-roll proxy × every audio source
-   (`total = len(aroll_entries) * len(audio_files)`), scores each pair
-   via `sync_pair()`, and groups reliable pairs by speaker via
-   `group_audio_files()` — that's how multiple lavs/speakers sync
-   correctly today, and the smallest real unit has to exercise that,
-   not a fake 1:1 restriction. Confirmed by reading the code, not
-   assumed.
-   **Test unit (Ryan's choice): Runnells Day 1**, the benchmark project
-   already staged in this repo (`benchmark/runnells-day-1/manifest.json`).
-   Real files on disk: 2 A-roll clips (`DJI_20260430071514_0005_D.MP4`,
-   `..._0006_D.MP4`) × 4 audio files across two mic units (`DJI_02_*`,
-   `DJI_03_*`) — 8 real pairs, already exercising the cross-product and
-   multi-speaker grouping this task exists to prove, not a synthetic
-   fixture.
-   **Tab scope (Ryan's choice): sync results + a playable check** — show
-   every pair `sync_project()` found reliable (score, offset, which
-   audio file grouped with which A-roll), AND let Ryan actually scrub or
-   preview a synced pair in the app to hear/see it line up, not just
-   read a score. Explicitly not in scope yet: writing the accepted sync
-   back into the project's `audio_sync` state for downstream export —
-   that's a later step once the review surface itself is trusted.
-   **`precut-capabilities` check done 2026-09-03, before any code:**
-   PreCut already has the sync-results half — `src/components/
-   SyncMatrix.jsx`, a full A-roll × lav grid (score/offset, live and
-   persisted modes, cross-validation labeling), already wired into
-   `IngestTab.jsx`. **Reuse it directly, do not rebuild it.** The
-   playable-check half is genuinely new: PreCut's entire frontend has
-   no video or audio playback surface anywhere (`grep` for `<video`,
-   `<audio`, `convertFileSrc`, any player component — zero hits). That
-   part is real new work, not a duplicate build.
-   Mechanically: reuse `sync_project()` and its existing progress-event
-   shape directly, plus the existing `SyncMatrix` component as-is; one
-   new IPC command in `backend.py`; one new tab in `ProjectView.jsx`
-   following the same `sendCommand`/`subscribe` pattern as PMTab,
-   rendering `<SyncMatrix>` plus a new minimal player (Tauri's
-   `convertFileSrc` into a plain `<video>`/`<audio>` element,
-   click-a-row-to-load, seek to the pair's synced offset) — the only
-   genuinely new component this task requires.
-   **Signed off when:** Ryan runs it against Runnells Day 1 in the app,
-   reviews the sync pairs and previews at least one, and confirms the
-   result is correct. Only then does the next task get written in here.
+1. **Get Ryan's sign-off on the merged Project tab**, on a real project
+   (Runnells Day 1, or a real dual-use shoot) — confirm Organize starts
+   processing automatically, a dual-use clip actually gets tagged as
+   B-roll, and the sync review (moved from the old AE tab) still works.
+   Only after that does the next real Assistant Editor task get defined
+   and written in here — likely the first AE work that's genuinely
+   distinct from Project Manager responsibility: acting on the reviewed
+   sync (e.g. writing it into an export-ready sequence), not just
+   displaying it.
 
 ## Attempts ledger
 
