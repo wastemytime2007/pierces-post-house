@@ -5,6 +5,14 @@
   var seen = {}; // dedupe: don't re-log the same processed/error item every poll
   var pollCount = 0;
 
+  // Backoff: poll fast right after activity (catches an import quickly),
+  // then slow way down when idle so this isn't walking the whole Project
+  // panel every 2s all day for nothing. Any new activity resets to fast.
+  var FAST_MS = 2000;
+  var MAX_MS = 20000;
+  var STEP_MS = 2000;
+  var currentInterval = FAST_MS;
+
   function addLogLine(text, cls) {
     var li = document.createElement("li");
     li.className = cls;
@@ -20,6 +28,9 @@
       statusEl.textContent = "Error reading Premiere response.";
       return;
     }
+
+    var hadActivity = result.processed.length > 0 || result.errors.length > 0;
+    currentInterval = hadActivity ? FAST_MS : Math.min(currentInterval + STEP_MS, MAX_MS);
 
     for (var i = 0; i < result.processed.length; i++) {
       var p = result.processed[i];
@@ -39,13 +50,16 @@
     }
 
     pollCount++;
-    statusEl.textContent = "Watching for tagged clips… (checked " + pollCount + "x)";
+    var idleSecs = Math.round(currentInterval / 1000);
+    statusEl.textContent = hadActivity
+      ? "Watching for tagged clips… (checked " + pollCount + "x)"
+      : "Watching for tagged clips… (checked " + pollCount + "x, idle — every " + idleSecs + "s)";
   }
 
   function poll() {
     csInterface.evalScript("scanAndInterpret()", function (result) {
       handleResult(result);
-      setTimeout(poll, 2000);
+      setTimeout(poll, currentInterval);
     });
   }
 
