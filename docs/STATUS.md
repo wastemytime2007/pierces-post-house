@@ -188,6 +188,48 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Transcript flagging: two more pieces built and proven
+  real, on top of exhaustive extraction (separate entry below).** Ryan
+  redirected the design twice, both real improvements over the first
+  pass:
+  1. **Audience/content-goal intake, redesigned from free text to
+     app-level profiles.** First built as a per-project free-text field
+     on the manifest (`project.audience_goal`, additive schema change,
+     `docs/contracts/PROJECT_MANIFEST.md`). Ryan: "This feels like
+     something that should probably be built intentionally. Not a text
+     box but a dropdown... on the main page of the app... a place for
+     the user to add details about the audiences and goals... the
+     dropdown in the projects would allow them to select the prebuilt
+     audiences goals." Rebuilt as a titlebar-accessible "Audiences &
+     content goals" library (`AudienceProfilesModal.jsx`, backed by
+     `settings.py`'s `get_audience_profiles`/`set_audience_profiles`),
+     seeded once with SoldFast's three real content funnels (ported from
+     Agent Studio's `content-engine` team via the existing
+     `soldfast-content-funnels` skill) plus an editable placeholder for
+     long-form/heart-driven work, which was never formally spec'd
+     anywhere. PMTab's intake field is now a dropdown over these
+     profiles; the manifest schema is unchanged — the selected profile's
+     description is still what lands in `audience_goal`. Ryan reviewed
+     the real running UI and confirmed: "Looks good." *(94b1a0b.)*
+  2. **`posthouse/audience_relevance.py`**: given a project's single
+     stated `audience_goal` and the exhaustive fragment list, judges
+     each fragment's fit (`strong`/`possible`/`off_topic`) via one
+     Claude call — one call suffices here since scoring a short fragment
+     list isn't the same output-budget bottleneck exhaustive reading is.
+     Maps fits to real, distinct marker RGB colors for the eventual XML
+     write. Real test: the Bob/Mitch recruitment interview's 13
+     fragments (task 1's real test data) scored against the seeded
+     "Contractor Recruiting" profile — 6 strong / 4 possible / 3
+     off_topic, reasoning checked against the actual content and holds
+     up (pre-interview chatter and a tangential anecdote correctly
+     off_topic; direct pain-point/pitch material correctly strong).
+     *(c332767.)*
+  **Not yet built**: writing `TaggedFragment` output as actual
+  color-coded markers on the exported "All Footage Synced" sequence —
+  the piece that makes any of this visible in Premiere rather than
+  terminal output. Reuses `exporter.py`'s existing marker-writing
+  mechanism (arbitrary RGB, already confirmed working); needs proving
+  against a real synced sequence.
 - 2026-09-03 — **Exhaustive transcript reading built and proven against
   real material — the project's own named founding gap, closed for the
   first time.** `posthouse/transcript_coverage.py`: windows a transcript
@@ -639,7 +681,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
-| AE: transcript flagging (color-coded storyline ranges) | **In progress — exhaustive-reading foundation built and verified real, audience-informed tagging layer not yet started.** See § Done, 2026-09-03. |
+| AE: transcript flagging (color-coded storyline ranges) | **In progress — exhaustive extraction, PM audience-goal intake, and relevance tagging all built and verified real. Last piece (writing tagged fragments as actual FCP7 XML markers) not yet built.** See § Done, 2026-09-03. |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |

@@ -1861,3 +1861,24 @@ with Ryan touching only the intake and the checkpoints.
   flagging next: confirmed clean of this problem (A-roll only, never
   interpreted; renders on existing synced sequences, no new trimmed
   placement).
+- **2026-09-03 -- Audience/content-goal intake redesigned from per-project
+  free text to an app-level profile library, per Ryan's direction.**
+  First shipped as a free-text field on the manifest
+  (`project.audience_goal`). Ryan: "This feels like something that
+  should probably be built intentionally. Not a text box but a
+  dropdown. And on the main page of the app before going into any
+  project there should be a place for the user to add details about the
+  audiences and goals of different types of content for their brand ...
+  the dropdown in the projects would allow them to select the prebuilt
+  audiences goals." Rebuilt as a titlebar-level "Audiences & content
+  goals" library (add/edit/remove named profiles), seeded once with
+  SoldFast's three real funnels ported from Agent Studio's
+  `content-engine` team, plus an editable long-form/heart-driven
+  placeholder. The manifest schema itself (`project.audience_goal`,
+  additive, same `contract_version`) did not need to change -- only
+  PMTab's intake UI moved from free text to a dropdown that resolves the
+  selected profile's description into that same field. Ryan reviewed
+  the real running app and confirmed: "Looks good." Then built and
+  proved `posthouse/audience_relevance.py` (fragment relevance scoring
+  against the single stated goal) against real data -- see
+  `docs/STATUS.md` for the full real test result.
