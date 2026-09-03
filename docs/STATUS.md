@@ -587,37 +587,36 @@ because this session violated them once each.
   **Ryan, after running it for real: "That worked perfectly."** Export
   now includes all four WAVs. *(b613002, 6a3a7e2.)*
 
-## Next (in order)
+## Next — skills checklist (role-sequencing gate lifted 2026-09-03)
 
-Per `CLAUDE.md` §8 (one role in flight at a time), only the next task is
-listed. Later tasks exist in `docs/REQUIREMENTS.md`'s companion plan but are
-not written here as committed work until this one is signed off — writing
-them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
-against, just shifted to "Next."
+Per `CLAUDE.md` rule 8 (amended 2026-09-03): Ryan directed building every
+role's skills in parallel — "handle all of the skills across the board" —
+rather than gating the next role on the current one's full sign-off. Role
+and UI assignment is deliberately deferred until skills work. Rule 7
+(prove on one real unit before broadening) and the sign-off bar (Ryan on
+real material, not passing tests) still apply **per skill** — this list
+tracks that per-skill state, not a single "current task."
 
-Task 1.0 and Task 1.1 are both signed off by Ryan (see § Done,
-2026-09-03, "That worked perfectly" — the merged Project tab, automatic
-sync rescue, and export inclusion all confirmed on real footage). There
-is no separate Task 2.1 any more — it was absorbed into Task 1.1, per
-Ryan's own conclusion that Assistant Editor sync review was never
-distinct Project Manager work.
+Status, from `ROADMAP.md` §3's Role → skill map:
 
-Dual-use B-roll tagging and the frame-rate interpretation gap (both real,
-export-pipeline-adjacent work) are now fully closed out and confirmed by
-Ryan on real footage in real Premiere — see § Done, 2026-09-03. This was
-done without opening a formally-numbered task, since Ryan directed it
-directly ("Go ahead and work on the dual use b-roll tagging and the
-interpretation of the b-roll framerates") rather than through the
-scope-decision process item 1 below describes; worth naming so a future
-session doesn't wonder where its task number is.
+| Skill | State |
+| --- | --- |
+| Project Manager (intake, manifest, dual-use, brand assets) | **Signed off** (Task 1.0/1.1) |
+| AE: sync (+ coverage rescue) | **Signed off**, automatic |
+| AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
+| AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; needs its own explicit unpark decision, not just the gate lift |
+| AE: subject grouping (per-subject cold-footage sequences) | Not started — B+, clusters existing CLIP tags |
+| AE: transcript flagging (color-coded storyline ranges) | Not started — B+, new rendering of existing story-angle output |
+| Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
+| Creative Editor: music (Artlist local-library match) | Not started — B− |
+| Creative Editor: SFX placement | Not started — B− |
+| Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |
+| Audio Designer: loudness → clip gain | Not started — B |
+| Colorist: exposure/contrast QC report | Not started — C |
+| Supervisor loop (notes → revised cut) | Not started — B |
 
-1. **Define the first real Assistant Editor task.** Now that sync
-   review/rescue, dual-use tagging, and B-roll frame-rate interpretation
-   are all confirmed as Project Manager / export-pipeline scope rather
-   than distinct AE work, the first genuinely distinct AE work is likely
-   acting on a synced result — e.g. writing it into an export-ready
-   sequence — rather than just computing/displaying it. Needs a concrete
-   scope decision with Ryan before any code, per `CLAUDE.md` §8.
+**Not yet decided: which skill to start on next.** Asked Ryan; awaiting
+his pick (or his go-ahead to propose an order).
 
 ## Attempts ledger
 
