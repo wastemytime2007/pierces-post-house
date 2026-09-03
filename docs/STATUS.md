@@ -78,6 +78,24 @@ because this session violated them once each.
   mic units, already staged), click a reliable pair, and confirm the
   preview actually plays in sync, before this can move to § Done.
 
+- **Post-sign-off correction to Task 1.1: PM tab and Ingest tab's source
+  declaration merged into one, per Ryan's report, code-complete, not yet
+  Ryan-verified.** Ryan, after using the signed-off Task 1.1 build: "Ingest
+  is asking half of the same questions as the project manager tab. Which
+  folders of footage to look at and what category they belong to. The
+  ingest tab should just merge with the project manager tab." Real finding:
+  PMTab and IngestTab held two independent records of the same A-roll/
+  B-roll/Source-Audio declarations — PMTab's own local state for the
+  manifest, IngestTab's `project.sources` for PreCut's actual pipeline —
+  so declaring a folder meant doing it twice. Fixed: PMTab is now the only
+  place footage gets declared; it calls PreCut's own `add_source`/
+  `remove_source` directly (same commands IngestTab used to call), so
+  `project.sources` is the single source of truth Ingest reads and runs
+  the pipeline against. "Assets" stays local/manifest-only in PMTab
+  (PreCut has no such kind). *(454bd05.)* Verified: `vite build` clean,
+  `npm run tauri dev` compiles and runs clean. **Not yet verified in the
+  app** — same limitation as above, needs Ryan's hands-on check.
+
 ## Done
 
 - 2026-08-31 — Reviewed `precut` and `precut-premiere-extension` end to
