@@ -4454,6 +4454,11 @@ kbd {
   font-size: 11px;
   color: var(--fg-3);
 }
+.weak-pair-progress {
+  font-size: 11px;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+}
 
 .coverage-result {
   margin-top: 10px;

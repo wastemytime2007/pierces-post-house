@@ -679,19 +679,32 @@ const SCORE_USE = 10.0;
  * matrix cell above.
  */
 function WeakPairsPanel({ pairs, subscribe }) {
+  // Keyed by pair key (aroll|audio). Each entry tracks the in-flight
+  // coverage_id so progress/result/error events -- which now all carry
+  // it (2026-09-03, after a run with no progress or cancel left Ryan
+  // stuck for 5+ minutes with three "Analyzing" rows and no way to tell
+  // if any of them were even alive) -- can be matched back to the right
+  // row instead of guessed at.
   const [byKey, setByKey] = useState({});
 
   useEffect(() => {
     return subscribe((ev) => {
-      if (ev.type === "pair_coverage_analyzed") {
-        const key = `${_basename(ev.aroll_proxy)}|${_basename(ev.audio_file)}`;
-        setByKey((prev) => ({ ...prev, [key]: { loading: false, result: ev, error: null } }));
+      if (ev.type === "pair_coverage_progress" || ev.type === "pair_coverage_analyzed") {
+        setByKey((prev) => {
+          const key = Object.keys(prev).find((k) => prev[k]?.coverageId === ev.coverage_id);
+          if (!key) return prev;
+          if (ev.type === "pair_coverage_progress") {
+            return { ...prev, [key]: { ...prev[key], progress: { i: ev.i, total: ev.total } } };
+          }
+          return { ...prev, [key]: { ...prev[key], loading: false, result: ev, error: null } };
+        });
+      } else if (ev.type === "error" && ev.job_id) {
+        setByKey((prev) => {
+          const key = Object.keys(prev).find((k) => prev[k]?.coverageId === ev.job_id);
+          if (!key) return prev;
+          return { ...prev, [key]: { ...prev[key], loading: false, error: ev.message } };
+        });
       }
-      // Note: this backend's "error" event carries no pair identity, so
-      // a coverage-analysis failure can't be reliably matched to a row
-      // here (it would incorrectly guess whichever row is loading). Left
-      // as a known gap rather than a wrong guess; loading state alone
-      // still tells the user something didn't come back.
     });
   }, [subscribe]);
 
@@ -702,15 +715,28 @@ function WeakPairsPanel({ pairs, subscribe }) {
   if (weak.length === 0) return null;
 
   const analyze = async (pair, key) => {
-    setByKey((prev) => ({ ...prev, [key]: { loading: true, result: null, error: null } }));
+    const coverageId = `cov-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    setByKey((prev) => ({ ...prev, [key]: { loading: true, coverageId, result: null, error: null, progress: null } }));
     try {
       await sendCommand({
         type: "analyze_pair_coverage",
+        coverage_id: coverageId,
         aroll_proxy: pair.arollProxyFull || pair.arollFull,
         audio_file: pair.audioFull,
       });
     } catch (e) {
-      setByKey((prev) => ({ ...prev, [key]: { loading: false, result: null, error: String(e) } }));
+      setByKey((prev) => ({ ...prev, [key]: { ...prev[key], loading: false, error: String(e) } }));
+    }
+  };
+
+  const cancel = async (key) => {
+    const coverageId = byKey[key]?.coverageId;
+    if (!coverageId) return;
+    setByKey((prev) => ({ ...prev, [key]: { ...prev[key], loading: false } }));
+    try {
+      await sendCommand({ type: "cancel_pair_coverage", coverage_id: coverageId });
+    } catch (e) {
+      console.error(`cancel_pair_coverage failed: ${e}`);
     }
   };
 
@@ -725,13 +751,20 @@ function WeakPairsPanel({ pairs, subscribe }) {
                 {pair.aroll} ↔ {pair.audio}
               </span>
               <span className="weak-pair-score">score {pair.score?.toFixed(1) ?? "—"}</span>
-              <button
-                className="btn btn-ghost"
-                disabled={state?.loading}
-                onClick={() => analyze(pair, key)}
-              >
-                {state?.loading ? "Analyzing… (can take a minute or two)" : "Find usable stretches"}
-              </button>
+              {state?.loading ? (
+                <>
+                  <span className="weak-pair-progress">
+                    {state.progress
+                      ? `analyzing window ${state.progress.i} of ${state.progress.total}…`
+                      : "starting…"}
+                  </span>
+                  <button className="btn btn-ghost" onClick={() => cancel(key)}>Cancel</button>
+                </>
+              ) : (
+                <button className="btn btn-ghost" onClick={() => analyze(pair, key)}>
+                  Find usable stretches
+                </button>
+              )}
             </div>
             {state?.error && <pre className="pm-tab-error">{state.error}</pre>}
             {state?.result && <CoverageResult coverage={state.result} />}
@@ -775,14 +808,20 @@ function _toResolvedPair(p) {
  * never rewrites the matrix's score or offset above it.
  */
 function CoverageResult({ coverage }) {
-  const { accepted_offset_sec, usable_ranges, windows_tried, windows_used } = coverage;
+  const { accepted_offset_sec, usable_ranges, windows_tried, windows_used, windows_available } = coverage;
+  // Long pairs are capped (posthouse/sync_coverage.py's DEFAULT_MAX_WINDOWS)
+  // and spread evenly across the file rather than tried exhaustively --
+  // worth saying plainly when that cap actually kicked in, since it means
+  // a "no consistent stretch" result isn't necessarily final.
+  const truncated = windows_available > windows_tried;
 
   if (accepted_offset_sec === null || accepted_offset_sec === undefined) {
     return (
       <div className="coverage-result coverage-result-empty">
-        No consistent stretch found ({windows_tried} window{windows_tried === 1 ? "" : "s"}
-        {" "}tried). This pair may genuinely never overlap, or the dead
-        stretches cover the whole thing.
+        No consistent stretch found ({windows_tried} of {windows_available} window
+        {windows_available === 1 ? "" : "s"} in the file tried). This pair may
+        genuinely never overlap, the dead stretches cover the whole thing,
+        {truncated ? " or the sampled windows happened to miss the usable part — try again." : "."}
       </div>
     );
   }
@@ -795,6 +834,7 @@ function CoverageResult({ coverage }) {
       <div className="coverage-result-offset">
         Proposed offset: <strong>{accepted_offset_sec >= 0 ? "+" : ""}{accepted_offset_sec.toFixed(2)}s</strong>
         {" "}from {windows_used} of {windows_tried} windows agreeing
+        {truncated && ` (sampled ${windows_tried} of ${windows_available} in the file)`}
       </div>
       <div className="coverage-bar">
         {usable_ranges.map(([start, end], i) => (

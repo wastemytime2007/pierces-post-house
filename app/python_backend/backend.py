@@ -355,11 +355,13 @@ def handle_analyze_pair_coverage(cmd: dict) -> None:
     """2026-09-03: rescue a sync pair PreCut's whole-file sync_project()
     scored weak/wrong -- real case, Ryan's Runnells footage, subject
     leaves the room and comes back. See posthouse/sync_coverage.py's
-    module docstring for the full account and the real numbers this was
-    verified against. Runs in a background thread: windowed correlation
-    is N ffmpeg extracts + N correlation calls, seconds to low tens of
-    seconds depending on file length, and must not block the IPC loop
-    other commands (including cancel_job) rely on.
+    module docstring for the full account, the real numbers this was
+    verified against, and why cost is capped/reported/cancellable: first
+    version had none of those, and Ryan hit exactly the failure mode that
+    predicts -- three analyses started, five minutes of silent "Analyzing"
+    with no way to tell if it was working or stuck, and no way to stop it.
+    Runs in a background thread so it can't block the IPC loop other
+    commands (including this one's own cancel) rely on.
     """
     aroll_proxy = cmd.get("aroll_proxy", "")
     audio_file = cmd.get("audio_file", "")
@@ -367,16 +369,43 @@ def handle_analyze_pair_coverage(cmd: dict) -> None:
         err("analyze_pair_coverage requires aroll_proxy and audio_file")
         return
 
+    coverage_id = cmd.get("coverage_id") or f"cov-{int(time.time() * 1000)}"
+    cancel_flag = threading.Event()
+
     def _run():
         try:
-            coverage = analyze_pair_coverage(Path(aroll_proxy), Path(audio_file))
-        except Exception as exc:
-            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
-            return
-        emit({"type": "pair_coverage_analyzed", **coverage.to_dict()})
+            def progress(ev: dict) -> None:
+                emit({"type": "pair_coverage_progress", "coverage_id": coverage_id, **ev})
 
+            coverage = analyze_pair_coverage(
+                Path(aroll_proxy), Path(audio_file),
+                progress_callback=progress, cancel_flag=cancel_flag,
+            )
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=coverage_id, tb=traceback.format_exc())
+            return
+        finally:
+            with _jobs_lock:
+                _jobs.pop(coverage_id, None)
+        emit({"type": "pair_coverage_analyzed", "coverage_id": coverage_id, **coverage.to_dict()})
+
+    with _jobs_lock:
+        _jobs[coverage_id] = ActiveJob(coverage_id, cancel_flag)
     threading.Thread(target=_run, daemon=True).start()
-    emit({"type": "pair_coverage_started", "aroll_proxy": aroll_proxy, "audio_file": audio_file})
+    emit({
+        "type": "pair_coverage_started",
+        "coverage_id": coverage_id,
+        "aroll_proxy": aroll_proxy, "audio_file": audio_file,
+    })
+
+
+def handle_cancel_pair_coverage(cmd: dict) -> None:
+    coverage_id = cmd.get("coverage_id", "")
+    with _jobs_lock:
+        job = _jobs.get(coverage_id)
+        if job is not None:
+            job.cancel_flag.set()
+    emit({"type": "pair_coverage_cancel_requested", "coverage_id": coverage_id, "ok": job is not None})
 
 
 def handle_run_pipeline(cmd: dict) -> None:
@@ -811,6 +840,7 @@ HANDLERS = {
     # Task 1.1: Project Manager tab
     "organize_project": handle_organize_project,
     "analyze_pair_coverage": handle_analyze_pair_coverage,
+    "cancel_pair_coverage": handle_cancel_pair_coverage,
     "run_pipeline": handle_run_pipeline,
     "cancel_job": handle_cancel_job,
     # AI producer

@@ -59,6 +59,15 @@ DEFAULT_CONSENSUS_TOL_SEC = 1.5
 DEFAULT_SILENCE_DB = -35.0
 DEFAULT_MIN_SILENCE_SEC = 2.0
 DEFAULT_MIN_WINDOW_SEC = 8.0
+# Real cost, measured (2026-09-03): correlating even an 18s clip against
+# a 1992s (33min) A-roll proxy took 7.3s -- PreCut's own sync_pair() cost
+# is driven by the A-ROLL's length, not the window's, since the window is
+# always the shorter signal in the cross-correlation. A long lav file's
+# non-silent stretches can produce 50-60+ candidate windows against a
+# long A-roll, which is 6-8+ minutes for ONE pair with no feedback and no
+# way to cancel -- exactly what happened to Ryan (clicked 3, waited 5
+# minutes, "they still just say analyzing"). This caps it.
+DEFAULT_MAX_WINDOWS = 10
 
 
 @dataclass
@@ -80,6 +89,7 @@ class PairCoverage:
     windows: List[CoverageWindow] = field(default_factory=list)
     windows_tried: int = 0
     windows_used: int = 0
+    windows_available: int = 0  # before max_windows subsampling
 
     def to_dict(self) -> dict:
         return {
@@ -89,6 +99,7 @@ class PairCoverage:
             "usable_ranges": [list(r) for r in self.usable_ranges],
             "windows_tried": self.windows_tried,
             "windows_used": self.windows_used,
+            "windows_available": self.windows_available,
             "windows": [
                 {
                     "lav_start": w.lav_start, "lav_end": w.lav_end,
@@ -189,6 +200,18 @@ def _extract_clip(src: Path, start: float, dur: float, out_path: Path) -> bool:
     return proc.returncode == 0 and out_path.exists()
 
 
+def _subsample_evenly(items: list, k: int) -> list:
+    """Pick k items spread across the whole list, preserving order --
+    used to cap window count without biasing toward the start of the
+    file (a plain truncation would silently only ever look at the first
+    few minutes, missing exactly the "comes back later" case this module
+    exists for)."""
+    n = len(items)
+    if n <= k:
+        return items
+    return [items[round(i * (n - 1) / (k - 1))] for i in range(k)]
+
+
 def analyze_pair_coverage(
     aroll_proxy: Path,
     audio_file: Path,
@@ -197,6 +220,9 @@ def analyze_pair_coverage(
     hop_sec: float = DEFAULT_HOP_SEC,
     consensus_tol_sec: float = DEFAULT_CONSENSUS_TOL_SEC,
     min_window_sec: Optional[float] = None,
+    max_windows: int = DEFAULT_MAX_WINDOWS,
+    progress_callback=None,
+    cancel_flag=None,
 ) -> PairCoverage:
     """Find sync coverage for one (A-roll, audio) pair by windowed
     correlation. See module docstring for why, and for the real numbers
@@ -207,32 +233,44 @@ def analyze_pair_coverage(
     offset before either is accepted, mirroring the anchoring discipline
     `precut_pipeline.audio_sync._promote_consistent_pairs` already uses
     (never promote on one observation).
+
+    `progress_callback(dict)`, if given, is called after each window
+    finishes (`{"i", "total", "score"}`) -- correlation cost is driven by
+    the A-ROLL's length (measured: 7.3s for an 18s clip against a 33min
+    proxy), so a long pair can take real time and a caller needs a way to
+    show it's progressing, not just "started."
+
+    `cancel_flag` (a `threading.Event`-like object with `.is_set()`), if
+    given, is checked between windows -- lets a caller abort a slow run
+    instead of leaving a user stuck waiting with no way out, which is
+    exactly what happened without this (see DEFAULT_MAX_WINDOWS's own
+    comment).
     """
-    # A window can never satisfy a minimum longer than itself -- caller
-    # picking a small window_sec (e.g. for a fast test, or a shoot with
-    # rapid speaker turnover) without also lowering this would otherwise
-    # silently discard every candidate window. Found exactly this way:
-    # a synthetic test using window_sec=4.0 against the 8.0s default
-    # produced windows_tried=0 with no error, see test_sync_coverage.py.
     effective_min = min(min_window_sec if min_window_sec is not None else DEFAULT_MIN_WINDOW_SEC, window_sec)
     ranges = find_energetic_ranges(audio_file)
-    candidate_windows = _split_into_windows(ranges, window_sec, hop_sec, min_window_sec=effective_min)
+    all_windows = _split_into_windows(ranges, window_sec, hop_sec, min_window_sec=effective_min)
+    candidate_windows = _subsample_evenly(all_windows, max_windows)
 
     scored: List[CoverageWindow] = []
+    total = len(candidate_windows)
     with tempfile.TemporaryDirectory(prefix="posthouse_sync_coverage_") as tmpdir:
         tmp = Path(tmpdir)
         for i, (w_start, w_end) in enumerate(candidate_windows):
+            if cancel_flag is not None and cancel_flag.is_set():
+                break
             clip_path = tmp / f"w_{i}.wav"
-            if not _extract_clip(audio_file, w_start, w_end - w_start, clip_path):
-                continue
-            result = sync_pair(aroll_proxy, clip_path)
-            if result is None:
-                continue
-            implied_offset = result.offset_sec - w_start
-            scored.append(CoverageWindow(
-                lav_start=w_start, lav_end=w_end,
-                score=result.score, implied_offset_sec=implied_offset,
-            ))
+            score = None
+            if _extract_clip(audio_file, w_start, w_end - w_start, clip_path):
+                result = sync_pair(aroll_proxy, clip_path)
+                if result is not None:
+                    score = result.score
+                    implied_offset = result.offset_sec - w_start
+                    scored.append(CoverageWindow(
+                        lav_start=w_start, lav_end=w_end,
+                        score=result.score, implied_offset_sec=implied_offset,
+                    ))
+            if progress_callback is not None:
+                progress_callback({"i": i + 1, "total": total, "score": score})
 
     candidates = [w for w in scored if w.score >= SCORE_MAYBE]
     accepted_offset: Optional[float] = None
@@ -272,4 +310,5 @@ def analyze_pair_coverage(
         windows=scored,
         windows_tried=len(candidate_windows),
         windows_used=sum(1 for w in scored if w.agrees_with_consensus),
+        windows_available=len(all_windows),
     )
