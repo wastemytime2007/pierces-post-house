@@ -62,7 +62,21 @@ because this session violated them once each.
 
 ## In progress
 
-*(nothing in flight)*
+- **Task 2.1 — Assistant Editor tab: code-complete, not yet Ryan-verified.**
+  Reuses PreCut's existing `SyncMatrix.jsx` and `sync_project()` output
+  (`project.audio_sync`) unchanged for the results grid; adds a new
+  `AudioSyncPreview.jsx` player (PreCut's frontend had no video/audio
+  playback anywhere before this) so a synced pair can be confirmed by ear,
+  not just by score. Does not re-run sync — reviews what Ingest already
+  computed. Enabled Tauri's asset protocol (scoped to `/Volumes/**` and
+  `$HOME/**`) so `convertFileSrc` can serve real footage to a player.
+  *(837bd3a.)* Verified so far: full safety_net suite 370 passed / 1
+  skipped; `npm run tauri dev` compiles and runs clean alongside the real
+  PreCut.app; `vite build` clean. **Not verified: actual use in the app.**
+  I have no way to click through the Tauri window myself — Ryan needs to
+  run it against Runnells Day 1 (2 A-roll clips × 4 audio files across two
+  mic units, already staged), click a reliable pair, and confirm the
+  preview actually plays in sync, before this can move to § Done.
 
 ## Done
 
