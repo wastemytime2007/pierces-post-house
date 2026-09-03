@@ -648,6 +648,30 @@ with Ryan touching only the intake and the checkpoints.
   transfer, grid-edge investigation, all prior entries) — it is not
   erased, just no longer the flagship problem. It remains parked, to be
   revisited only with a genuinely new idea, per Ryan's own instruction.
+- **2026-09-03 — CORRECTION to the entry above: this is one app, forked
+  from PreCut, not a new separate application.** Point 5 of the prior
+  entry ("this is a new, separate application... PreCut is donor,
+  wrapped through the three doors") is superseded, not erased — kept
+  above for the record of how the reasoning evolved. Ryan corrected it
+  directly: *"I don't want to have to run two apps separately. The new
+  app should have additional features and effectively replace precut by
+  absorbing all of its code and functionality."* And, when asked
+  whether early roles could be verified headless/CLI while the shell
+  comes later: *"we need to verify each role and stage in its full
+  functionality. So it needs to run in something that I can interact
+  with like an app vs. terminal commands."*
+  What this changes: the app shell is not deferred to Phase 5. It is a
+  literal fork of PreCut's actual Tauri/React shell — copied into this
+  repo at `app/`, not rebuilt from scratch — with post-house roles added
+  as new screens from the very first role onward. PreCut's own GitHub
+  repo remains protected (never committed to); "harvested, never
+  rebuilt" now explicitly means copying and extending the working code
+  in this repo, not calling a separately-running PreCut as an external
+  dependency forever. What does not change: Phase 4's motion-cull
+  result, the task order, the two new rules (§7-8), or the
+  `precut-capabilities` skill — all still apply. `docs/ARCHITECTURE.md`'s
+  "three doors" description needs the same correction; flagged here,
+  not yet done.
 - **2026-09-02 — Widened both grid-edge-pinned grids to test "does it
   want to be disabled": NO, for either. But the tie-broken value the
   wider grid picked for direction-stability is measurably WORSE on real

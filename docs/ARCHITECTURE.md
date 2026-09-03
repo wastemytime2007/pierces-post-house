@@ -4,34 +4,46 @@ Owner: Lead Architect. Describes the system we are building across repos.
 PreCut's internal architecture is documented in its own repo
 (`precut/ARCHITECTURE.md`); this file covers the layer *around* it.
 
-## The product and the three layers
+## The product: one app, forked from PreCut
 
-The end product is **a new application** (this repo) whose UX walks a
-project through the post-house roles with visible handoffs: Ryan briefs
-the Project Manager at intake, the PM hands off to the Assistant Editor,
-and so on to one Premiere-ready XML, with supervisor checkpoints
-between stations. PreCut is the **component donor**: its solved
-capabilities are harvested (wrapped, pinned, gated by the safety net),
-never rebuilt and never modified in place.
+**Corrected 2026-09-03** — this section previously described a separate new
+app calling PreCut as an external dependency, headless until "Phase 5."
+Ryan corrected that directly: *"I don't want to have to run two apps
+separately... effectively replace precut by absorbing all of its code and
+functionality,"* and each role must be verifiable *"in something that I can
+interact with like an app vs. terminal commands."* Full record:
+`ROADMAP.md` Decision Log, 2026-09-03.
+
+The end product is **one application**, living at `app/` in this repo: a
+fork of PreCut's own Tauri/React shell (same window, same Rust↔Python
+bridge, same install flow), copied here and extended with the post-house
+roles as new screens — Project Manager (manifest + organization), Assistant
+Editor (sync, cull, grouping, flagging), Creative Editor, Colorist,
+Audio Designer — with supervisor checkpoints between stations. There is
+never a separate PreCut app running alongside it.
+
+**PreCut's own GitHub repo (`~/precut-checkout`) is the protected donor**:
+read from and copied from, never committed to, never modified, for as long
+as it remains Ryan's separate production tool. "Harvested, never rebuilt"
+means the working code is copied into `app/` and extended, not
+reimplemented from scratch and not called as a permanently-external
+dependency.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ LAYER 3 — Orchestration (Claude Code)                          │
+│ LAYER 2 — Orchestration (Claude Code)                          │
 │   The engineering team (docs/TEAM.md) that builds the house.   │
 │   Coordination state lives in this repo.                       │
 ├────────────────────────────────────────────────────────────────┤
-│ LAYER 2 — Pierce's Post House (the new app: roles + shell)     │
-│   Post-house roles: Project Manager (manifest + organization), │
-│   Assistant Editor (sync, cull, grouping, flagging), Creative  │
-│   Editor, Audio Designer, Colorist-QC — composed from          │
-│   harvested PreCut skills + new code, headless first; the      │
-│   role-pipeline shell arrives in Phase 5.                      │
-├────────────────────────────────────────────────────────────────┤
-│ LAYER 1 — PreCut (shipped, protected, DONOR)                   │
-│   Tauri/React app + Python backend on Ryan's Mac.              │
-│   Ingest, proxies, Whisper, Claude vision tagging, CLIP index, │
-│   lav sync, story angles, FCP7 XML export → Premiere Pro.      │
-│   Stays working and untouched until superseded role by role.   │
+│ LAYER 1 — Pierce's Post House (`app/` — ONE application)       │
+│   Forked from PreCut's Tauri/React shell + Python backend.     │
+│   Ships PreCut's own capabilities as-is (ingest, proxies,      │
+│   Whisper, Claude vision tagging, CLIP index, lav sync, story  │
+│   angles, FCP7 XML export) PLUS the post-house roles as new    │
+│   screens, added one at a time, each proven on real material   │
+│   before the next starts (CLAUDE.md §7-8).                     │
+│   PreCut's own repo (`~/precut-checkout`) is read from and     │
+│   copied from during this build; never committed to.           │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -48,39 +60,45 @@ every media-touching skill must be runnable headless on his machine, and
 every cloud-buildable part (logic, parsers, XML writers, scorers) must be
 testable on fixtures without real footage.
 
-## Integration points with PreCut (three doors)
+## Reaching PreCut's capabilities (corrected 2026-09-03)
 
-1. **The JSON-lines backend protocol** — stdin/stdout commands
+Previously described as three "doors" between two separately-running
+processes. That framing assumed a separate app talking to a live PreCut
+instance; the fork model (above) makes most of it internal instead. Kept
+here because the mechanics are still real and still matter:
+
+1. **The JSON-lines protocol is now internal, not cross-app.** The forked
+   app's own Rust shell spawns its own copy of `python_backend/backend.py`
    (`create_project`, `add_source`, `run_pipeline`, `story_generate`,
-   `export_timelines`) against `python_backend/backend.py`, plus
-   `precut_pipeline/cli.py`.
-   **Protocol reality any driver must respect:** job commands are
-   fire-and-forget (submitted to a thread pool, no ack); a worker
-   failure emits `{"type":"error"}` with **no** completion event, and
-   some errors carry no `job_id` at all — so a driver must mint and
-   pass its own `job_id` on every job command, pair events itself,
-   enforce a wall-clock timeout instead of waiting forever, and confirm
-   output files exist on disk before `shutdown` (which abandons
-   in-flight work). The `ready` handshake reports the backend version
-   string (`0.4.43-…`), not the app version (`1.0.0-beta.3`) — both are
-   correct, a known naming split in PreCut's PROVENANCE.md.
-2. **The on-disk project artifacts** — read (and additively extend) a
-   project's directory: `project.json`, `transcripts/`,
-   `broll_index/precut.db` (+ LanceDB vectors), `plans/`,
-   `audio_index/`, `exports/`. Projects are found via PreCut's
-   `known_projects` registry — since Drop 4.16 a project can live at an
-   arbitrary `root_dir`, so never glob the default
-   `~/Library/Application Support/PreCut/projects/` and assume that's
-   all of them. The agent layer's own artifacts live alongside, in new
-   files — never rewriting PreCut's.
-3. **`precut_pipeline` imported as a Python library**, pinned to a
-   tagged PreCut commit. Needed because door 1 cannot express a
-   cold-footage timeline: `export_timelines` only builds sequences from
-   `plans/` ideas (running the matcher internally) or `library_only`
-   mode, and the `CutList` model has no representation for arbitrary
-   source in/out segments without an A-roll transcript spine. This door
-   makes the exporter chain a de-facto public API — which is exactly
-   why the Phase 0 safety net covers that surface.
+   `export_timelines`, plus new post-house commands added alongside them)
+   — the same protocol PreCut used, just no longer talking to a separate
+   process. The protocol's real behavior still applies wherever it's
+   driven programmatically: job commands are fire-and-forget (submitted to
+   a thread pool, no ack); a worker failure emits `{"type":"error"}` with
+   **no** completion event, and some errors carry no `job_id` at all — so
+   a driver must mint and pass its own `job_id`, pair events itself,
+   enforce a wall-clock timeout, and confirm output files exist before
+   `shutdown` (which abandons in-flight work).
+2. **On-disk project artifacts, for compatibility with existing PreCut
+   projects.** Ryan's already-created projects (`project.json`,
+   `transcripts/`, `broll_index/precut.db` + LanceDB, `plans/`,
+   `audio_index/`, `exports/`) should keep working when opened in the
+   forked app — read (and additively extend) them in place, never assume
+   they live at the default
+   `~/Library/Application Support/PreCut/projects/` path (a project can
+   live at an arbitrary `root_dir` since Drop 4.16). New post-house
+   artifacts (manifest.json, culls.json, etc.) live alongside, in new
+   files — never rewriting PreCut's own.
+3. **`precut_pipeline` as the fork's own vendored code**, not an external
+   pinned dependency. Copied into `app/python_backend/` as part of the
+   fork (Task 1.0), then extended in place — `posthouse/`'s existing
+   modules (`projectmanager.py`, `manifest.py`, `coldfootage.py`, etc.)
+   get reached from the same Python process going forward, no
+   cross-checkout bridge required once absorbed. `coldfootage.py` exists
+   because PreCut's own `CutList`/`export_timelines` has no representation
+   for arbitrary source in/out segments without an A-roll transcript spine
+   — a real, still-true gap, now closed by code living in the same app
+   rather than a separate one.
 
 Anything beyond these three (a schema change, a new backend command) is
 a PreCut change: it waits for the Phase 0 safety net and goes through

@@ -1,15 +1,20 @@
 # CLAUDE.md — Pierce's Post House (coordination repo)
 
 This repo is the **home of the Pierce's Post House application and its
-coordination hub**. The end product is a new app whose UX walks a
-project through post-house roles (Project Manager → Assistant Editor →
-Creative Editor → …) with visible handoffs; **PreCut is the component
-donor** — its solved problems get harvested, never rebuilt, and the
-PreCut repo itself is never modified while it remains Ryan's production
-tool. This repo holds the plans, decisions, team charter, current
-status, the safety net (`safety_net/`), and the app's code as it grows,
-so that any session or agent can pick up exactly where the last one
-left off.
+coordination hub**. **The end product is one application — a fork of
+PreCut's own Tauri/React shell, at `app/` in this repo — that absorbs
+PreCut's code and functionality and grows the post-house roles (Project
+Manager → Assistant Editor → Creative Editor → …) into it as new screens.**
+Ryan does not want two apps to run side by side, even temporarily; there is
+only ever one app to open. **PreCut's own GitHub repo (`~/precut-checkout`)
+is the protected donor** — read from, copied from, never committed to,
+never modified — while it remains Ryan's production tool. "Harvested, never
+rebuilt" means nothing PreCut already solved gets reimplemented from
+scratch; it means copying and extending the working code, not calling an
+external app from a separate one. This repo holds the plans, decisions,
+team charter, current status, the safety net (`safety_net/`), the absorbed
+app (`app/`), and the Python role logic (`posthouse/`), so that any session
+or agent can pick up exactly where the last one left off.
 
 ## What to read, and when
 

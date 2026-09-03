@@ -327,17 +327,28 @@ not written here as committed work until this one is signed off — writing
 them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
 against, just shifted to "Next."
 
-1. **Task 1.1 — verify the Project Manager on one real project.** Run
-   `posthouse/projectmanager.py` (already built, untouched by anything
-   this session) against one real project folder. Ryan opens the
-   resulting manifest and organized output and says whether it's
-   correct and useful. No code changes expected. This is the cheapest
-   task available and it has been outstanding since Phase 2 shipped —
-   Ryan has never seen this role's output.
-   **Signed off when:** Ryan confirms the manifest and organization are
-   right on that one real project. Only then does Task 2.1 (Assistant
-   Editor: wrap PreCut's audio sync on one A-roll/lav pair) get written
-   in here.
+**Corrected 2026-09-03**: Task 1.1 below was written for a headless CLI
+check. Ryan corrected the architecture (see ROADMAP Decision Log,
+2026-09-03) — one forked app, each role verified through it, not a
+terminal. Task 1.0 (the fork itself) now comes first.
+
+1. **Task 1.0 — fork PreCut's app into this repo at `app/`, unmodified,
+   and confirm it builds and runs.** Copy `~/precut-checkout` into
+   `app/`; change only `productName`/`identifier`/window `title` in
+   `tauri.conf.json` so it can't collide with the real installed
+   PreCut.app. `npm install`, `npm run tauri dev`. This checkout has
+   never been built from source before — whether it compiles cleanly is
+   a real open question, not an assumption.
+   **Signed off when:** Ryan opens the running fork and confirms it's
+   the same app PreCut already is, running from this repo's copy.
+2. **Task 1.1 — add a Project Manager tab to the fork**, backed by the
+   existing, already-tested `posthouse/projectmanager.py` (client name,
+   project type, one project folder, optional brand assets; manifest
+   rendered in the app). Only starts once Task 1.0 is signed off.
+   **Signed off when:** Ryan runs it against one real project, in the
+   app, and confirms the result is correct and useful. Only then does
+   Task 2.1 (Assistant Editor: wrap PreCut's audio sync on one A-roll/
+   lav pair) get written in here.
 
 ## Attempts ledger
 
