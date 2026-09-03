@@ -4143,7 +4143,8 @@ kbd {
 }
 
 .pm-tab-field input[type="text"],
-.pm-tab-field select {
+.pm-tab-field select,
+.pm-tab-field textarea {
   background: var(--bg-3);
   border: 1px solid var(--bg-4);
   border-radius: 6px;
@@ -4153,8 +4154,13 @@ kbd {
   font-family: var(--font-ui);
 }
 
+.pm-tab-field textarea {
+  resize: vertical;
+}
+
 .pm-tab-field input[type="text"]:focus,
-.pm-tab-field select:focus {
+.pm-tab-field select:focus,
+.pm-tab-field textarea:focus {
   outline: none;
   border-color: var(--accent-dim);
 }

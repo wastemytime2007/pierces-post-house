@@ -309,6 +309,7 @@ def handle_organize_project(cmd: dict) -> None:
     project_type = (cmd.get("project_type") or "").strip()
     sources = cmd.get("sources") or []
     brand_assets_source_dir = (cmd.get("brand_assets_source_dir") or "").strip() or None
+    audience_goal = (cmd.get("audience_goal") or "").strip() or None
 
     missing = [
         field for field, val in (
@@ -331,6 +332,7 @@ def handle_organize_project(cmd: dict) -> None:
             project_type=project_type,
             sources=sources,
             brand_assets_source_dir=brand_assets_source_dir,
+            audience_goal=audience_goal,
         )
     except OrganizeError as e:
         err("Project Manager could not produce a valid manifest:\n"

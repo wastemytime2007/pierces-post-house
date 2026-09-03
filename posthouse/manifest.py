@@ -122,7 +122,7 @@ TOP_LEVEL_ORDER = [
 GENERATOR_ORDER = ["name", "version", "precut_pin"]
 PROJECT_ORDER = [
     "name", "slug", "root_dir", "client", "project_type", "shoot_dates",
-    "locations", "people", "notes",
+    "locations", "people", "audience_goal", "notes",
 ]
 CLIENT_ORDER = ["name", "contact", "notes"]
 LOCATION_ORDER = ["label", "address"]
@@ -449,6 +449,7 @@ def build_manifest(
     locations: Optional[list[dict]] = None,
     people: Optional[list[dict]] = None,
     project_notes: Optional[str] = None,
+    audience_goal: Optional[str] = None,
     sources: Optional[list[dict]] = None,
     brand: Optional[dict] = None,
     default_includes: Optional[list[dict]] = None,
@@ -464,6 +465,18 @@ def build_manifest(
     ``display_name``, ``is_file``, ``dual_use``, ``subject_ids``, ``notes``,
     ``media``, ``unsupported``, ``inference``, ``added_at`` optional) — ids
     are minted fresh here, in list order, per kind.
+
+    ``audience_goal`` (2026-09-03, additive, same contract version): free
+    text describing who this project's footage is FOR — a SoldFast
+    content funnel (Brand/Authority, Franchisee Recruiting, Contractor
+    Recruiting), a personal long-form/documentary intent, or anything
+    else an editor writes in their own words. Deliberately free text, not
+    a fixed picklist — this app is for any editor's projects, not just
+    SoldFast's, so the set of possible audiences/goals isn't closed.
+    Graduated out of the generic ``notes`` catch-all because it has a
+    defined downstream consumer (transcript-flagging's audience-informed
+    fragment tagging, see ROADMAP.md Decision Log 2026-09-03) rather than
+    being intake trivia with no field yet.
 
     ``delivery_targets`` is deliberately NOT a parameter: contract §2.5's
     ratified ruling is that the PM never proposes delivery targets, so the
@@ -519,6 +532,8 @@ def build_manifest(
         project["locations"] = [_reorder(dict(l), LOCATION_ORDER) for l in locations]
     if people_out:
         project["people"] = people_out
+    if audience_goal:
+        project["audience_goal"] = audience_goal
     if project_notes:
         project["notes"] = project_notes
 

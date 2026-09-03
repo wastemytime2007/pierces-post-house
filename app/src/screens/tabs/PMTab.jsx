@@ -69,6 +69,11 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
   const [projectName, setProjectName] = useState("");
   const [projectType, setProjectType] = useState(PROJECT_TYPES[0]);
   const [brandAssetsDir, setBrandAssetsDir] = useState("");
+  // Free text, not a picklist -- this app is for any editor's projects,
+  // not just SoldFast's, so the set of possible audiences/goals isn't
+  // closed. Feeds the Assistant Editor's audience-informed transcript
+  // tagging downstream (ROADMAP.md Decision Log, 2026-09-03).
+  const [audienceGoal, setAudienceGoal] = useState("");
 
   // "Assets" is the one zone with no PreCut-side model -- kept as plain
   // local path strings, same as every zone used to be before this merge.
@@ -306,6 +311,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         project_type: projectType,
         sources,
         brand_assets_source_dir: brandAssetsDir.trim() || undefined,
+        audience_goal: audienceGoal.trim() || undefined,
       });
     } catch (e) {
       setError(String(e)); setSubmitting(false);
@@ -355,6 +361,12 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         <TextField label="Project name" value={projectName} onChange={setProjectName} />
       </div>
       <SelectField label="Project type" value={projectType} onChange={setProjectType} options={PROJECT_TYPES} />
+      <TextAreaField
+        label="Audience / content goal (optional)"
+        placeholder="e.g. Brand/Authority — future sellers and franchisees; or a personal long-form documentary edit"
+        value={audienceGoal}
+        onChange={setAudienceGoal}
+      />
 
       {notice && (
         <div className="pm-tab-notice">
@@ -812,6 +824,20 @@ function TextField({ label, value, onChange }) {
     <label className="pm-tab-field">
       <span>{label}</span>
       <input type="text" value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
+function TextAreaField({ label, value, onChange, placeholder }) {
+  return (
+    <label className="pm-tab-field">
+      <span>{label}</span>
+      <textarea
+        rows={2}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   );
 }

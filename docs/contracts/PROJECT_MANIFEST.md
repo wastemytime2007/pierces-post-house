@@ -59,6 +59,7 @@ unless a default is stated.
 | `shoot_dates` | [date] | — | List, not a scalar — multi-day shoots are normal. Read directly from file creation timestamps at intake, no confirmation step (Ryan, Open Q 5). |
 | `locations` | [{…}] | — | `[{label (req), address?}]` |
 | `people` | [{…}] | — | `[{id, name, role: "subject"\|"agent"\|"host"\|"other"}]` — the roster of who Ryan expects on camera, asked once at intake (`id` = slugified name per §5, unique in the project), referenced by `sources[].subject_ids`. Feeds Phase 4 per-subject grouping. Cross-clip per-voice identity matching is explicitly out of scope (Open Q 3, ratified 2026-09-01) — generic speaker labels are sufficient wherever speaker identity is needed elsewhere in the pipeline. |
+| `audience_goal` | str | — | **Added 2026-09-03, additive, same `contract_version`.** Free text describing who this project's footage is FOR — a SoldFast content funnel (Brand/Authority, Franchisee Recruiting, Contractor Recruiting), a personal long-form/documentary intent, or anything else an editor writes in their own words. Deliberately free text, not a fixed picklist — this app is for any editor's projects, not just SoldFast's. Graduated out of `notes` because it has a defined downstream consumer (the Assistant Editor's audience-informed transcript-fragment tagging) rather than being intake trivia with no field yet. |
 | `notes` | str | — | Free text from intake that has no field yet. |
 
 ### 2.3 `brand` — assets and the Brand Brief
