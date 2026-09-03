@@ -318,6 +318,23 @@ because this session violated them once each.
   files, plus `loop_detector.py` added to `verified-quotes` (import fixed, and
   it found one Runnells transcript that is 91% hallucination loops). Agent
   Studio itself untouched and read-only throughout.
+- 2026-09-03 — **Task 1.0: PreCut forked into this repo at `app/`, confirmed
+  running by Ryan.** Architecture corrected first (see ROADMAP Decision Log)
+  — one app, not two: Ryan does not want a separate new app calling PreCut,
+  he wants PreCut's own shell absorbed and extended. Copied
+  `~/precut-checkout` (source only, no git history) into `app/`; changed
+  `productName`/`identifier`/window title to "Post House" /
+  `com.pierce.posthouse` so it can't collide with the real installed
+  PreCut.app; found and fixed a real data-safety issue along the way — the
+  Application Support directory was hardcoded to "PreCut" in three files
+  (`project.py`, `setup_helper.py`, `settings.py`), which would have meant
+  sharing live settings.json and the project registry with Ryan's
+  production app on first run. `npm install` clean; `npm run tauri dev`
+  compiled 367 crates with zero errors on this checkout's first-ever build;
+  window title confirmed "Post House" via macOS's accessibility API; the
+  fork's Python backend and Rust shell run as processes fully separate from
+  the real PreCut.app, verified running side by side with no conflict.
+  **Ryan's sign-off**: "Ok the app works like regular precut." *(eb6d42c.)*
 
 ## Next (in order)
 
@@ -327,24 +344,20 @@ not written here as committed work until this one is signed off — writing
 them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
 against, just shifted to "Next."
 
-**Corrected 2026-09-03**: Task 1.1 below was written for a headless CLI
-check. Ryan corrected the architecture (see ROADMAP Decision Log,
-2026-09-03) — one forked app, each role verified through it, not a
-terminal. Task 1.0 (the fork itself) now comes first.
+Task 1.0 is signed off (see § Done, 2026-09-03). This is the only active task.
 
-1. **Task 1.0 — fork PreCut's app into this repo at `app/`, unmodified,
-   and confirm it builds and runs.** Copy `~/precut-checkout` into
-   `app/`; change only `productName`/`identifier`/window `title` in
-   `tauri.conf.json` so it can't collide with the real installed
-   PreCut.app. `npm install`, `npm run tauri dev`. This checkout has
-   never been built from source before — whether it compiles cleanly is
-   a real open question, not an assumption.
-   **Signed off when:** Ryan opens the running fork and confirms it's
-   the same app PreCut already is, running from this repo's copy.
-2. **Task 1.1 — add a Project Manager tab to the fork**, backed by the
+1. **Task 1.1 — add a Project Manager tab to the fork**, backed by the
    existing, already-tested `posthouse/projectmanager.py` (client name,
    project type, one project folder, optional brand assets; manifest
-   rendered in the app). Only starts once Task 1.0 is signed off.
+   rendered in the app). Minimal first version — not yet unified with
+   PreCut's own existing source-declaration UI in Ingest; that
+   integration is deliberately deferred, not attempted here.
+   Mechanically: `posthouse/` gets vendored into `app/python_backend/`,
+   one new IPC command in `backend.py` calls
+   `projectmanager.organize_project()` directly (reusing the tested
+   function, not reimplementing it), one new tab in `ProjectView.jsx`
+   follows the exact `IngestTab.jsx`/`IdeasTab.jsx` pattern
+   (`sendCommand`/`subscribe`).
    **Signed off when:** Ryan runs it against one real project, in the
    app, and confirms the result is correct and useful. Only then does
    Task 2.1 (Assistant Editor: wrap PreCut's audio sync on one A-roll/
