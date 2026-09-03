@@ -181,17 +181,50 @@ because this session violated them once each.
   **Scope of this bug**: any edit to `precut_pipeline/*.py` made during
   this session, in the live app, before this fix — including the
   dual-use `master_clip_map` collision fix — could have been silently
-  running the donor's unmodified code instead. Those were previously
-  verified only via standalone test scripts with manually-controlled
-  `sys.path`, not the live app's real import order. **Needs
-  re-verification against the live app now that the shadowing is
-  fixed** — not yet done.
-  **Not yet verified in real Premiere** — Ryan needs to confirm the same
-  physical file actually shows up as two distinct, correctly-labeled
-  Project-panel items, and that the target-rate field/logging works as
-  expected now that the app is talking to current, un-shadowed code.
+  running the donor's unmodified code instead. Re-verified against the
+  live app after the fix (`405c91d`): resolves to the local fork copy.
+  Ryan confirmed both the duplication step and the target-rate
+  field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-03 — **Dual-use B-roll frame-rate interpretation: fully
+  closed out, including step 2 (actually applying Interpret Footage),
+  which needed a companion Premiere extension.** Full arc: two XML-only
+  mechanisms falsified in real Premiere (rate declaration; reference-
+  sequence frame math) → Ryan's incremental plan (duplicate first,
+  solve triggering separately) → the `precut_bridge.py` sys.path
+  shadowing bug found and fixed (`405c91d`) → Ryan confirmed the
+  duplication step works in real Premiere. For step 2: static XML
+  genuinely cannot express Interpret Footage state, and Ryan explicitly
+  rejected a manual, human-run script ("We need a solution that isnt
+  manual at all. It needs to be automatic"), which meant the only path
+  was a persistent Premiere extension — the exact thing banned by the
+  inherited "no CEP/UXP panel code" decision. Escalated per governance
+  rule 2 rather than coding around it; Ryan authorized a narrow
+  override (`ROADMAP.md` Decision Log, 2026-09-03): a companion
+  extension whose only job is finding clips named
+  `"... [INTERPRET TO X.XXXfps]"` and calling Premiere's own Interpret
+  Footage API on them — it does not rebuild any of the XML pipeline.
+  Built at `app/premiere_extension/`, verified working in real Premiere
+  (`782d232`). Then made fully invisible per Ryan ("completely hands
+  off... run in the background") using Adobe's own documented
+  `AutoVisible=false` + `StartOn(ApplicationActivate)` + `UI Type
+  Custom` mechanism — no panel, no menu entry, ever; file-logs to
+  `posthouse_interpreter.log` since there's no UI left to watch
+  (`c8c6fee`). Polling backs off from 2s to 20s when idle so it isn't
+  walking the whole Project panel forever for nothing (`6090582`).
+  Finally folded into the app's own install process (`46431bc`): a
+  `premiere_extension` component in `setup_helper.py`'s existing
+  dependency-installer framework (same pattern as ffmpeg/Xcode CLT),
+  with a matching row in `SetupScreen.jsx` and the extension added to
+  `tauri.conf.json`'s bundled resources — optional, not required for
+  `all_ready`, since a Mac without Premiere installed can still finish
+  setup normally.
+- 2026-08-31 — Reviewed `precut` and `precut-premiere-extension` end to
+  end; PreCut confirmed as foundation-then-donor. *(ROADMAP.md, 6137dfe.)*
+- 2026-08-31 — ROADMAP v1. *(6137dfe.)* 2026-09-01 — Governance layer.
+  *(fc3cabc.)* Repo renamed to `pierces-post-house`. *(c874dee.)*
 
 - 2026-08-31 — Reviewed `precut` and `precut-premiere-extension` end to
   end; PreCut confirmed as foundation-then-donor. *(ROADMAP.md, 6137dfe.)*
@@ -569,18 +602,22 @@ is no separate Task 2.1 any more — it was absorbed into Task 1.1, per
 Ryan's own conclusion that Assistant Editor sync review was never
 distinct Project Manager work.
 
-**One piece of Task 1.1 remains genuinely unconfirmed**: the dual-use
-B-roll tagging fix (`SourceFolder.dual_use`, `_collect_videos`'s union),
-since every real run so far declared no B-roll/dual-use sources at all.
-Not blocking — the fix is scripted-verified — but worth a real dual-use
-shoot at some point to close it out.
+Dual-use B-roll tagging and the frame-rate interpretation gap (both real,
+export-pipeline-adjacent work) are now fully closed out and confirmed by
+Ryan on real footage in real Premiere — see § Done, 2026-09-03. This was
+done without opening a formally-numbered task, since Ryan directed it
+directly ("Go ahead and work on the dual use b-roll tagging and the
+interpretation of the b-roll framerates") rather than through the
+scope-decision process item 1 below describes; worth naming so a future
+session doesn't wonder where its task number is.
 
 1. **Define the first real Assistant Editor task.** Now that sync
-   review/rescue is confirmed as Project Manager scope, not AE scope,
-   the first genuinely distinct AE work is likely acting on a synced
-   result — e.g. writing it into an export-ready sequence — rather than
-   just computing/displaying it. Needs a concrete scope decision with
-   Ryan before any code, per `CLAUDE.md` §8.
+   review/rescue, dual-use tagging, and B-roll frame-rate interpretation
+   are all confirmed as Project Manager / export-pipeline scope rather
+   than distinct AE work, the first genuinely distinct AE work is likely
+   acting on a synced result — e.g. writing it into an export-ready
+   sequence — rather than just computing/displaying it. Needs a concrete
+   scope decision with Ryan before any code, per `CLAUDE.md` §8.
 
 ## Attempts ledger
 
