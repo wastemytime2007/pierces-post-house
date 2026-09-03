@@ -1811,3 +1811,22 @@ with Ryan touching only the intake and the checkpoints.
   no panel, no menu entry, nothing to click, ever. Added file logging
   (`posthouse_interpreter.log` in `Folder.userData`, written from
   `host.jsx`) since there is no panel left to show activity in.
+- **2026-09-03 -- Governance change: the "one role in flight at a time"
+  sequencing gate is lifted, per Ryan's explicit direction.** Asked him
+  what the first distinct Assistant Editor task should be, now that
+  sync review, dual-use tagging, and B-roll frame-rate interpretation
+  all turned out to be Project Manager / export-pipeline scope. His
+  answer: "Lets just handle all of the skills across the board, Once we
+  get each of them working, then we can worry about how to display them
+  and under which role." Read plainly: stop gating the next role's work
+  on the current role's full sign-off; build the underlying capability
+  for every skill in the § Role -> skill map, in whatever order makes
+  sense technically, and decide role/UI assignment later, once skills
+  themselves are proven. `CLAUDE.md` rule 8 amended in place to record
+  this. Unchanged: rule 7 (prove on one real unit before broadening any
+  one skill) and the sign-off bar (Ryan on real material, not passing
+  tests) still apply per-skill -- this is a sequencing change, not a
+  quality-bar change. Also unchanged: Phase 4's motion cull stays
+  PARKED (three failed detector approaches, real footage, see
+  `docs/STATUS.md`) -- lifting the role gate doesn't itself unpark
+  that; it would need its own explicit go-ahead.

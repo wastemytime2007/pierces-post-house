@@ -95,12 +95,25 @@ is cheaper than every session paying for every document up front.
    4's motion cull went straight to a full project). Broadening happens
    as its own separate, approved step, never folded into the step that
    proved the first unit.
-8. **One role in flight at a time.** The next role (Project Manager →
-   Assistant Editor → Creative Editor → Colorist → Audio Designer) does
-   not start — not planning, not code — until Ryan has reviewed, tested
-   on real material, and explicitly signed off on the current one.
-   Passing tests is not sign-off. Ryan looking at real output on real
-   footage and saying so is sign-off.
+8. **One role in flight at a time — superseded in part, 2026-09-03.**
+   Originally: the next role (Project Manager → Assistant Editor →
+   Creative Editor → Colorist → Audio Designer) does not start — not
+   planning, not code — until Ryan has reviewed, tested on real
+   material, and explicitly signed off on the current one. Ryan's own
+   words changing this: "Lets just handle all of the skills across the
+   board, Once we get each of them working, then we can worry about how
+   to display them and under which role." The **role-sequencing gate is
+   lifted**: skills from any role in `ROADMAP.md`'s § Role → skill map
+   can be built in parallel, without waiting on a prior role's sign-off,
+   and role/UI assignment is deliberately deferred until the underlying
+   skills work. What does **not** change: rule 7 below (prove on one
+   real unit before broadening any single skill) and the sign-off bar
+   itself — passing tests is still not sign-off; Ryan reviewing real
+   output on real material and saying so still is, per-skill. Phase 4's
+   motion cull is PARKED for a real, already-logged reason (three
+   detector approaches failed on real footage, see `docs/STATUS.md`) —
+   this supersession doesn't itself unpark it; that needs its own
+   explicit decision from Ryan.
 
 ## Where things run
 
