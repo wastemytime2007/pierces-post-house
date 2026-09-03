@@ -181,7 +181,30 @@ because this session violated them once each.
   longer interfere with each other by construction. Removed the
   redundant second button entirely. Added three numbered section headers
   (Sync results / Preview a pair / Fix a weak pair). *(15037b4.)*
-  **Not yet verified in the app.**
+  **Fourth round: a real, un-tested performance bug, found by checking
+  process state rather than assuming.** Ryan: "I clicked analyze on 3
+  things and have waited 5 minutes they still just say analyzing." `ps
+  aux` showed the backend genuinely still computing (20+ min accumulated
+  CPU), not hung. Measured the real cost directly: correlating an 18s
+  clip against a 33-minute A-roll proxy took 7.3s — cost is driven by
+  the A-roll's length, not the window's. A long lav file's non-silent
+  stretches can produce 50-60+ candidate windows against a long A-roll:
+  6-8+ minutes for ONE pair, with three started at once making it worse.
+  The original build was only ever verified against the one SHORT clip
+  from the original investigation (0006, 235s) — never tested against
+  this project's actual long files, which are most of its weak pairs.
+  Fixed: `DEFAULT_MAX_WINDOWS=10` (subsampled evenly across the whole
+  file, not truncated from the start — truncating would silently only
+  ever look at the first few minutes, exactly wrong for "comes back
+  later"), a `progress_callback` and `cancel_flag` threaded through to a
+  new `pair_coverage_progress` event and `cancel_pair_coverage` command
+  (reusing the same `_jobs`/`ActiveJob` registry `cancel_job` already
+  uses), and a `windows_available` field so a result can say "sampled 10
+  of 42" instead of implying an exhaustive search. Re-measured after the
+  fix: the short-clip case ~12s (was already fast), the worst real case
+  in this project (both ~30min files against each other) ~63s (was on
+  track for several minutes) — offsets unchanged on both. *(d2ad077.)*
+  **Not yet verified in the app for real-time responsiveness.**
 
 ## Done
 
