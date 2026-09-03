@@ -188,6 +188,39 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Exhaustive transcript reading built and proven against
+  real material — the project's own named founding gap, closed for the
+  first time.** `posthouse/transcript_coverage.py`: windows a transcript
+  (10-min windows, 2-min overlap, same shape as `sync_coverage.py`'s
+  fix for the analogous audio-sync gap), extracts every storyline-worthy
+  fragment per window with no fixed "3 angles" cap, merges across window
+  boundaries, computes an explicit coverage percentage instead of
+  assuming completeness. Real bug found and fixed along the way: naive
+  merging of two windows' independent descriptions of the same
+  overlap-zone moment produced a visibly repeated sentence; new
+  `_merge_fragments` keeps the more detailed description instead of
+  concatenating when overlap covers >50% of the shorter fragment.
+  **Real, direct comparison against PreCut's existing
+  `story_planner.generate_angles()`, same 23.8-minute real interview
+  (Runnells, Bob intv_Recruitment), both run for real through the API**:
+  old approach — 3 angles, 6 ranges, covering 417s (29.2%) of the
+  interview; new approach — 13 fragments covering 1,405s (98.3%).
+  Real token-metered cost: old $0.063, new $0.112 (~1.8x) on this
+  transcript — but per second of material actually surfaced, the new
+  approach is cheaper (~5¢/min covered vs ~15¢/min), since the old
+  approach's output is structurally capped regardless of length. Also
+  fixed along the way: PreCut's own `story_planner.py`/`planner.py`
+  never sent an `anthropic-workspace-id` header, which broke on Ryan's
+  workspace-scoped Console key (a property of the ACCOUNT, not
+  universal) — added `precut_pipeline/anthropic_client.py` (shared
+  client builder, header sent only when `ANTHROPIC_WORKSPACE_ID` is
+  actually configured) and an optional, blank-by-default "workspace ID"
+  field in Settings so this never becomes something every user has to
+  configure. *(57fdbff, 3968879.)*
+  **Not yet built**: the audience-informed tagging layer (multi-label
+  scoring of each fragment against a project's captured audience/
+  content-goal) and the Project Manager intake addition it depends on —
+  see § Next.
 - 2026-09-03 — **Dual-use B-roll frame-rate interpretation: fully
   closed out, including step 2 (actually applying Interpret Footage),
   which needed a companion Premiere extension.** Full arc: two XML-only
@@ -606,7 +639,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
-| AE: transcript flagging (color-coded storyline ranges) | Not started — B+, new rendering of existing story-angle output. Confirmed clean of the interpretation problem: operates on A-roll (never frame-rate interpreted) and existing synced sequences, no new trimmed placement. **Next up.** |
+| AE: transcript flagging (color-coded storyline ranges) | **In progress — exhaustive-reading foundation built and verified real, audience-informed tagging layer not yet started.** See § Done, 2026-09-03. |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
