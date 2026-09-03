@@ -4085,3 +4085,224 @@ kbd {
   line-height: 1;
   margin-top: 1px;
 }
+
+/* ===========================================================
+ * PMTab — Post House Task 1.1, the Project Manager tab
+ * =========================================================== */
+
+.pm-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1000px;
+}
+
+.pm-tab-row,
+.pm-tab-field {
+  max-width: 640px;
+}
+
+.pm-tab h2 {
+  margin: 0;
+  color: var(--fg-0);
+}
+
+.pm-tab-sub {
+  margin: -8px 0 0;
+  color: var(--fg-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.pm-tab-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pm-tab-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.pm-tab-field > span {
+  color: var(--fg-1);
+}
+
+.pm-tab-field input[type="text"],
+.pm-tab-field select {
+  background: var(--bg-3);
+  border: 1px solid var(--bg-4);
+  border-radius: 6px;
+  color: var(--fg-0);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-ui);
+}
+
+.pm-tab-field input[type="text"]:focus,
+.pm-tab-field select:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.pm-tab-folder-row {
+  display: flex;
+  gap: 8px;
+}
+
+.pm-tab-folder-row input {
+  flex: 1;
+  cursor: pointer;
+}
+
+.pm-tab-folder-row button,
+.pm-tab-submit {
+  background: var(--bg-3);
+  border: 1px solid var(--bg-4);
+  border-radius: 6px;
+  color: var(--fg-0);
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Task 1.1 revision: reuses .drop-row (defined near .dropzone above) for
+   layout, but that's a fixed 3-column grid built for IngestTab's exact
+   aroll/broll/audio set. The Project Manager has a fourth zone (assets),
+   so this widens the grid rather than copying .drop-row's rules. */
+.pm-tab-dropzones {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 900px) {
+  .pm-tab-dropzones {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.pm-tab-notice {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--warn);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pm-tab-notice button {
+  background: transparent;
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  color: var(--warn);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pm-tab-dualuse {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-4);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 640px;
+}
+
+.pm-tab-dualuse-label {
+  color: var(--fg-1);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pm-tab-dualuse-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-0);
+  cursor: pointer;
+}
+
+.pm-tab-folder-row button:hover,
+.pm-tab-submit:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.pm-tab-submit {
+  align-self: flex-start;
+  background: var(--accent-glow);
+  border-color: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.pm-tab-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pm-tab-error {
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: var(--error);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.pm-tab-result {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-4);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pm-tab-result h3 {
+  margin: 0;
+  color: var(--success);
+  font-size: 14px;
+}
+
+.pm-tab-result code {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--fg-1);
+}
+
+.pm-tab-warnings {
+  background: var(--warn-bg);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--warn);
+}
+
+.pm-tab-warnings ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.pm-tab-result pre {
+  background: var(--bg-0);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 11px;
+  overflow-x: auto;
+  color: var(--fg-1);
+}

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { sendCommand } from "../App.jsx";
+import PMTab from "./tabs/PMTab.jsx";
 import IngestTab from "./tabs/IngestTab.jsx";
 import IdeasTab from "./tabs/IdeasTab.jsx";
 import LogView from "../components/LogView.jsx";
@@ -7,7 +8,9 @@ import LogView from "../components/LogView.jsx";
 /**
  * ProjectView is the main workspace once a project is loaded.
  *
- * Three tabs:
+ * Tabs:
+ *   0. Project — Post House Task 1.1: the Project Manager (client/type/
+ *      manifest, independent of the PreCut project model below it)
  *   1. Ingest — drop zones + proxy/index progress
  *   2. Transcripts — per-A-roll transcription status
  *   3. Ideas — AI producer analyze / refine / pick
@@ -26,7 +29,7 @@ export default function ProjectView({
   // it on to ExportModal for the per-export apply/skip toggle.
   autoIncludeRulesCount,
 }) {
-  const [activeTab, setActiveTab] = useState("ingest");
+  const [activeTab, setActiveTab] = useState("pm");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Drop 3.6: log hidden by default. User can reveal via side tab.
   const [showLog, setShowLog] = useState(false);
@@ -208,6 +211,11 @@ export default function ProjectView({
         </button>
         <div className="project-nav-tabs">
           <Tab
+            label="00 · Project"
+            active={activeTab === "pm"}
+            onClick={() => setActiveTab("pm")}
+          />
+          <Tab
             label="01 · Ingest"
             active={activeTab === "ingest"}
             onClick={() => setActiveTab("ingest")}
@@ -249,6 +257,9 @@ export default function ProjectView({
 
       <div className={`project-main ${showLog ? "log-visible" : "log-hidden"}`}>
         <section className="project-stage">
+          {activeTab === "pm" && (
+            <PMTab subscribe={subscribe} />
+          )}
           {activeTab === "ingest" && (
             <IngestTab
               project={project}

@@ -157,6 +157,30 @@ def test_build_brand_section_never_drops_a_font(tmp_path):
     assert by_file["Bad-Font.ttf"]["extracted_by"] == "filename"
 
 
+def test_build_brand_section_skips_appledouble_sidecars(tmp_path):
+    """REGRESSION: a real run against a brand-assets folder on an external/
+    network volume (RDOSS_2025) crashed with UnidentifiedImageError on
+    `._SF-Main-RE-light.png` -- a macOS AppleDouble resource-fork sidecar,
+    not a real image. It carries the real file's extension, so it matched
+    LOGO_EXTS and PIL was asked to decode it. Same convention as
+    projectmanager._is_hidden, applied here since brandbrief.py's asset
+    scan never had it."""
+    assets = tmp_path / "Brand Assets"
+    assets.mkdir()
+    _make_logo_with_alpha(assets / "SF-Main-RE-light.png")
+    # A real AppleDouble sidecar is a binary resource-fork format, not a
+    # valid image -- garbage bytes reproduce "PIL cannot decode this" the
+    # same way, which is the only property that matters here.
+    (assets / "._SF-Main-RE-light.png").write_bytes(b"\x00\x05\x16\x07" + b"garbage" * 10)
+    (assets / ".DS_Store").write_bytes(b"garbage")
+
+    brand = B.build_brand_section(assets, font_search_dirs=[])
+
+    files = {f["file"] for f in brand["logos"]}
+    assert files == {"SF-Main-RE-light.png"}, "dotfiles/AppleDouble sidecars must never appear as assets"
+    assert brand["palette"], "palette extraction must still run against the real logo"
+
+
 # ---------------------------------------------------------------------------
 # install_status
 # ---------------------------------------------------------------------------

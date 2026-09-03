@@ -16,7 +16,7 @@ artifact a human opens when the cull did something surprising.
 | --- | --- |
 | **Writer** | The Assistant Editor's cull skill (`posthouse.cull`). Nobody else writes it. Regenerated whole on every run — never patched in place. |
 | **Readers** | `posthouse.coldfootage` (builds the timeline), `posthouse.benchmark.load_culls` (scores it), the grouping skill (Phase 4), the Creative Editor (Phase 6), a human. |
-| **Location** | `<project.root_dir>/analysis/culls.json`, with per-source signal sidecars under `<project.root_dir>/analysis/signals/` (§6). `analysis/` is a new sibling of the footage folders and `Brand Assets`, consistent with the manifest's co-location ruling (PROJECT_MANIFEST §2.3). |
+| **Location** | `<project.root_dir>/analysis/culls.json`, with per-source signal sidecars under `<project.root_dir>/analysis/signals/` (§6). `analysis/` is a new sibling of the footage folders and `Company Branding`, consistent with the manifest's co-location ruling (PROJECT_MANIFEST §2.3). |
 | **Encoding** | UTF-8 JSON, 2-space indent, keys in the order given below. Written tempfile-then-`os.replace`, exactly as the manifest and `project.py:Project.save()` do. |
 | **Versioning** | `contract_version: 1` — **the same version as `posthouse.coldfootage`'s segments contract, deliberately.** See §3. |
 | **Determinism** | Same inputs + same parameter set ⇒ byte-identical file, except `created_at`. No RNG anywhere in the cull. |
@@ -522,7 +522,7 @@ These are the contract-shaped ones. The detection-shaped questions are in
 numbers in `params`, not fields here.
 
 1. **`analysis/` as the folder name.** It sits beside the footage folders
-   and `Brand Assets` under `root_dir`, and it will hold the sidecars
+   and `Company Branding` under `root_dir`, and it will hold the sidecars
    (~5 MB per hour of footage). *Recommendation: yes* — same co-location
    logic as the Brand Brief, and it keeps a project self-explaining.
 2. **Should the master `culls.json` carry both rulesets, or should there

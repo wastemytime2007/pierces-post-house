@@ -26,6 +26,18 @@ COMMAND_SCHEMA (stdin → backend):
     Misc:
     {"type": "shutdown"}
 
+    Post House Task 1.1 -- Project Manager (independent of the project
+    lifecycle above; no _current_project required):
+    {"type": "organize_project", "root_dir": "...", "client_name": "...",
+     "project_name": "...", "project_type": "interview|property_tour|...",
+     "sources": [{"path": "...", "kind": "aroll|broll|source_audio|assets"}],
+     "brand_assets_source_dir": "..."?}
+
+    (This docstring already drifted from HANDLERS before Task 1.1 --
+    analyze/plan_directed/story_generate/export_timelines etc. were added
+    in later drops without updating it. Not fixed here; out of scope for
+    this task. HANDLERS is the source of truth.)
+
 EVENT_SCHEMA (backend → stdout):
     {"type": "ready", "version": "0.2.0-drop2"}
     {"type": "projects_list", "projects": [...]}
@@ -34,6 +46,9 @@ EVENT_SCHEMA (backend → stdout):
     {"type": "project_state", "project": {...}}
     {"type": "source_added", "source": {...}}
     {"type": "source_removed", "path": "..."}
+    {"type": "project_organized", "manifest": {...}, "manifest_path": "...",
+     "is_new_project": bool, "added_source_ids": [...],
+     "staged_asset_files": [...], "warnings": [...]}
 
     {"type": "pipeline_started", "job_id", "project", "stages": {...}}
     {"type": "pipeline_scan_complete", "job_id", "counts": {...}}
@@ -47,12 +62,22 @@ EVENT_SCHEMA (backend → stdout):
     {"type": "log", "level": "info|warn|error", "message"}
 """
 import json
+import os
 import sys
 import threading
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any, Optional
+
+# Vendored posthouse/ (Task 1.1, Project Manager tab) checks its PreCut pin
+# on import, defaulting PRECUT_ROOT to "/home/user/precut" if unset -- which
+# doesn't exist on this Mac and would print a scary but harmless mismatch
+# warning on every launch. Point it at the real, correctly-pinned donor
+# checkout instead. setdefault so an explicit env var (e.g. for testing a
+# different checkout) still wins.
+os.environ.setdefault("PRECUT_ROOT", str(Path.home() / "precut-checkout"))
 
 from project import (
     Project, list_projects, delete_project, _sanitize_project_name,
@@ -70,6 +95,11 @@ from settings import (
     get_auto_include_rules, set_auto_include_rules,
 )
 from exporter import run_export, ExportOptions
+
+# Task 1.1: Project Manager tab. posthouse.projectmanager is the existing,
+# already-tested function (posthouse/ has its own 223-test suite in the
+# pierces-post-house repo) -- reused directly here, not reimplemented.
+from posthouse.projectmanager import organize_project, OrganizeError
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +278,64 @@ def handle_get_project_state(cmd: dict) -> None:
     if proj is None:
         return
     emit({"type": "project_state", "project": proj.to_wire_dict()})
+
+
+def handle_organize_project(cmd: dict) -> None:
+    """Task 1.1: Project Manager tab.
+
+    Deliberately independent of PreCut's own Project/`_current_project`
+    model -- this is the minimal first version, not yet unified with the
+    existing Ingest tab's source-declaration UI (see STATUS.md Task 1.1).
+    Runs synchronously: `organize_project` is filesystem census + a
+    manifest write, not an ML pipeline stage, so there is no job/progress
+    machinery here the way `run_pipeline` needs one.
+    """
+    root_dir = (cmd.get("root_dir") or "").strip()
+    client_name = (cmd.get("client_name") or "").strip()
+    project_name = (cmd.get("project_name") or "").strip()
+    project_type = (cmd.get("project_type") or "").strip()
+    sources = cmd.get("sources") or []
+    brand_assets_source_dir = (cmd.get("brand_assets_source_dir") or "").strip() or None
+
+    missing = [
+        field for field, val in (
+            ("root_dir", root_dir), ("client_name", client_name),
+            ("project_name", project_name), ("project_type", project_type),
+        ) if not val
+    ]
+    if missing:
+        err(f"Missing required field(s): {', '.join(missing)}")
+        return
+    if not sources:
+        err("At least one source folder is required")
+        return
+
+    try:
+        result = organize_project(
+            root_dir=root_dir,
+            client_name=client_name,
+            project_name=project_name,
+            project_type=project_type,
+            sources=sources,
+            brand_assets_source_dir=brand_assets_source_dir,
+        )
+    except OrganizeError as e:
+        err("Project Manager could not produce a valid manifest:\n"
+            + "\n".join(f"  - {p}" for p in e.errors))
+        return
+    except Exception as exc:
+        err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+        return
+
+    emit({
+        "type": "project_organized",
+        "manifest": result.manifest,
+        "manifest_path": str(result.manifest_path),
+        "is_new_project": result.is_new_project,
+        "added_source_ids": result.added_source_ids,
+        "staged_asset_files": result.staged_asset_files,
+        "warnings": result.warnings,
+    })
 
 
 def handle_run_pipeline(cmd: dict) -> None:
@@ -677,6 +765,8 @@ HANDLERS = {
     "add_source": handle_add_source,
     "remove_source": handle_remove_source,
     "get_project_state": handle_get_project_state,
+    # Task 1.1: Project Manager tab
+    "organize_project": handle_organize_project,
     "run_pipeline": handle_run_pipeline,
     "cancel_job": handle_cancel_job,
     # AI producer

@@ -176,7 +176,7 @@ revision each role actually read. Append-only, never edited.*
     "notes": "Agent-led walkthrough. She wants the kitchen island featured."
   },
   "brand": {
-    "assets_dir": "/Volumes/Work/Projects/2026-09-01 Mendez Listing/Brand Assets",
+    "assets_dir": "/Volumes/Work/Projects/2026-09-01 Mendez Listing/Company Branding",
     "fonts": [
       {"file": "Gilroy-Bold.otf", "family_name": "Gilroy", "style_name": "Bold", "format": "otf", "extracted_by": "name_table", "install_status": "not_installed"},
       {"file": "SourceSerif4-Regular.ttf", "family_name": "Source Serif 4", "style_name": "Regular", "format": "ttf", "extracted_by": "name_table", "install_status": "installed"}
