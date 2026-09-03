@@ -780,7 +780,7 @@ function WeakPairsPanel({ pairs, subscribe }) {
               )}
             </div>
             {state?.error && <pre className="pm-tab-error">{state.error}</pre>}
-            {state?.result && <CoverageResult coverage={state.result} />}
+            {state?.result && <CoverageResult coverage={state.result} pair={pair} />}
           </div>
         );
       })}
@@ -814,14 +814,42 @@ function _toResolvedPair(p) {
 /**
  * CoverageResult — renders analyze_pair_coverage's output: a proposed
  * offset (from windows that agreed with each other, never from a single
- * observation) and the A-roll-timeline stretches that support it. Shown
- * as a simple proportional bar plus a plain list, not an interactive
- * scrubber -- this is a read-only finding for a human to act on by hand,
- * per Ryan's own scoping (2026-09-03): coverage information only, it
- * never rewrites the matrix's score or offset above it.
+ * observation) and the A-roll-timeline stretches that support it, plus
+ * an "Apply" action.
+ *
+ * Originally read-only by design (2026-09-03): coverage was scoped to
+ * never silently rewrite the matrix's own score/offset. That held, but
+ * it also meant a finding could never reach export no matter how good
+ * it was -- Ryan: "It found some matches but when i went to export it
+ * still didnt include the found matches." Real gap, not a
+ * misunderstanding: PreCut's exporter checks SyncPair.is_reliable
+ * (`score >= SCORE_USE or promoted_via_consistency`) straight from
+ * project.audio_sync, and nothing ever wrote a coverage finding there.
+ * "Apply" is the human choosing to act on a finding -- it still never
+ * happens without this button. Writes the offset into the matching pair
+ * and sets `promoted_via_consistency` (PreCut's own existing field for
+ * "not raw-score-reliable, but confirmed some other way") so the
+ * exporter picks it up next export; leaves the original score alone so
+ * the matrix keeps showing honestly where the number came from.
  */
-function CoverageResult({ coverage }) {
+function CoverageResult({ coverage, pair }) {
   const { accepted_offset_sec, usable_ranges, windows_tried, windows_used, windows_available } = coverage;
+  const [applyState, setApplyState] = useState(null); // null | "applying" | "applied" | error string
+
+  const apply = async () => {
+    setApplyState("applying");
+    try {
+      await sendCommand({
+        type: "apply_pair_coverage",
+        aroll_file: pair.arollFull,
+        audio_file: pair.audioFull,
+        offset_sec: accepted_offset_sec,
+      });
+      setApplyState("applied");
+    } catch (e) {
+      setApplyState(String(e));
+    }
+  };
   // Long pairs are capped (posthouse/sync_coverage.py's DEFAULT_MAX_WINDOWS)
   // and spread evenly across the file rather than tried exhaustively --
   // worth saying plainly when that cap actually kicked in, since it means
@@ -848,6 +876,25 @@ function CoverageResult({ coverage }) {
         Proposed offset: <strong>{accepted_offset_sec >= 0 ? "+" : ""}{accepted_offset_sec.toFixed(2)}s</strong>
         {" "}from {windows_used} of {windows_tried} windows agreeing
         {truncated && ` (sampled ${windows_tried} of ${windows_available} in the file)`}
+      </div>
+      <div className="coverage-apply-row">
+        <button
+          className="btn btn-ghost"
+          disabled={applyState === "applying" || applyState === "applied"}
+          onClick={apply}
+        >
+          {applyState === "applying" ? "Applying…"
+            : applyState === "applied" ? "Applied ✓"
+            : "Apply this sync (use it on export)"}
+        </button>
+        {applyState && applyState !== "applying" && applyState !== "applied" && (
+          <span className="coverage-apply-error">{applyState}</span>
+        )}
+        {applyState === "applied" && (
+          <span className="coverage-apply-hint">
+            Matrix above will show this pair as reliable once refreshed.
+          </span>
+        )}
       </div>
       <div className="coverage-bar">
         {usable_ranges.map(([start, end], i) => (

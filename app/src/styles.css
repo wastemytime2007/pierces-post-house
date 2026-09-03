@@ -4496,6 +4496,21 @@ kbd {
   font-family: var(--font-mono);
 }
 
+.coverage-apply-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.coverage-apply-error {
+  font-size: 12px;
+  color: var(--error);
+}
+.coverage-apply-hint {
+  font-size: 12px;
+  color: var(--success, #5cc08a);
+}
+
 .ingest-no-sources {
   border: 1px dashed var(--bg-3);
   border-radius: var(--radius-sm);

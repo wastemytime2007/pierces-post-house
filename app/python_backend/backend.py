@@ -405,6 +405,53 @@ def handle_cancel_pair_coverage(cmd: dict) -> None:
     emit({"type": "pair_coverage_cancel_requested", "coverage_id": coverage_id, "ok": job is not None})
 
 
+def handle_apply_pair_coverage(cmd: dict) -> None:
+    """2026-09-03: Ryan ran coverage analysis, it found real matches, then
+    "when i went to export it still didnt include the found matches" --
+    a real gap, not a misunderstanding. Coverage was deliberately scoped
+    read-only (see posthouse/sync_coverage.py's docstring) so nothing
+    would silently overwrite PreCut's own sync_project() results without
+    a human choosing to. But nothing ever gave Ryan that choice -- there
+    was no way to act on a finding at all, so it could never reach
+    export no matter how good it was. This is that action.
+
+    Writes the accepted offset into the matching pair in
+    project.audio_sync and sets `promoted_via_consistency` -- PreCut's
+    own existing field for exactly this ("not raw-score-reliable, but
+    confirmed reliable some other way"; see audio_sync.SyncPair.
+    is_reliable, which the exporter checks directly). Does not touch the
+    original score, so the matrix still shows honestly where the number
+    came from.
+    """
+    proj = _require_project()
+    if proj is None:
+        return
+    aroll_file = cmd.get("aroll_file", "")
+    audio_file = cmd.get("audio_file", "")
+    offset_sec = cmd.get("offset_sec")
+    if not aroll_file or not audio_file or offset_sec is None:
+        err("apply_pair_coverage requires aroll_file, audio_file, offset_sec")
+        return
+
+    audio_sync = getattr(proj, "audio_sync", None) or {}
+    pairs = audio_sync.get("pairs", [])
+    match = next(
+        (p for p in pairs if p.get("aroll_file") == aroll_file and p.get("audio_file") == audio_file),
+        None,
+    )
+    if match is None:
+        err(f"No existing sync pair found for {aroll_file} / {audio_file} -- run sync first")
+        return
+
+    match["offset_sec"] = float(offset_sec)
+    match["promoted_via_consistency"] = True
+    match["computed_at"] = time.time()
+    proj.audio_sync = audio_sync
+    proj.save()
+    emit({"type": "pair_coverage_applied", "aroll_file": aroll_file, "audio_file": audio_file, "offset_sec": float(offset_sec)})
+    emit({"type": "project_state", "project": proj.to_wire_dict()})
+
+
 _coverage_queue: "queue.Queue[tuple[str, str, str, threading.Event]]" = queue.Queue()
 _coverage_worker_started = False
 _coverage_worker_busy = [False]  # single-element list: mutable flag shared across threads
@@ -880,6 +927,7 @@ HANDLERS = {
     "organize_project": handle_organize_project,
     "analyze_pair_coverage": handle_analyze_pair_coverage,
     "cancel_pair_coverage": handle_cancel_pair_coverage,
+    "apply_pair_coverage": handle_apply_pair_coverage,
     "run_pipeline": handle_run_pipeline,
     "cancel_job": handle_cancel_job,
     # AI producer
