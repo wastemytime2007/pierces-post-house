@@ -1714,3 +1714,17 @@ with Ryan touching only the intake and the checkpoints.
   the UI, not part of the default `run_pipeline` audio_sync stage (far
   more expensive: N windowed correlations vs. PreCut's one whole-file
   pass per pair). *(f52886f.)*
+- **2026-09-03 — Superseded same day: coverage rescue made automatic,
+  the manual per-pair UI removed entirely.** The opt-in design above
+  survived three rounds of real use (discoverability fix, a state bug,
+  a performance/concurrency bug) before Ryan rejected the approach
+  itself: "Its still not exporting with all of the wavs... this is
+  feeling extremely overcomplicated... We should just be able to sync
+  things." Right call — every fix up to that point still required
+  clicking "Find usable stretches" and "Apply" per weak pair, which is
+  exactly the extra-steps complaint. `_run_audio_sync` now runs the
+  rescue on every unreliable pair automatically, in the same stage,
+  before any result is shown; nothing left to apply by hand. The
+  "reference only, never rewrites the score/offset" principle from the
+  entry above no longer applies as a UI-facing choice — it's now an
+  internal implementation detail of one automatic stage.

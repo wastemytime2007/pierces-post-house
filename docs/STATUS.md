@@ -238,6 +238,26 @@ because this session violated them once each.
   one): applied a real result, confirmed both in-memory and
   reloaded-from-disk state show the update correctly. *(2744b87.)*
   **Not yet verified in the app or against a real export.**
+  **Seventh round: Ryan rejected the whole manual-workflow approach, and
+  was right to.** "Its still not exporting with all of the wavs. And
+  this is feeling extremely overcomplicated... There shouldnt be extra
+  steps needed. We should just be able to sync things." Re-architected
+  rather than patched: `pipeline.py`'s `_run_audio_sync` now runs
+  `analyze_pair_coverage` automatically on every pair PreCut's own pass
+  couldn't confidently sync, as part of the same stage, before Ryan ever
+  sees a result — a rescued pair's offset and `promoted_via_consistency`
+  are set right there, nothing to apply afterward. Removed entirely:
+  `WeakPairsPanel`, `CoverageResult`, the three manual IPC commands and
+  their queue worker, the "3. Fix a weak pair" section — 519 lines
+  removed for 54 added. Verified against a full reset copy of the real
+  project (never the live file): ran the exact logic now in
+  `pipeline.py` unattended against all 6 real weak pairs — 3 rescued,
+  3 correctly found no match (they're the wrong mic/clip
+  cross-pairings). **All four real (mic, clip) correspondences in this
+  project are now reliable — every WAV placed somewhere real, ~170s,
+  one pass, no clicking.** *(b613002.)* **Not yet verified in the app
+  or against a real export** — that's the piece that actually matters
+  now: does export include all four WAVs.
 
 ## Done
 
