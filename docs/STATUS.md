@@ -6,64 +6,35 @@ everything in flight.
 
 ## Current stage — see § Done for the latest slice
 
-**PHASES 0 THROUGH 3 COMPLETE. Phase 4 (Assistant Editor cull) deep in
-iteration, not yet shipped.** Slices 1-5 all built and reviewed;
-significant real-footage findings at every stage; the benchmark itself
-has been hardened twice this session (a real parser bug, a real
-granularity blind spot). Where the cull's accuracy actually stands right
-now, in one line: **the generalization test came back negative.** Scored
-against Ryan's real Historic Valley Junction cuts, the Runnells-fitted
-detector (direction-stability, this session's re-fit winner) scores
-P 0.727/R 0.992/IoU 0.593 — statistically indistinguishable from
-select-everything's P 0.726/R 1.000/IoU 0.596. It IS a real, measurable
-improvement on granularity (9 predicted segments vs select-everything's
-1), but even those 9 segments are still giant under-segmented blobs
-swallowing 7-8 real cuts each. Nothing fitted this session does the real
-culling work on this footage.
+**PHASES 0-3 COMPLETE. Phase 4's motion cull is PARKED, not shipped** — see
+the 2026-09-02 Decision Log entries for why (single-signal detectors fitted
+on Runnells do not generalize to real drone footage; ruled out grid-fitting
+as the cause). Not being worked on right now.
 
-**The single most important finding of the session**: precision/
-recall/IoU can score a detector well while it does none of the real
-work. A 4-blob detector that just kept most of a clip scored
-P=0.727/R=0.993/IoU=0.593 (beating select-everything) against Ryan's
-real, hand-corrected answer key for that clip, while being exactly the
-"arbitrary cuts, basically unusable" output Ryan had already told us it
-was — because 63.5% of that clip is genuinely usable, so covering most
-of it scores fine on pure overlap regardless of whether the cuts mean
-anything. Fixed: `granularity_ratio` and `under_segmentation_events`/
-`over_segmentation_events` are now part of every score, naming the
-specific offending segment and which real cuts it swallowed. This
-same blind spot had already hidden the opposite failure earlier in
-the session (463-run over-fragmentation on Runnells). Every future
-Phase 4 score must be read alongside these, not just P/R/IoU.
+**The project re-scoped after Phase 4's result.** Ryan surfaced two sibling
+systems — Agent Studio (content strategy/doctrine, never actually ran) and a
+Content-Engine Obsidian vault (documentation of that system, also never run)
+— plus a set of learning resources on agent design. Conclusion: this repo's
+tools and Agent Studio's doctrine were two halves of one blocked role
+("Footage & Assembly Editor," Agent Studio's own roster, marked BLOCKED
+pending tools this repo builds). Doctrine ported to four global skills
+(`soldfast-content-funnels`, `longform-story-craft`, `footage-assembly-
+method`, `hook-writing`); Agent Studio's own code (`studio.py`) confirmed
+dead and left alone.
 
-**Two real parser bugs found and fixed on real footage this session**,
-both because a review or a direct hand-check caught a wrong number
-before it was trusted: an FCP7 frame-rate resolution bug (self-
-consistency check needed for retimed/conformed clips, not just the
-earlier sequence-rate-mismatch case) and, before that, the Des Moines
-answer-key frame-rate inflation bug. Neither would have been caught by
-tests on synthetic fixtures alone — both needed real, messy Premiere
-exports.
+**First working, Ryan-verified slice: `posthouse/moments.py`.** Turns a plain-
+language question into real, machine-verified footage moments, returned as
+a Premiere sequence. Ryan asked for "tearing out the kitchen cabinets,"
+opened the resulting XML, checked it against the real footage himself:
+"They are about the cabinets." This is the first thing in this project's
+history confirmed working by the person who has to trust it, not just by a
+test suite. Full detail in the 2026-09-02 Decision Log / Done entries.
 
-Product pivoted (2026-09-01): the end product is a new role-driven app;
-PreCut is the component donor. See ROADMAP §6 for the phase plan.
-
-**Grid-edge pin ruled out as the explanation.** Widened both thresholds'
-search grids (resid past this clip's own observed max, dirstab to its
-true 1.0 ceiling) and re-fit: neither wants full disablement, both have
-real interior optima (18.0, 0.95). That resolves one theory but opens a
-sharper one — the wider grid's dirstab value (0.95) TIES the old one
-(0.9) on Runnells but is measurably WORSE on the drone footage (6
-predicted segments vs 9), a concrete demonstration that fitting on one
-clip cannot see this kind of difference at all. Not shipped as a
-replacement; kept alongside as a documented alternative.
-
-**What's next:** the transfer question is answered (no, single-signal
-arms fitted on Runnells do not generalize) and the grid-edge theory is
-ruled out. Open: does anything generalize at all, is Runnells' own
-P/R/IoU hiding a similar granularity problem, and should the harness
-change how it breaks ties among equally-good-on-Runnells candidates.
-Ryan's call on where to spend effort next.
+**Two durable process lessons landed globally, not just in this repo**
+(`~/.claude/CLAUDE.md`, `agent-guardrails` skill): slice by outcome, never by
+component — Phase 4 burned three days building layered machinery with
+nothing to look at until the last piece landed; and "done" is Ryan's call,
+not the test suite's.
 
 ## In progress
 
@@ -316,7 +287,10 @@ Ryan's call on where to spend effort next.
   reading as TIMECODE_MISMATCH). Known limit: 29% of this corpus is audio-only
   lav/interview material the exporter cannot place; those moments are surfaced
   and labelled, not dropped, and need `harvest/sync.py` to reach a timeline.
-  **Not yet checked by Ryan** — demo at `~/Desktop/Moments_Demo_Runnells/`.
+  **Confirmed by Ryan** — opened `~/Desktop/Moments_Demo_Runnells/moments.xml`,
+  checked the four kitchen-cabinet moments against the footage himself: "They
+  are about the cabinets." First slice in this project to be verified working
+  end to end by the person who has to trust it, not just by tests.
 - 2026-09-02 — **Agent Studio doctrine ported to skills; `studio.py` left dead.**
   Four new global skills (`soldfast-content-funnels`, `longform-story-craft`,
   `footage-assembly-method`, `hook-writing`) consolidated from 15+ scattered
@@ -326,35 +300,25 @@ Ryan's call on where to spend effort next.
 
 ## Next (in order)
 
-1. **Ryan's call**: where to spend effort next. The grid-edge theory is
-   now ruled out (neither threshold wants disabling) and replaced by a
-   sharper one (Runnells alone cannot distinguish tie-broken choices
-   that behave very differently elsewhere). Live options, none started:
-   (a) fit directly on Historic Valley Junction footage rather than
-   transferring from Runnells; (b) change the harness to prefer the more
-   conservative value among Runnells ties, or fit against two clips at
-   once; (c) check whether Runnells' own held-out P/R/IoU is hiding a
-   similar granularity problem that never surfaced because nothing
-   measured it there yet; (d) step back from single-signal gates
-   entirely.
-2. Optional, not blocking: Ryan marking ~5 minutes of the unmarked
-   33-minute Runnells clip `DJI_20260430071514_0005_D.MP4` as a
-   held-out validation strip never fitted on.
-3. Not yet revisited: the 13 open design questions in
-   `PHASE4_CULL_DESIGN.md` §6 / `CULLS.md` §8 (pan-into-a-hold split,
-   slow push classification, minimum select length, rack focus ending
-   out of focus, etc). The pipeline they were written against
-   (classifier-driven consolidation) has since been superseded by the
-   stability detector, so some may now be moot.
-4. Low priority, still technically open from the original gameplan
-   discussion: ratify the "internal tool first, product maybe later"
-   and "review happens in Premiere" assumptions with Ryan.
-5. Housekeeping: Ryan's real Historic Valley Junction answer key still
+1. **Ryan's call**: what the next small, checkable slice on `moments.py`
+   is. Live candidates, none started: (a) try queries phrased as things
+   people actually SAID rather than summary language, since the measured
+   40.5%/66.7%/73.8% recall@1/5/10 was tested against Ryan's own
+   after-the-fact "why" summaries, a harder case than a real query; (b)
+   wire up `harvest/sync.py` so the audio-only lav/interview moments
+   (29% of this corpus) can actually reach a timeline instead of just
+   the review log; (c) point it at a live, untranscribed SoldFast
+   project instead of the already-transcribed Runnells corpus — a
+   materially different and harder test.
+2. Not yet decided: whether/when to revisit the parked Phase 4 motion
+   cull (see the 2026-09-02 Decision Log for the negative transfer
+   result and the open questions it left).
+3. Low priority, still open from the original gameplan discussion:
+   ratify the "internal tool first, product maybe later" and "review
+   happens in Premiere" assumptions with Ryan.
+4. Housekeeping: Ryan's real Historic Valley Junction answer key still
    lives only at `~/Desktop/Pierce Cut Historic Valley Junction 0002
-   (detector picks).xml`, not staged into `benchmark/` — should move
-   into the repo (mirroring `runnells-day-1`/`des-moines-estabs`) before
-   it is scored against again, so results are reproducible without a
-   path into Ryan's Desktop.
+   (detector picks).xml`, not staged into `benchmark/`.
 
 ## Attempts ledger
 
