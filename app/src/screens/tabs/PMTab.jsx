@@ -3,33 +3,56 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { sendCommand } from "../../App.jsx";
 import DropZone, { getHoveredKind, clearHoveredKind } from "../../components/DropZone.jsx";
+import StageProgress from "../../components/StageProgress.jsx";
+import SyncMatrix from "../../components/SyncMatrix.jsx";
+import AudioSyncPreview from "../../components/AudioSyncPreview.jsx";
 
 /**
- * PMTab — Post House Task 1.1, the Project Manager's first screen.
+ * PMTab — the Project Manager tab. Now the WHOLE first stage of the app:
+ * declare the project, declare footage, organize it, process it, review
+ * the sync. Fourth revision (2026-09-03), after Ryan used the third:
  *
- * Third revision (2026-09-03). Ryan: "Ingest is asking half of the same
- * questions as the project manager tab. Which folders of footage to look
- * at and what category they belong to. The ingest tab should just merge
- * with the project manager tab." He was declaring the same aroll/broll/
- * source-audio folders twice -- once here (for the Project Manifest) and
- * again in Ingest (for PreCut's own Project model, which its proxy/
- * transcribe/tag/sync pipeline actually runs against).
+ *   "Ingest doesnt make sense as its own page now. Move the ingest into
+ *   the Project Manager tab. When I click organize it should automatically
+ *   start the Run Pipeline process... i also noticed that when i clicked
+ *   run pipeline it didnt know there was any b-roll attached to tag
+ *   because the app doesnt understand the logic that we added for the
+ *   Dual use checkbox. And after syncing the Assistant editor tab just
+ *   shows the same synced window that the ingest page does. This entire
+ *   process all still feels like the project manager responsibilities...
+ *   Lets merge the ingest page with the project manager tab and take this
+ *   task off of the ae tab because its not necessary there."
  *
- * Fix: this tab is now the ONLY place footage gets declared. A-roll,
- * B-roll, and Source Audio drops call PreCut's own `add_source` directly
- * (exactly what IngestTab used to do) so `project.sources` is the single
- * source of truth -- IngestTab now just reads it. "Assets" stays local
- * and manifest-only (PreCut's Project model has no concept of it; it's
- * never proxied, transcribed, or tagged, just staged into the project
- * folder by organize_project). PreCut's own kind name is "audio"; the
- * Project Manifest contract's kind name is "source_audio" -- the zone
- * uses "audio" throughout (matching add_source) and translates to
- * "source_audio" only when building organize_project's sources array.
+ * Four real fixes/moves from that one message:
+ *   1. IngestTab's run-pipeline button/modal/progress panels/transcripts
+ *      readout are absorbed here, verbatim. IngestTab.jsx is deleted.
+ *   2. Clicking "Organize" now auto-fires run_pipeline with the same
+ *      default flags the modal used to compute, right after the manifest
+ *      write succeeds. The manual modal (via "Run pipeline") stays
+ *      available for re-runs (e.g. more footage added later, or skipping
+ *      a stage on purpose).
+ *   3. Real backend bug, not just UI: dual-use A-roll never reached
+ *      B-roll tagging, because PreCut's `add_source` is path-keyed with
+ *      exactly one kind per path (see project.py's own docstring) --
+ *      a dual-use folder never showed up in sources_by_kind("broll") for
+ *      pipeline.py's B-roll collection to find. Fixed in project.py
+ *      (SourceFolder.dual_use field + Project.set_dual_use) and
+ *      pipeline.py (_collect_videos unions in dual_use aroll sources when
+ *      collecting "broll"). The dual-use checkbox here now calls the new
+ *      `set_source_dual_use` command immediately, instead of only
+ *      recording the flag in the manifest at Organize time -- verified
+ *      with a scripted before/after check (see commit message).
+ *   4. AETab.jsx's sync review (SyncMatrix + the AudioSyncPreview player)
+ *      moves here too, since Ryan concluded audio sync review isn't
+ *      distinct Assistant Editor work -- it's the same review the
+ *      Ingest/PM merge already covers. AETab.jsx is deleted.
  *
- * organize_project() itself is unchanged and already tested; it now
- * mostly reads state PreCut's own model already holds, since the
- * client-side collection of {path, kind} pairs isn't separately
- * maintained for the three real kinds any more.
+ * PreCut's own kind name is "audio"; the Project Manifest contract's is
+ * "source_audio" -- zones use "audio" throughout (matching add_source)
+ * and translate to "source_audio" only when building organize_project's
+ * request. "Assets" stays local/manifest-only: PreCut's Project model has
+ * no such kind (never proxied/transcribed/tagged, just staged into the
+ * project folder by organize_project).
  */
 const SOURCE_ZONES = [
   { kind: "aroll", label: "A-Roll", title: "Interviews, talking-head footage", description: "Drag folders or files here" },
@@ -37,13 +60,10 @@ const SOURCE_ZONES = [
   { kind: "audio", label: "Source Audio", title: "Lav mics, external recorders", description: "Drag folders or files here" },
   { kind: "assets", label: "Assets", title: "Anything else that belongs to this project", description: "Drag folders or files here" },
 ];
-// Kind names as PreCut's own Project model / add_source use them, vs. the
-// Project Manifest contract's names. Only "audio" differs; "assets" has
-// no PreCut-side equivalent at all (see module docstring).
 const CONTRACT_KIND = { aroll: "aroll", broll: "broll", audio: "source_audio", assets: "assets" };
 const PROJECT_TYPES = ["interview", "property_tour", "renovation", "event", "product", "other"];
 
-export default function PMTab({ subscribe, project }) {
+export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdeas }) {
   const [rootDir, setRootDir] = useState("");
   const [clientName, setClientName] = useState("");
   const [projectName, setProjectName] = useState("");
@@ -54,40 +74,69 @@ export default function PMTab({ subscribe, project }) {
   // local path strings, same as every zone used to be before this merge.
   const [assetPaths, setAssetPaths] = useState([]);
 
-  // dual_use (contract §2.3): a single aroll source, culled under both
-  // rulesets -- NOT the same folder declared twice under different kinds.
-  // Found the hard way: dropping one real Osmo folder into both the
-  // A-Roll and B-Roll zones (the subject keeps talking while the shooter
-  // grabs coverage -- exactly the case the contract's own dual_use field
-  // exists for) is correctly rejected by the manifest validator ("both
-  // resolve to ... with different kinds"). The fix is this checklist, not
-  // relaxing that rule -- so a cross-zone duplicate is blocked client-side
-  // with a pointer here, rather than sent to the backend to fail again.
-  const [dualUseAroll, setDualUseAroll] = useState({});
   const [notice, setNotice] = useState(null);
-
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    return subscribe((ev) => {
-      if (!submitting) return;
-      if (ev.type === "project_organized") {
-        setResult(ev); setError(null); setSubmitting(false);
-      } else if (ev.type === "error") {
-        setError(ev.message); setResult(null); setSubmitting(false);
-      }
-    });
-  }, [subscribe, submitting]);
-
-  // Real (PreCut-backed) sources by kind, straight from project state --
-  // exactly what IngestTab used to derive for its own zones.
+  // Real (PreCut-backed) sources by kind, straight from project state.
   const realByKind = {
     aroll: project.sources.filter((s) => s.kind === "aroll"),
     broll: project.sources.filter((s) => s.kind === "broll"),
     audio: project.sources.filter((s) => s.kind === "audio"),
   };
+  const dualUseAroll = realByKind.aroll.filter((s) => s.dual_use);
+  // B-roll tagging runs on strictly-broll sources AND dual-use A-roll
+  // (see pipeline.py's _collect_videos) -- mirror that here so the run
+  // modal and the auto-run after Organize don't undercount it.
+  const hasAroll = realByKind.aroll.length > 0;
+  const hasBroll = realByKind.broll.length > 0 || dualUseAroll.length > 0;
+  const hasAudio = realByKind.audio.length > 0;
+
+  // Kept in a ref so the run_pipeline auto-fire (triggered from inside the
+  // project_organized subscribe handler, set up once on mount) always
+  // reads the CURRENT has-aroll/broll/audio state rather than whatever it
+  // was when the effect first ran. Same pattern as addPathsRef below.
+  const flagsRef = useRef({ hasAroll, hasBroll, hasAudio });
+  useEffect(() => { flagsRef.current = { hasAroll, hasBroll, hasAudio }; });
+
+  const runPipeline = useCallback(async (flags) => {
+    const jobId = `run-${Date.now()}`;
+    try {
+      await sendCommand({
+        type: "run_pipeline",
+        job_id: jobId,
+        run_proxies: !!flags.run_proxies,
+        run_transcription: !!flags.run_transcription,
+        run_tagging: !!flags.run_tagging,
+        run_audio_index: !!flags.run_audio_index,
+        run_audio_sync: !!flags.run_audio_sync,
+      });
+    } catch (e) {
+      console.error(`run_pipeline failed: ${e}`);
+    }
+  }, []);
+
+  useEffect(() => {
+    return subscribe((ev) => {
+      if (submitting && ev.type === "project_organized") {
+        setResult(ev); setError(null); setSubmitting(false);
+        // Ryan: "When I click organize it should automatically start the
+        // Run Pipeline process." Fire it with the same "everything
+        // applicable" defaults the manual modal used to default to.
+        const f = flagsRef.current;
+        runPipeline({
+          run_proxies: f.hasAroll || f.hasBroll,
+          run_transcription: f.hasAroll,
+          run_tagging: f.hasBroll,
+          run_audio_index: f.hasAudio,
+          run_audio_sync: f.hasAroll && f.hasAudio,
+        });
+      } else if (submitting && ev.type === "error") {
+        setError(ev.message); setResult(null); setSubmitting(false);
+      }
+    });
+  }, [subscribe, submitting, runPipeline]);
 
   // Every currently-declared path, across all four zones, mapped to which
   // zone it's under -- used to catch cross-zone duplicates before they
@@ -130,9 +179,6 @@ export default function PMTab({ subscribe, project }) {
       setAssetPaths((prev) => [...new Set([...prev, ...toAdd])]);
       return;
     }
-    // Real kind: register with PreCut's own Project model directly. This
-    // is the fix for Ryan's report -- footage gets declared once, here,
-    // and Ingest's pipeline runs against the same `project.sources`.
     for (const p of toAdd) {
       try {
         await sendCommand({ type: "add_source", path: p, kind });
@@ -150,18 +196,20 @@ export default function PMTab({ subscribe, project }) {
     }
     await sendCommand({ type: "remove_source", path });
     await sendCommand({ type: "get_project_state" });
-    if (kind === "aroll") {
-      setDualUseAroll((prev) => {
-        if (!(path in prev)) return prev;
-        const next = { ...prev };
-        delete next[path];
-        return next;
-      });
-    }
   }, []);
 
-  const toggleDualUse = useCallback((path) => {
-    setDualUseAroll((prev) => ({ ...prev, [path]: !prev[path] }));
+  // Persists immediately via set_source_dual_use -- not just recorded for
+  // the next Organize. This is the actual fix for the tagging bug: the
+  // pipeline reads project.sources[].dual_use directly (pipeline.py's
+  // _collect_videos), so the flag has to be live on the backend source
+  // the moment it's checked, not just folded into organize_project later.
+  const toggleDualUse = useCallback(async (path, current) => {
+    try {
+      await sendCommand({ type: "set_source_dual_use", path, dual_use: !current });
+    } catch (e) {
+      console.error(`set_source_dual_use failed: ${e}`);
+    }
+    await sendCommand({ type: "get_project_state" });
   }, []);
 
   const handlePickFiles = useCallback(async (kind) => {
@@ -243,7 +291,7 @@ export default function PMTab({ subscribe, project }) {
     for (const kind of ["aroll", "broll", "audio"]) {
       for (const s of realByKind[kind]) {
         const entry = { path: s.root_path, kind: CONTRACT_KIND[kind] };
-        if (kind === "aroll" && dualUseAroll[s.root_path]) entry.dual_use = true;
+        if (kind === "aroll" && s.dual_use) entry.dual_use = true;
         sources.push(entry);
       }
     }
@@ -263,13 +311,35 @@ export default function PMTab({ subscribe, project }) {
     }
   };
 
+  // ---- Pipeline run (manual re-run modal) + progress, absorbed from
+  // IngestTab -----------------------------------------------------------
+  const [showRunModal, setShowRunModal] = useState(false);
+  const handleConfirmRun = useCallback((flags) => {
+    setShowRunModal(false);
+    runPipeline(flags);
+  }, [runPipeline]);
+  const handleCancel = useCallback(async () => {
+    for (const jobId of Object.keys(jobs)) {
+      if (jobs[jobId].status === "running") {
+        await sendCommand({ type: "cancel_job", job_id: jobId });
+      }
+    }
+  }, [jobs]);
+
+  const activePipelineJobs = Object.entries(jobs).filter(([, j]) => j.kind === "pipeline");
+  const hasCompletedPipeline = activePipelineJobs.some(([, j]) => j.status === "done");
+  const canAdvanceToIdeas = hasCompletedPipeline && !hasRunning && onGoToIdeas;
+
+  // Audio sync preview selection (absorbed from AETab)
+  const [selectedPair, setSelectedPair] = useState(null);
+
   return (
     <div className="pm-tab">
       <h2>Project Manager</h2>
       <p className="pm-tab-sub">
-        Point this at one real project. Footage declared here is what
-        Ingest processes and what the Project Manifest records — one
-        declaration, not two.
+        Point this at one real project. Declare footage once below —
+        Organize writes the Project Manifest and starts processing it in
+        the same step.
       </p>
 
       <FolderField
@@ -311,15 +381,15 @@ export default function PMTab({ subscribe, project }) {
         <div className="pm-tab-dualuse">
           <span className="pm-tab-dualuse-label">
             Dual-use — A-Roll that also serves as B-Roll (the subject keeps
-            talking while the shooter grabs coverage). Culled under both
-            rulesets later; check any that apply:
+            talking while the shooter grabs coverage). Tagged as B-roll by
+            the pipeline the moment this is checked; check any that apply:
           </span>
           {realByKind.aroll.map((s) => (
             <label key={s.root_path} className="pm-tab-dualuse-row">
               <input
                 type="checkbox"
-                checked={!!dualUseAroll[s.root_path]}
-                onChange={() => toggleDualUse(s.root_path)}
+                checked={!!s.dual_use}
+                onChange={() => toggleDualUse(s.root_path, !!s.dual_use)}
               />
               <span title={s.root_path}>{s.display_name || basename(s.root_path)}</span>
             </label>
@@ -334,7 +404,7 @@ export default function PMTab({ subscribe, project }) {
       />
 
       <button className="pm-tab-submit" disabled={!canSubmit} onClick={handleOrganize}>
-        {submitting ? "Organizing…" : "Organize"}
+        {submitting ? "Organizing…" : "Organize (writes the manifest and starts processing)"}
       </button>
 
       {error && <pre className="pm-tab-error">{error}</pre>}
@@ -357,7 +427,334 @@ export default function PMTab({ subscribe, project }) {
           </details>
         </div>
       )}
+
+      {/* ---- Processing, absorbed from IngestTab ---- */}
+      <div className="pm-tab-pipeline">
+        <div className="action-bar">
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowRunModal(true)}
+            disabled={totalSources === 0 || hasRunning}
+          >
+            {hasRunning ? "Processing…" : "Run pipeline"}
+          </button>
+          {hasRunning && (
+            <button className="btn btn-danger" onClick={handleCancel}>
+              Cancel
+            </button>
+          )}
+          <div className="action-spacer" />
+          <div className="action-hint">
+            Organize starts this automatically. Use this button to re-run
+            (e.g. more footage added, or to skip a stage on purpose).
+          </div>
+        </div>
+
+        {showRunModal && (
+          <RunPipelineModal
+            hasAroll={hasAroll}
+            hasBroll={hasBroll}
+            hasAudio={hasAudio}
+            onConfirm={handleConfirmRun}
+            onClose={() => setShowRunModal(false)}
+          />
+        )}
+
+        {activePipelineJobs.length === 0 ? (
+          <div className="empty-state">
+            Drop footage above, then Organize (or Run pipeline) to process it.
+            <br />
+            A-roll proxies + transcription and B-roll proxies + tagging run in parallel.
+          </div>
+        ) : (
+          activePipelineJobs.map(([jobId, job]) =>
+            Object.entries(job.stages || {}).map(([stageName, stage]) => (
+              <StageProgress
+                key={`${jobId}-${stageName}`}
+                stageName={stageName}
+                stage={stage}
+              />
+            ))
+          )
+        )}
+
+        {/* Sync review, absorbed from AETab -- Ryan: this was never
+            distinct Assistant Editor work, it's the same review the
+            Ingest/PM merge already covers. */}
+        <SyncMatrix
+          pairs={_collectLivePairs(jobs)}
+          syncState={project.audio_sync}
+          liveStatus={_liveSyncStatus(jobs)}
+          onSelectPair={project.audio_sync?.pairs?.length
+            ? (pair, key) => setSelectedPair({ pair, key })
+            : undefined}
+          selectedKey={selectedPair?.key}
+        />
+        {project.audio_sync?.pairs?.length > 0 && (
+          <div className="ae-tab-preview">
+            <AudioSyncPreview pair={selectedPair?.pair} />
+          </div>
+        )}
+
+        <TranscriptsSection project={project} />
+
+        {canAdvanceToIdeas && (
+          <div className="floating-next-bar">
+            <div className="floating-next-text">
+              <span className="floating-next-title">Indexing complete</span>
+              <span className="floating-next-sub">
+                Footage transcribed and tagged. Ready for ideas?
+              </span>
+            </div>
+            <button className="btn btn-primary" onClick={onGoToIdeas}>
+              Next → Ideas
+            </button>
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+function TranscriptsSection({ project }) {
+  const rows = [];
+  for (const src of project.sources) {
+    if (src.kind !== "aroll") continue;
+    for (const [filePath, status] of Object.entries(src.files || {})) {
+      rows.push({
+        sourcePath: filePath,
+        displayName: _basename(filePath),
+        folder: src.display_name,
+        ...status,
+      });
+    }
+  }
+  if (rows.length === 0) return null;
+
+  const statusOrder = { done: 0, success: 0, undefined: 1, failed: 2 };
+  rows.sort((a, b) => {
+    const as = statusOrder[a.transcript_status] ?? 1;
+    const bs = statusOrder[b.transcript_status] ?? 1;
+    if (as !== bs) return as - bs;
+    return a.displayName.localeCompare(b.displayName);
+  });
+
+  const transcribedCount = rows.filter(r => r.transcript_status === "done").length;
+
+  return (
+    <div className="transcripts-section">
+      <div className="transcripts-header">
+        <div className="transcripts-section-title">Transcripts</div>
+        <div className="transcripts-count">
+          {transcribedCount} of {rows.length} A-roll file{rows.length !== 1 ? "s" : ""} transcribed
+        </div>
+      </div>
+      <div className="transcripts-list">
+        {rows.map((row) => (
+          <TranscriptRow key={row.sourcePath} row={row} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TranscriptRow({ row }) {
+  const status = row.transcript_status;
+  const proxyStatus = row.proxy_status;
+
+  let statusLabel, statusClass;
+  if (status === "done") {
+    statusLabel = `${row.transcript_phrase_count ?? "?"} phrases`;
+    statusClass = "success";
+  } else if (status === "failed") {
+    statusLabel = row.transcript_error || "failed";
+    statusClass = "error";
+  } else if (proxyStatus === "success" || proxyStatus === "skipped") {
+    statusLabel = "queued for transcription…";
+    statusClass = "warn";
+  } else if (proxyStatus === "failed") {
+    statusLabel = "proxy failed — cannot transcribe";
+    statusClass = "error";
+  } else {
+    statusLabel = "awaiting proxy";
+    statusClass = "dim";
+  }
+
+  return (
+    <div className={`transcript-row ${statusClass}`}>
+      <div className="transcript-row-main">
+        <div className="transcript-row-name">{row.displayName}</div>
+        <div className="transcript-row-folder">{row.folder}</div>
+      </div>
+      <div className={`transcript-row-status ${statusClass}`}>
+        {statusLabel}
+      </div>
+    </div>
+  );
+}
+
+function _basename(p) {
+  const parts = p.split("/");
+  return parts[parts.length - 1] || p;
+}
+
+function _collectLivePairs(jobs) {
+  const all = [];
+  for (const job of Object.values(jobs)) {
+    const stage = job?.stages?.audio_sync;
+    if (stage?.pairs) all.push(...stage.pairs);
+  }
+  return all;
+}
+
+function _liveSyncStatus(jobs) {
+  for (const job of Object.values(jobs)) {
+    const stage = job?.stages?.audio_sync;
+    if (stage?.status === "running") return "running";
+    if (stage?.status === "done") return "done";
+  }
+  return "idle";
+}
+
+/**
+ * Stage picker modal shown when user clicks "Run pipeline" manually
+ * (Organize triggers the same command automatically with "everything
+ * applicable" defaults; this is for deliberate re-runs/partial runs).
+ * Absorbed from IngestTab verbatim except sourcesByKind -> hasAroll/
+ * hasBroll/hasAudio booleans (PMTab already computes those, including
+ * dual-use in hasBroll).
+ */
+function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) {
+  const [flags, setFlags] = useState({
+    run_proxies: hasAroll || hasBroll,
+    run_transcription: hasAroll,
+    run_tagging: hasBroll,
+    run_audio_index: hasAudio,
+    run_audio_sync: hasAroll && hasAudio,
+  });
+
+  const toggle = (key) => setFlags(f => ({ ...f, [key]: !f[key] }));
+  const anySelected = Object.values(flags).some(Boolean);
+
+  const presets = [
+    {
+      label: "Everything",
+      title: "Run every applicable stage",
+      apply: () => setFlags({
+        run_proxies: hasAroll || hasBroll,
+        run_transcription: hasAroll,
+        run_tagging: hasBroll,
+        run_audio_index: hasAudio,
+        run_audio_sync: hasAroll && hasAudio,
+      }),
+    },
+    {
+      label: "Proxies only",
+      title: "Just encode proxies — useful for getting a lighter cut going",
+      apply: () => setFlags({
+        run_proxies: true,
+        run_transcription: false,
+        run_tagging: false,
+        run_audio_index: false,
+        run_audio_sync: false,
+      }),
+    },
+  ];
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal run-pipeline-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Run pipeline</h2>
+          <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+
+        <div className="modal-body">
+          <div className="run-pipeline-section">
+            <div className="run-pipeline-section-label">PRESETS</div>
+            <div className="run-pipeline-presets">
+              {presets.map(p => (
+                <button
+                  key={p.label}
+                  className="btn btn-ghost run-pipeline-preset"
+                  onClick={p.apply}
+                  title={p.title}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="run-pipeline-section">
+            <div className="run-pipeline-section-label">STAGES</div>
+            <StageCheckbox
+              checked={flags.run_transcription}
+              onChange={() => toggle("run_transcription")}
+              label="Transcription"
+              sub="Whisper transcribes A-roll. Proxies are created automatically if needed."
+              disabled={!hasAroll}
+              disabledReason="Needs A-roll sources"
+            />
+            <StageCheckbox
+              checked={flags.run_tagging}
+              onChange={() => toggle("run_tagging")}
+              label="B-roll tagging"
+              sub="AI tags each B-roll clip (including dual-use A-roll) with searchable keywords. Proxies are created automatically if needed."
+              disabled={!hasBroll}
+              disabledReason="Needs B-roll sources (or A-roll flagged dual-use)"
+            />
+            <StageCheckbox
+              checked={flags.run_audio_index}
+              onChange={() => toggle("run_audio_index")}
+              label="Audio index"
+              sub="ffprobe metadata for lav audio files (fast)."
+              disabled={!hasAudio}
+              disabledReason="Needs audio sources"
+            />
+            <StageCheckbox
+              checked={flags.run_audio_sync}
+              onChange={() => toggle("run_audio_sync")}
+              label="Audio sync"
+              sub="Cross-correlate A-roll camera audio with lav recordings."
+              disabled={!hasAroll || !hasAudio}
+              disabledReason="Needs both A-roll and audio sources"
+            />
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={() => onConfirm(flags)}
+            disabled={!anySelected}
+          >
+            Run
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StageCheckbox({ checked, onChange, label, sub, disabled, disabledReason }) {
+  return (
+    <label
+      className={`run-pipeline-stage ${disabled ? "disabled" : ""}`}
+      title={disabled ? disabledReason : undefined}
+    >
+      <input
+        type="checkbox"
+        checked={checked && !disabled}
+        disabled={disabled}
+        onChange={onChange}
+      />
+      <div className="run-pipeline-stage-body">
+        <div className="run-pipeline-stage-label">{label}</div>
+        <div className="run-pipeline-stage-sub">{disabled ? disabledReason : sub}</div>
+      </div>
+    </label>
   );
 }
 

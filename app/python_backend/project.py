@@ -161,6 +161,17 @@ class SourceFolder:
     display_name: str           # what UI shows (usually basename of path)
     is_file: bool               # True if single file, False if folder
 
+    # Post House Project Manifest contract's dual_use flag (§2.3): this
+    # A-roll source is ALSO processed as B-roll (the subject keeps talking
+    # while the shooter grabs coverage). Only meaningful when kind=="aroll".
+    # Added 2026-09-03 after Ryan found run_pipeline never tagged dual-use
+    # footage: add_source is path-keyed with exactly one kind per path (see
+    # its own docstring), so a dual-use folder never appeared in
+    # sources_by_kind("broll") for pipeline.py's B-roll collection to find.
+    # This flag lets that collection include it without needing a second,
+    # conflicting SourceFolder record for the same path.
+    dual_use: bool = False
+
     # Per-file status, keyed by absolute source file path
     # value is a dict with keys: proxy_status, proxy_path, transcript_status,
     # tag_status, errors. Not all stages apply to all kinds.
@@ -177,6 +188,7 @@ class SourceFolder:
             added_at=d["added_at"],
             display_name=d["display_name"],
             is_file=d["is_file"],
+            dual_use=d.get("dual_use", False),
             files=d.get("files", {}),
         )
 
@@ -485,6 +497,20 @@ class Project:
         before = len(self.sources)
         self.sources = [s for s in self.sources if s.root_path != abs_path]
         return len(self.sources) < before
+
+    def set_dual_use(self, path: str, dual_use: bool) -> bool:
+        """Flag/unflag an A-roll source as also-B-roll. Only valid on
+        kind=="aroll" sources -- returns False (no-op) otherwise, since
+        dual_use only means anything relative to A-roll's own primary use.
+        """
+        abs_path = str(Path(path).resolve())
+        for src in self.sources:
+            if src.root_path == abs_path:
+                if src.kind != "aroll":
+                    return False
+                src.dual_use = dual_use
+                return True
+        return False
 
     def sources_by_kind(self, kind: SourceKind) -> list[SourceFolder]:
         return [s for s in self.sources if s.kind == kind]

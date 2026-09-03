@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { sendCommand } from "../App.jsx";
 import PMTab from "./tabs/PMTab.jsx";
-import IngestTab from "./tabs/IngestTab.jsx";
-import AETab from "./tabs/AETab.jsx";
 import IdeasTab from "./tabs/IdeasTab.jsx";
 import LogView from "../components/LogView.jsx";
 
@@ -10,14 +8,15 @@ import LogView from "../components/LogView.jsx";
  * ProjectView is the main workspace once a project is loaded.
  *
  * Tabs:
- *   0. Project — Post House Task 1.1: the Project Manager (client/type/
- *      manifest, independent of the PreCut project model below it)
- *   1. Ingest — drop zones + proxy/index progress
- *   2. Transcripts — per-A-roll transcription status
- *   3. Assistant Editor — Post House Task 2.1: reviews the audio sync
- *      Ingest already computed, plus a playable preview (new — PreCut's
- *      own frontend has no video/audio playback surface anywhere else).
- *   4. Ideas — AI producer analyze / refine / pick
+ *   0. Project — the whole first stage: declare the project and its
+ *      footage, Organize (writes the manifest, auto-starts processing),
+ *      pipeline progress, audio-sync review, transcripts. Used to be
+ *      three tabs (Project Manager / Ingest / Assistant Editor); Ryan
+ *      merged them 2026-09-03 after finding Ingest asked the same
+ *      footage-declaration questions PMTab already had, and that the
+ *      Assistant Editor tab's sync review wasn't distinct AE work at
+ *      all — see PMTab.jsx's own docstring for the full account.
+ *   1. Ideas — AI producer analyze / refine / pick
  *
  * The tabs are rendered side-by-side with a persistent activity log
  * on the right. The tabs all share the same subscriber bus from App.
@@ -218,27 +217,10 @@ export default function ProjectView({
             label="00 · Project"
             active={activeTab === "pm"}
             onClick={() => setActiveTab("pm")}
-          />
-          <Tab
-            label="01 · Ingest"
-            active={activeTab === "ingest"}
-            onClick={() => setActiveTab("ingest")}
             sub={project.sources.length ? `${project.sources.length} source${project.sources.length !== 1 ? "s" : ""}` : "no sources yet"}
           />
-          {/* Drop 4.24: the standalone "02 · Transcripts" tab was removed —
-              its content moved inline to IngestTab below the audio-sync
-              matrix. It was purely informational so having it as its own
-              stage was extra clicks for no input. */}
           <Tab
-            label="02 · Assistant Editor"
-            active={activeTab === "ae"}
-            onClick={() => setActiveTab("ae")}
-            sub={project.audio_sync?.pairs?.length
-              ? `${project.audio_sync.pairs.filter((p) => p.score >= 10 || p.promoted_via_consistency).length} synced`
-              : "no sync yet"}
-          />
-          <Tab
-            label="03 · Ideas"
+            label="01 · Ideas"
             active={activeTab === "ideas"}
             onClick={() => setActiveTab("ideas")}
             sub={ideas.length ? `${ideas.length} cards` : "none"}
@@ -270,18 +252,13 @@ export default function ProjectView({
       <div className={`project-main ${showLog ? "log-visible" : "log-hidden"}`}>
         <section className="project-stage">
           {activeTab === "pm" && (
-            <PMTab subscribe={subscribe} project={project} />
-          )}
-          {activeTab === "ingest" && (
-            <IngestTab
+            <PMTab
+              subscribe={subscribe}
               project={project}
               jobs={jobs}
               hasRunning={hasRunning}
               onGoToIdeas={() => setActiveTab("ideas")}
             />
-          )}
-          {activeTab === "ae" && (
-            <AETab project={project} />
           )}
           {activeTab === "ideas" && (
             <IdeasTab

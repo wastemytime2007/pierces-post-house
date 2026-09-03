@@ -246,9 +246,22 @@ def run_pipeline(
 # ---------------------------------------------------------------------------
 
 def _collect_videos(proj: Project, kind: SourceKind) -> list[tuple[Path, SourceFolder]]:
-    """Find all video files across sources of a given kind."""
+    """Find all video files across sources of a given kind.
+
+    B-roll additionally includes dual_use A-roll sources (Post House
+    Project Manifest contract §2.3: the subject keeps talking while the
+    shooter grabs coverage from the same footage). Proxy encoding is
+    identical regardless of kind (_encode_proxy takes no kind parameter)
+    and keyed by output path next to the source, so re-collecting an
+    already-proxied dual_use file here is a safe, idempotent skip, not a
+    conflicting second encode.
+    """
+    sources = list(proj.sources_by_kind(kind))
+    if kind == "broll":
+        sources += [s for s in proj.sources_by_kind("aroll") if s.dual_use]
+
     out: list[tuple[Path, SourceFolder]] = []
-    for src in proj.sources_by_kind(kind):
+    for src in sources:
         root = Path(src.root_path)
         if not root.exists():
             continue

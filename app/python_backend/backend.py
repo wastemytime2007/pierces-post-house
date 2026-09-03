@@ -273,6 +273,18 @@ def handle_remove_source(cmd: dict) -> None:
     emit({"type": "source_removed", "path": path, "ok": removed})
 
 
+def handle_set_source_dual_use(cmd: dict) -> None:
+    proj = _require_project()
+    if proj is None:
+        return
+    path = cmd.get("path", "")
+    dual_use = bool(cmd.get("dual_use", False))
+    ok = proj.set_dual_use(path, dual_use)
+    if ok:
+        proj.save()
+    emit({"type": "source_dual_use_set", "path": path, "dual_use": dual_use, "ok": ok})
+
+
 def handle_get_project_state(cmd: dict) -> None:
     proj = _require_project()
     if proj is None:
@@ -764,6 +776,7 @@ HANDLERS = {
     "forget_project": handle_forget_project,
     "add_source": handle_add_source,
     "remove_source": handle_remove_source,
+    "set_source_dual_use": handle_set_source_dual_use,
     "get_project_state": handle_get_project_state,
     # Task 1.1: Project Manager tab
     "organize_project": handle_organize_project,
