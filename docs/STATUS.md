@@ -402,17 +402,52 @@ against, just shifted to "Next."
 
 Task 1.0 and Task 1.1 are both signed off by Ryan (see § Done, 2026-09-03).
 
-1. **Task 2.1 — Assistant Editor: wrap PreCut's audio sync on one
-   A-roll/lav pair.** Per `CLAUDE.md` §7 (prove on one unit before
-   scaling): one real A-roll clip and its one matching lav/audio file,
-   nothing broader, until Ryan has reviewed and confirmed the result.
-   `precut-capabilities` skill must be reloaded before writing any code
-   for this — confirm what PreCut's existing sync code already does
-   before adding to it. Scope, UI surface, and exact sign-off criteria
-   are not yet defined — that's the first thing to nail down with Ryan
-   before code, per his own process rule ("we work on one thing at a
-   time... you don't move to the next thing until i have seen reviewed
-   tested each role").
+1. **Task 2.1 — Assistant Editor tab, wrapping PreCut's existing
+   `sync_project()` unchanged, proven on one real shoot.**
+   Scope corrected 2026-09-03: an earlier draft of this task wrongly
+   said "one A-roll/lav pair." Ryan corrected it — PreCut's
+   `sync_project()` (`precut_pipeline/audio_sync.py:662`) already runs
+   the full cross product, every A-roll proxy × every audio source
+   (`total = len(aroll_entries) * len(audio_files)`), scores each pair
+   via `sync_pair()`, and groups reliable pairs by speaker via
+   `group_audio_files()` — that's how multiple lavs/speakers sync
+   correctly today, and the smallest real unit has to exercise that,
+   not a fake 1:1 restriction. Confirmed by reading the code, not
+   assumed.
+   **Test unit (Ryan's choice): Runnells Day 1**, the benchmark project
+   already staged in this repo (`benchmark/runnells-day-1/manifest.json`).
+   Real files on disk: 2 A-roll clips (`DJI_20260430071514_0005_D.MP4`,
+   `..._0006_D.MP4`) × 4 audio files across two mic units (`DJI_02_*`,
+   `DJI_03_*`) — 8 real pairs, already exercising the cross-product and
+   multi-speaker grouping this task exists to prove, not a synthetic
+   fixture.
+   **Tab scope (Ryan's choice): sync results + a playable check** — show
+   every pair `sync_project()` found reliable (score, offset, which
+   audio file grouped with which A-roll), AND let Ryan actually scrub or
+   preview a synced pair in the app to hear/see it line up, not just
+   read a score. Explicitly not in scope yet: writing the accepted sync
+   back into the project's `audio_sync` state for downstream export —
+   that's a later step once the review surface itself is trusted.
+   **`precut-capabilities` check done 2026-09-03, before any code:**
+   PreCut already has the sync-results half — `src/components/
+   SyncMatrix.jsx`, a full A-roll × lav grid (score/offset, live and
+   persisted modes, cross-validation labeling), already wired into
+   `IngestTab.jsx`. **Reuse it directly, do not rebuild it.** The
+   playable-check half is genuinely new: PreCut's entire frontend has
+   no video or audio playback surface anywhere (`grep` for `<video`,
+   `<audio`, `convertFileSrc`, any player component — zero hits). That
+   part is real new work, not a duplicate build.
+   Mechanically: reuse `sync_project()` and its existing progress-event
+   shape directly, plus the existing `SyncMatrix` component as-is; one
+   new IPC command in `backend.py`; one new tab in `ProjectView.jsx`
+   following the same `sendCommand`/`subscribe` pattern as PMTab,
+   rendering `<SyncMatrix>` plus a new minimal player (Tauri's
+   `convertFileSrc` into a plain `<video>`/`<audio>` element,
+   click-a-row-to-load, seek to the pair's synced offset) — the only
+   genuinely new component this task requires.
+   **Signed off when:** Ryan runs it against Runnells Day 1 in the app,
+   reviews the sync pairs and previews at least one, and confirms the
+   result is correct. Only then does the next task get written in here.
 
 ## Attempts ledger
 
