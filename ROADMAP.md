@@ -574,6 +574,80 @@ with Ryan touching only the intake and the checkpoints.
     exactly as recommended.
   Contract is fully settled — no open blockers. Phase 2 (PM
   implementation) can start.
+- **2026-09-02/03 — THE RE-SCOPE. Phase 4's motion cull is retired as the
+  flagship problem; the project's actual shape was mis-set from a wrong
+  model of PreCut, and this entry fixes that for good.** Full detail and
+  Ryan's own words: `docs/REQUIREMENTS.md` (new, permanent, never
+  paraphrased). Summary of what changed and why:
+  1. **Ryan named PreCut's real shortcomings directly**, the first and
+     only time: story-angle generation "tends to skim through
+     transcripts and that leaves a lot on the table so that we end up
+     missing a lot of the story that matters"; a proposed two-mode fix
+     (a directed "here's what I remember" button vs. an undirected
+     "read everything" button); a trust problem with AI-fed story
+     ideas; and a coverage gap — "all of the other roles... everything
+     after the Creative Editor's job." This was never written into this
+     log when it was said, which is why it was lost to a later
+     compaction and had to be recovered from the raw session transcript
+     on 2026-09-03. Not letting that repeat is the entire reason
+     `docs/REQUIREMENTS.md` now exists.
+  2. **A full read of PreCut's source (26 backend modules, the Tauri/
+     React app, all docs) replaced assumption with ground truth**,
+     correcting two wrong claims the Lead made in this same session: (a)
+     that PreCut has no transcript-content search — true only in the
+     narrow sense of an indexed query surface; PreCut's `story_planner`
+     already does transcript-driven idea generation, range selection,
+     and synced export, which the Lead initially missed entirely, then
+     mis-scoped a second time by claiming PreCut's audio-sync system
+     would need to be rebuilt when it already exists and works, just in
+     one direction (video-anchored select → find its synced audio, not
+     the reverse). Ryan corrected both directly: "PreCut generates ideas
+     based on the transcript and selects the portions of that
+     transcript it wants to use for that idea and then pulls those
+     selects onto a timeline fully synced."
+  3. **The real, measured gap, quantified**: `story_planner.
+     generate_angles()` is one Claude call, 4096 output tokens, asking
+     for 3 angles of 1-3 ranges each — a ceiling of roughly 9 ranges,
+     ~13 minutes of material, per run, and it reads every transcript in
+     a project concatenated into one prompt. Ryan's own hand-built pass
+     over comparable material (the Runnells corpus) produced 250
+     selects. Nine versus two-hundred-fifty is the entire justification
+     for building anything at all.
+  4. **`posthouse/moments.py` deleted.** Built before this re-scope, it
+     duplicated PreCut's story planner with weaker (keyword) selection
+     and, critically, no audio sync — a worse version of something
+     already shipped. Its media-resolution logic is recoverable from git
+     history if ever needed; nothing else in it survives.
+  5. **The product question was settled explicitly**: this is a new,
+     separate application, not a PreCut rewrite or "PreCut Pro."
+     Reasons, all Ryan's own prior rulings applied consistently: PreCut
+     must keep working for real client jobs throughout, so it is never
+     edited in place; the role-pipeline UX is a different shape of app
+     than PreCut's two-tab Ingest/Ideas flow; PreCut is donor, wrapped
+     through the three doors, and is superseded role by role only once
+     each role is proven (Phase 9), never merged.
+  6. **Two new non-negotiable rules** (`CLAUDE.md` §7-8): prove every new
+     capability on one clip/transcript/interview before touching a
+     second one, broadening only as its own approved step; and one role
+     in flight at a time, with Ryan's tested confirmation on real
+     material as the only valid sign-off, not a passing test suite.
+     A new `precut-capabilities` skill loads before any new code is
+     written, specifically to prevent the mistake in point 2 from
+     recurring for a different capability.
+  7. **The task list this unlocks** (see `docs/STATUS.md` § Next):
+     verify the already-built Project Manager on one real project (cost:
+     nearly zero); then Assistant Editor split into two real halves —
+     sync/organize (PreCut already does this well, wrap it) and
+     exhaustive transcript flagging (the one confirmed real gap,
+     starting on the single interview Ryan already hand-selected from,
+     so there's a real answer key); then Creative Editor structuring and
+     export through PreCut's existing pipeline. Colorist and Audio
+     Designer untouched, unchanged from original scope, task-listed only
+     once Creative Editor is signed off.
+  **The Phase 4 motion-cull result stands as recorded** (negative
+  transfer, grid-edge investigation, all prior entries) — it is not
+  erased, just no longer the flagship problem. It remains parked, to be
+  revisited only with a genuinely new idea, per Ryan's own instruction.
 - **2026-09-02 — Widened both grid-edge-pinned grids to test "does it
   want to be disabled": NO, for either. But the tie-broken value the
   wider grid picked for direction-stability is measurably WORSE on real

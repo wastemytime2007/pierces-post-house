@@ -6,35 +6,56 @@ everything in flight.
 
 ## Current stage — see § Done for the latest slice
 
-**PHASES 0-3 COMPLETE. Phase 4's motion cull is PARKED, not shipped** — see
-the 2026-09-02 Decision Log entries for why (single-signal detectors fitted
-on Runnells do not generalize to real drone footage; ruled out grid-fitting
-as the cause). Not being worked on right now.
+**READ `docs/REQUIREMENTS.md` FIRST.** It carries Ryan's founding words —
+why this project exists, the five roles in his own description, the four
+PreCut shortcomings he named directly, and the process failure that led to
+this re-scope. That file, not this section, is the source of truth for intent.
 
-**The project re-scoped after Phase 4's result.** Ryan surfaced two sibling
-systems — Agent Studio (content strategy/doctrine, never actually ran) and a
-Content-Engine Obsidian vault (documentation of that system, also never run)
-— plus a set of learning resources on agent design. Conclusion: this repo's
-tools and Agent Studio's doctrine were two halves of one blocked role
-("Footage & Assembly Editor," Agent Studio's own roster, marked BLOCKED
-pending tools this repo builds). Doctrine ported to four global skills
-(`soldfast-content-funnels`, `longform-story-craft`, `footage-assembly-
-method`, `hook-writing`); Agent Studio's own code (`studio.py`) confirmed
-dead and left alone.
+**This is a new, separate application — not a PreCut rewrite.** PreCut is
+never modified. It is the donor: its ingest, transcription, tagging, audio
+sync, and Premiere export are proven and get wrapped, never rebuilt. This app
+grows real code only where PreCut falls short. See `precut-capabilities`
+skill for exactly what PreCut does and doesn't do, verified from its source
+on 2026-09-03 after this project spent three days operating on a wrong model
+of it.
 
-**First working, Ryan-verified slice: `posthouse/moments.py`.** Turns a plain-
-language question into real, machine-verified footage moments, returned as
-a Premiere sequence. Ryan asked for "tearing out the kitchen cabinets,"
-opened the resulting XML, checked it against the real footage himself:
-"They are about the cabinets." This is the first thing in this project's
-history confirmed working by the person who has to trust it, not just by a
-test suite. Full detail in the 2026-09-02 Decision Log / Done entries.
+**The real, confirmed gap** (Ryan's own words, 2026-09-02): PreCut's story
+planner "tends to skim through transcripts and that leaves a lot on the
+table." Measured: one Claude call, ~9 ranges / ~13 minutes of material per
+run, reading a whole project's transcripts concatenated into one prompt.
+Ryan's own hand-pass over comparable material produced 250 selects. That gap
+— exhaustive, verified reading vs. one skimmed pass — is the thing worth
+building. Nothing else about PreCut is being replaced.
 
-**Two durable process lessons landed globally, not just in this repo**
-(`~/.claude/CLAUDE.md`, `agent-guardrails` skill): slice by outcome, never by
-component — Phase 4 burned three days building layered machinery with
-nothing to look at until the last piece landed; and "done" is Ryan's call,
-not the test suite's.
+**PHASES 0-3 (safety net, harvest layer, Project Manager code, benchmark
+harness) are built but Phase 0/1/3 output was never shown to Ryan; the
+Project Manager specifically has never been verified by him** — that's
+task 1.1 below, the cheapest possible next step.
+
+**Phase 4's motion cull is PARKED**, not shipped, not being worked on. Five
+single-signal detectors were tried; none beat "keep everything" on real
+drone footage; grid-fitting was ruled out as the cause. Full history in the
+Decision Log. Revisit only with a genuinely new idea, per Ryan's own call.
+
+**`posthouse/moments.py` was built, verified once by Ryan on a real query
+("They are about the cabinets" — the first thing in this project confirmed
+working by the person who has to trust it), then deleted 2026-09-03** once a
+full read of PreCut showed it duplicated the existing story planner with
+weaker selection and no audio sync. The verification method it proved
+(machine-check every quote before showing it) survives in the
+`verified-quotes` skill; the module itself does not.
+
+**Agent Studio and the Content-Engine Obsidian vault were surveyed and
+retired as separate systems.** Both were almost entirely doctrine, never
+run. Value ported to four global skills (`soldfast-content-funnels`,
+`longform-story-craft`, `footage-assembly-method`, `hook-writing`) that the
+Creative Editor role loads. `studio.py` and the vault are dead, left alone,
+not revived.
+
+**New non-negotiable rules, `CLAUDE.md` §7-8**: prove every new capability
+on one clip/transcript/interview before scaling, and one role in flight at a
+time with Ryan's tested sign-off as the only valid "done." Both exist
+because this session violated them once each.
 
 ## In progress
 
@@ -300,25 +321,23 @@ not the test suite's.
 
 ## Next (in order)
 
-1. **Ryan's call**: what the next small, checkable slice on `moments.py`
-   is. Live candidates, none started: (a) try queries phrased as things
-   people actually SAID rather than summary language, since the measured
-   40.5%/66.7%/73.8% recall@1/5/10 was tested against Ryan's own
-   after-the-fact "why" summaries, a harder case than a real query; (b)
-   wire up `harvest/sync.py` so the audio-only lav/interview moments
-   (29% of this corpus) can actually reach a timeline instead of just
-   the review log; (c) point it at a live, untranscribed SoldFast
-   project instead of the already-transcribed Runnells corpus — a
-   materially different and harder test.
-2. Not yet decided: whether/when to revisit the parked Phase 4 motion
-   cull (see the 2026-09-02 Decision Log for the negative transfer
-   result and the open questions it left).
-3. Low priority, still open from the original gameplan discussion:
-   ratify the "internal tool first, product maybe later" and "review
-   happens in Premiere" assumptions with Ryan.
-4. Housekeeping: Ryan's real Historic Valley Junction answer key still
-   lives only at `~/Desktop/Pierce Cut Historic Valley Junction 0002
-   (detector picks).xml`, not staged into `benchmark/`.
+Per `CLAUDE.md` §8 (one role in flight at a time), only the next task is
+listed. Later tasks exist in `docs/REQUIREMENTS.md`'s companion plan but are
+not written here as committed work until this one is signed off — writing
+them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
+against, just shifted to "Next."
+
+1. **Task 1.1 — verify the Project Manager on one real project.** Run
+   `posthouse/projectmanager.py` (already built, untouched by anything
+   this session) against one real project folder. Ryan opens the
+   resulting manifest and organized output and says whether it's
+   correct and useful. No code changes expected. This is the cheapest
+   task available and it has been outstanding since Phase 2 shipped —
+   Ryan has never seen this role's output.
+   **Signed off when:** Ryan confirms the manifest and organization are
+   right on that one real project. Only then does Task 2.1 (Assistant
+   Editor: wrap PreCut's audio sync on one A-roll/lav pair) get written
+   in here.
 
 ## Attempts ledger
 

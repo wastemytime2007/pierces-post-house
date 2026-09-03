@@ -13,9 +13,10 @@ left off.
 
 ## What to read, and when
 
-**Always, before starting:** this file, plus `docs/STATUS.md` §
-Current stage and § Next. That is the whole mandatory set — 179 lines
-as of 2026-09-02, down from 2,258 when all five docs were mandatory.
+**Always, before starting:** this file, `docs/REQUIREMENTS.md` (Ryan's founding
+words — why this project exists and what it must do, quoted verbatim so
+they can't be lost to compaction again), and `docs/STATUS.md` § Current
+stage and § Next.
 
 Everything else is **loaded on demand**, when its trigger fires. Do not
 read these speculatively; they total ~3,800 lines and reading them all
@@ -28,6 +29,7 @@ prevent.
 | `ROADMAP.md` § phases | When planning what comes after the current work. |
 | `docs/TEAM.md` | When acting as a named role, or dispatching subagents. |
 | `docs/ARCHITECTURE.md` | Before touching PreCut integration or the three doors. |
+| `precut-capabilities` skill | **Before writing any new code for any role.** Confirms whether PreCut already does it. Skipping this produced a real, costly duplicate build (2026-09-02) — see the skill's own header. |
 | `docs/contracts/*.md` | When producing or consuming that artifact (manifest, culls). |
 | `docs/design/PHASE4_CULL_DESIGN.md` | Phase 4 cull work only. Currently parked — see STATUS. |
 | `docs/STATUS.md` § Done | To check whether something was already tried, and what the evidence was. |
@@ -45,13 +47,15 @@ is cheaper than every session paying for every document up front.
 
 ## Non-negotiable rules
 
-1. **PreCut is protected.** No commits to `precut` until the Phase 0
-   safety net (fixture + golden-master XML test) exists and passes. The
-   safety net itself lives in THIS repo (`safety_net/`) and runs against
-   a PreCut checkout via `PRECUT_ROOT` — that is how it can come into
-   being without touching the protected repo. New capability is built as
-   *clients* of PreCut, not as edits to it, through the three doors in
-   `docs/ARCHITECTURE.md`.
+1. **PreCut is protected, and nothing it already does gets rebuilt.** No
+   commits to `precut`, ever, while it remains Ryan's production tool.
+   The safety net (`safety_net/`) runs against a PreCut checkout via
+   `PRECUT_ROOT` so it can exist without touching the protected repo.
+   New capability is built as a *client* of PreCut, through the three
+   doors in `docs/ARCHITECTURE.md` — never as edits to it, and never as
+   a from-scratch reimplementation of something it already does. Load
+   the `precut-capabilities` skill before writing new code for any role
+   to check which of these two mistakes you'd be making.
 2. **The Decision Log is law.** Settled decisions live in `ROADMAP.md`
    § Decision Log and in PreCut's own `DECISIONS.md`. No agent may act
    against a logged decision. If you believe one is wrong, write an
@@ -78,6 +82,20 @@ is cheaper than every session paying for every document up front.
 6. **Supervisor is Ryan.** Product, creative, and taste calls are his.
    Agents surface options with a recommendation; they do not decide for
    him on those axes.
+7. **Prove on one unit before scaling.** Every new capability starts on
+   the single smallest real unit that exercises it — one clip, one
+   transcript, one interview — and does not touch a second unit until
+   Ryan has reviewed and confirmed the result on the first. This applies
+   to every future capability, not just the one that taught it (Phase
+   4's motion cull went straight to a full project). Broadening happens
+   as its own separate, approved step, never folded into the step that
+   proved the first unit.
+8. **One role in flight at a time.** The next role (Project Manager →
+   Assistant Editor → Creative Editor → Colorist → Audio Designer) does
+   not start — not planning, not code — until Ryan has reviewed, tested
+   on real material, and explicitly signed off on the current one.
+   Passing tests is not sign-off. Ryan looking at real output on real
+   footage and saying so is sign-off.
 
 ## Where things run
 
