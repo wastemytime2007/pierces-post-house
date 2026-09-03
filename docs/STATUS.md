@@ -220,7 +220,24 @@ because this session violated them once each.
   before a request runs. Also caught and fixed an ordering race in that
   same test: the very first request could emit "started" before "queued"
   if the worker grabbed it before the caller finished emitting.
-  *(711a268.)* **Not yet verified in the app under real UI clicks.**
+  *(711a268.)*
+  **Sixth round: a real scope gap, not a bug.** Ryan: "It found some
+  matches but when i went to export it still didnt include the found
+  matches." Coverage was deliberately scoped read-only from the start —
+  that held, but it also meant a finding could never reach export, since
+  nothing ever gave Ryan a way to act on one. Confirmed exactly what
+  export checks first: `exporter.py` only uses pairs where
+  `SyncPair.is_reliable` is true (`score >= SCORE_USE or
+  promoted_via_consistency`). New `apply_pair_coverage` command writes
+  the accepted offset into the matching pair and sets
+  `promoted_via_consistency=True` — PreCut's own existing field for
+  exactly this case, not a new mechanism — leaving the original score
+  untouched so the matrix keeps showing honestly where the number came
+  from. New "Apply this sync (use it on export)" button. Verified
+  end-to-end against a COPY of the real project.json (never the live
+  one): applied a real result, confirmed both in-memory and
+  reloaded-from-disk state show the update correctly. *(2744b87.)*
+  **Not yet verified in the app or against a real export.**
 
 ## Done
 
