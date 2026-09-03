@@ -1801,3 +1801,13 @@ with Ryan touching only the intake and the checkpoints.
   for everything else). The prior abandoned `precut-premiere-extension`
   repo attempted exactly that broader rebuild, which is the real reason
   it was abandoned, not the mere presence of CEP/UXP code.
+- **2026-09-03 -- B-Roll Interpreter extension made fully invisible, per
+  Ryan: "I was hoping it could be completely hands off for the user to
+  not even have to open the extension ever and it could just run in the
+  background."** Confirmed via Adobe's own CEP docs (not assumed):
+  `AutoVisible=false` + `<StartOn><Event>com.adobe.csxs.events.
+  ApplicationActivate</Event></StartOn>` + `UI Type Custom` with no
+  `<Menu>` tag makes Premiere load and run the extension at launch with
+  no panel, no menu entry, nothing to click, ever. Added file logging
+  (`posthouse_interpreter.log` in `Folder.userData`, written from
+  `host.jsx`) since there is no panel left to show activity in.
