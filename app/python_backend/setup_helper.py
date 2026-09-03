@@ -220,6 +220,60 @@ def _check_ffmpeg() -> dict:
     return {"present": False, "detail": "found but not runnable"}
 
 
+_CEP_EXTENSION_ID = "com.posthouse.interpret"
+# CSXS runtime versions across recent Premiere releases (2019-2026ish).
+# We enable debug mode for all of them since we can't know which one
+# Ryan's installed Premiere actually uses, and setting it for a version
+# he doesn't have is a harmless no-op default write.
+_CEP_DEBUG_VERSIONS = [8, 9, 10, 11, 12]
+
+
+def _cep_extensions_dir() -> Path:
+    return Path.home() / "Library" / "Application Support" / "Adobe" / "CEP" / "extensions"
+
+
+def _premiere_extension_source() -> Path:
+    """The bundled premiere_extension/ directory, sibling to python_backend/
+    both in dev (this repo) and in a packaged build (tauri.conf.json bundles
+    it alongside python_backend under the same resource root)."""
+    return Path(__file__).resolve().parent.parent / "premiere_extension"
+
+
+def _check_premiere_extension() -> dict:
+    """Not required for all_ready — Ryan may not even have Premiere on this
+    Mac. Purely informational, like homebrew's own check."""
+    source = _premiere_extension_source()
+    if not source.exists():
+        return {"present": False, "detail": f"bundled extension not found at {source}"}
+
+    link = _cep_extensions_dir() / _CEP_EXTENSION_ID
+    if not link.exists():
+        return {"present": False, "detail": "not installed into Adobe CEP extensions"}
+    try:
+        installed_correctly = link.is_symlink() and link.resolve() == source.resolve()
+    except OSError:
+        installed_correctly = False
+    if not installed_correctly:
+        return {"present": False, "detail": f"{link} exists but doesn't point at the current bundled copy"}
+
+    debug_on = any(_cep_debug_mode_enabled(v) for v in _CEP_DEBUG_VERSIONS)
+    if not debug_on:
+        return {"present": False, "detail": "installed, but PlayerDebugMode isn't enabled for any CSXS version"}
+
+    return {"present": True, "detail": "installed and enabled"}
+
+
+def _cep_debug_mode_enabled(csxs_version: int) -> bool:
+    try:
+        result = subprocess.run(
+            ["defaults", "read", f"com.adobe.CSXS.{csxs_version}", "PlayerDebugMode"],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "1"
+
+
 def _check_python() -> dict:
     """Find a Python 3.10+ suitable for backend deps.
 
@@ -349,6 +403,7 @@ def check_all() -> dict:
     brew = _check_homebrew()
     ffmpeg = _check_ffmpeg()
     python = _check_python()
+    premiere_extension = _check_premiere_extension()
 
     # Python packages depend on which Python we chose
     if python["present"]:
@@ -385,6 +440,7 @@ def check_all() -> dict:
             "ffmpeg": ffmpeg,
             "python": python,
             "python_packages": pkgs,
+            "premiere_extension": premiere_extension,
         },
     }
 
@@ -787,6 +843,61 @@ def install_python_packages() -> int:
     return rc
 
 
+def install_premiere_extension() -> int:
+    """Symlink premiere_extension/ into Adobe's CEP extensions folder and
+    enable PlayerDebugMode so Premiere loads it unsigned. Idempotent —
+    replaces a stale symlink from a prior install, leaves everything else
+    in that folder (other extensions) untouched.
+
+    Not fatal if Premiere isn't installed on this Mac at all: this just
+    stages the extension for whenever it is; Premiere itself only reads
+    its CEP extensions folder at launch.
+    """
+    component = "premiere_extension"
+    source = _premiere_extension_source()
+    if not source.exists():
+        _done(component, False, f"bundled extension not found at {source}")
+        return 1
+
+    dest_dir = _cep_extensions_dir()
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        _done(component, False, f"couldn't create {dest_dir}: {e}")
+        return 1
+
+    link = dest_dir / _CEP_EXTENSION_ID
+    _progress(component, "symlink", f"Linking {link} -> {source}")
+    try:
+        if link.is_symlink() or link.exists():
+            if link.is_dir() and not link.is_symlink():
+                # A real directory here (not our symlink) is someone else's
+                # install of the same id — don't clobber it silently.
+                _done(component, False,
+                      f"{link} is a real directory, not a symlink — remove it manually first")
+                return 1
+            link.unlink()
+        link.symlink_to(source)
+    except OSError as e:
+        _done(component, False, f"couldn't create symlink: {e}")
+        return 1
+
+    for v in _CEP_DEBUG_VERSIONS:
+        _progress(component, "debug-mode", f"Enabling PlayerDebugMode for CSXS.{v}")
+        subprocess.run(
+            ["defaults", "write", f"com.adobe.CSXS.{v}", "PlayerDebugMode", "1"],
+            capture_output=True, text=True, timeout=5,
+        )
+
+    check = _check_premiere_extension()
+    if check["present"]:
+        _done(component, True,
+              "Installed. Fully quit and reopen Premiere Pro once to pick it up.")
+        return 0
+    _done(component, False, f"Installed but verification failed: {check['detail']}")
+    return 1
+
+
 # ---------------------------------------------------------------------------
 # Setup-complete flag — persisted in settings.json next to the API key.
 # ---------------------------------------------------------------------------
@@ -817,6 +928,7 @@ _INSTALLERS = {
     "ffmpeg": install_ffmpeg,
     "python": install_python,
     "python_packages": install_python_packages,
+    "premiere_extension": install_premiere_extension,
 }
 
 

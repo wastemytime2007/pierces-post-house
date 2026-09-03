@@ -62,6 +62,13 @@ const COMPONENTS = [
     prereqs: ["python"],
     note: "Longest step — expect 5-10 minutes. pip progress appears in the log below.",
   },
+  {
+    key: "premiere_extension",
+    label: "Premiere Pro Extension",
+    subtitle: "Runs invisibly in Premiere and auto-applies Interpret Footage to B-roll frame-rate conforms — no manual steps in Premiere, ever.",
+    prereqs: [],
+    note: "Optional if Premiere isn't installed on this Mac. Fully quit and reopen Premiere once after installing.",
+  },
 ];
 
 export default function SetupScreen({ onSetupComplete }) {

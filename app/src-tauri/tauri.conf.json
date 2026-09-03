@@ -37,7 +37,11 @@
     "resources": [
       "../python_backend/**/*.py",
       "../python_backend/**/*.png",
-      "../python_backend/requirements.txt"
+      "../python_backend/requirements.txt",
+      "../premiere_extension/**/*.xml",
+      "../premiere_extension/**/*.html",
+      "../premiere_extension/**/*.js",
+      "../premiere_extension/**/*.jsx"
     ],
     "icon": [
       "icons/32x32.png",
