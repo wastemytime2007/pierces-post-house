@@ -136,9 +136,35 @@ because this session violated them once each.
   correctly stays a single entry. Both prior (now-removed) approaches'
   code lives only in git history (`b613002`..`d4f5278`), not in this
   repo. *(d4f5278.)* **Step two (triggering Interpret Footage on the
-  duplicate) not yet attempted.** **Not yet verified in real Premiere**
-  — Ryan needs to confirm the same physical file actually shows up as
-  two distinct, correctly-labeled Project-panel items.
+  duplicate) not yet attempted.**
+  Ryan: "Where am i setting the target framerate? It doesnt ask so i
+  cant tell it." Real gap — target was computed silently with no way to
+  see or override it. Added a "B-roll interpretation target" field to
+  ExportModal (Auto / 23.976 / 24 / 29.97 / 30 — Ryan's own stated
+  realistic set), threaded through as `ExportOptions.broll_target_fps`
+  to `export_multi_timeline()`'s new parameter. The auto-compute call
+  moved up into `exporter.py` so the resolved target is now ALWAYS
+  logged in the export activity log, explicit or automatic. Verified an
+  explicit 24.0fps override reaches the duplication logic correctly
+  (produces `"[INTERPRET TO 24.000fps]"`, not the auto value). *(d1ca5e2.)*
+  **Real bug found testing this, independent of the feature itself**:
+  Ryan hit `export_multi_timeline() got an unexpected keyword argument
+  'broll_target_fps'` — the app window was talking to a STALE backend
+  process. `pkill -f "target/debug/broll-buddy-app"` (used all session
+  for restarts) only ever killed the Rust binary, never the Python
+  `backend.py` child it spawns — three orphaned Python processes had
+  accumulated across the session's restarts (`ps aux` showed one from
+  9:41PM, one from 10:10PM, one from 10:47AM), any of which the app
+  could have still been connected to. Killed all three by PID (verified
+  against the real PreCut.app's own backend PID first, to avoid touching
+  it), confirmed exactly one fresh backend process after restart. This
+  affects every restart done this session, not just this feature — worth
+  remembering: a Tauri restart needs to kill the Python child
+  specifically, not just the Rust parent.
+  **Not yet verified in real Premiere** — Ryan needs to confirm the same
+  physical file actually shows up as two distinct, correctly-labeled
+  Project-panel items, and that the target-rate field/logging works as
+  expected now that the app is talking to current code.
 
 ## Done
 
