@@ -1728,3 +1728,22 @@ with Ryan touching only the intake and the checkpoints.
   "reference only, never rewrites the score/offset" principle from the
   entry above no longer applies as a UI-facing choice — it's now an
   internal implementation detail of one automatic stage.
+- **2026-09-03 — Dual-use B-roll frame-rate conform: built and verified,
+  resolving the "captured for later" entry above; mechanism is NOT what
+  either of us first assumed.** Three approaches, each settled by real
+  evidence: declaring a mismatched rate in FCP7 XML (Premiere re-probes
+  the real media and ignores it — falsified in real Premiere); a real
+  `ffmpeg -itsscale` file retime (verified exact, but Ryan caught the
+  real storage cost of a permanent full-resolution duplicate per
+  interpreted clip before it shipped — that code isn't in this repo,
+  git history only); what shipped is a pre-placed "B-Roll (Interpreted)"
+  reference sequence (`posthouse/broll_interpret.py`), reproducing the
+  exact frame math Ryan's own real Premiere export showed for Interpret
+  Footage, at zero storage cost. Real tradeoff, stated plainly: footage
+  must be pulled from that reference sequence, not the raw B-Roll
+  Library bin, to get the corrected speed — Interpret Footage's actual
+  state lives in Premiere's own session, not in any static XML export,
+  confirmed by inspecting Ryan's own real export closely. Also fixed:
+  `multi_exporter.py`'s master-clip dedup collision that meant a
+  dual_use source got only ONE Project-panel item (B-Roll only) before
+  this work — full detail in `docs/STATUS.md`'s 2026-09-03 entry.

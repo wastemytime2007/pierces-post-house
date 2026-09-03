@@ -62,7 +62,62 @@ because this session violated them once each.
 
 ## In progress
 
-*(nothing in flight)*
+- **First real Assistant Editor tasks: dual-use B-roll tagging confirmed
+  on real footage; B-roll frame-rate interpretation built and verified,
+  neither yet confirmed by Ryan in the app/Premiere itself.** Ryan chose
+  these two specifically after Task 1.1's sign-off, over new AE ground:
+  "Go ahead and work on the dual use b-roll tagging and the interpretation
+  of the b-roll framerates."
+  - **Dual-use B-roll tagging**: confirmed for real, not just the
+    scripted check from Task 1.1. Flagged a real Runnells clip dual_use
+    in a safe copy of the project, ran PreCut's own real tagging pipeline
+    (same CLIP embedder/tagger it already ships, zero new tagging code)
+    against it directly — genuine result: 60 frames tagged, `tag_status:
+    done`, ~105s. Closes the one item Task 1.1 left unconfirmed.
+  - **B-roll frame-rate interpretation**: three real approaches tried,
+    each settled by evidence, not reasoning — full account in
+    `posthouse/broll_interpret.py`'s module docstring. (1) Declaring a
+    mismatched rate in FCP7 XML: tested directly in real Premiere,
+    which re-probes the actual media and ignores it — falsified. (2)
+    `ffmpeg -itsscale` real-file retiming: verified exact via raw
+    frame-level PTS inspection (no re-encode, mathematically uniform
+    spacing at the new rate) — worked, but Ryan caught the real cost
+    before it shipped: a full-resolution permanent duplicate of every
+    interpreted clip on already-tight footage storage ("does this mean
+    we're going to be duplicating footage files on the drive"). Right
+    concern — that code isn't in this repo (git history only). (3)
+    What shipped: Ryan's own real Premiere workflow (duplicate the
+    Project-panel item, Interpret Footage on one) doesn't duplicate
+    media either — he sent a real FCP7 XML export of exactly that
+    workflow. Reading it closely found the real mechanism: Interpret
+    Footage isn't expressed on the bin-level clip/file block at all
+    (both his duplicates declared identical native rate) — it only
+    shows up in the frame math of a clipitem already placed on a
+    sequence. `build_broll_reference_sequence()` reproduces that same
+    math in a pre-placed "B-Roll (Interpreted)" reference sequence
+    (same pattern as "All Synced A-Roll") — zero extra disk, same
+    original media referenced directly. Real tradeoff, stated plainly:
+    footage has to be pulled from that reference sequence, not the raw
+    B-Roll Library bin, to get the corrected speed.
+  - **Real bug found and fixed along the way, independent of
+    interpretation itself**: `multi_exporter.py`'s master-clip dedup
+    keyed by path only, with B-roll registering first — so a dual_use
+    source got exactly one Project-panel item (B-Roll only); its A-roll
+    usage silently shared it instead of getting its own. Fixed by
+    minting a dedicated id for A-roll on collision, without touching
+    the shared map other lookups still rely on.
+  - Verified end to end against real files (real 59.94fps and 29.97fps
+    clips, real `BrollLibraryEntry` objects, real `export_multi_timeline`
+    calls) — the 60fps-family clip placed at its exact real frame count
+    (genuine 2x real-time slowdown at the 29.97fps target); the
+    already-native clip placed at ordinary ~real-time-preserving
+    duration. Confirmed zero new media created; the 16.4GB test artifact
+    from the abandoned itsscale approach was deleted from the real
+    drive. *(a733930.)*
+  **Not yet verified in the app or in real Premiere** — I have no way to
+  open the exported XML in Premiere myself. Ryan needs to run a real
+  export and confirm the reference sequence actually plays at the
+  corrected speed and the dual-use split shows two separate items.
 
 ## Done
 
