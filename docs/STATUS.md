@@ -188,6 +188,30 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Transcript flagging: fourth and final underlying piece
+  built and proven real — writing tagged fragments as actual color-coded
+  FCP7 XML markers.** `FlagMarker` (`cutlist.py`): a genuinely new range
+  marker, distinct from `BRollMarker` (a POINT marker, `<out>-1</out>`,
+  by design) — a color-coded storyline range needs a real duration, not
+  a single tick. `exporter.py` extended with a shared
+  `_build_marker_element()` plus sequence-level and clip-attached
+  builders emitting a real `<out>` frame for `FlagMarker`.
+  `posthouse/transcript_markers.py` translates a fragment's
+  source-file-local time into the "All Synced A-Roll" sequence's
+  timeline coordinates and attaches the marker to its phrase (rides with
+  the clip on rearrangement, same convention as B-roll markers). Real
+  end-to-end test: scored the Bob/Mitch interview's fragments, built
+  markers on a timeline-offset phrase (proving the translation math, not
+  a trivial zero-offset case), exported real XML, inspected the actual
+  `<marker>` elements — correct distinct in/out frames, correct RGB per
+  fit, correct clip-relative offsets. *(827e041.)*
+  **All four pieces of transcript flagging are now built and verified
+  real** (exhaustive extraction, PM audience-goal intake, relevance
+  tagging, marker writing) — **but nothing is wired into the app
+  itself yet.** Every piece so far has been proven via standalone test
+  scripts calling the Python modules directly, not a `backend.py`
+  command + UI button a user could actually click. That integration is
+  the next step before this is something Ryan can test in the real app.
 - 2026-09-03 — **Transcript flagging: two more pieces built and proven
   real, on top of exhaustive extraction (separate entry below).** Ryan
   redirected the design twice, both real improvements over the first
@@ -681,7 +705,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
-| AE: transcript flagging (color-coded storyline ranges) | **In progress — exhaustive extraction, PM audience-goal intake, and relevance tagging all built and verified real. Last piece (writing tagged fragments as actual FCP7 XML markers) not yet built.** See § Done, 2026-09-03. |
+| AE: transcript flagging (color-coded storyline ranges) | **All four underlying pieces built and verified real** (exhaustive extraction, PM audience-goal intake, relevance tagging, FCP7 XML marker writing). **Not yet wired into the app itself** — everything so far proven via standalone test scripts, not a backend command + UI trigger a user could actually run. See § Done, 2026-09-03. |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
