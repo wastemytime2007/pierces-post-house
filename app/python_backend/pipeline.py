@@ -344,6 +344,50 @@ def _run_audio_sync(
 
     state = sync_project(job.project, emit_progress=proxy_emit)
 
+    # 2026-09-03: Ryan -- "This is feeling extremely overcomplicated...
+    # There shouldnt be extra steps needed. We should just be able to
+    # sync things." The prior design made rescuing a pair PreCut's own
+    # whole-file pass couldn't confidently sync (subject leaves the
+    # room, comes back -- see posthouse/sync_coverage.py) a manual,
+    # per-pair, analyze-then-apply flow. That's the extra steps. Folded
+    # in here instead: every unreliable pair gets tried automatically,
+    # as part of the same sync action, before Ryan ever sees a result.
+    # No separate button, no separate click. A pair with no rescuable
+    # match just stays as PreCut originally scored it -- this never
+    # invents a sync that isn't there.
+    unreliable = [p for p in state.pairs if not p.is_reliable]
+    rescued_count = 0
+    if unreliable and not job.cancel_flag.is_set():
+        from posthouse.sync_coverage import analyze_pair_coverage
+
+        emit({
+            "type": "log", "level": "accent", "job_id": job.job_id,
+            "message": f"━━ Rescuing {len(unreliable)} weak sync pair(s) — checking for usable stretches ━━",
+        })
+        for i, pair in enumerate(unreliable):
+            if job.cancel_flag.is_set():
+                break
+            try:
+                coverage = analyze_pair_coverage(
+                    Path(pair.aroll_proxy), Path(pair.audio_file),
+                    cancel_flag=job.cancel_flag,
+                )
+            except Exception as exc:
+                emit({"type": "log", "level": "warn", "job_id": job.job_id,
+                      "message": f"  Rescue failed for {Path(pair.audio_file).name}: {exc}"})
+                continue
+            aroll_name = Path(pair.aroll_file).name
+            audio_name = Path(pair.audio_file).name
+            if coverage.accepted_offset_sec is not None:
+                pair.offset_sec = coverage.accepted_offset_sec
+                pair.promoted_via_consistency = True
+                rescued_count += 1
+                emit({"type": "log", "level": "success", "job_id": job.job_id,
+                      "message": f"  ✓ {aroll_name} ↔ {audio_name}: found a usable stretch, offset {coverage.accepted_offset_sec:+.2f}s"})
+            else:
+                emit({"type": "log", "level": "dim", "job_id": job.job_id,
+                      "message": f"  ✗ {aroll_name} ↔ {audio_name}: no usable stretch found ({i + 1}/{len(unreliable)})"})
+
     # Persist on the project object — save() call in run_pipeline handles disk
     job.project.audio_sync = state.to_dict()
 
@@ -354,6 +398,7 @@ def _run_audio_sync(
         "pair_count": len(state.pairs),
         "reliable_count": sum(1 for p in state.pairs if p.is_reliable),
         "group_count": len(state.groups),
+        "rescued_count": rescued_count,
     })
 
 

@@ -331,10 +331,8 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
   const hasCompletedPipeline = activePipelineJobs.some(([, j]) => j.status === "done");
   const canAdvanceToIdeas = hasCompletedPipeline && !hasRunning && onGoToIdeas;
 
-  // Audio sync preview selection (absorbed from AETab) -- purely "which
-  // pair is loaded in the player below," unrelated to coverage analysis
-  // (WeakPairsPanel owns that entirely; see its own note on why this was
-  // split apart 2026-09-03).
+  // Audio sync preview selection (absorbed from AETab) -- which pair is
+  // loaded in the player below.
   const [selectedPair, setSelectedPair] = useState(null);
 
   return (
@@ -488,10 +486,14 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         {project.audio_sync?.pairs?.length > 0 && (
           <>
             <SectionHeader
-              title="1. Sync results"
+              title="Sync results"
               hint={
                 <>
-                  Scores from PreCut's own audio sync. If you've added or
+                  Scores from PreCut's own audio sync. Any pair it can't
+                  confidently sync on its own — subject left the room,
+                  came back, was on the phone elsewhere — gets checked
+                  automatically for a usable stretch as part of the same
+                  step; no separate action needed. If you've added or
                   changed footage, use <strong>Re-sync</strong> below —
                   a plain "Run pipeline" click reuses the cached result
                   and won't recompute anything.
@@ -520,27 +522,12 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
             />
 
             <SectionHeader
-              title="2. Preview a pair"
+              title="Preview a pair"
               hint="Click any cell above to load it here and play it back."
             />
             <div className="ae-tab-preview">
               <AudioSyncPreview pair={selectedPair?.pair} />
             </div>
-
-            <SectionHeader
-              title="3. Fix a weak pair"
-              hint={
-                <>
-                  For a pair scored weak above because the subject left
-                  the room, came back, or was on the phone elsewhere —
-                  finds shorter stretches that DO line up. Reference
-                  only: never changes the score/offset in the matrix.
-                  Only one runs at a time (each can take up to a couple
-                  minutes on a long clip) — click several and they queue.
-                </>
-              }
-            />
-            <WeakPairsPanel pairs={project.audio_sync.pairs} subscribe={subscribe} />
           </>
         )}
 
@@ -651,269 +638,6 @@ function SectionHeader({ title, hint }) {
     <div className="sync-section-header">
       <div className="sync-section-title">{title}</div>
       {hint && <div className="sync-section-hint">{hint}</div>}
-    </div>
-  );
-}
-
-// Mirrors precut_pipeline/audio_sync.py's SCORE_USE. A pair below this
-// (and not cross-validation-promoted) is what the coverage feature
-// exists for -- surfaced explicitly here so finding it doesn't depend on
-// guessing that a non-green matrix cell is still clickable.
-const SCORE_USE = 10.0;
-
-/**
- * WeakPairsPanel — second attempt (2026-09-03). First attempt shared
- * global `selectedPair`/`coverage` state with the preview player above,
- * which Ryan reported as "really confusing... theres the ability to
- * click on the actual audio files, under that there is individual clips
- * with find usable stretches, under that there is an Analyze Audio
- * button" -- three overlapping entry points for one action, plus a real
- * bug: selecting a pair here also drove the preview player's
- * `selectedPair`, whose reset effect fired on the SAME click and wiped
- * the "Analyzing..." state before any result could show. "It doesn't
- * seem to be doing anything" was that bug, not a backend failure.
- *
- * Fully self-contained now: owns its own subscribe listener and its own
- * per-pair-key state (`{[key]: {loading, result, error}}`), sends its
- * own command, renders its own result directly under the row that
- * triggered it. Doesn't touch `selectedPair`/the preview player at all
- * -- clicking here can never affect, or be affected by, clicking a
- * matrix cell above.
- */
-function WeakPairsPanel({ pairs, subscribe }) {
-  // Keyed by pair key (aroll|audio). Each entry tracks the in-flight
-  // coverage_id so progress/result/error events -- which now all carry
-  // it (2026-09-03, after a run with no progress or cancel left Ryan
-  // stuck for 5+ minutes with three "Analyzing" rows and no way to tell
-  // if any of them were even alive) -- can be matched back to the right
-  // row instead of guessed at.
-  const [byKey, setByKey] = useState({});
-
-  useEffect(() => {
-    // Every coverage event carries the coverage_id (or, for a generic
-    // error, job_id) this panel minted when the row was clicked -- look
-    // up which row it belongs to and apply a patch, or no-op if it's not
-    // one of ours (or already superseded, e.g. a stale event for a row
-    // that's since started a new analysis).
-    const patch = (id, fn) => setByKey((prev) => {
-      const key = Object.keys(prev).find((k) => prev[k]?.coverageId === id);
-      return key ? { ...prev, [key]: fn(prev[key]) } : prev;
-    });
-    return subscribe((ev) => {
-      if (ev.type === "pair_coverage_queued") {
-        patch(ev.coverage_id, (s) => ({ ...s, queuePosition: ev.position }));
-      } else if (ev.type === "pair_coverage_started") {
-        patch(ev.coverage_id, (s) => ({ ...s, queuePosition: null, running: true }));
-      } else if (ev.type === "pair_coverage_progress") {
-        patch(ev.coverage_id, (s) => ({ ...s, progress: { i: ev.i, total: ev.total } }));
-      } else if (ev.type === "pair_coverage_analyzed") {
-        patch(ev.coverage_id, (s) => ({ ...s, loading: false, result: ev, error: null }));
-      } else if (ev.type === "error" && ev.job_id) {
-        patch(ev.job_id, (s) => ({ ...s, loading: false, error: ev.message }));
-      }
-    });
-  }, [subscribe]);
-
-  const weak = pairs
-    .filter((p) => !(p.score >= SCORE_USE || p.promoted_via_consistency))
-    .map((p) => _toResolvedPair(p));
-
-  if (weak.length === 0) return null;
-
-  const analyze = async (pair, key) => {
-    const coverageId = `cov-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setByKey((prev) => ({
-      ...prev,
-      [key]: { loading: true, coverageId, result: null, error: null, progress: null, queuePosition: null, running: false },
-    }));
-    try {
-      await sendCommand({
-        type: "analyze_pair_coverage",
-        coverage_id: coverageId,
-        aroll_proxy: pair.arollProxyFull || pair.arollFull,
-        audio_file: pair.audioFull,
-      });
-    } catch (e) {
-      setByKey((prev) => ({ ...prev, [key]: { ...prev[key], loading: false, error: String(e) } }));
-    }
-  };
-
-  const cancel = async (key) => {
-    const coverageId = byKey[key]?.coverageId;
-    if (!coverageId) return;
-    setByKey((prev) => ({ ...prev, [key]: { ...prev[key], loading: false } }));
-    try {
-      await sendCommand({ type: "cancel_pair_coverage", coverage_id: coverageId });
-    } catch (e) {
-      console.error(`cancel_pair_coverage failed: ${e}`);
-    }
-  };
-
-  return (
-    <div className="weak-pairs-panel">
-      {weak.map(({ pair, key }) => {
-        const state = byKey[key];
-        return (
-          <div key={key} className="weak-pair-row-wrap">
-            <div className="weak-pair-row">
-              <span className="weak-pair-names" title={`${pair.arollFull} | ${pair.audioFull}`}>
-                {pair.aroll} ↔ {pair.audio}
-              </span>
-              <span className="weak-pair-score">score {pair.score?.toFixed(1) ?? "—"}</span>
-              {state?.loading ? (
-                <>
-                  <span className="weak-pair-progress">
-                    {state.progress
-                      ? `analyzing window ${state.progress.i} of ${state.progress.total}…`
-                      : state.running
-                        ? "starting…"
-                        : state.queuePosition
-                          ? `queued (${state.queuePosition} ahead — only one runs at a time)`
-                          : "queued…"}
-                  </span>
-                  <button className="btn btn-ghost" onClick={() => cancel(key)}>Cancel</button>
-                </>
-              ) : (
-                <button className="btn btn-ghost" onClick={() => analyze(pair, key)}>
-                  Find usable stretches
-                </button>
-              )}
-            </div>
-            {state?.error && <pre className="pm-tab-error">{state.error}</pre>}
-            {state?.result && <CoverageResult coverage={state.result} pair={pair} />}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// Same mapping SyncMatrix.jsx's persisted-mode _resolvePairs uses, kept
-// in sync deliberately (see that function) so a pair selected from here
-// looks identical to one selected by clicking the matrix directly.
-function _toResolvedPair(p) {
-  const aroll = _basename(p.aroll_file || p.aroll_proxy || "");
-  const audio = _basename(p.audio_file || "");
-  const key = `${aroll}|${audio}`;
-  return {
-    key,
-    pair: {
-      aroll, audio,
-      score: p.score,
-      offset: p.offset_sec,
-      reliable: p.score >= SCORE_USE || !!p.promoted_via_consistency,
-      promoted: !!p.promoted_via_consistency,
-      arollFull: p.aroll_file || "",
-      arollProxyFull: p.aroll_proxy || "",
-      audioFull: p.audio_file || "",
-      offsetSec: p.offset_sec,
-    },
-  };
-}
-
-/**
- * CoverageResult — renders analyze_pair_coverage's output: a proposed
- * offset (from windows that agreed with each other, never from a single
- * observation) and the A-roll-timeline stretches that support it, plus
- * an "Apply" action.
- *
- * Originally read-only by design (2026-09-03): coverage was scoped to
- * never silently rewrite the matrix's own score/offset. That held, but
- * it also meant a finding could never reach export no matter how good
- * it was -- Ryan: "It found some matches but when i went to export it
- * still didnt include the found matches." Real gap, not a
- * misunderstanding: PreCut's exporter checks SyncPair.is_reliable
- * (`score >= SCORE_USE or promoted_via_consistency`) straight from
- * project.audio_sync, and nothing ever wrote a coverage finding there.
- * "Apply" is the human choosing to act on a finding -- it still never
- * happens without this button. Writes the offset into the matching pair
- * and sets `promoted_via_consistency` (PreCut's own existing field for
- * "not raw-score-reliable, but confirmed some other way") so the
- * exporter picks it up next export; leaves the original score alone so
- * the matrix keeps showing honestly where the number came from.
- */
-function CoverageResult({ coverage, pair }) {
-  const { accepted_offset_sec, usable_ranges, windows_tried, windows_used, windows_available } = coverage;
-  const [applyState, setApplyState] = useState(null); // null | "applying" | "applied" | error string
-
-  const apply = async () => {
-    setApplyState("applying");
-    try {
-      await sendCommand({
-        type: "apply_pair_coverage",
-        aroll_file: pair.arollFull,
-        audio_file: pair.audioFull,
-        offset_sec: accepted_offset_sec,
-      });
-      setApplyState("applied");
-    } catch (e) {
-      setApplyState(String(e));
-    }
-  };
-  // Long pairs are capped (posthouse/sync_coverage.py's DEFAULT_MAX_WINDOWS)
-  // and spread evenly across the file rather than tried exhaustively --
-  // worth saying plainly when that cap actually kicked in, since it means
-  // a "no consistent stretch" result isn't necessarily final.
-  const truncated = windows_available > windows_tried;
-
-  if (accepted_offset_sec === null || accepted_offset_sec === undefined) {
-    return (
-      <div className="coverage-result coverage-result-empty">
-        No consistent stretch found ({windows_tried} of {windows_available} window
-        {windows_available === 1 ? "" : "s"} in the file tried). This pair may
-        genuinely never overlap, the dead stretches cover the whole thing,
-        {truncated ? " or the sampled windows happened to miss the usable part — try again." : "."}
-      </div>
-    );
-  }
-
-  const clipEnd = usable_ranges.length ? Math.max(...usable_ranges.map((r) => r[1])) : 0;
-  const barEnd = clipEnd * 1.05 || 1;
-
-  return (
-    <div className="coverage-result">
-      <div className="coverage-result-offset">
-        Proposed offset: <strong>{accepted_offset_sec >= 0 ? "+" : ""}{accepted_offset_sec.toFixed(2)}s</strong>
-        {" "}from {windows_used} of {windows_tried} windows agreeing
-        {truncated && ` (sampled ${windows_tried} of ${windows_available} in the file)`}
-      </div>
-      <div className="coverage-apply-row">
-        <button
-          className="btn btn-ghost"
-          disabled={applyState === "applying" || applyState === "applied"}
-          onClick={apply}
-        >
-          {applyState === "applying" ? "Applying…"
-            : applyState === "applied" ? "Applied ✓"
-            : "Apply this sync (use it on export)"}
-        </button>
-        {applyState && applyState !== "applying" && applyState !== "applied" && (
-          <span className="coverage-apply-error">{applyState}</span>
-        )}
-        {applyState === "applied" && (
-          <span className="coverage-apply-hint">
-            Matrix above will show this pair as reliable once refreshed.
-          </span>
-        )}
-      </div>
-      <div className="coverage-bar">
-        {usable_ranges.map(([start, end], i) => (
-          <div
-            key={i}
-            className="coverage-bar-segment"
-            style={{
-              left: `${(start / barEnd) * 100}%`,
-              width: `${((end - start) / barEnd) * 100}%`,
-            }}
-            title={`${start.toFixed(1)}s – ${end.toFixed(1)}s`}
-          />
-        ))}
-      </div>
-      <ul className="coverage-range-list">
-        {usable_ranges.map(([start, end], i) => (
-          <li key={i}>{start.toFixed(1)}s – {end.toFixed(1)}s (A-roll timeline)</li>
-        ))}
-      </ul>
     </div>
   );
 }
