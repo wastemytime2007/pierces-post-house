@@ -1689,3 +1689,28 @@ with Ryan touching only the intake and the checkpoints.
   conformed for B-roll use — not a single shared master clip. This is
   an Assistant Editor / export-pipeline concern (Phase 4), not Project
   Manager scope; no task is opened for it yet.
+- **2026-09-03 — Real PreCut algorithm gap found and fixed with new
+  capability: whole-file audio sync can't handle "subject leaves the
+  room."** Not a regression — `precut_pipeline/audio_sync.py` diffed
+  byte-identical to the protected checkout before any other explanation
+  was considered. PreCut's `sync_pair()` runs exactly one cross-
+  correlation over an entire (A-roll, audio) file pair; a long dead or
+  irrelevant stretch (subject out of frame, or genuinely talking on the
+  phone elsewhere — real audio energy, zero acoustic relationship to the
+  camera) dilutes or defeats that single correlation even when a real,
+  constant clock offset holds throughout the usable stretches. Confirmed
+  on real Runnells Day 1 footage: PreCut scored a true pair at 2.8-3.15
+  (noise level) because of a ~5-minute dead stretch; a manual windowed
+  scan of the exact same two files found strong, mutually-consistent
+  matches (scores up to 31.0) in the stretches where the subject was
+  actually in the room. New module `posthouse/sync_coverage.py`
+  (`analyze_pair_coverage`) automates that windowed scan — gates
+  candidate windows by audio energy (cheap), then reruns PreCut's own
+  unmodified `sync_pair()` on each window, requiring at least two windows
+  to agree before trusting either. Scoped deliberately narrow, per Ryan:
+  coverage information only (a proposed offset + supporting time ranges),
+  never auto-rewrites PreCut's own persisted score/offset — a human
+  decides what to do with a rescued pair. Opt-in, triggered per pair from
+  the UI, not part of the default `run_pipeline` audio_sync stage (far
+  more expensive: N windowed correlations vs. PreCut's one whole-file
+  pass per pair). *(f52886f.)*

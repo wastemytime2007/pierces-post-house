@@ -99,12 +99,54 @@ because this session violated them once each.
   Verified: the scripted dual-use check above; `vite build` clean
   (61→59 modules); `npm run tauri dev` compiles and runs clean alongside
   the real PreCut.app with no Python tracebacks in the startup log.
-  **Not yet verified in the app** — I have no way to click through the
-  Tauri window myself. Ryan needs to run this on a real project (Runnells
-  Day 1, or a real dual-use shoot) and confirm: Organize actually starts
-  processing, a dual-use clip gets tagged as B-roll, and the sync review
-  now living under Project still works the way it did under the old AE
-  tab.
+  **Ryan ran it on Runnells Day 1**: Organize did auto-start processing,
+  and the sync review renders correctly under the merged Project tab
+  (screenshots show the matrix and the "2 reliable of 8 pairs" state).
+  **Still not confirmed**: the dual-use B-roll tagging fix, since this
+  run declared no B-roll/dual-use sources at all — needs a real dual-use
+  shoot to actually exercise it.
+- 2026-09-03 — **Real sync-quality finding on that same run, investigated
+  and fixed with new capability, not yet Ryan-verified.** Ryan: "the sync
+  isnt as accurate as it used to be. I think you may have broken it with
+  the one source one clip idea." Investigated before agreeing or
+  defending: `precut_pipeline/audio_sync.py` is byte-identical to the
+  protected PreCut checkout (diffed directly, confirmed never edited);
+  today's changes touched only `dual_use`/B-roll collection, irrelevant
+  to this aroll+audio-only project. The real cause, found in the
+  persisted `project.json`: PreCut's own unmodified `sync_project()`
+  scored clip `0006` at 2.8-3.15 against all four audio files (noise
+  level) because a ~5-minute stretch of dead/irrelevant audio (Bob out of
+  the room, then on the phone elsewhere) diluted the single whole-file
+  correlation PreCut runs per pair — a real, pre-existing PreCut
+  limitation, not a regression. Ryan then named the general case
+  precisely: "bridge the gap in the syncing for when people walk in and
+  out of the room... finding a way to sync the useable portions... is
+  the ideal scenario." Built `posthouse/sync_coverage.py`
+  (`analyze_pair_coverage`) — genuinely new capability, confirmed PreCut
+  has nothing like it. Gates candidate windows via one cheap ffmpeg
+  `silencedetect` pass (energy, not correlation — a phone call still has
+  energy and still gets tried, correctly scoring low on its own merits),
+  then runs PreCut's own unmodified `sync_pair()` on each window against
+  the full A-roll proxy, requiring at least two windows to independently
+  agree before trusting either. **Verified on the exact real pair before
+  writing the algorithm**: manual windowed scan of clip 0006 vs. both
+  take-2 lav files found four windows (420-540s into one lav file)
+  agreeing on offset -308.6s (scores up to 18.6, three above STRONG) and
+  six windows on the other lav agreeing on -306.8s (scores up to 31.0) —
+  both invisible to the whole-file pass. The finished module reproduces
+  this exactly. Regression test (`test_sync_coverage.py`, tier2) built a
+  synthetic dead-zone case the same way `test_sync.py`'s existing fixture
+  is built (real TTS speech, not synthetic tones) and caught a real bug
+  in the process: `analyze_pair_coverage` never exposed `min_window_sec`,
+  so a small `window_sec` silently produced zero candidate windows with
+  no error — fixed before shipping. Suite: 224 passed / 1 skipped
+  (non-tier2, unaffected) + 1 passed / 1 skipped (new tier2 tests, one
+  honestly skips rather than force a pass). Wired into the app as an
+  "Analyze coverage" action on a selected pair in the merged Project
+  tab's sync review — read-only, reports a proposed offset and supporting
+  time ranges, never rewrites the matrix's own score/offset. *(f52886f.)*
+  **Not yet verified in the app** — needs Ryan to run it against this
+  exact pair and confirm the app shows what the standalone script found.
 
 ## Done
 
