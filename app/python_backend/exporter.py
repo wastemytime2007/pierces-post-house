@@ -56,6 +56,13 @@ class ExportOptions:
     # Loaded from settings.json by the backend command handler. List of
     # dicts shaped like AutoIncludeRule.to_dict(). Empty list = no rules.
     auto_include_rules: Optional[list[dict]] = None
+    # 2026-09-03: B-roll frame-rate interpretation target. Ryan: "Where
+    # am i setting the target framerate? It doesnt ask so i cant tell
+    # it." Was computed silently (numeric minimum native fps across all
+    # captured footage) with no way to see or override it. None keeps
+    # that automatic behavior; a real number pins the target explicitly
+    # (Ryan's own stated realistic set: 23.976, 24, 29.97, 30).
+    broll_target_fps: Optional[float] = None
 
 
 def run_export(
@@ -421,6 +428,35 @@ def run_export(
             emit({"type": "log", "level": "warn",
                   "message": f"Couldn't build All-A-Roll sequence: {e}"})
 
+        # 2026-09-03: B-roll frame-rate interpretation target. Ryan:
+        # "Where am i setting the target framerate? It doesnt ask so i
+        # cant tell it." Resolved and LOGGED here, always, whether it
+        # came from an explicit override (options.broll_target_fps) or
+        # was computed automatically -- so the log is the one place this
+        # is never silent, regardless of which path was taken.
+        broll_target_fps = options.broll_target_fps
+        if broll_target_fps is not None:
+            emit({"type": "log", "level": "info",
+                  "message": f"B-roll interpretation target: {broll_target_fps:.3f}fps (set explicitly)"})
+        elif library:
+            try:
+                from posthouse.broll_interpret import compute_target_fps, probe_native_fps
+                aroll_paths_for_target = [
+                    Path(fp)
+                    for src in project.sources_by_kind("aroll")
+                    for fp in src.files.keys()
+                ]
+                aroll_native = [f for p in aroll_paths_for_target if (f := probe_native_fps(p))]
+                broll_native = [e.fps for e in library if getattr(e, "fps", None)]
+                broll_target_fps = compute_target_fps(aroll_native + broll_native)
+                if broll_target_fps is not None:
+                    emit({"type": "log", "level": "info",
+                          "message": f"B-roll interpretation target: {broll_target_fps:.3f}fps "
+                                     f"(smallest captured rate; set a target explicitly to override)"})
+            except Exception as e:
+                emit({"type": "log", "level": "warn",
+                      "message": f"Couldn't determine B-roll interpretation target: {e}"})
+
         written = export_multi_timeline(
             requests=requests,
             output_path=options.output_path,
@@ -428,6 +464,7 @@ def run_export(
             project_name=project.name,
             include_overlay=options.include_overlay,
             auto_include_rules=options.auto_include_rules,
+            broll_target_fps=broll_target_fps,
         )
     except Exception as e:
         emit({"type": "export_error", "job_id": job_id,

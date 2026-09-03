@@ -46,6 +46,12 @@ export default function ExportModal({
   // want a clean export without their global rules — e.g. a one-off
   // for a different client.
   const [applyAutoIncludes, setApplyAutoIncludes] = useState(true);
+  // 2026-09-03: B-roll frame-rate interpretation target. Ryan: "Where am
+  // i setting the target framerate? It doesnt ask so i cant tell it."
+  // "auto" = smallest captured native rate across all footage (computed
+  // and logged by the backend); the four options are Ryan's own stated
+  // realistic set, not an arbitrary list.
+  const [brollTargetFpsMode, setBrollTargetFpsMode] = useState("auto");
   const [progressLog, setProgressLog] = useState([]);
   const [jobId, setJobId] = useState(null);
   const [writtenPath, setWrittenPath] = useState(null);
@@ -163,6 +169,9 @@ export default function ExportModal({
         // Drop 4.47.3: per-export opt-out. Backend defaults to True if
         // missing, so older clients keep working unchanged.
         apply_auto_includes: applyAutoIncludes,
+        // "auto" (default) omits this entirely -- backend computes and
+        // logs the smallest-captured-rate target itself.
+        ...(brollTargetFpsMode !== "auto" ? { broll_target_fps: parseFloat(brollTargetFpsMode) } : {}),
       });
     } catch (e) {
       setErrorMsg(String(e));
@@ -217,6 +226,8 @@ export default function ExportModal({
               setIncludeOverlay={setIncludeOverlay}
               applyAutoIncludes={applyAutoIncludes}
               setApplyAutoIncludes={setApplyAutoIncludes}
+              brollTargetFpsMode={brollTargetFpsMode}
+              setBrollTargetFpsMode={setBrollTargetFpsMode}
               onPickSave={pickSaveLocation}
             />
           )}
@@ -286,6 +297,7 @@ function ConfigureView({
   includeCleanMic, setIncludeCleanMic,
   includeOverlay, setIncludeOverlay,
   applyAutoIncludes, setApplyAutoIncludes,
+  brollTargetFpsMode, setBrollTargetFpsMode,
   onPickSave,
 }) {
   return (
@@ -373,6 +385,27 @@ function ConfigureView({
         label={`Include full B-roll library (${brollCount || "?"} clips)`}
         hint="All your B-roll appears as a 'B-Roll Library' bin in Premiere — search by tag with Cmd+F"
       />
+      <label className="export-option">
+        <div className="export-option-text" style={{ width: "100%" }}>
+          <div className="export-option-label">B-roll interpretation target</div>
+          <div className="export-option-hint">
+            Any B-roll shot faster than this gets a second, labeled Project-panel
+            item to Interpret Footage to. Auto = smallest frame rate across all
+            your footage (logged in the export log below either way).
+          </div>
+          <select
+            value={brollTargetFpsMode}
+            onChange={(e) => setBrollTargetFpsMode(e.target.value)}
+            style={{ marginTop: 6 }}
+          >
+            <option value="auto">Auto (smallest captured)</option>
+            <option value="23.976">23.976 fps</option>
+            <option value="24">24 fps</option>
+            <option value="29.97">29.97 fps</option>
+            <option value="30">30 fps</option>
+          </select>
+        </div>
+      </label>
       <ExportOption
         checked={runAudioSync}
         onChange={setRunAudioSync}

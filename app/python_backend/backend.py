@@ -722,6 +722,7 @@ def handle_export_timelines(cmd: dict) -> None:
         include_overlay=bool(cmd.get("include_overlay", True)),
         library_only=library_only,
         auto_include_rules=auto_rules,
+        broll_target_fps=cmd.get("broll_target_fps"),
     )
 
     job_id = cmd.get("job_id") or f"export-{int(time.time())}"

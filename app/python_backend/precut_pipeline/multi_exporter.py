@@ -748,6 +748,7 @@ def export_multi_timeline(
     project_name: str = "B-Roll Buddy",
     include_overlay: bool = True,
     auto_include_rules: Optional[list[dict]] = None,
+    broll_target_fps: Optional[float] = None,
 ) -> Path:
     """Drop 4.45: emit one XML with the full bin hierarchy Premiere honors.
 
@@ -1190,12 +1191,15 @@ def export_multi_timeline(
     # unambiguous which of the two items in the bin needs the manual
     # (for now) Interpret Footage step.
     if broll_library:
-        from posthouse.broll_interpret import (
-            compute_target_fps, needs_interpretation, probe_native_fps,
-        )
-        aroll_native = [f for p in aroll_paths if (f := probe_native_fps(p))]
-        broll_native = [e.fps for e in broll_library if getattr(e, "fps", None)]
-        target_fps = compute_target_fps(aroll_native + broll_native)
+        if broll_target_fps is not None:
+            target_fps = broll_target_fps
+        else:
+            from posthouse.broll_interpret import compute_target_fps, probe_native_fps
+            aroll_native = [f for p in aroll_paths if (f := probe_native_fps(p))]
+            broll_native = [e.fps for e in broll_library if getattr(e, "fps", None)]
+            target_fps = compute_target_fps(aroll_native + broll_native)
+
+        from posthouse.broll_interpret import needs_interpretation
 
         for i, entry in enumerate(broll_library):
             master_id, file_id = broll_lib_ids[i]
