@@ -192,7 +192,20 @@ def ensure_precut_on_path() -> None:
         _verify_pin()
         backend_str = str(BACKEND_DIR)
         if backend_str not in sys.path:
-            sys.path.insert(0, backend_str)
+            # Append, never insert(0, ...): the app's own bare
+            # `import precut_pipeline...` (exporter.py, backend.py,
+            # pipeline.py — all siblings of this file's own fork copy)
+            # must resolve to the LOCAL fork's package, not the donor
+            # checkout's unmodified one. insert(0, ...) put the donor
+            # path ahead of the local directory that's already on
+            # sys.path, silently shadowing every edit made to the
+            # fork's precut_pipeline (found 2026-09-03 chasing a
+            # phantom "unexpected keyword argument" that kept
+            # recurring after stale-process fixes). Appending makes
+            # the donor path a fallback for names import_precut()
+            # needs that the local copy doesn't have, without ever
+            # winning a naming collision against it.
+            sys.path.append(backend_str)
         _install_marker_dependency_stubs()
         _prepared = True
 

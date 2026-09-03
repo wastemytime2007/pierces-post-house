@@ -147,24 +147,49 @@ because this session violated them once each.
   logged in the export activity log, explicit or automatic. Verified an
   explicit 24.0fps override reaches the duplication logic correctly
   (produces `"[INTERPRET TO 24.000fps]"`, not the auto value). *(d1ca5e2.)*
-  **Real bug found testing this, independent of the feature itself**:
+  **Two real bugs found testing this, independent of the feature itself**:
   Ryan hit `export_multi_timeline() got an unexpected keyword argument
-  'broll_target_fps'` — the app window was talking to a STALE backend
-  process. `pkill -f "target/debug/broll-buddy-app"` (used all session
-  for restarts) only ever killed the Rust binary, never the Python
+  'broll_target_fps'`. First found and fixed a STALE backend process:
+  `pkill -f "target/debug/broll-buddy-app"` (used all session for
+  restarts) only ever killed the Rust binary, never the Python
   `backend.py` child it spawns — three orphaned Python processes had
-  accumulated across the session's restarts (`ps aux` showed one from
-  9:41PM, one from 10:10PM, one from 10:47AM), any of which the app
-  could have still been connected to. Killed all three by PID (verified
-  against the real PreCut.app's own backend PID first, to avoid touching
-  it), confirmed exactly one fresh backend process after restart. This
-  affects every restart done this session, not just this feature — worth
-  remembering: a Tauri restart needs to kill the Python child
-  specifically, not just the Rust parent.
+  accumulated (`ps aux` showed one from 9:41PM, one from 10:10PM, one
+  from 10:47AM). Killed all three by PID (verified against the real
+  PreCut.app's own backend PID first, to avoid touching it). Ryan then
+  hit the *identical* error again after a full quit/reopen — the stale
+  process was real but not the actual cause. Root cause: `posthouse
+  /precut_bridge.py`'s `ensure_precut_on_path()` did
+  `sys.path.insert(0, backend_str)` where `backend_str` is
+  `<PRECUT_ROOT>/python_backend` (the **protected donor checkout**,
+  `~/precut-checkout`). Inserting at position 0 put the donor path
+  ahead of the app's own local fork directory, so every bare
+  `import precut_pipeline...` in `exporter.py`/`backend.py`/
+  `pipeline.py` — done as soon as anything imports `posthouse`, which
+  happens at `backend.py`'s top level — silently resolved to the
+  donor's unmodified `precut_pipeline`, not the fork's edited copy.
+  Confirmed directly: reproducing backend.py's real import order showed
+  `precut_pipeline` resolving to `~/precut-checkout/...`, and the
+  donor's own `multi_exporter.py` genuinely lacks `broll_target_fps` (as
+  it should, since the donor is never touched). Fixed by changing
+  `insert(0, ...)` to `append(...)` — the local fork directory (already
+  on `sys.path` from the running script's own location) now wins any
+  naming collision; the donor path is only a fallback for names
+  `import_precut()` needs that the local copy doesn't have. Re-verified
+  with the same reproduction: `precut_pipeline` now resolves to the
+  local fork copy and `broll_target_fps` is present. *(Fix not yet
+  committed as of this writing — see next commit.)*
+  **Scope of this bug**: any edit to `precut_pipeline/*.py` made during
+  this session, in the live app, before this fix — including the
+  dual-use `master_clip_map` collision fix — could have been silently
+  running the donor's unmodified code instead. Those were previously
+  verified only via standalone test scripts with manually-controlled
+  `sys.path`, not the live app's real import order. **Needs
+  re-verification against the live app now that the shadowing is
+  fixed** — not yet done.
   **Not yet verified in real Premiere** — Ryan needs to confirm the same
   physical file actually shows up as two distinct, correctly-labeled
   Project-panel items, and that the target-rate field/logging works as
-  expected now that the app is talking to current code.
+  expected now that the app is talking to current, un-shadowed code.
 
 ## Done
 
