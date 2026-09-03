@@ -535,6 +535,8 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
                   the room, came back, or was on the phone elsewhere —
                   finds shorter stretches that DO line up. Reference
                   only: never changes the score/offset in the matrix.
+                  Only one runs at a time (each can take up to a couple
+                  minutes on a long clip) — click several and they queue.
                 </>
               }
             />
@@ -688,22 +690,26 @@ function WeakPairsPanel({ pairs, subscribe }) {
   const [byKey, setByKey] = useState({});
 
   useEffect(() => {
+    // Every coverage event carries the coverage_id (or, for a generic
+    // error, job_id) this panel minted when the row was clicked -- look
+    // up which row it belongs to and apply a patch, or no-op if it's not
+    // one of ours (or already superseded, e.g. a stale event for a row
+    // that's since started a new analysis).
+    const patch = (id, fn) => setByKey((prev) => {
+      const key = Object.keys(prev).find((k) => prev[k]?.coverageId === id);
+      return key ? { ...prev, [key]: fn(prev[key]) } : prev;
+    });
     return subscribe((ev) => {
-      if (ev.type === "pair_coverage_progress" || ev.type === "pair_coverage_analyzed") {
-        setByKey((prev) => {
-          const key = Object.keys(prev).find((k) => prev[k]?.coverageId === ev.coverage_id);
-          if (!key) return prev;
-          if (ev.type === "pair_coverage_progress") {
-            return { ...prev, [key]: { ...prev[key], progress: { i: ev.i, total: ev.total } } };
-          }
-          return { ...prev, [key]: { ...prev[key], loading: false, result: ev, error: null } };
-        });
+      if (ev.type === "pair_coverage_queued") {
+        patch(ev.coverage_id, (s) => ({ ...s, queuePosition: ev.position }));
+      } else if (ev.type === "pair_coverage_started") {
+        patch(ev.coverage_id, (s) => ({ ...s, queuePosition: null, running: true }));
+      } else if (ev.type === "pair_coverage_progress") {
+        patch(ev.coverage_id, (s) => ({ ...s, progress: { i: ev.i, total: ev.total } }));
+      } else if (ev.type === "pair_coverage_analyzed") {
+        patch(ev.coverage_id, (s) => ({ ...s, loading: false, result: ev, error: null }));
       } else if (ev.type === "error" && ev.job_id) {
-        setByKey((prev) => {
-          const key = Object.keys(prev).find((k) => prev[k]?.coverageId === ev.job_id);
-          if (!key) return prev;
-          return { ...prev, [key]: { ...prev[key], loading: false, error: ev.message } };
-        });
+        patch(ev.job_id, (s) => ({ ...s, loading: false, error: ev.message }));
       }
     });
   }, [subscribe]);
@@ -716,7 +722,10 @@ function WeakPairsPanel({ pairs, subscribe }) {
 
   const analyze = async (pair, key) => {
     const coverageId = `cov-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    setByKey((prev) => ({ ...prev, [key]: { loading: true, coverageId, result: null, error: null, progress: null } }));
+    setByKey((prev) => ({
+      ...prev,
+      [key]: { loading: true, coverageId, result: null, error: null, progress: null, queuePosition: null, running: false },
+    }));
     try {
       await sendCommand({
         type: "analyze_pair_coverage",
@@ -756,7 +765,11 @@ function WeakPairsPanel({ pairs, subscribe }) {
                   <span className="weak-pair-progress">
                     {state.progress
                       ? `analyzing window ${state.progress.i} of ${state.progress.total}…`
-                      : "starting…"}
+                      : state.running
+                        ? "starting…"
+                        : state.queuePosition
+                          ? `queued (${state.queuePosition} ahead — only one runs at a time)`
+                          : "queued…"}
                   </span>
                   <button className="btn btn-ghost" onClick={() => cancel(key)}>Cancel</button>
                 </>
