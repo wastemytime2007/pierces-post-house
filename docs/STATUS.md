@@ -145,8 +145,24 @@ because this session violated them once each.
   "Analyze coverage" action on a selected pair in the merged Project
   tab's sync review — read-only, reports a proposed offset and supporting
   time ranges, never rewrites the matrix's own score/offset. *(f52886f.)*
-  **Not yet verified in the app** — needs Ryan to run it against this
-  exact pair and confirm the app shows what the standalone script found.
+  **Two real bugs found on first use, both fixed, neither yet verified**:
+  Ryan: "Im not seeing a Analyze Coverage button. And is there a way to
+  re run the sync process? Clicking run pipeline is still giving the
+  same output from the original run." (1) `sync_project()` caches by a
+  hash of the source paths, which never changes on a plain re-run, so
+  "Run pipeline" was silently always returning the identical cached
+  result — no UI ever exposed a way around this. Added `force_audio_sync`
+  to `PipelineJob` (clears `project.audio_sync` before calling
+  `sync_project()`) and a dedicated "Re-sync audio (ignore cached
+  results)" button. (2) The coverage button only appeared after clicking
+  a matrix cell, and the empty-preview hint said "click a **reliable**
+  pair" — exactly the pairs that don't need it; Ryan had no way to find
+  it. Added `WeakPairsPanel`: every pair below `SCORE_USE` is now listed
+  explicitly and unconditionally below the matrix with its own "Find
+  usable stretches" button, no implicit clickability knowledge required.
+  *(d1cb8be.)* **Not yet verified in the app** — needs Ryan to confirm
+  both the re-sync button and the now-visible coverage button actually
+  work as intended.
 
 ## Done
 
