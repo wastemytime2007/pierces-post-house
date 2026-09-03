@@ -983,8 +983,24 @@ def export_multi_timeline(
     aroll_ids: dict[str, tuple[str, str]] = {}
     for p in aroll_paths:
         if p in master_clip_map:
-            # A clip that's also in B-roll library — share the same master
-            aroll_ids[p] = master_clip_map[p]
+            # Post House 2026-09-03: this used to share the same master
+            # with B-roll ("a clip that's also in B-roll library — share
+            # the same master"), which was correct for the original
+            # meaning (the same physical file happens to appear in both
+            # lists) but wrong for dual_use sources specifically, where
+            # Ryan's own requirement is two SEPARATE Project-panel items
+            # -- one native (A-roll), one interpreted (B-roll), never a
+            # shared clip. Mint a fresh, dedicated id for the A-roll
+            # usage instead. Deliberately do NOT touch master_clip_map[p]
+            # here -- it stays pointing at the B-roll registration, so
+            # nothing else that resolves an id through master_clip_map
+            # changes behavior; only this path's OWN A-roll master gets
+            # built as its own thing.
+            mid = f"masterclip-{next_master}"
+            fid = f"file-{next_file}"
+            aroll_ids[p] = (mid, fid)
+            next_master += 1
+            next_file += 1
             continue
         mid = f"masterclip-{next_master}"
         fid = f"file-{next_file}"

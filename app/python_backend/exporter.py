@@ -368,6 +368,7 @@ def run_export(
             emit({"type": "log", "level": "warn",
                   "message": f"Couldn't load B-roll library: {e}"})
 
+
     # ----- Step 6: write multi-timeline XML -----
 
     emit({"type": "export_writing", "job_id": job_id})
@@ -433,6 +434,39 @@ def run_export(
               "message": f"XML writer failed: {e}",
               "traceback": traceback.format_exc()})
         return
+
+    # ----- Step 6b: insert the "B-Roll (Interpreted)" reference sequence
+    # (2026-09-03, genuinely new capability -- see
+    # posthouse/broll_interpret.py's module docstring for the full account,
+    # including why this is a pre-placed reference sequence rather than a
+    # real file duplicate: Ryan's own real Premiere workflow doesn't
+    # duplicate media on disk either, and a generated XML can't replicate
+    # Premiere's session-only "Interpret Footage" bin-item state, only the
+    # frame math of a clip already placed on a sequence). Post-processes
+    # the file `export_multi_timeline` just wrote rather than touching that
+    # donor function -- it never needs to know this capability exists.
+    if library:
+        try:
+            from posthouse.broll_interpret import build_broll_reference_sequence
+            from xml.dom import minidom as _minidom
+            aroll_paths = [
+                Path(fp)
+                for src in project.sources_by_kind("aroll")
+                for fp in src.files.keys()
+            ]
+            doc = _minidom.parse(str(written))
+            broll_seq = build_broll_reference_sequence(doc, library, aroll_paths)
+            if broll_seq is not None:
+                children = doc.getElementsByTagName("project")[0].getElementsByTagName("children")[0]
+                children.appendChild(broll_seq)
+                xml_str = doc.toprettyxml(indent="\t", encoding="UTF-8").decode("UTF-8")
+                lines = [ln for ln in xml_str.split("\n") if ln.strip()]
+                Path(written).write_text("\n".join(lines) + "\n", encoding="utf-8")
+                emit({"type": "log", "level": "info",
+                      "message": "Added 'B-Roll (Interpreted)' reference sequence"})
+        except Exception as e:
+            emit({"type": "log", "level": "warn",
+                  "message": f"Couldn't add B-Roll (Interpreted) reference sequence: {e}"})
 
     # Build completion event summary
     reliable_sync_pairs = 0
