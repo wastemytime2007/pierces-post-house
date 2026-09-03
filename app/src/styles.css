@@ -4131,6 +4131,18 @@ kbd {
   gap: 16px;
 }
 
+.audience-profile-row {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--bg-3);
+}
+
+.audience-profile-row .pm-tab-row {
+  grid-template-columns: 1fr auto;
+  max-width: none;
+  align-items: center;
+}
+
 .pm-tab-field {
   display: flex;
   flex-direction: column;

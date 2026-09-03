@@ -237,3 +237,94 @@ def set_auto_include_rules(rules: list[dict]) -> None:
     settings = load_settings()
     settings["auto_include_rules"] = sanitized
     save_settings(settings)
+
+
+# ---------------------------------------------------------------------------
+# Audience / content-goal profiles (2026-09-03)
+# ---------------------------------------------------------------------------
+#
+# App-level, not per-project: Ryan wants these authored ONCE on the main
+# screen (before opening any project), then picked from a dropdown at
+# Project Manager intake -- not retyped as free text per project. Stored
+# here under "audience_profiles" as a list of {id, name, description}.
+#
+# Seeded once, on first access, with SoldFast's three real content funnels
+# (ported from Agent Studio's content-engine team -- see
+# ~/.claude/skills/soldfast-content-funnels/SKILL.md) plus a placeholder
+# long-form/heart-driven profile Ryan can edit, since that one was never
+# formally spec'd anywhere. "Seeded once" is tracked via a separate flag so
+# deleting all profiles later doesn't bring the defaults back.
+
+_DEFAULT_AUDIENCE_PROFILES = [
+    {
+        "id": "brand-authority",
+        "name": "Brand / Authority",
+        "description": (
+            "Establish SoldFast as an industry expert and build trust. "
+            "Broad audience -- future sellers, franchisees, contractors, "
+            "and the general community. Heart-driven, not comedic; leads "
+            "with the burden, not the brand; show don't say. Draws on "
+            "finished projects, HGTV behind-the-scenes, sit-down "
+            "interviews with Bob and Mitch, and genuine how-to value."
+        ),
+    },
+    {
+        "id": "franchisee-recruiting",
+        "name": "Franchisee Recruiting",
+        "description": (
+            "Recruit real-estate operators in other markets who are "
+            "hitting a ceiling on their own deal flow and want systems, "
+            "brand, and a lead engine -- a playbook, not a logo. Leads "
+            "with the operator's real ceiling, proves the model travels "
+            "across markets, never uses hype or pressure."
+        ),
+    },
+    {
+        "id": "contractor-recruiting",
+        "name": "Contractor Recruiting",
+        "description": (
+            "Recruit skilled tradespeople into SoldFast's in-house/partner "
+            "network. Audience: contractors exposed to feast-or-famine job "
+            "cycles. Leads with the real pain (gaps between jobs, chasing "
+            "invoices) and proves steady pipeline, reliable payment, and "
+            "real volume through real stories, not claims."
+        ),
+    },
+    {
+        "id": "long-form-heart-driven",
+        "name": "Long-form / heart-driven",
+        "description": (
+            "Intentional, story-driven long-form work -- not the social-"
+            "media treadmill. Placeholder: edit this to describe the real "
+            "audience and goal for this kind of edit; it was never "
+            "formally defined the way the three funnels above were."
+        ),
+    },
+]
+
+
+def get_audience_profiles() -> list[dict]:
+    """Return the saved list of audience/content-goal profiles, seeding
+    the defaults above on first-ever access (never re-seeded after that,
+    even if the user deletes everything)."""
+    settings = load_settings()
+    if not settings.get("audience_profiles_seeded"):
+        settings["audience_profiles"] = list(_DEFAULT_AUDIENCE_PROFILES)
+        settings["audience_profiles_seeded"] = True
+        save_settings(settings)
+        return settings["audience_profiles"]
+    profiles = settings.get("audience_profiles", [])
+    if not isinstance(profiles, list):
+        return []
+    return [p for p in profiles if isinstance(p, dict)]
+
+
+def set_audience_profiles(profiles: list[dict]) -> None:
+    """Persist a new list of audience profiles. Replaces the entire list."""
+    if not isinstance(profiles, list):
+        raise ValueError("audience_profiles must be a list")
+    sanitized = [p for p in profiles if isinstance(p, dict) and p.get("name")]
+    settings = load_settings()
+    settings["audience_profiles"] = sanitized
+    settings["audience_profiles_seeded"] = True
+    save_settings(settings)

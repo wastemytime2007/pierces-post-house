@@ -63,17 +63,18 @@ const SOURCE_ZONES = [
 const CONTRACT_KIND = { aroll: "aroll", broll: "broll", audio: "source_audio", assets: "assets" };
 const PROJECT_TYPES = ["interview", "property_tour", "renovation", "event", "product", "other"];
 
-export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdeas }) {
+export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdeas, audienceProfiles }) {
   const [rootDir, setRootDir] = useState("");
   const [clientName, setClientName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectType, setProjectType] = useState(PROJECT_TYPES[0]);
   const [brandAssetsDir, setBrandAssetsDir] = useState("");
-  // Free text, not a picklist -- this app is for any editor's projects,
-  // not just SoldFast's, so the set of possible audiences/goals isn't
-  // closed. Feeds the Assistant Editor's audience-informed transcript
-  // tagging downstream (ROADMAP.md Decision Log, 2026-09-03).
-  const [audienceGoal, setAudienceGoal] = useState("");
+  // A picklist over profiles authored once, app-wide, via the titlebar's
+  // "audiences & goals" button -- not free text retyped per project
+  // (Ryan, 2026-09-03). The selected profile's description is what
+  // actually lands in the manifest's audience_goal field; feeds the
+  // Assistant Editor's audience-informed transcript tagging downstream.
+  const [audienceProfileId, setAudienceProfileId] = useState("");
 
   // "Assets" is the one zone with no PreCut-side model -- kept as plain
   // local path strings, same as every zone used to be before this merge.
@@ -302,6 +303,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
       }
     }
     for (const p of assetPaths) sources.push({ path: p, kind: "assets" });
+    const selectedProfile = (audienceProfiles || []).find((p) => p.id === audienceProfileId);
     try {
       await sendCommand({
         type: "organize_project",
@@ -311,7 +313,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         project_type: projectType,
         sources,
         brand_assets_source_dir: brandAssetsDir.trim() || undefined,
-        audience_goal: audienceGoal.trim() || undefined,
+        audience_goal: selectedProfile?.description || undefined,
       });
     } catch (e) {
       setError(String(e)); setSubmitting(false);
@@ -361,12 +363,20 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         <TextField label="Project name" value={projectName} onChange={setProjectName} />
       </div>
       <SelectField label="Project type" value={projectType} onChange={setProjectType} options={PROJECT_TYPES} />
-      <TextAreaField
-        label="Audience / content goal (optional)"
-        placeholder="e.g. Brand/Authority — future sellers and franchisees; or a personal long-form documentary edit"
-        value={audienceGoal}
-        onChange={setAudienceGoal}
-      />
+      <label className="pm-tab-field">
+        <span>Audience / content goal (optional)</span>
+        <select value={audienceProfileId} onChange={(e) => setAudienceProfileId(e.target.value)}>
+          <option value="">None selected</option>
+          {(audienceProfiles || []).map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        {!audienceProfiles?.length && (
+          <span className="form-hint">
+            No profiles yet — add one via the "audiences &amp; goals" button in the titlebar.
+          </span>
+        )}
+      </label>
 
       {notice && (
         <div className="pm-tab-notice">
@@ -828,19 +838,6 @@ function TextField({ label, value, onChange }) {
   );
 }
 
-function TextAreaField({ label, value, onChange, placeholder }) {
-  return (
-    <label className="pm-tab-field">
-      <span>{label}</span>
-      <textarea
-        rows={2}
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </label>
-  );
-}
 
 function SelectField({ label, value, onChange, options }) {
   return (

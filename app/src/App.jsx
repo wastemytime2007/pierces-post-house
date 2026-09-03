@@ -7,6 +7,7 @@ import ProjectView from "./screens/ProjectView.jsx";
 import SetupScreen from "./screens/SetupScreen.jsx";
 import SettingsModal from "./components/SettingsModal.jsx";
 import AutoIncludeModal from "./components/AutoIncludeModal.jsx";
+import AudienceProfilesModal from "./components/AudienceProfilesModal.jsx";
 import AutoIncludeHelp from "./components/AutoIncludeHelp.jsx";
 import WelcomeModal from "./components/WelcomeModal.jsx";
 import ApiKeyHelp from "./components/ApiKeyHelp.jsx";
@@ -37,6 +38,8 @@ export default function App() {
   const [showAutoInclude, setShowAutoInclude] = useState(false);
   const [showAutoIncludeHelp, setShowAutoIncludeHelp] = useState(false);
   const [autoIncludeRules, setAutoIncludeRules] = useState([]);
+  const [audienceProfiles, setAudienceProfiles] = useState([]);
+  const [showAudienceProfiles, setShowAudienceProfiles] = useState(false);
   const [toasts, setToasts] = useState([]);           // [{ id, level, message }]
 
   // Drop 4.44: onboarding — welcome modal + API key help panel.
@@ -119,6 +122,7 @@ export default function App() {
             // correctly the first time it's opened, and so users don't see
             // a flash of "no rules" if they have some.
             sendCommand({ type: "get_auto_include_rules" }).catch(() => {});
+            sendCommand({ type: "get_audience_profiles" }).catch(() => {});
             break;
 
           case "log":
@@ -220,6 +224,10 @@ export default function App() {
           // make the toast stack noisy.
           case "auto_include_rules":
             setAutoIncludeRules(Array.isArray(ev.rules) ? ev.rules : []);
+            break;
+
+          case "audience_profiles":
+            setAudienceProfiles(Array.isArray(ev.profiles) ? ev.profiles : []);
             break;
 
           // --- Project lifecycle ---
@@ -455,6 +463,13 @@ export default function App() {
     await sendCommand({ type: "set_workspace_id", workspace_id: workspaceId });
   }, []);
 
+  // Persist a new list of audience/content-goal profiles. Backend emits
+  // an `audience_profiles` event on success which our listener above
+  // picks up to refresh the local copy.
+  const saveAudienceProfiles = useCallback(async (profiles) => {
+    await sendCommand({ type: "set_audience_profiles", profiles });
+  }, []);
+
   // Drop 4.46: persist a new list of auto-include rules. Backend
   // emits an `auto_include_rules` event on success which our listener
   // picks up to refresh the local copy.
@@ -525,6 +540,18 @@ export default function App() {
           >
             default includes
             {autoIncludeRules.length > 0 ? ` · ${autoIncludeRules.length}` : ""}
+          </button>
+          {/* Audience & content-goal profiles, authored once here and
+              picked from a dropdown at Project Manager intake (per Ryan,
+              2026-09-03) rather than retyped as free text per project. */}
+          <button
+            className="api-key-badge"
+            onClick={() => setShowAudienceProfiles(true)}
+            title="Audiences & content goals for Project Manager intake"
+            style={{ marginRight: 8 }}
+          >
+            audiences & goals
+            {audienceProfiles.length > 0 ? ` · ${audienceProfiles.length}` : ""}
           </button>
           {settings && (
             <button
@@ -599,6 +626,7 @@ export default function App() {
           // includes" toggle in ExportModal. Threaded down to IdeasTab
           // → ExportModal.
           autoIncludeRulesCount={autoIncludeRules.length}
+          audienceProfiles={audienceProfiles}
         />
       )}
 
@@ -627,6 +655,14 @@ export default function App() {
           full walkthrough" link in the empty state. */}
       {showAutoIncludeHelp && (
         <AutoIncludeHelp onClose={() => setShowAutoIncludeHelp(false)} />
+      )}
+
+      {showAudienceProfiles && (
+        <AudienceProfilesModal
+          profiles={audienceProfiles}
+          onSave={saveAudienceProfiles}
+          onClose={() => setShowAudienceProfiles(false)}
+        />
       )}
 
       {/* Drop 4.44: onboarding modals.

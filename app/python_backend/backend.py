@@ -94,6 +94,7 @@ from settings import (
     set_workspace_id,
     set_onboarding_flag,
     get_auto_include_rules, set_auto_include_rules,
+    get_audience_profiles, set_audience_profiles,
 )
 from exporter import run_export, ExportOptions
 
@@ -632,6 +633,32 @@ def handle_set_onboarding_flag(cmd: dict) -> None:
 # Auto-include rules (Drop 4.46)
 # ---------------------------------------------------------------------------
 
+def handle_get_audience_profiles(cmd: dict) -> None:
+    """Return the saved audience/content-goal profiles to the UI."""
+    try:
+        profiles = get_audience_profiles()
+    except Exception as exc:
+        err(f"Failed to load audience profiles: {exc}",
+            tb=traceback.format_exc())
+        return
+    emit({"type": "audience_profiles", "profiles": profiles})
+
+
+def handle_set_audience_profiles(cmd: dict) -> None:
+    """Replace the entire saved audience-profile list with a new one."""
+    profiles = cmd.get("profiles", [])
+    if not isinstance(profiles, list):
+        err("profiles must be a list")
+        return
+    try:
+        set_audience_profiles(profiles)
+    except Exception as exc:
+        err(f"Failed to save audience profiles: {exc}",
+            tb=traceback.format_exc())
+        return
+    emit({"type": "audience_profiles", "profiles": get_audience_profiles()})
+
+
 def handle_get_auto_include_rules(cmd: dict) -> None:
     """Return the saved auto-include rules to the UI."""
     try:
@@ -815,6 +842,8 @@ HANDLERS = {
     # Drop 4.46: auto-include rules
     "get_auto_include_rules": handle_get_auto_include_rules,
     "set_auto_include_rules": handle_set_auto_include_rules,
+    "get_audience_profiles": handle_get_audience_profiles,
+    "set_audience_profiles": handle_set_audience_profiles,
     # Export (Drop 3)
     "export_timelines": handle_export_timelines,
     "shutdown": handle_shutdown,

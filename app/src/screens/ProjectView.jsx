@@ -31,6 +31,10 @@ export default function ProjectView({
   // Drop 4.47.3: live rule count, forwarded to IdeasTab so it can pass
   // it on to ExportModal for the per-export apply/skip toggle.
   autoIncludeRulesCount,
+  // Audience/content-goal profiles (2026-09-03) -- forwarded to PMTab's
+  // intake dropdown, authored app-wide via the titlebar's "audiences &
+  // goals" button, not per-project.
+  audienceProfiles,
 }) {
   const [activeTab, setActiveTab] = useState("pm");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -258,6 +262,7 @@ export default function ProjectView({
               jobs={jobs}
               hasRunning={hasRunning}
               onGoToIdeas={() => setActiveTab("ideas")}
+              audienceProfiles={audienceProfiles}
             />
           )}
           {activeTab === "ideas" && (
