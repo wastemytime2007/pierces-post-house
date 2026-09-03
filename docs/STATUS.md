@@ -11,13 +11,16 @@ why this project exists, the five roles in his own description, the four
 PreCut shortcomings he named directly, and the process failure that led to
 this re-scope. That file, not this section, is the source of truth for intent.
 
-**This is a new, separate application — not a PreCut rewrite.** PreCut is
-never modified. It is the donor: its ingest, transcription, tagging, audio
-sync, and Premiere export are proven and get wrapped, never rebuilt. This app
-grows real code only where PreCut falls short. See `precut-capabilities`
-skill for exactly what PreCut does and doesn't do, verified from its source
-on 2026-09-03 after this project spent three days operating on a wrong model
-of it.
+**This is one application, forked from PreCut — not a separate app, and not
+a PreCut rewrite.** PreCut's own repo (`~/precut-checkout`) is the protected
+donor: never modified, never committed to. Its ingest, transcription,
+tagging, audio sync, and Premiere export are proven code, copied into `app/`
+and extended in place, never reimplemented from scratch. This app grows real
+code only where PreCut falls short — there is only ever one app to open, per
+Ryan's explicit correction (`ROADMAP.md` Decision Log, 2026-09-03). See
+`precut-capabilities` skill for exactly what PreCut does and doesn't do,
+verified from its source on 2026-09-03 after this project spent three days
+operating on a wrong model of it.
 
 **The real, confirmed gap** (Ryan's own words, 2026-09-02): PreCut's story
 planner "tends to skim through transcripts and that leaves a lot on the
@@ -335,6 +338,56 @@ because this session violated them once each.
   fork's Python backend and Rust shell run as processes fully separate from
   the real PreCut.app, verified running side by side with no conflict.
   **Ryan's sign-off**: "Ok the app works like regular precut." *(eb6d42c.)*
+- 2026-09-03 — **Task 1.1: Project Manager tab built, run end to end on a
+  real folder, and taken through three rounds of Ryan's direct feedback.**
+  `PMTab.jsx` reuses `DropZone.jsx`'s existing drag-and-drop pattern for
+  A-roll/B-roll/source-audio/assets, adds a dual-use checklist for A-roll
+  that also serves as B-roll, and a new `organize_project` backend command
+  calls the existing, already-tested `projectmanager.organize_project()`
+  directly. Three real bugs/mismatches found and fixed from Ryan's actual
+  runs: (1) single-folder-plus-dropdown UI didn't match how a real project
+  folder holds separately-kinded subfolders — rebuilt around drag-and-drop
+  per kind; (2) `brandbrief.py`'s asset scan crashed on a macOS AppleDouble
+  sidecar (`._SF-Main-RE-light.png` on external volume RDOSS_2025) because
+  it lacked the dotfile filter `projectmanager.py` already used for footage
+  census — fixed, regression-tested (confirmed to fail without the fix via
+  `git stash`); (3) dragging the same folder into both A-roll and B-roll
+  correctly tripped the manifest's kind-conflict rule but with an
+  unexplained assertion error — added client-side duplicate-blocking with a
+  message pointing at the dual-use checkbox, the contract-correct way to
+  express "same footage, both uses." Ryan then asked for a naming change
+  (`DEFAULT_ASSETS_SUBDIR` "Brand Assets" → "Company Branding", matched in
+  `projectmanager.py`, `posthouse/README.md`, and both contract docs) —
+  done, tested (224 passed / 1 skipped, non-tier2), and confirmed live in
+  the running app. Suite and commit: *(20682fb.)*
+  **Not yet done:** an explicit final sign-off statement from Ryan on the
+  renamed build — his last messages were positive ("I'm good with it") plus
+  the rename request and a separate future-facing note, not yet a stated
+  "this is done." Asking for that confirmation is next.
+- 2026-09-03 — **Confirmed (not assumed): PreCut does NOT interpret B-roll
+  footage to a different/preselected frame rate than A-roll for dual-use
+  sources.** Ryan's belief going in: "the dual use should remember that
+  B-roll needs to be interpreted to the preselected framerate and the a
+  roll will not (i believe precut does this already but confirm)." Read
+  `precut_pipeline/multi_exporter.py` and `story_assembler.py` in full.
+  Findings, cited: every clip (A-roll or B-roll) is probed for its own
+  native fps via `_safe_probe()`/`detect_frame_rate()`
+  (`multi_exporter.py:379-508`), and both `_build_aroll_master_for_path`
+  (`:1358`) and `_build_broll_master_for_entry` (`:1433`) declare that
+  clip's own native rate as its FCPXML master rate — same code path, no
+  kind-based branch. The **sequence** frame rate is set from A-roll's
+  native fps (`story_assembler.py:261-263`, "A-roll native dims
+  fallback"), not from B-roll, and there is no retime/conform/speed-change
+  logic anywhere in either file for either roll kind — `detect_frame_rate`
+  (`exporter.py:48-73`) only snaps a measured fps to the nearest standard
+  rate, identically for any clip. Separately: in the current pipeline
+  B-roll isn't even placed on the timeline as real clips —
+  `story_assembler.py`'s `CutList.broll_track` is hardcoded to `[]`
+  ("Markers-only; V2 stays omitted per Drop 3.7+"), so even a working
+  version of the behavior Ryan described wouldn't currently reach an
+  actual B-roll clip. **Conclusion: this is a real gap, not something
+  PreCut already does — worth designing for when dual-use B-roll actually
+  gets placed on a timeline, not before.**
 
 ## Next (in order)
 
@@ -344,24 +397,17 @@ not written here as committed work until this one is signed off — writing
 them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
 against, just shifted to "Next."
 
-Task 1.0 is signed off (see § Done, 2026-09-03). This is the only active task.
+Task 1.0 is signed off (see § Done, 2026-09-03). Task 1.1 is code-complete,
+tested, and run successfully by Ryan on a real folder through three rounds
+of his own feedback (see § Done, 2026-09-03) — the one remaining step is
+his explicit final sign-off on the renamed build, not further building.
 
-1. **Task 1.1 — add a Project Manager tab to the fork**, backed by the
-   existing, already-tested `posthouse/projectmanager.py` (client name,
-   project type, one project folder, optional brand assets; manifest
-   rendered in the app). Minimal first version — not yet unified with
-   PreCut's own existing source-declaration UI in Ingest; that
-   integration is deliberately deferred, not attempted here.
-   Mechanically: `posthouse/` gets vendored into `app/python_backend/`,
-   one new IPC command in `backend.py` calls
-   `projectmanager.organize_project()` directly (reusing the tested
-   function, not reimplementing it), one new tab in `ProjectView.jsx`
-   follows the exact `IngestTab.jsx`/`IdeasTab.jsx` pattern
-   (`sendCommand`/`subscribe`).
-   **Signed off when:** Ryan runs it against one real project, in the
-   app, and confirms the result is correct and useful. Only then does
-   Task 2.1 (Assistant Editor: wrap PreCut's audio sync on one A-roll/
-   lav pair) get written in here.
+1. **Get Ryan's explicit sign-off on Task 1.1**, now that the "Company
+   Branding" rename is live in the running app. Show him the frame-rate
+   finding above at the same time (a confirmed real gap, not urgent, not
+   yet scoped as a task). Only after that sign-off does Task 2.1
+   (Assistant Editor: wrap PreCut's audio sync on one A-roll/lav pair)
+   get written in here.
 
 ## Attempts ledger
 
