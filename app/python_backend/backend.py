@@ -281,10 +281,55 @@ def handle_set_source_dual_use(cmd: dict) -> None:
         return
     path = cmd.get("path", "")
     dual_use = bool(cmd.get("dual_use", False))
+    was_dual_use = any(
+        s.root_path == path and s.dual_use
+        for s in proj.sources_by_kind("aroll")
+    )
     ok = proj.set_dual_use(path, dual_use)
     if ok:
         proj.save()
     emit({"type": "source_dual_use_set", "path": path, "dual_use": dual_use, "ok": ok})
+
+    # 2026-09-03: Ryan hit this directly -- checked dual-use AFTER the
+    # pipeline had already auto-run once, and nothing picked up the newly-
+    # eligible B-roll content since tagging only happens as its own
+    # pipeline stage. Per his standing preference against manual re-run
+    # steps (same reasoning as the sync-coverage rescue being made
+    # automatic), a NEW dual-use flag (false -> true) auto-fires a
+    # tagging-only pipeline run instead of requiring the user to notice
+    # and manually click "Run pipeline" again. Proxy/tag stages are
+    # already idempotent (skip already-done work), so this is safe to
+    # fire even if other sources were already fully tagged.
+    if ok and dual_use and not was_dual_use:
+        job_id = f"dualuse-tag-{int(time.time())}"
+        cancel_flag = threading.Event()
+        job = PipelineJob(
+            project=proj,
+            job_id=job_id,
+            cancel_flag=cancel_flag,
+            run_proxies=True,
+            run_transcription=False,
+            run_tagging=True,
+            run_audio_index=False,
+            run_audio_sync=False,
+            run_transcript_flagging=False,
+        )
+        with _jobs_lock:
+            _jobs[job_id] = ActiveJob(job_id, cancel_flag)
+
+        def worker():
+            try:
+                log("info", f"Dual-use enabled for {Path(path).name} — "
+                             f"tagging it as B-roll automatically.")
+                run_pipeline(job, emit=emit)
+            except Exception as exc:
+                err(f"{type(exc).__name__}: {exc}", job_id=job_id,
+                    tb=traceback.format_exc())
+            finally:
+                with _jobs_lock:
+                    _jobs.pop(job_id, None)
+
+        _executor.submit(worker)
 
 
 def handle_get_project_state(cmd: dict) -> None:
