@@ -138,6 +138,35 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
     });
   }, [subscribe, submitting, runPipeline]);
 
+  // Coverage analysis (windowed sync rescue, 2026-09-03) -- separate
+  // subscribe effect since it's not tied to the Organize submit cycle.
+  const [coverage, setCoverage] = useState(null);
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [coverageError, setCoverageError] = useState(null);
+
+  useEffect(() => {
+    return subscribe((ev) => {
+      if (ev.type === "pair_coverage_analyzed") {
+        setCoverage(ev); setCoverageLoading(false); setCoverageError(null);
+      } else if (ev.type === "error" && coverageLoading) {
+        setCoverageError(ev.message); setCoverageLoading(false);
+      }
+    });
+  }, [subscribe, coverageLoading]);
+
+  const analyzeCoverage = useCallback(async (pair) => {
+    setCoverage(null); setCoverageError(null); setCoverageLoading(true);
+    try {
+      await sendCommand({
+        type: "analyze_pair_coverage",
+        aroll_proxy: pair.arollProxyFull || pair.arollFull,
+        audio_file: pair.audioFull,
+      });
+    } catch (e) {
+      setCoverageError(String(e)); setCoverageLoading(false);
+    }
+  }, []);
+
   // Every currently-declared path, across all four zones, mapped to which
   // zone it's under -- used to catch cross-zone duplicates before they
   // reach the backend (add_source has no such check; organize_project's
@@ -332,6 +361,9 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
 
   // Audio sync preview selection (absorbed from AETab)
   const [selectedPair, setSelectedPair] = useState(null);
+  useEffect(() => {
+    setCoverage(null); setCoverageError(null); setCoverageLoading(false);
+  }, [selectedPair?.key]);
 
   return (
     <div className="pm-tab">
@@ -493,6 +525,26 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         {project.audio_sync?.pairs?.length > 0 && (
           <div className="ae-tab-preview">
             <AudioSyncPreview pair={selectedPair?.pair} />
+            {selectedPair?.pair?.audioFull && (
+              <div className="coverage-panel">
+                <button
+                  className="btn btn-ghost"
+                  disabled={coverageLoading}
+                  onClick={() => analyzeCoverage(selectedPair.pair)}
+                >
+                  {coverageLoading ? "Analyzing…" : "Find usable stretches (for a weak/wrong pair)"}
+                </button>
+                <p className="coverage-panel-hint">
+                  For a pair the matrix scored weak or wrong because the
+                  subject left the room, came back, or was on the phone
+                  elsewhere — this looks for shorter stretches that DO
+                  correlate, at one consistent offset. Reference only: it
+                  doesn't change the score or offset shown above.
+                </p>
+                {coverageError && <pre className="pm-tab-error">{coverageError}</pre>}
+                {coverage && <CoverageResult coverage={coverage} />}
+              </div>
+            )}
           </div>
         )}
 
@@ -589,6 +641,59 @@ function TranscriptRow({ row }) {
       <div className={`transcript-row-status ${statusClass}`}>
         {statusLabel}
       </div>
+    </div>
+  );
+}
+
+/**
+ * CoverageResult — renders analyze_pair_coverage's output: a proposed
+ * offset (from windows that agreed with each other, never from a single
+ * observation) and the A-roll-timeline stretches that support it. Shown
+ * as a simple proportional bar plus a plain list, not an interactive
+ * scrubber -- this is a read-only finding for a human to act on by hand,
+ * per Ryan's own scoping (2026-09-03): coverage information only, it
+ * never rewrites the matrix's score or offset above it.
+ */
+function CoverageResult({ coverage }) {
+  const { accepted_offset_sec, usable_ranges, windows_tried, windows_used } = coverage;
+
+  if (accepted_offset_sec === null || accepted_offset_sec === undefined) {
+    return (
+      <div className="coverage-result coverage-result-empty">
+        No consistent stretch found ({windows_tried} window{windows_tried === 1 ? "" : "s"}
+        {" "}tried). This pair may genuinely never overlap, or the dead
+        stretches cover the whole thing.
+      </div>
+    );
+  }
+
+  const clipEnd = usable_ranges.length ? Math.max(...usable_ranges.map((r) => r[1])) : 0;
+  const barEnd = clipEnd * 1.05 || 1;
+
+  return (
+    <div className="coverage-result">
+      <div className="coverage-result-offset">
+        Proposed offset: <strong>{accepted_offset_sec >= 0 ? "+" : ""}{accepted_offset_sec.toFixed(2)}s</strong>
+        {" "}from {windows_used} of {windows_tried} windows agreeing
+      </div>
+      <div className="coverage-bar">
+        {usable_ranges.map(([start, end], i) => (
+          <div
+            key={i}
+            className="coverage-bar-segment"
+            style={{
+              left: `${(start / barEnd) * 100}%`,
+              width: `${((end - start) / barEnd) * 100}%`,
+            }}
+            title={`${start.toFixed(1)}s – ${end.toFixed(1)}s`}
+          />
+        ))}
+      </div>
+      <ul className="coverage-range-list">
+        {usable_ranges.map(([start, end], i) => (
+          <li key={i}>{start.toFixed(1)}s – {end.toFixed(1)}s (A-roll timeline)</li>
+        ))}
+      </ul>
     </div>
   );
 }

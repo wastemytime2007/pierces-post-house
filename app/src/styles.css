@@ -4397,6 +4397,53 @@ kbd {
   font-size: 12px;
 }
 
+.coverage-panel {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--bg-3);
+}
+.coverage-panel-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--fg-3);
+  max-width: 520px;
+}
+.coverage-result {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.coverage-result-offset {
+  font-size: 13px;
+  color: var(--fg-1);
+}
+.coverage-result-empty {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+.coverage-bar {
+  position: relative;
+  height: 10px;
+  background: var(--bg-0);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.coverage-bar-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--success, #5cc08a);
+  min-width: 2px;
+}
+.coverage-range-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+}
+
 .ingest-no-sources {
   border: 1px dashed var(--bg-3);
   border-radius: var(--radius-sm);

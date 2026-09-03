@@ -100,6 +100,7 @@ from exporter import run_export, ExportOptions
 # already-tested function (posthouse/ has its own 223-test suite in the
 # pierces-post-house repo) -- reused directly here, not reimplemented.
 from posthouse.projectmanager import organize_project, OrganizeError
+from posthouse.sync_coverage import analyze_pair_coverage
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +349,34 @@ def handle_organize_project(cmd: dict) -> None:
         "staged_asset_files": result.staged_asset_files,
         "warnings": result.warnings,
     })
+
+
+def handle_analyze_pair_coverage(cmd: dict) -> None:
+    """2026-09-03: rescue a sync pair PreCut's whole-file sync_project()
+    scored weak/wrong -- real case, Ryan's Runnells footage, subject
+    leaves the room and comes back. See posthouse/sync_coverage.py's
+    module docstring for the full account and the real numbers this was
+    verified against. Runs in a background thread: windowed correlation
+    is N ffmpeg extracts + N correlation calls, seconds to low tens of
+    seconds depending on file length, and must not block the IPC loop
+    other commands (including cancel_job) rely on.
+    """
+    aroll_proxy = cmd.get("aroll_proxy", "")
+    audio_file = cmd.get("audio_file", "")
+    if not aroll_proxy or not audio_file:
+        err("analyze_pair_coverage requires aroll_proxy and audio_file")
+        return
+
+    def _run():
+        try:
+            coverage = analyze_pair_coverage(Path(aroll_proxy), Path(audio_file))
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            return
+        emit({"type": "pair_coverage_analyzed", **coverage.to_dict()})
+
+    threading.Thread(target=_run, daemon=True).start()
+    emit({"type": "pair_coverage_started", "aroll_proxy": aroll_proxy, "audio_file": audio_file})
 
 
 def handle_run_pipeline(cmd: dict) -> None:
@@ -780,6 +809,7 @@ HANDLERS = {
     "get_project_state": handle_get_project_state,
     # Task 1.1: Project Manager tab
     "organize_project": handle_organize_project,
+    "analyze_pair_coverage": handle_analyze_pair_coverage,
     "run_pipeline": handle_run_pipeline,
     "cancel_job": handle_cancel_job,
     # AI producer
