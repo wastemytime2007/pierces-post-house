@@ -30,12 +30,15 @@ tagging is a separate, later layer (see ROADMAP.md Decision Log,
 audience/content-goal from Project Manager intake. This module doesn't
 decide what anything is FOR — only what's there.
 
-Reuses PreCut's own ``TopicRange`` shape and its ``_extract_json`` /
-``_merge_overlapping_ranges`` helpers (``precut_pipeline.story_planner``)
-rather than reinventing fragment representation or JSON-parsing/merge
-logic it already has — reached through :func:`posthouse.precut_bridge.
-import_precut`, per that module's own "Door 3" rule (never a bare
-``import precut_pipeline`` from inside ``posthouse``).
+Reuses PreCut's own ``TopicRange`` shape and its ``_extract_json`` helper
+(``precut_pipeline.story_planner``) rather than reinventing fragment
+representation or JSON-parsing logic it already has — reached through
+:func:`posthouse.precut_bridge.import_precut`, per that module's own
+"Door 3" rule (never a bare ``import precut_pipeline`` from inside
+``posthouse``). Merging is NOT reused from there, deliberately: this
+module has its own ``_merge_fragments`` (see its docstring) because
+cross-window overlap here means something different from what
+``story_planner``'s ``_merge_overlapping_ranges`` was built for.
 """
 from __future__ import annotations
 
@@ -58,7 +61,6 @@ ANTHROPIC_MODEL = _config.ANTHROPIC_MODEL
 TopicRange = _cutlist.TopicRange
 StoryPlannerError = _story_planner.StoryPlannerError
 _extract_json = _story_planner._extract_json
-_merge_overlapping_ranges = _story_planner._merge_overlapping_ranges
 Transcript = _transcriber.Transcript
 
 # A 10-minute window with 2-minute overlap: long enough that a normal
@@ -275,6 +277,79 @@ def _compute_coverage(
     )
 
 
+def _merge_fragments(fragments: List[TopicRange]) -> List[TopicRange]:
+    """Merge fragments across window boundaries — but distinguish WHY two
+    fragments touch before deciding how to merge their summaries.
+
+    Two overlapping fragments here mean something different than in
+    story_planner's own merge (which combines a hook + payoff the SAME
+    call proposed for ONE angle). Here, overlap almost always means TWO
+    INDEPENDENT windows both saw the SAME real moment in their shared
+    overlap zone and each described it separately — that's a duplicate
+    description of one thing, not two related-but-distinct topics.
+    Concatenating both (story_planner's approach) produced a visibly
+    redundant summary in real testing (2026-09-03, the "harassment-style
+    beaming" sentence appearing twice, worded slightly differently).
+
+    Heuristic: if the overlap covers more than half of the SHORTER
+    fragment's own duration, treat it as the same moment described twice
+    and keep only the more detailed (longer) summary. Otherwise (a small
+    edge-touch, or genuinely adjacent-but-distinct topics) concatenate,
+    same as before.
+    """
+    if not fragments:
+        return []
+
+    by_file: dict = {}
+    for r in fragments:
+        by_file.setdefault(r.source_file, []).append(r)
+
+    merged: List[TopicRange] = []
+    for src, group in by_file.items():
+        group = sorted(group, key=lambda r: r.source_start_sec)
+        current = group[0]
+        for nxt in group[1:]:
+            gap = nxt.source_start_sec - current.source_end_sec
+            if gap > 1.0:
+                merged.append(current)
+                current = nxt
+                continue
+
+            overlap = min(current.source_end_sec, nxt.source_end_sec) - max(
+                current.source_start_sec, nxt.source_start_sec
+            )
+            shorter_dur = min(current.duration_sec, nxt.duration_sec)
+            same_moment = shorter_dur > 0 and (overlap / shorter_dur) > 0.5
+
+            new_start = current.source_start_sec
+            new_end = max(current.source_end_sec, nxt.source_end_sec)
+
+            if same_moment:
+                # Same real moment, described independently twice — keep
+                # whichever description is more detailed, don't concatenate.
+                if len(nxt.summary) > len(current.summary):
+                    summary, label = nxt.summary, (nxt.topic_label or current.topic_label)
+                else:
+                    summary, label = current.summary, (current.topic_label or nxt.topic_label)
+            else:
+                summary = current.summary
+                if nxt.summary and nxt.summary not in summary:
+                    summary = (summary + " " + nxt.summary).strip()
+                label = current.topic_label or nxt.topic_label
+
+            current = TopicRange(
+                source_file=src,
+                source_start_sec=new_start,
+                source_end_sec=new_end,
+                topic_label=label,
+                summary=summary,
+            )
+        merged.append(current)
+
+    merged.sort(key=lambda r: (r.source_file, r.source_start_sec))
+    return merged
+
+
 def extract_exhaustive_fragments(
     transcript: Transcript,
     window_sec: float = DEFAULT_WINDOW_SEC,
@@ -298,6 +373,6 @@ def extract_exhaustive_fragments(
             _extract_window_fragments(window, window_start, window_end, model, api_key)
         )
 
-    merged = _merge_overlapping_ranges(all_fragments)
+    merged = _merge_fragments(all_fragments)
     coverage = _compute_coverage(merged, transcript.duration)
     return merged, coverage
