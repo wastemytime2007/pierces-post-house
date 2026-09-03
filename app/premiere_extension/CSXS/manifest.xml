@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  ExtensionBundleId="com.posthouse.interpret"
+  ExtensionBundleVersion="0.1.0"
+  Version="7.0">
+
+  <!--
+    Post House B-Roll Interpreter — a narrow companion extension, NOT a
+    rebuild of PreCut's export pipeline. FCP7 XML (the app's own delivery
+    path) already creates a second, clearly-labeled Project-panel entry
+    for every B-roll clip that needs a frame-rate conform (e.g.
+    "DJI_0002 [INTERPRET TO 29.970fps]"). Premiere's own Interpret
+    Footage state cannot be expressed in that XML (confirmed by real
+    testing — see ROADMAP.md Decision Log, 2026-09-03), so this
+    extension's only job is applying it automatically once the XML has
+    been imported: it scans the Project panel for that naming pattern
+    and calls Interpret Footage on each match. Everything else (bins,
+    import, sequences, clip placement) stays in the XML — this does not
+    reimplement any of that.
+  -->
+
+  <ExtensionList>
+    <Extension Id="com.posthouse.interpret.panel" Version="0.1.0"/>
+  </ExtensionList>
+
+  <ExecutionEnvironment>
+    <HostList>
+      <!-- Covers Premiere Pro 2019 through 2025+ -->
+      <Host Name="PPRO" Version="[13.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="9.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+
+  <DispatchInfoList>
+    <Extension Id="com.posthouse.interpret.panel">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <ScriptPath>./jsx/host.jsx</ScriptPath>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>Post House — B-Roll Interpreter</Menu>
+          <Geometry>
+            <Size>
+              <Height>360</Height>
+              <Width>320</Width>
+            </Size>
+            <MinSize>
+              <Height>200</Height>
+              <Width>260</Width>
+            </MinSize>
+          </Geometry>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+
+</ExtensionManifest>

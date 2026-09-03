@@ -1747,3 +1747,57 @@ with Ryan touching only the intake and the checkpoints.
   `multi_exporter.py`'s master-clip dedup collision that meant a
   dual_use source got only ONE Project-panel item (B-Roll only) before
   this work — full detail in `docs/STATUS.md`'s 2026-09-03 entry.
+- **2026-09-03 — Correction to the entry above: the reference-sequence
+  approach was also falsified in real Premiere.** Ryan tested it:
+  "That didn't work. Interpretation doesnt happen at the sequence level
+  it happens at the clip/footage level. the sequence being set at a
+  different framerate doesnt make the clips on that sequence interpret
+  to that framerate." Per the "three failures" rule, stopped guessing a
+  third XML-only mechanism and asked Ryan directly. He proposed the
+  real fix, incremental: first make the XML duplicate every over-rate
+  B-roll clip into a second, clearly-labeled Project-panel item at zero
+  storage cost (shipped -- `multi_exporter.py`'s B-roll master-clip
+  loop, verified against a real 59.94fps clip); actually triggering
+  Interpret Footage on that duplicate is a separate, not-yet-solved
+  step. `posthouse/broll_interpret.py` now holds only the fps-decision
+  logic (`probe_native_fps`, `compute_target_fps`,
+  `needs_interpretation`); all XML-construction code from both
+  falsified approaches was deleted, available in git history only
+  (commits `b613002`..`d4f5278`).
+- **2026-09-03 -- Real bug, independent of the feature above: a
+  `posthouse/precut_bridge.py` sys.path bug silently shadowed every
+  edit to the fork's own `precut_pipeline`.** `ensure_precut_on_path()`
+  did `sys.path.insert(0, backend_str)` for the protected donor
+  checkout (`PRECUT_ROOT/python_backend`), putting it ahead of the
+  fork's own local copy. Since `posthouse` loads at `backend.py`'s top
+  level, every bare `import precut_pipeline...` done afterward (every
+  export) resolved to the donor's unmodified package instead of the
+  fork's edited one -- confirmed directly by reproducing the real
+  import order and printing which file resolved. This is why Ryan's
+  export kept failing with `unexpected keyword argument
+  'broll_target_fps'` even after a clean process restart (a real, but
+  separate, stale-backend-process bug was found and fixed first and
+  didn't resolve it). Fixed by changing `insert(0, ...)` to
+  `append(...)` so the local fork always wins naming collisions.
+  Re-verified against the live app after the fix; Ryan then confirmed
+  the B-roll duplication step works in real Premiere. (405c91d.)
+- **2026-09-03 -- Decision Log override, Ryan's explicit call: a narrow,
+  single-purpose CEP/UXP Premiere extension is authorized for automatic
+  Interpret Footage application, superseding the blanket "no CEP/UXP
+  panel code" rule inherited from PreCut's own DECISIONS.md for this
+  one case.** Context: static FCP7 XML cannot carry Interpret Footage
+  state (confirmed twice, above); a script Ryan runs by hand was
+  offered and explicitly rejected -- "We need a solution that isnt
+  manual at all. It needs to be automatic" -- and the only mechanism
+  that can react to a new import without a click is a persistent
+  extension inside Premiere. Asked Ryan directly whether that crossed
+  the banned line; his answer: "We don't need a ban on it, i just
+  didn't want that to be the focus of what we were building. If the app
+  needs a companion plugin to give us more capabilities thats fine."
+  Scope is deliberately narrow -- this extension's only job is finding
+  Project-panel items named "... [INTERPRET TO X.XXXfps]" and calling
+  Premiere's own Interpret Footage API on them; it does not rebuild
+  import/bin/sequence construction (FCP7 XML remains the delivery path
+  for everything else). The prior abandoned `precut-premiere-extension`
+  repo attempted exactly that broader rebuild, which is the real reason
+  it was abandoned, not the mere presence of CEP/UXP code.
