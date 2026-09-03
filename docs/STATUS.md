@@ -114,10 +114,31 @@ because this session violated them once each.
     duration. Confirmed zero new media created; the 16.4GB test artifact
     from the abandoned itsscale approach was deleted from the real
     drive. *(a733930.)*
-  **Not yet verified in the app or in real Premiere** — I have no way to
-  open the exported XML in Premiere myself. Ryan needs to run a real
-  export and confirm the reference sequence actually plays at the
-  corrected speed and the dual-use split shows two separate items.
+  **Second real failure, tested by Ryan in real Premiere: "That didn't
+  work."** "Interpretation doesnt happen at the sequence level it
+  happens at the clip/footage level. the sequence being set at a
+  different framerate doesnt make the clips on that sequence interpret
+  to that framerate." The reference-sequence math (above) didn't survive
+  real testing, same as the raw-XML-rate approach before it — two
+  failures on this exact problem. Per the standing "three failures means
+  the approach is wrong" rule, stopped there instead of guessing a third
+  mechanism; asked Ryan directly. **His answer restarts this as two
+  separately-provable steps**: "First get the xml to import all
+  framerates above the [target] two times... Then we tackle the next
+  step which is finding a way to select the secondarily imported footage
+  clips and handle the modify-interpret footage function within
+  premiere." Step one shipped: `multi_exporter.py`'s B-roll master-clip
+  loop now builds a second, clearly-labeled Project-panel entry
+  (`"... [INTERPRET TO 29.970fps]"`) for every clip above the target
+  rate — same file, zero extra disk, reusing the existing builder
+  function verbatim. Verified against a real 59.94fps clip: two distinct
+  master-clip entries in the exported XML; a clip already at target rate
+  correctly stays a single entry. Both prior (now-removed) approaches'
+  code lives only in git history (`b613002`..`d4f5278`), not in this
+  repo. *(d4f5278.)* **Step two (triggering Interpret Footage on the
+  duplicate) not yet attempted.** **Not yet verified in real Premiere**
+  — Ryan needs to confirm the same physical file actually shows up as
+  two distinct, correctly-labeled Project-panel items.
 
 ## Done
 
