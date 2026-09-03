@@ -451,6 +451,74 @@ class FCPXMLWriter:
 
             elements.append(m_el)
 
+        elements.extend(self._build_flag_marker_elements())
+        return elements
+
+    def _build_marker_element(self, name: str, comment: str, frame_in: int,
+                               frame_out: int, color_rgb) -> minidom.Element:
+        """Shared <marker> builder for both point markers (frame_out=-1,
+        BRollMarker's convention) and real-duration range markers
+        (FlagMarker's convention, 2026-09-03)."""
+        m_el = self._elem("marker")
+        m_el.appendChild(self._text_elem("name", name))
+        m_el.appendChild(self._text_elem("comment", comment))
+        m_el.appendChild(self._text_elem("in", str(frame_in)))
+        m_el.appendChild(self._text_elem("out", str(frame_out)))
+
+        r, g, b = color_rgb
+        color_el = self._elem("color")
+        color_el.appendChild(self._text_elem("alpha", "255"))
+        color_el.appendChild(self._text_elem("red", str(int(r))))
+        color_el.appendChild(self._text_elem("green", str(int(g))))
+        color_el.appendChild(self._text_elem("blue", str(int(b))))
+        m_el.appendChild(color_el)
+        return m_el
+
+    def _build_flag_marker_elements(self) -> list[minidom.Element]:
+        """Sequence-level <marker> elements for transcript-flagging range
+        markers (FlagMarker) that aren't attached to a specific phrase.
+        Real <out> frame, not the -1 point-marker convention BRollMarker
+        uses — the whole point is a colored block spanning the flagged
+        fragment's actual duration."""
+        elements: list[minidom.Element] = []
+        total_frames = self.frame_rate.seconds_to_frames(self.cutlist.total_duration)
+
+        for marker in getattr(self.cutlist, "flag_markers", None) or []:
+            if getattr(marker, "attach_to_phrase_id", None) is not None:
+                continue
+            frame_in = self.frame_rate.seconds_to_frames(marker.timeline_start)
+            frame_out = self.frame_rate.seconds_to_frames(marker.timeline_end)
+            if total_frames > 0:
+                frame_in = max(0, min(frame_in, total_frames - 1))
+                frame_out = max(frame_in + 1, min(frame_out, total_frames - 1))
+            elements.append(self._build_marker_element(
+                marker.name, marker.comment, frame_in, frame_out, marker.color_rgb,
+            ))
+        return elements
+
+    def _build_attached_flag_marker_elements(self, phrase: ARollPhrase) -> list[minidom.Element]:
+        """Clipitem-level <marker> elements for FlagMarkers attached to
+        this phrase — same clip-relative-offset convention
+        `_build_attached_markers` uses for BRollMarker, but with a real
+        <out> frame instead of -1."""
+        elements: list[minidom.Element] = []
+        clip_frames = self.frame_rate.seconds_to_frames(
+            max(0.01, phrase.source_end - phrase.source_start)
+        )
+
+        for marker in getattr(self.cutlist, "flag_markers", None) or []:
+            if getattr(marker, "attach_to_phrase_id", None) != phrase.phrase_id:
+                continue
+            in_offset_sec = max(0.0, marker.timeline_start - phrase.timeline_start)
+            out_offset_sec = max(0.0, marker.timeline_end - phrase.timeline_start)
+            frame_in = self.frame_rate.seconds_to_frames(in_offset_sec)
+            frame_out = self.frame_rate.seconds_to_frames(out_offset_sec)
+            if clip_frames > 0:
+                frame_in = max(0, min(frame_in, clip_frames - 1))
+                frame_out = max(frame_in + 1, min(frame_out, clip_frames - 1))
+            elements.append(self._build_marker_element(
+                marker.name, marker.comment, frame_in, frame_out, marker.color_rgb,
+            ))
         return elements
 
     def _build_creative_brief_marker(self, brief) -> Optional[minidom.Element]:
@@ -589,6 +657,8 @@ class FCPXMLWriter:
         # clipitem. The markers move with the clip when the editor rearranges
         # the timeline — exactly what Pierce asked for.
         for marker_el in self._build_attached_markers(phrase):
+            ci.appendChild(marker_el)
+        for marker_el in self._build_attached_flag_marker_elements(phrase):
             ci.appendChild(marker_el)
 
         return ci

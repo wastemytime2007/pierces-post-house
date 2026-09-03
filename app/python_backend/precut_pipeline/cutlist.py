@@ -85,6 +85,33 @@ class BRollMarker:
 
 
 @dataclass
+class FlagMarker:
+    """2026-09-03: a color-coded RANGE marker for transcript flagging —
+    Ryan's original Assistant Editor description: "flag things by
+    pulling up usable pieces of information ... color code it based on
+    the storyline being told." Distinct from BRollMarker (a POINT marker
+    for B-roll tag suggestions) because a flagged transcript fragment has
+    real duration that matters — the whole point is seeing a colored
+    block spanning the actual moment on the timeline, not a single tick.
+
+    timeline_start/timeline_end are seconds into the final sequence
+    (post-translation from the source file's own coordinates — see
+    posthouse.transcript_markers for that translation). Emitted with a
+    real <out> frame, not the -1 point-marker convention BRollMarker
+    uses (`_build_markers`/`_build_attached_markers` in exporter.py
+    branch on which dataclass they're building for).
+    """
+    timeline_start: float
+    timeline_end: float
+    name: str                          # shown on the marker, e.g. the topic label
+    comment: str                       # fit + reasoning, e.g. "strong fit: ..."
+    color_rgb: tuple[int, int, int]
+    # Same attach convention as BRollMarker: when set, emitted inside the
+    # phrase's <clipitem> so it rides with the clip on rearrangement.
+    attach_to_phrase_id: Optional[int] = None
+
+
+@dataclass
 class CreativeBrief:
     """Drop 4.0: a short editorial brief describing what this cut is ABOUT.
 
@@ -180,6 +207,7 @@ class CutList:
     aroll_track: list[ARollPhrase]   # V1
     broll_track: list[BRollShot]     # V2 (kept for backwards compatibility; empty in Drop 3.7+)
     broll_markers: list[BRollMarker] = field(default_factory=list)  # Drop 3.7: sequence markers instead of V2 clips
+    flag_markers: list["FlagMarker"] = field(default_factory=list)  # 2026-09-03: color-coded transcript-flagging range markers
 
     # Drop 4.0: optional creative brief, emitted as a frame-0 sequence marker
     # when present. When None (legacy behavior), no brief marker is emitted.
@@ -205,6 +233,7 @@ class CutList:
             "aroll_track": [asdict(p) for p in self.aroll_track],
             "broll_track": [asdict(s) for s in self.broll_track],
             "broll_markers": [asdict(m) for m in self.broll_markers],
+            "flag_markers": [asdict(m) for m in self.flag_markers],
             "creative_brief": asdict(self.creative_brief) if self.creative_brief else None,
             "sequence_width": self.sequence_width,
             "sequence_height": self.sequence_height,
@@ -238,6 +267,19 @@ class CutList:
                 segment_order=m.get("segment_order", 0),
                 attach_to_phrase_id=m.get("attach_to_phrase_id"),
             ))
+        # flag_markers absent in older saved cutlists; default to []
+        raw_flag_markers = data.get("flag_markers", [])
+        flag_markers = [
+            FlagMarker(
+                timeline_start=m["timeline_start"],
+                timeline_end=m["timeline_end"],
+                name=m.get("name", ""),
+                comment=m.get("comment", ""),
+                color_rgb=tuple(m.get("color_rgb", (140, 140, 140))),
+                attach_to_phrase_id=m.get("attach_to_phrase_id"),
+            )
+            for m in raw_flag_markers
+        ]
         # Creative brief (Drop 4.0); absent in older saved cutlists
         raw_brief = data.get("creative_brief")
         brief = None
@@ -259,6 +301,7 @@ class CutList:
             aroll_track=[ARollPhrase(**p) for p in data["aroll_track"]],
             broll_track=[BRollShot(**s) for s in data["broll_track"]],
             broll_markers=markers,
+            flag_markers=flag_markers,
             creative_brief=brief,
             sequence_width=data.get("sequence_width", 1920),
             sequence_height=data.get("sequence_height", 1080),
