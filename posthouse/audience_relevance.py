@@ -178,3 +178,57 @@ def score_fragments_for_audience(
                 reasoning="Not addressed in the model's response — defaulted, not dropped.",
             ))
     return results
+
+
+def save_tagged_fragments(path, source_file: str, audience_goal: str,
+                           tagged_fragments: List[TaggedFragment]) -> None:
+    """Persist tagged fragments for one A-roll file as a pipeline artifact
+    (``<project_dir>/flags/<safe_name>.json``, see ``pipeline.py``'s
+    ``_run_transcript_flagging``). ``audience_goal`` is stored alongside
+    the results purely for humans/debugging inspecting the file, and so a
+    future re-run can tell the goal changed — this function doesn't
+    itself compare it to anything.
+    """
+    data = {
+        "source_file": source_file,
+        "audience_goal": audience_goal,
+        "fragments": [
+            {
+                "start": tf.fragment.source_start_sec,
+                "end": tf.fragment.source_end_sec,
+                "label": tf.fragment.topic_label,
+                "summary": tf.fragment.summary,
+                "fit": tf.fit,
+                "reasoning": tf.reasoning,
+            }
+            for tf in tagged_fragments
+        ],
+    }
+    from pathlib import Path
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=2))
+
+
+def load_tagged_fragments(path) -> List[TaggedFragment]:
+    """Load a previously-saved flags artifact back into TaggedFragments
+    (reconstructing the underlying TopicRange for each one)."""
+    from pathlib import Path
+    data = json.loads(Path(path).read_text())
+    source_file = data.get("source_file", "")
+    results: List[TaggedFragment] = []
+    for entry in data.get("fragments", []):
+        fragment = TopicRange(
+            source_file=source_file,
+            source_start_sec=entry["start"],
+            source_end_sec=entry["end"],
+            topic_label=entry.get("label", ""),
+            summary=entry.get("summary", ""),
+        )
+        fit = entry.get("fit", "off_topic")
+        if fit not in VALID_FITS:
+            fit = "off_topic"
+        results.append(TaggedFragment(
+            fragment=fragment, fit=fit, reasoning=entry.get("reasoning", ""),
+        ))
+    return results

@@ -904,12 +904,33 @@ def _build_all_aroll_sequences(
         combined_h = src_h or 1080
         combined_fps = 30.0
 
+    # 2026-09-03: attach transcript-flagging markers, if
+    # pipeline.py's _run_transcript_flagging stage produced any for
+    # these phrases' source files. Missing/unreadable flag files are a
+    # silent no-op — flagging is opt-in on the project having an
+    # audience_goal set, so most projects simply won't have any yet.
+    flag_markers = []
+    try:
+        from posthouse.transcript_markers import build_flag_markers_for_phrase
+        from posthouse.audience_relevance import load_tagged_fragments
+        flags_dir = project.dir() / "flags"
+        for phrase in all_phrases:
+            flags_path = flags_dir / f"{Path(phrase.source_file).stem}.json"
+            if not flags_path.exists():
+                continue
+            tagged = load_tagged_fragments(flags_path)
+            flag_markers.extend(build_flag_markers_for_phrase(tagged, phrase))
+    except Exception as e:
+        emit({"type": "log", "level": "warn",
+              "message": f"Couldn't attach transcript-flagging markers: {e}"})
+
     cutlist = CutList(
         deliverable_concept="All Synced A-Roll",
         deliverable_preset="aroll_native",
         total_duration=timeline_cursor,
         aroll_track=all_phrases,
         broll_track=[],
+        flag_markers=flag_markers,
         sequence_width=combined_w,
         sequence_height=combined_h,
         sequence_fps=combined_fps,

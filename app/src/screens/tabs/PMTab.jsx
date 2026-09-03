@@ -117,6 +117,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         run_tagging: !!flags.run_tagging,
         run_audio_index: !!flags.run_audio_index,
         run_audio_sync: !!flags.run_audio_sync,
+        run_transcript_flagging: !!flags.run_transcript_flagging,
       });
     } catch (e) {
       console.error(`run_pipeline failed: ${e}`);
@@ -137,6 +138,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
           run_tagging: f.hasBroll,
           run_audio_index: f.hasAudio,
           run_audio_sync: f.hasAroll && f.hasAudio,
+          run_transcript_flagging: f.hasAroll,
         });
       } else if (submitting && ev.type === "error") {
         setError(ev.message); setResult(null); setSubmitting(false);
@@ -702,6 +704,7 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
     run_tagging: hasBroll,
     run_audio_index: hasAudio,
     run_audio_sync: hasAroll && hasAudio,
+    run_transcript_flagging: hasAroll,
   });
 
   const toggle = (key) => setFlags(f => ({ ...f, [key]: !f[key] }));
@@ -717,6 +720,7 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
         run_tagging: hasBroll,
         run_audio_index: hasAudio,
         run_audio_sync: hasAroll && hasAudio,
+        run_transcript_flagging: hasAroll,
       }),
     },
     {
@@ -728,6 +732,7 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
         run_tagging: false,
         run_audio_index: false,
         run_audio_sync: false,
+        run_transcript_flagging: false,
       }),
     },
   ];
@@ -790,6 +795,14 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
               sub="Cross-correlate A-roll camera audio with lav recordings."
               disabled={!hasAroll || !hasAudio}
               disabledReason="Needs both A-roll and audio sources"
+            />
+            <StageCheckbox
+              checked={flags.run_transcript_flagging}
+              onChange={() => toggle("run_transcript_flagging")}
+              label="Transcript flagging"
+              sub="Exhaustively finds storyline-worthy moments and scores them against this project's audience/content goal. No-op if none is set."
+              disabled={!hasAroll}
+              disabledReason="Needs A-roll sources (and a transcript)"
             />
           </div>
         </div>

@@ -47,6 +47,13 @@ class PipelineJob:
     run_tagging: bool = True
     run_audio_index: bool = True
     run_audio_sync: bool = True  # Drop 3.6: new final stage
+    # 2026-09-03: exhaustive transcript reading + audience-relevance
+    # tagging (posthouse.transcript_coverage / audience_relevance).
+    # Automatic, per Ryan's standing preference against manual
+    # multi-step UI (the sync-coverage rescue went the same way — see
+    # ROADMAP.md Decision Log, "coverage rescue made automatic"). A
+    # no-op, not an error, when the project has no audience_goal set.
+    run_transcript_flagging: bool = True
     # 2026-09-03: sync_project() caches by a hash of the declared source
     # paths (see audio_sync.compute_source_hash) -- nothing about a
     # re-run changes that hash, so every "Run pipeline" click with
@@ -67,6 +74,7 @@ _STAGE_LABELS = {
     "tag":             "Tagging",
     "audio_index":     "Audio indexing",
     "audio_sync":      "Audio sync",
+    "transcript_flagging": "Transcript flagging",
 }
 
 
@@ -141,6 +149,7 @@ def run_pipeline(
         and not job.run_tagging
         and not job.run_audio_index
         and not job.run_audio_sync
+        and not job.run_transcript_flagging
     )
     if is_proxies_only:
         summary = "✓ Proxies only (no downstream stages)"
@@ -150,6 +159,7 @@ def run_pipeline(
             ("Tagging",       job.run_tagging),
             ("Audio index",   job.run_audio_index),
             ("Audio sync",    job.run_audio_sync),
+            ("Transcript flagging", job.run_transcript_flagging),
         ]
         # Unicode marks: ✓ for will-run, ⊘ for skipped. If any terminal/
         # log viewer can't render these, they fall back to the level color.
@@ -238,6 +248,22 @@ def run_pipeline(
             emit({"type": "audio_sync_error",
                   "job_id": job.job_id,
                   "message": f"{type(e).__name__}: {e}",
+                  "traceback": traceback.format_exc()})
+
+    # ---- Transcript flagging (2026-09-03) ----
+    # Runs AFTER transcription so transcripts exist. Serial, same reason
+    # as audio sync: must finish before pipeline_complete fires, and it
+    # makes real API calls so shouldn't race other stages for the
+    # backend's attention.
+    if job.run_transcript_flagging and not job.cancel_flag.is_set():
+        try:
+            _run_transcript_flagging(job, aroll_videos, emit)
+        except Exception as e:
+            import traceback
+            emit({"type": "log", "level": "error",
+                  "message": f"Transcript flagging failed: {type(e).__name__}: {e}"})
+            emit({"type": "error", "job_id": job.job_id,
+                  "message": f"Transcript flagging failed: {e}",
                   "traceback": traceback.format_exc()})
 
     proj.save()  # persist final status
@@ -400,6 +426,107 @@ def _run_audio_sync(
         "group_count": len(state.groups),
         "rescued_count": rescued_count,
     })
+
+
+def _run_transcript_flagging(
+    job: PipelineJob,
+    aroll_videos: list[tuple[Path, SourceFolder]],
+    emit: Callable[[dict], None],
+) -> None:
+    """Exhaustive transcript reading + audience-relevance tagging
+    (2026-09-03) — see posthouse/transcript_coverage.py and
+    posthouse/audience_relevance.py for the actual mechanisms; this is
+    just the pipeline-stage wiring.
+
+    A no-op, not an error, when: there's no Post House manifest.json for
+    this project yet (older projects, or ones created outside PMTab),
+    or the manifest has no audience_goal set (nothing to score fragments
+    against — Project Manager intake's dropdown, not this stage, is
+    where that gets decided).
+
+    Idempotent like transcription: a project.dir()/flags/<stem>.json
+    that already exists is skipped, not re-generated (and re-scored) on
+    every pipeline run — this makes real, billed API calls, so silently
+    repeating them on an unrelated re-run would be a real cost surprise.
+    """
+    from posthouse.manifest import load_manifest
+    from posthouse.transcript_coverage import extract_exhaustive_fragments
+    from posthouse.audience_relevance import score_fragments_for_audience, save_tagged_fragments
+    from precut_pipeline.transcriber import Transcript
+
+    project_dir = job.project.dir()
+    manifest_path = project_dir / "manifest.json"
+    if not manifest_path.exists():
+        return
+
+    try:
+        manifest = load_manifest(manifest_path)
+    except Exception:
+        return
+
+    audience_goal = (manifest.get("project") or {}).get("audience_goal")
+    if not audience_goal:
+        emit({"type": "log", "level": "info",
+              "message": "Transcript flagging skipped — no audience/content "
+                         "goal set for this project (Project Manager intake)."})
+        return
+
+    transcript_dir = job.project.transcripts_dir()
+    transcript_files = sorted(transcript_dir.glob("*.json"))
+    if not transcript_files:
+        return
+
+    # Transcripts are saved with the PROXY path as their own source_path
+    # (Transcriber.transcribe(proxy_path)), but export-time matching
+    # needs the ORIGINAL A-roll file path. Both are saved under the same
+    # stem (transcribe stage: `transcript_dir / f"{source_file.stem}.json"`)
+    # — resolve original paths by stem instead of trusting the saved
+    # source_path field.
+    original_by_stem = {p.stem: p for p, _src in aroll_videos}
+
+    flags_dir = project_dir / "flags"
+    total = len(transcript_files)
+    _emit_stage_start(emit, job.job_id, "transcript_flagging", total=total)
+
+    completed = 0
+    for tp in transcript_files:
+        if job.cancel_flag.is_set():
+            break
+        completed += 1
+        out_path = flags_dir / f"{tp.stem}.json"
+        if out_path.exists():
+            emit({"type": "file_done", "job_id": job.job_id,
+                  "stage": "transcript_flagging", "file": tp.name,
+                  "status": "skipped", "completed": completed, "total": total})
+            continue
+
+        original_path = original_by_stem.get(tp.stem)
+        if original_path is None:
+            # Transcript exists for a file no longer declared as an
+            # A-roll source (e.g. removed after transcription) — nothing
+            # to attach a flag marker to at export time either way.
+            continue
+
+        try:
+            transcript = Transcript.load(tp)
+            fragments, coverage = extract_exhaustive_fragments(transcript)
+            tagged = score_fragments_for_audience(audience_goal, fragments) if fragments else []
+            save_tagged_fragments(out_path, str(original_path), audience_goal, tagged)
+            emit({"type": "log", "level": "info",
+                  "message": f"Flagged {original_path.name}: {len(tagged)} "
+                             f"fragments, {coverage.coverage_fraction:.0%} coverage"})
+            emit({"type": "file_done", "job_id": job.job_id,
+                  "stage": "transcript_flagging", "file": tp.name,
+                  "status": "done", "completed": completed, "total": total})
+        except Exception as e:
+            emit({"type": "log", "level": "warn",
+                  "message": f"Transcript flagging failed for {original_path.name}: {e}"})
+            emit({"type": "file_done", "job_id": job.job_id,
+                  "stage": "transcript_flagging", "file": tp.name,
+                  "status": "failed", "completed": completed, "total": total})
+
+    emit({"type": "stage_complete", "job_id": job.job_id,
+          "stage": "transcript_flagging"})
 
 
 def _run_audio_indexing(
