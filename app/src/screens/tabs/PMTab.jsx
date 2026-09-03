@@ -513,6 +513,26 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         {/* Sync review, absorbed from AETab -- Ryan: this was never
             distinct Assistant Editor work, it's the same review the
             Ingest/PM merge already covers. */}
+        {project.audio_sync?.pairs?.length > 0 && (
+          <div className="sync-resync-bar">
+            <button
+              className="btn btn-ghost"
+              disabled={hasRunning}
+              onClick={() => runPipeline({
+                run_proxies: false, run_transcription: false,
+                run_tagging: false, run_audio_index: false,
+                run_audio_sync: true, force_audio_sync: true,
+              })}
+            >
+              Re-sync audio (ignore cached results)
+            </button>
+            <span className="sync-resync-hint">
+              sync_project() caches by source paths — a plain "Run
+              pipeline" click returns the same result until something
+              actually changes. Use this to force a real recompute.
+            </span>
+          </div>
+        )}
         <SyncMatrix
           pairs={_collectLivePairs(jobs)}
           syncState={project.audio_sync}
@@ -522,6 +542,16 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
             : undefined}
           selectedKey={selectedPair?.key}
         />
+        {project.audio_sync?.pairs?.length > 0 && (
+          <WeakPairsPanel
+            pairs={project.audio_sync.pairs}
+            selectedKey={selectedPair?.key}
+            onAnalyze={(pair, key) => {
+              setSelectedPair({ pair, key });
+              analyzeCoverage(pair);
+            }}
+          />
+        )}
         {project.audio_sync?.pairs?.length > 0 && (
           <div className="ae-tab-preview">
             <AudioSyncPreview pair={selectedPair?.pair} />
@@ -643,6 +673,70 @@ function TranscriptRow({ row }) {
       </div>
     </div>
   );
+}
+
+// Mirrors precut_pipeline/audio_sync.py's SCORE_USE. A pair below this
+// (and not cross-validation-promoted) is what the coverage feature
+// exists for -- surfaced explicitly here so finding it doesn't depend on
+// guessing that a non-green matrix cell is still clickable.
+const SCORE_USE = 10.0;
+
+/**
+ * WeakPairsPanel — Ryan: "Im not seeing a Analyze Coverage button." Real
+ * cause: the button only appeared after clicking a matrix cell, and the
+ * empty-preview hint said "click a RELIABLE pair" -- exactly the pairs
+ * that don't need this feature. This panel lists every weak/unreliable
+ * pair explicitly, unconditionally, each with its own working button --
+ * no implicit "did you know cells are clickable" required.
+ */
+function WeakPairsPanel({ pairs, selectedKey, onAnalyze }) {
+  const weak = pairs
+    .filter((p) => !(p.score >= SCORE_USE || p.promoted_via_consistency))
+    .map((p) => _toResolvedPair(p));
+
+  if (weak.length === 0) return null;
+
+  return (
+    <div className="weak-pairs-panel">
+      <div className="weak-pairs-title">
+        {weak.length} weak/unreliable pair{weak.length === 1 ? "" : "s"} — try "Find usable stretches" below
+      </div>
+      {weak.map(({ pair, key }) => (
+        <div key={key} className={`weak-pair-row ${selectedKey === key ? "selected" : ""}`}>
+          <span className="weak-pair-names" title={`${pair.arollFull} | ${pair.audioFull}`}>
+            {pair.aroll} ↔ {pair.audio}
+          </span>
+          <span className="weak-pair-score">score {pair.score?.toFixed(1) ?? "—"}</span>
+          <button className="btn btn-ghost" onClick={() => onAnalyze(pair, key)}>
+            Find usable stretches
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Same mapping SyncMatrix.jsx's persisted-mode _resolvePairs uses, kept
+// in sync deliberately (see that function) so a pair selected from here
+// looks identical to one selected by clicking the matrix directly.
+function _toResolvedPair(p) {
+  const aroll = _basename(p.aroll_file || p.aroll_proxy || "");
+  const audio = _basename(p.audio_file || "");
+  const key = `${aroll}|${audio}`;
+  return {
+    key,
+    pair: {
+      aroll, audio,
+      score: p.score,
+      offset: p.offset_sec,
+      reliable: p.score >= SCORE_USE || !!p.promoted_via_consistency,
+      promoted: !!p.promoted_via_consistency,
+      arollFull: p.aroll_file || "",
+      arollProxyFull: p.aroll_proxy || "",
+      audioFull: p.audio_file || "",
+      offsetSec: p.offset_sec,
+    },
+  };
 }
 
 /**

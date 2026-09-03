@@ -395,6 +395,7 @@ def handle_run_pipeline(cmd: dict) -> None:
         run_tagging=cmd.get("run_tagging", True),
         run_audio_index=cmd.get("run_audio_index", True),
         run_audio_sync=cmd.get("run_audio_sync", True),
+        force_audio_sync=cmd.get("force_audio_sync", False),
     )
 
     with _jobs_lock:

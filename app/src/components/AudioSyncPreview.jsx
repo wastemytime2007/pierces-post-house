@@ -102,7 +102,9 @@ export default function AudioSyncPreview({ pair }) {
   if (!pair) {
     return (
       <div className="ae-preview-empty">
-        Click a reliable pair in the matrix to preview it here.
+        Click any pair in the matrix — reliable or not — to preview it
+        here. Weak/unreliable pairs are also listed below with a
+        one-click "Find usable stretches" option.
       </div>
     );
   }

@@ -47,6 +47,14 @@ class PipelineJob:
     run_tagging: bool = True
     run_audio_index: bool = True
     run_audio_sync: bool = True  # Drop 3.6: new final stage
+    # 2026-09-03: sync_project() caches by a hash of the declared source
+    # paths (see audio_sync.compute_source_hash) -- nothing about a
+    # re-run changes that hash, so every "Run pipeline" click with
+    # run_audio_sync on was silently returning the identical cached
+    # result. Ryan: "is there a way to re-run the sync process? Clicking
+    # run pipeline is still giving the same output." This flag bypasses
+    # the cache for one run by clearing project.audio_sync first.
+    force_audio_sync: bool = False
 
 
 # Drop 4.44: pretty display names for log banners. Keeps the banner
@@ -321,6 +329,9 @@ def _run_audio_sync(
     the results to project.audio_sync (persisted by run_pipeline's save()).
     """
     from precut_pipeline.audio_sync import sync_project
+
+    if job.force_audio_sync:
+        job.project.audio_sync = None
 
     _emit_stage_start(emit, job.job_id, "audio_sync")
 
