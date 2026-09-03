@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { sendCommand } from "../App.jsx";
 import PMTab from "./tabs/PMTab.jsx";
 import IngestTab from "./tabs/IngestTab.jsx";
+import AETab from "./tabs/AETab.jsx";
 import IdeasTab from "./tabs/IdeasTab.jsx";
 import LogView from "../components/LogView.jsx";
 
@@ -13,7 +14,10 @@ import LogView from "../components/LogView.jsx";
  *      manifest, independent of the PreCut project model below it)
  *   1. Ingest — drop zones + proxy/index progress
  *   2. Transcripts — per-A-roll transcription status
- *   3. Ideas — AI producer analyze / refine / pick
+ *   3. Assistant Editor — Post House Task 2.1: reviews the audio sync
+ *      Ingest already computed, plus a playable preview (new — PreCut's
+ *      own frontend has no video/audio playback surface anywhere else).
+ *   4. Ideas — AI producer analyze / refine / pick
  *
  * The tabs are rendered side-by-side with a persistent activity log
  * on the right. The tabs all share the same subscriber bus from App.
@@ -226,7 +230,15 @@ export default function ProjectView({
               matrix. It was purely informational so having it as its own
               stage was extra clicks for no input. */}
           <Tab
-            label="02 · Ideas"
+            label="02 · Assistant Editor"
+            active={activeTab === "ae"}
+            onClick={() => setActiveTab("ae")}
+            sub={project.audio_sync?.pairs?.length
+              ? `${project.audio_sync.pairs.filter((p) => p.score >= 10 || p.promoted_via_consistency).length} synced`
+              : "no sync yet"}
+          />
+          <Tab
+            label="03 · Ideas"
             active={activeTab === "ideas"}
             onClick={() => setActiveTab("ideas")}
             sub={ideas.length ? `${ideas.length} cards` : "none"}
@@ -267,6 +279,9 @@ export default function ProjectView({
               hasRunning={hasRunning}
               onGoToIdeas={() => setActiveTab("ideas")}
             />
+          )}
+          {activeTab === "ae" && (
+            <AETab project={project} />
           )}
           {activeTab === "ideas" && (
             <IdeasTab

@@ -15,7 +15,7 @@
  * The component takes EITHER a list of pair events (live mode) OR a full
  * AudioSyncState-shaped object from the project. If neither, shows empty.
  */
-export default function SyncMatrix({ pairs, syncState, liveStatus }) {
+export default function SyncMatrix({ pairs, syncState, liveStatus, onSelectPair, selectedKey }) {
   // Normalize inputs into a unified pair list
   const pairList = _resolvePairs(pairs, syncState);
 
@@ -71,11 +71,14 @@ export default function SyncMatrix({ pairs, syncState, liveStatus }) {
                 </th>
                 {lavs.map((lav) => {
                   const pair = pairLookup.get(`${aroll}|${lav}`);
+                  const key = `${aroll}|${lav}`;
+                  const selectable = !!(onSelectPair && pair && pair.audioFull);
                   return (
                     <td
                       key={lav}
-                      className={`sync-cell ${_scoreClass(pair)}`}
+                      className={`sync-cell ${_scoreClass(pair)} ${selectable ? "sync-cell-selectable" : ""} ${selectedKey === key ? "sync-cell-selected" : ""}`}
                       title={_tooltip(pair)}
+                      onClick={selectable ? () => onSelectPair(pair, key) : undefined}
                     >
                       {pair ? (
                         <>
@@ -146,7 +149,9 @@ function _resolvePairs(pairs, syncState) {
     }));
   }
   if (syncState && Array.isArray(syncState.pairs) && syncState.pairs.length) {
-    // Persisted mode — convert full paths to basenames for display
+    // Persisted mode — convert full paths to basenames for display, but
+    // keep the full paths too (Post House Task 2.1: needed so a clicked
+    // cell can hand real file paths to the playback preview).
     return syncState.pairs.map((p) => ({
       aroll: _baseName(p.aroll_file || p.aroll_proxy || ""),
       audio: _baseName(p.audio_file || ""),
@@ -157,6 +162,10 @@ function _resolvePairs(pairs, syncState) {
       // (offset-difference consistency with strong matches).
       reliable: p.score >= 10 || !!p.promoted_via_consistency,
       promoted: !!p.promoted_via_consistency,
+      arollFull: p.aroll_file || "",
+      arollProxyFull: p.aroll_proxy || "",
+      audioFull: p.audio_file || "",
+      offsetSec: p.offset_sec,
     }));
   }
   return [];
