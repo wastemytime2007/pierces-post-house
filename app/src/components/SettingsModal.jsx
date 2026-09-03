@@ -7,17 +7,22 @@ import { useState } from "react";
  * and lets the user paste a new key. We never show the existing key value
  * (only last 4 chars) — the backend handles storage.
  */
-export default function SettingsModal({ settings, onSave, onClose, onOpenHelp }) {
+export default function SettingsModal({ settings, onSave, onSaveWorkspaceId, onClose, onOpenHelp }) {
   const [newKey, setNewKey] = useState("");
+  const [workspaceId, setWorkspaceId] = useState(settings?.workspace_id || "");
   const [saving, setSaving] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleSave = async () => {
     const trimmed = newKey.trim();
-    if (!trimmed) return;
+    const trimmedWs = workspaceId.trim();
+    if (!trimmed && trimmedWs === (settings?.workspace_id || "")) return;
     setSaving(true);
     try {
-      await onSave(trimmed);
+      if (trimmed) await onSave(trimmed);
+      if (onSaveWorkspaceId && trimmedWs !== (settings?.workspace_id || "")) {
+        await onSaveWorkspaceId(trimmedWs);
+      }
       setNewKey("");
       onClose();
     } catch (e) {
@@ -145,6 +150,29 @@ export default function SettingsModal({ settings, onSave, onClose, onOpenHelp })
             )}
           </div>
 
+          <details style={{ marginTop: 16 }}>
+            <summary className="form-label" style={{ cursor: "pointer" }}>
+              Advanced: workspace ID
+            </summary>
+            <div className="form-hint" style={{ marginTop: 6 }}>
+              Only needed if your API key comes from an Anthropic organization/
+              team account with multiple workspaces — most people never need
+              this. If Claude calls fail with an error mentioning
+              "anthropic-workspace-id", find your workspace ID at{" "}
+              <code>console.anthropic.com</code> → Settings → Workspaces, and
+              paste it here.
+            </div>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="wrkspc_..."
+              value={workspaceId}
+              onChange={(e) => setWorkspaceId(e.target.value)}
+              onKeyDown={handleKey}
+              style={{ fontFamily: "var(--font-mono)", marginTop: 8 }}
+            />
+          </details>
+
           {showClearConfirm && (
             <div className="settings-clear-confirm">
               <div>Clear the saved key? The producer will stop working until you paste a new one.</div>
@@ -177,9 +205,9 @@ export default function SettingsModal({ settings, onSave, onClose, onOpenHelp })
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!newKey.trim() || saving}
+            disabled={(!newKey.trim() && workspaceId.trim() === (settings?.workspace_id || "")) || saving}
           >
-            {saving ? "Saving…" : "Save key"}
+            {saving ? "Saving…" : "Save"}
           </button>
         </div>
       </div>

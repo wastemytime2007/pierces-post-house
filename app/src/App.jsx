@@ -29,7 +29,7 @@ export default function App() {
   const [backendReady, setBackendReady] = useState(false);
   const [project, setProject] = useState(null);
   const [log, setLog] = useState([]);
-  const [settings, setSettings] = useState(null);     // { active_source, has_env, has_settings, key_suffix, welcome_seen, tour_seen, api_key_help_auto_shown }
+  const [settings, setSettings] = useState(null);     // { active_source, has_env, has_settings, key_suffix, workspace_id, welcome_seen, tour_seen, api_key_help_auto_shown }
   const [showSettings, setShowSettings] = useState(false);
   // Drop 4.46: auto-include rules — user-configured "always include
   // these files in every export" preferences. Loaded once at backend-
@@ -451,6 +451,10 @@ export default function App() {
     await sendCommand({ type: "set_api_key", api_key: key });
   }, []);
 
+  const saveWorkspaceId = useCallback(async (workspaceId) => {
+    await sendCommand({ type: "set_workspace_id", workspace_id: workspaceId });
+  }, []);
+
   // Drop 4.46: persist a new list of auto-include rules. Backend
   // emits an `auto_include_rules` event on success which our listener
   // picks up to refresh the local copy.
@@ -602,6 +606,7 @@ export default function App() {
         <SettingsModal
           settings={settings}
           onSave={saveApiKey}
+          onSaveWorkspaceId={saveWorkspaceId}
           onClose={() => setShowSettings(false)}
           onOpenHelp={openApiKeyHelp}
         />

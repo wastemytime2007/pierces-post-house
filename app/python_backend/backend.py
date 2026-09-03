@@ -91,6 +91,7 @@ from producer import (
 )
 from settings import (
     apply_settings_to_env, get_api_key_summary, set_api_key,
+    set_workspace_id,
     set_onboarding_flag,
     get_auto_include_rules, set_auto_include_rules,
 )
@@ -595,6 +596,16 @@ def handle_set_api_key(cmd: dict) -> None:
     emit({"type": "api_key_saved", "summary": get_api_key_summary()})
 
 
+def handle_set_workspace_id(cmd: dict) -> None:
+    workspace_id = cmd.get("workspace_id", "")
+    try:
+        set_workspace_id(workspace_id)
+    except Exception as exc:
+        err(f"Failed to save workspace ID: {exc}", tb=traceback.format_exc())
+        return
+    emit({"type": "workspace_id_saved", "summary": get_api_key_summary()})
+
+
 def handle_set_onboarding_flag(cmd: dict) -> None:
     """Mark welcome_seen / tour_seen / api_key_help_auto_shown as True.
 
@@ -797,6 +808,7 @@ HANDLERS = {
     # Settings
     "get_settings": handle_get_settings,
     "set_api_key": handle_set_api_key,
+    "set_workspace_id": handle_set_workspace_id,
     "set_onboarding_flag": handle_set_onboarding_flag,
     # Drop 4.46: auto-include rules
     "get_auto_include_rules": handle_get_auto_include_rules,

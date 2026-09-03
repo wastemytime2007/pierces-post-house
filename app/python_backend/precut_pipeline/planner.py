@@ -14,6 +14,7 @@ from typing import Optional
 
 import anthropic
 
+from .anthropic_client import build_anthropic_client
 from .config import ANTHROPIC_MODEL, ANTHROPIC_MAX_TOKENS
 from .transcriber import Transcript
 from .deliverable import (
@@ -35,7 +36,7 @@ class DeliverablePlanner:
             raise PlannerError(
                 "No Anthropic API key. Set ANTHROPIC_API_KEY env var or pass api_key."
             )
-        self.client = anthropic.Anthropic(api_key=key)
+        self.client = build_anthropic_client(api_key=key)
         self.model = model
 
     # ------------------------------------------------------------

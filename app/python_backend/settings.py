@@ -3,9 +3,20 @@
 Stored at:
     ~/Library/Application Support/Post House/settings.json
 
-Currently holds just the Anthropic API key so users don't have to
-wrangle launchctl env vars. Read once at backend startup and injected
-into os.environ so the planner's env lookup finds it.
+Currently holds the Anthropic API key (and, for the minority of users
+whose key is workspace-scoped, an optional workspace ID) so users don't
+have to wrangle launchctl env vars. Read once at backend startup and
+injected into os.environ so the planner's env lookup finds it.
+
+**Workspace ID is optional and per-user, never hardcoded.** Anthropic
+keys created under an individual account work with just an API key. Keys
+created under an organization/team Console setup with multiple workspaces
+require an `anthropic-workspace-id` header on every request (discovered
+2026-09-03, Ryan's own account) — that requirement is a property of the
+ACCOUNT the key came from, not something every user of this app will hit.
+Baking one specific workspace ID into the app would only work for keys
+from that one workspace and silently break for everyone else, so this
+stays a blank-by-default settings field.
 
 Security notes:
 - File is created with mode 0600 (owner read/write only)
@@ -70,6 +81,19 @@ def apply_settings_to_env() -> dict:
     else:
         summary["api_key_source"] = "missing"
 
+    # Optional — see module docstring. Only set for the minority of users
+    # whose key is workspace-scoped; env takes precedence over settings,
+    # same rule as the API key above.
+    env_ws = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    settings_ws = settings.get("anthropic_workspace_id")
+    if env_ws:
+        summary["workspace_id_source"] = "env"
+    elif settings_ws:
+        os.environ["ANTHROPIC_WORKSPACE_ID"] = settings_ws
+        summary["workspace_id_source"] = "settings"
+    else:
+        summary["workspace_id_source"] = "missing"
+
     return summary
 
 
@@ -84,6 +108,20 @@ def set_api_key(api_key: str) -> None:
         # Empty string → remove the key
         settings.pop("anthropic_api_key", None)
         os.environ.pop("ANTHROPIC_API_KEY", None)
+    save_settings(settings)
+
+
+def set_workspace_id(workspace_id: str) -> None:
+    """Persist an optional workspace ID and inject into the current
+    process. Blank for most users — see module docstring."""
+    workspace_id = workspace_id.strip()
+    settings = load_settings()
+    if workspace_id:
+        settings["anthropic_workspace_id"] = workspace_id
+        os.environ["ANTHROPIC_WORKSPACE_ID"] = workspace_id
+    else:
+        settings.pop("anthropic_workspace_id", None)
+        os.environ.pop("ANTHROPIC_WORKSPACE_ID", None)
     save_settings(settings)
 
 
@@ -110,11 +148,18 @@ def get_api_key_summary() -> dict:
         active = "none"
         key = ""
 
+    # Optional, not secret — safe to show in full, unlike the key itself.
+    workspace_id = (
+        os.environ.get("ANTHROPIC_WORKSPACE_ID", "")
+        or settings.get("anthropic_workspace_id", "")
+    )
+
     return {
         "active_source": active,
         "has_env": bool(env_key),
         "has_settings": bool(settings_key),
         "key_suffix": key[-4:] if len(key) >= 4 else "",
+        "workspace_id": workspace_id,
         # Drop 4.44: onboarding flags so the UI knows whether to show
         # the welcome modal / tour / api-key help panel.
         "welcome_seen": bool(settings.get("welcome_seen")),
