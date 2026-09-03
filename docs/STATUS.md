@@ -188,6 +188,27 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Real bug found and fixed testing transcript flagging on
+  a real project: dual-use checkbox toggled after the fact didn't
+  trigger B-roll tagging.** Ryan: "It didnt pull in any b-roll i dont
+  think the dual use checkbox worked this time." Root-caused against his
+  actual project files (`Test Project_Post House`), not assumed:
+  `project.json` correctly had `dual_use: true` on the A-roll source —
+  the checkbox itself worked — but that source's per-file status had no
+  tagging fields at all and `broll_index/` was completely empty, meaning
+  tagging was never even attempted. Confirmed sequence with Ryan: he
+  checked dual-use AFTER the pipeline's initial auto-run (which computes
+  `run_tagging` from the dual-use state at that moment), then never
+  manually re-ran the pipeline — nothing existed to notice the new state
+  and redo tagging for it. `handle_set_source_dual_use` now detects a
+  false→true transition and auto-fires a tagging-only pipeline run for
+  it, same automatic-over-manual reasoning as the sync-coverage rescue.
+  Verified for real against Ryan's actual broken project (not a
+  synthetic one): reset the flag, flipped it back, ran the same logic —
+  both files tagged (2/2), `broll_index` went from empty to a real index
+  (120 frames). This also repaired his real project's missing data, not
+  just validated the fix. *(1bca433.)* **Ryan needs to fully quit and
+  reopen the app to pick this up** — not done as of this writing.
 - 2026-09-03 — **Transcript flagging wired into the real pipeline and
   export flow.** Ryan: "go ahead and wire it in." New
   `PipelineJob.run_transcript_flagging` stage (default on — automatic,
