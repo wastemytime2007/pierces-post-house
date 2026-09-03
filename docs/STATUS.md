@@ -31,9 +31,9 @@ Ryan's own hand-pass over comparable material produced 250 selects. That gap
 building. Nothing else about PreCut is being replaced.
 
 **PHASES 0-3 (safety net, harvest layer, Project Manager code, benchmark
-harness) are built but Phase 0/1/3 output was never shown to Ryan; the
-Project Manager specifically has never been verified by him** — that's
-task 1.1 below, the cheapest possible next step.
+harness) are built; Phase 0/1/3 output was never shown to Ryan directly,
+but Phase 2 (Project Manager) has now been verified by him repeatedly on
+real footage** — see § Done, 2026-09-03, "That worked perfectly."
 
 **Phase 4's motion cull is PARKED**, not shipped, not being worked on. Five
 single-signal detectors were tried; none beat "keep everything" on real
@@ -62,202 +62,7 @@ because this session violated them once each.
 
 ## In progress
 
-- **Task 1.1/2.1 converged into one tab: "Project," code-complete, not yet
-  Ryan-verified.** History, each step driven by Ryan actually using the
-  previous one: (1) PMTab and IngestTab held two independent records of
-  the same A-roll/B-roll/Source-Audio declarations, so footage got
-  declared twice — merged so PMTab is the only place that happens,
-  calling PreCut's own `add_source`/`remove_source` directly *(454bd05,
-  broken up into c8f994e after a staging mistake — see below)*. (2) Ryan
-  then reported three more real problems in one message: Ingest didn't
-  make sense as a separate tab any more; Organize should auto-start
-  processing instead of requiring a second click; run_pipeline never
-  tagged dual-use footage as B-roll; and after syncing, the Assistant
-  Editor tab was just showing the same thing Ingest did. All four
-  addressed:
-  - **Real backend bug, not UI**: PreCut's `add_source` is path-keyed
-    with exactly one kind per path, so a dual-use A-roll folder never
-    appeared in `sources_by_kind("broll")` for `pipeline.py`'s B-roll
-    collection — no wiring of the checkbox could have fixed this without
-    a model change. Fixed: `SourceFolder.dual_use` field,
-    `Project.set_dual_use()`, and `_collect_videos` unions in dual_use
-    A-roll sources when collecting "broll". Verified with a scripted
-    before/after check (empty broll collection before the flag, includes
-    the file — same SourceFolder object — immediately after).
-  - IngestTab.jsx and AETab.jsx deleted; their content (run-pipeline
-    button/modal, progress, transcripts, SyncMatrix + AudioSyncPreview)
-    absorbed into PMTab.jsx. ProjectView now has two tabs: Project and
-    Ideas. Ryan's own read: none of it was ever distinct Ingest or
-    Assistant Editor work.
-  - Organize now auto-fires `run_pipeline` on manifest-write success,
-    with the same defaults the manual modal used.
-  *(c8f994e — this is the second of two commits: the first, b9b8de9,
-  shipped with only file deletions because `git add` aborted on an
-  already-removed pathspec before staging the real changes, same mistake
-  as this session's earlier `ea6d093`; caught immediately and fixed with
-  an honest follow-up commit, not a silent amend.)*
-  Verified: the scripted dual-use check above; `vite build` clean
-  (61→59 modules); `npm run tauri dev` compiles and runs clean alongside
-  the real PreCut.app with no Python tracebacks in the startup log.
-  **Ryan ran it on Runnells Day 1**: Organize did auto-start processing,
-  and the sync review renders correctly under the merged Project tab
-  (screenshots show the matrix and the "2 reliable of 8 pairs" state).
-  **Still not confirmed**: the dual-use B-roll tagging fix, since this
-  run declared no B-roll/dual-use sources at all — needs a real dual-use
-  shoot to actually exercise it.
-- 2026-09-03 — **Real sync-quality finding on that same run, investigated
-  and fixed with new capability, not yet Ryan-verified.** Ryan: "the sync
-  isnt as accurate as it used to be. I think you may have broken it with
-  the one source one clip idea." Investigated before agreeing or
-  defending: `precut_pipeline/audio_sync.py` is byte-identical to the
-  protected PreCut checkout (diffed directly, confirmed never edited);
-  today's changes touched only `dual_use`/B-roll collection, irrelevant
-  to this aroll+audio-only project. The real cause, found in the
-  persisted `project.json`: PreCut's own unmodified `sync_project()`
-  scored clip `0006` at 2.8-3.15 against all four audio files (noise
-  level) because a ~5-minute stretch of dead/irrelevant audio (Bob out of
-  the room, then on the phone elsewhere) diluted the single whole-file
-  correlation PreCut runs per pair — a real, pre-existing PreCut
-  limitation, not a regression. Ryan then named the general case
-  precisely: "bridge the gap in the syncing for when people walk in and
-  out of the room... finding a way to sync the useable portions... is
-  the ideal scenario." Built `posthouse/sync_coverage.py`
-  (`analyze_pair_coverage`) — genuinely new capability, confirmed PreCut
-  has nothing like it. Gates candidate windows via one cheap ffmpeg
-  `silencedetect` pass (energy, not correlation — a phone call still has
-  energy and still gets tried, correctly scoring low on its own merits),
-  then runs PreCut's own unmodified `sync_pair()` on each window against
-  the full A-roll proxy, requiring at least two windows to independently
-  agree before trusting either. **Verified on the exact real pair before
-  writing the algorithm**: manual windowed scan of clip 0006 vs. both
-  take-2 lav files found four windows (420-540s into one lav file)
-  agreeing on offset -308.6s (scores up to 18.6, three above STRONG) and
-  six windows on the other lav agreeing on -306.8s (scores up to 31.0) —
-  both invisible to the whole-file pass. The finished module reproduces
-  this exactly. Regression test (`test_sync_coverage.py`, tier2) built a
-  synthetic dead-zone case the same way `test_sync.py`'s existing fixture
-  is built (real TTS speech, not synthetic tones) and caught a real bug
-  in the process: `analyze_pair_coverage` never exposed `min_window_sec`,
-  so a small `window_sec` silently produced zero candidate windows with
-  no error — fixed before shipping. Suite: 224 passed / 1 skipped
-  (non-tier2, unaffected) + 1 passed / 1 skipped (new tier2 tests, one
-  honestly skips rather than force a pass). Wired into the app as an
-  "Analyze coverage" action on a selected pair in the merged Project
-  tab's sync review — read-only, reports a proposed offset and supporting
-  time ranges, never rewrites the matrix's own score/offset. *(f52886f.)*
-  **Two real bugs found on first use, both fixed, neither yet verified**:
-  Ryan: "Im not seeing a Analyze Coverage button. And is there a way to
-  re run the sync process? Clicking run pipeline is still giving the
-  same output from the original run." (1) `sync_project()` caches by a
-  hash of the source paths, which never changes on a plain re-run, so
-  "Run pipeline" was silently always returning the identical cached
-  result — no UI ever exposed a way around this. Added `force_audio_sync`
-  to `PipelineJob` (clears `project.audio_sync` before calling
-  `sync_project()`) and a dedicated "Re-sync audio (ignore cached
-  results)" button. (2) The coverage button only appeared after clicking
-  a matrix cell, and the empty-preview hint said "click a **reliable**
-  pair" — exactly the pairs that don't need it; Ryan had no way to find
-  it. Added `WeakPairsPanel`: every pair below `SCORE_USE` is now listed
-  explicitly and unconditionally below the matrix with its own "Find
-  usable stretches" button, no implicit clickability knowledge required.
-  *(d1cb8be.)*
-  **Third round, both a real bug and real UX confusion, both fixed:**
-  Ryan: "It doesn't seem to be doing anything. But it's also really
-  confusing on what all the buttons are for... click on the actual audio
-  files, under that... individual clips with the find useable stretches
-  button, under that... an Analyze Audio button." The "doesn't seem to be
-  doing anything" part was a genuine bug, not confusion: `WeakPairsPanel`
-  called `setSelectedPair()` (to also load the pair into the preview
-  player) in the same click that started the analysis; the preview
-  player's own effect reset coverage/loading/error state whenever
-  `selectedPair` changed, firing on that same click and wiping the
-  "Analyzing…" flag right after it was set. The confusion part was real
-  too — three overlapping entry points (matrix click, panel row, a
-  second button that appeared once a pair was selected) for one action.
-  Fixed by separation, not more labels: `WeakPairsPanel` is now fully
-  self-contained (own subscribe listener, own per-pair-key state, own
-  inline result under the triggering row) and doesn't touch
-  `selectedPair`/the preview player at all — the two actions can no
-  longer interfere with each other by construction. Removed the
-  redundant second button entirely. Added three numbered section headers
-  (Sync results / Preview a pair / Fix a weak pair). *(15037b4.)*
-  **Fourth round: a real, un-tested performance bug, found by checking
-  process state rather than assuming.** Ryan: "I clicked analyze on 3
-  things and have waited 5 minutes they still just say analyzing." `ps
-  aux` showed the backend genuinely still computing (20+ min accumulated
-  CPU), not hung. Measured the real cost directly: correlating an 18s
-  clip against a 33-minute A-roll proxy took 7.3s — cost is driven by
-  the A-roll's length, not the window's. A long lav file's non-silent
-  stretches can produce 50-60+ candidate windows against a long A-roll:
-  6-8+ minutes for ONE pair, with three started at once making it worse.
-  The original build was only ever verified against the one SHORT clip
-  from the original investigation (0006, 235s) — never tested against
-  this project's actual long files, which are most of its weak pairs.
-  Fixed: `DEFAULT_MAX_WINDOWS=10` (subsampled evenly across the whole
-  file, not truncated from the start — truncating would silently only
-  ever look at the first few minutes, exactly wrong for "comes back
-  later"), a `progress_callback` and `cancel_flag` threaded through to a
-  new `pair_coverage_progress` event and `cancel_pair_coverage` command
-  (reusing the same `_jobs`/`ActiveJob` registry `cancel_job` already
-  uses), and a `windows_available` field so a result can say "sampled 10
-  of 42" instead of implying an exhaustive search. Re-measured after the
-  fix: the short-clip case ~12s (was already fast), the worst real case
-  in this project (both ~30min files against each other) ~63s (was on
-  track for several minutes) — offsets unchanged on both. *(d2ad077.)*
-  **Fifth round: multi-click starvation, root-caused and fixed with a
-  real (not reasoned-about) test.** Ryan: "The first one analyzed but
-  the other 5 just say starting... and arent loading." Each click still
-  spawned its own raw thread doing CPU-bound correlation (plus reading a
-  long file off the same external drive) — six competing starved
-  everything but the one that ran first; the other five never got far
-  enough to emit even one progress event. Fixed with a single background
-  worker pulling from a queue, one request at a time. Verified by
-  actually firing 3 requests at the real handler and capturing every
-  emitted event (not just reasoning about the fix): confirmed request 2
-  doesn't start until request 1's "analyzed" event fires, request 3 not
-  until request 2's, every window of every request actually progressing,
-  in that exact serialized order. New "queued (N ahead)" state shown
-  before a request runs. Also caught and fixed an ordering race in that
-  same test: the very first request could emit "started" before "queued"
-  if the worker grabbed it before the caller finished emitting.
-  *(711a268.)*
-  **Sixth round: a real scope gap, not a bug.** Ryan: "It found some
-  matches but when i went to export it still didnt include the found
-  matches." Coverage was deliberately scoped read-only from the start —
-  that held, but it also meant a finding could never reach export, since
-  nothing ever gave Ryan a way to act on one. Confirmed exactly what
-  export checks first: `exporter.py` only uses pairs where
-  `SyncPair.is_reliable` is true (`score >= SCORE_USE or
-  promoted_via_consistency`). New `apply_pair_coverage` command writes
-  the accepted offset into the matching pair and sets
-  `promoted_via_consistency=True` — PreCut's own existing field for
-  exactly this case, not a new mechanism — leaving the original score
-  untouched so the matrix keeps showing honestly where the number came
-  from. New "Apply this sync (use it on export)" button. Verified
-  end-to-end against a COPY of the real project.json (never the live
-  one): applied a real result, confirmed both in-memory and
-  reloaded-from-disk state show the update correctly. *(2744b87.)*
-  **Not yet verified in the app or against a real export.**
-  **Seventh round: Ryan rejected the whole manual-workflow approach, and
-  was right to.** "Its still not exporting with all of the wavs. And
-  this is feeling extremely overcomplicated... There shouldnt be extra
-  steps needed. We should just be able to sync things." Re-architected
-  rather than patched: `pipeline.py`'s `_run_audio_sync` now runs
-  `analyze_pair_coverage` automatically on every pair PreCut's own pass
-  couldn't confidently sync, as part of the same stage, before Ryan ever
-  sees a result — a rescued pair's offset and `promoted_via_consistency`
-  are set right there, nothing to apply afterward. Removed entirely:
-  `WeakPairsPanel`, `CoverageResult`, the three manual IPC commands and
-  their queue worker, the "3. Fix a weak pair" section — 519 lines
-  removed for 54 added. Verified against a full reset copy of the real
-  project (never the live file): ran the exact logic now in
-  `pipeline.py` unattended against all 6 real weak pairs — 3 rescued,
-  3 correctly found no match (they're the wrong mic/clip
-  cross-pairings). **All four real (mic, clip) correspondences in this
-  project are now reliable — every WAV placed somewhere real, ~170s,
-  one pass, no clicking.** *(b613002.)* **Not yet verified in the app
-  or against a real export** — that's the piece that actually matters
-  now: does export include all four WAVs.
+*(nothing in flight)*
 
 ## Done
 
@@ -586,6 +391,41 @@ because this session violated them once each.
   Premiere's Project panel** (one native, one conformed) — not a shared
   master clip. Captured for Phase 4 (Assistant Editor); not scheduled,
   not started.
+- 2026-09-03 — **Task 1.1/2.1 merged into one "Project" tab, and
+  automatic sync rescue, both confirmed by Ryan on real footage.**
+  Condensed from seven rounds of real use, each driven by Ryan actually
+  running the previous round's fix (full detail in git log from
+  `454bd05` through `b613002`, and in ROADMAP's Decision Log):
+  - PMTab and IngestTab were merged (declaring footage twice → once);
+    IngestTab.jsx and AETab.jsx deleted, absorbed into PMTab. Organize
+    now auto-fires the pipeline. A real backend bug was found and fixed
+    along the way: dual-use A-roll never reached B-roll tagging because
+    `add_source` is path-keyed with one kind per path — fixed with
+    `SourceFolder.dual_use` + `Project.set_dual_use()`.
+  - A real, pre-existing PreCut limitation was found (not a regression —
+    verified `audio_sync.py` byte-identical to the protected checkout
+    before considering anything else): whole-file cross-correlation
+    can't handle a subject leaving the room, since a long dead/
+    irrelevant stretch dilutes the one correlation PreCut runs per pair.
+    New capability `posthouse/sync_coverage.py` rescues these via
+    windowed correlation, verified against the exact real pair before
+    the algorithm was even written.
+  - Three real bugs surfaced by Ryan actually clicking things (a state-
+    clobber bug that erased its own "Analyzing" status, a performance
+    bug from never testing the long-file case, a thread-starvation bug
+    from 6 concurrent analyses) were each found with real evidence
+    (`ps aux`, a direct timing measurement, an actual fired-event
+    capture) and fixed, not assumed.
+  - Final round: Ryan rejected the entire manual-analyze-then-apply
+    workflow as overcomplicated — right call. Rescue is now fully
+    automatic, inside the same sync stage, before any result is shown;
+    519 lines of manual UI/IPC removed for 54 added. Verified against a
+    full reset copy of the real project: all 6 real weak pairs
+    processed unattended, 3 rescued, 3 correctly left unsynced (wrong
+    mic/clip cross-pairings) — all four real (mic, clip) correspondences
+    reliable, every WAV placed somewhere real.
+  **Ryan, after running it for real: "That worked perfectly."** Export
+  now includes all four WAVs. *(b613002, 6a3a7e2.)*
 
 ## Next (in order)
 
@@ -595,23 +435,25 @@ not written here as committed work until this one is signed off — writing
 them in now would be exactly the unearned-Done-adjacent overclaim §4 warns
 against, just shifted to "Next."
 
-Task 1.0 is signed off by Ryan (see § Done, 2026-09-03). Task 1.1 was
-signed off once, then substantially rebuilt across two more rounds of
-Ryan's direct use and feedback (see § In progress) — those rebuilds
-absorbed what was tracked here as a separate "Task 2.1" (Assistant
-Editor sync review) entirely into the same tab, per Ryan's own
-conclusion that it was never distinct AE work. There is no separate
-Task 2.1 any more.
+Task 1.0 and Task 1.1 are both signed off by Ryan (see § Done,
+2026-09-03, "That worked perfectly" — the merged Project tab, automatic
+sync rescue, and export inclusion all confirmed on real footage). There
+is no separate Task 2.1 any more — it was absorbed into Task 1.1, per
+Ryan's own conclusion that Assistant Editor sync review was never
+distinct Project Manager work.
 
-1. **Get Ryan's sign-off on the merged Project tab**, on a real project
-   (Runnells Day 1, or a real dual-use shoot) — confirm Organize starts
-   processing automatically, a dual-use clip actually gets tagged as
-   B-roll, and the sync review (moved from the old AE tab) still works.
-   Only after that does the next real Assistant Editor task get defined
-   and written in here — likely the first AE work that's genuinely
-   distinct from Project Manager responsibility: acting on the reviewed
-   sync (e.g. writing it into an export-ready sequence), not just
-   displaying it.
+**One piece of Task 1.1 remains genuinely unconfirmed**: the dual-use
+B-roll tagging fix (`SourceFolder.dual_use`, `_collect_videos`'s union),
+since every real run so far declared no B-roll/dual-use sources at all.
+Not blocking — the fix is scripted-verified — but worth a real dual-use
+shoot at some point to close it out.
+
+1. **Define the first real Assistant Editor task.** Now that sync
+   review/rescue is confirmed as Project Manager scope, not AE scope,
+   the first genuinely distinct AE work is likely acting on a synced
+   result — e.g. writing it into an export-ready sequence — rather than
+   just computing/displaying it. Needs a concrete scope decision with
+   Ryan before any code, per `CLAUDE.md` §8.
 
 ## Attempts ledger
 
