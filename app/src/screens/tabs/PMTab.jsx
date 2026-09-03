@@ -7,39 +7,52 @@ import DropZone, { getHoveredKind, clearHoveredKind } from "../../components/Dro
 /**
  * PMTab — Post House Task 1.1, the Project Manager's first screen.
  *
- * Second revision. First version used one Browse-button-and-dropdown row
- * per source — Ryan called it clunky next to PreCut's actual drag-and-drop
- * zones, correctly: that pattern was already solved in this same app and
- * shouldn't have been rebuilt as folder-picker rows. This version reuses
- * DropZone.jsx and IngestTab's own drag-drop wiring verbatim, just against
- * local per-kind arrays instead of a backend-tracked `project.sources`
- * (the Project Manager doesn't have PreCut's Project model yet -- these
- * paths are only sent to the backend once, when "Organize" is clicked).
+ * Third revision (2026-09-03). Ryan: "Ingest is asking half of the same
+ * questions as the project manager tab. Which folders of footage to look
+ * at and what category they belong to. The ingest tab should just merge
+ * with the project manager tab." He was declaring the same aroll/broll/
+ * source-audio folders twice -- once here (for the Project Manifest) and
+ * again in Ingest (for PreCut's own Project model, which its proxy/
+ * transcribe/tag/sync pipeline actually runs against).
  *
- * organize_project() itself is unchanged and already tested; only the
- * client-side collection of {path, kind} pairs changed shape.
+ * Fix: this tab is now the ONLY place footage gets declared. A-roll,
+ * B-roll, and Source Audio drops call PreCut's own `add_source` directly
+ * (exactly what IngestTab used to do) so `project.sources` is the single
+ * source of truth -- IngestTab now just reads it. "Assets" stays local
+ * and manifest-only (PreCut's Project model has no concept of it; it's
+ * never proxied, transcribed, or tagged, just staged into the project
+ * folder by organize_project). PreCut's own kind name is "audio"; the
+ * Project Manifest contract's kind name is "source_audio" -- the zone
+ * uses "audio" throughout (matching add_source) and translates to
+ * "source_audio" only when building organize_project's sources array.
+ *
+ * organize_project() itself is unchanged and already tested; it now
+ * mostly reads state PreCut's own model already holds, since the
+ * client-side collection of {path, kind} pairs isn't separately
+ * maintained for the three real kinds any more.
  */
 const SOURCE_ZONES = [
   { kind: "aroll", label: "A-Roll", title: "Interviews, talking-head footage", description: "Drag folders or files here" },
   { kind: "broll", label: "B-Roll", title: "Supplementary/cutaway footage", description: "Drag folders or files here" },
-  { kind: "source_audio", label: "Source Audio", title: "Lav mics, external recorders", description: "Drag folders or files here" },
+  { kind: "audio", label: "Source Audio", title: "Lav mics, external recorders", description: "Drag folders or files here" },
   { kind: "assets", label: "Assets", title: "Anything else that belongs to this project", description: "Drag folders or files here" },
 ];
+// Kind names as PreCut's own Project model / add_source use them, vs. the
+// Project Manifest contract's names. Only "audio" differs; "assets" has
+// no PreCut-side equivalent at all (see module docstring).
+const CONTRACT_KIND = { aroll: "aroll", broll: "broll", audio: "source_audio", assets: "assets" };
 const PROJECT_TYPES = ["interview", "property_tour", "renovation", "event", "product", "other"];
 
-export default function PMTab({ subscribe }) {
+export default function PMTab({ subscribe, project }) {
   const [rootDir, setRootDir] = useState("");
   const [clientName, setClientName] = useState("");
   const [projectName, setProjectName] = useState("");
   const [projectType, setProjectType] = useState(PROJECT_TYPES[0]);
   const [brandAssetsDir, setBrandAssetsDir] = useState("");
 
-  // Local per-kind path lists -- plain path strings, DropZone already
-  // supports this ("legacy string" branch) alongside the richer
-  // SourceFolder-object shape PreCut's own backend-tracked model uses.
-  const [pathsByKind, setPathsByKind] = useState({
-    aroll: [], broll: [], source_audio: [], assets: [],
-  });
+  // "Assets" is the one zone with no PreCut-side model -- kept as plain
+  // local path strings, same as every zone used to be before this merge.
+  const [assetPaths, setAssetPaths] = useState([]);
 
   // dual_use (contract §2.3): a single aroll source, culled under both
   // rulesets -- NOT the same folder declared twice under different kinds.
@@ -68,43 +81,75 @@ export default function PMTab({ subscribe }) {
     });
   }, [subscribe, submitting]);
 
-  const addPaths = useCallback((kind, paths) => {
-    setPathsByKind((prev) => {
-      const existing = new Set(prev[kind]);
-      const merged = [...prev[kind]];
-      const blocked = [];
-      for (const p of paths) {
-        if (existing.has(p)) continue;
-        // Same path already declared under a DIFFERENT kind: this is the
-        // dual_use case, not a real second source. Block it here instead
-        // of letting organize_project reject it after a round trip.
-        const otherKind = Object.keys(prev).find((k) => k !== kind && prev[k].includes(p));
-        if (otherKind) { blocked.push({ path: p, otherKind }); continue; }
-        merged.push(p);
-        existing.add(p);
-      }
-      if (blocked.length) {
-        const { path, otherKind } = blocked[0];
-        const name = basename(path);
-        let msg;
-        if (otherKind === "aroll") {
-          msg = `"${name}" is already declared as A-Roll. If it also serves as B-Roll, ` +
-                `use the "also B-Roll" checkbox next to it below instead of adding it here too.`;
-        } else if (kind === "aroll") {
-          msg = `"${name}" is already declared as ${labelFor(otherKind)}. Remove it from there first, ` +
-                `then add it here as A-Roll and check "also B-Roll" if it serves both purposes.`;
-        } else {
-          msg = `"${name}" is already declared as ${labelFor(otherKind)}. A source can only have one kind ` +
-                `(the A-Roll/B-Roll dual-use case above is the one exception).`;
-        }
-        setNotice(msg);
-      }
-      return { ...prev, [kind]: merged };
-    });
-  }, []);
+  // Real (PreCut-backed) sources by kind, straight from project state --
+  // exactly what IngestTab used to derive for its own zones.
+  const realByKind = {
+    aroll: project.sources.filter((s) => s.kind === "aroll"),
+    broll: project.sources.filter((s) => s.kind === "broll"),
+    audio: project.sources.filter((s) => s.kind === "audio"),
+  };
 
-  const removePath = useCallback((kind, path) => {
-    setPathsByKind((prev) => ({ ...prev, [kind]: prev[kind].filter((p) => p !== path) }));
+  // Every currently-declared path, across all four zones, mapped to which
+  // zone it's under -- used to catch cross-zone duplicates before they
+  // reach the backend (add_source has no such check; organize_project's
+  // validator does, but round-tripping there just to reject is worse UX).
+  const declaredKindByPath = {};
+  for (const kind of ["aroll", "broll", "audio"]) {
+    for (const s of realByKind[kind]) declaredKindByPath[s.root_path] = kind;
+  }
+  for (const p of assetPaths) declaredKindByPath[p] = "assets";
+
+  const addPaths = useCallback(async (kind, paths) => {
+    const toAdd = [];
+    let blocked = null;
+    for (const p of paths) {
+      const otherKind = declaredKindByPath[p];
+      if (otherKind === kind) continue; // already declared here, no-op
+      if (otherKind) { blocked = blocked || { path: p, otherKind }; continue; }
+      toAdd.push(p);
+    }
+    if (blocked) {
+      const { path, otherKind } = blocked;
+      const name = basename(path);
+      let msg;
+      if (otherKind === "aroll") {
+        msg = `"${name}" is already declared as A-Roll. If it also serves as B-Roll, ` +
+              `use the "also B-Roll" checkbox next to it below instead of adding it here too.`;
+      } else if (kind === "aroll") {
+        msg = `"${name}" is already declared as ${labelFor(otherKind)}. Remove it from there first, ` +
+              `then add it here as A-Roll and check "also B-Roll" if it serves both purposes.`;
+      } else {
+        msg = `"${name}" is already declared as ${labelFor(otherKind)}. A source can only have one kind ` +
+              `(the A-Roll/B-Roll dual-use case above is the one exception).`;
+      }
+      setNotice(msg);
+    }
+    if (toAdd.length === 0) return;
+
+    if (kind === "assets") {
+      setAssetPaths((prev) => [...new Set([...prev, ...toAdd])]);
+      return;
+    }
+    // Real kind: register with PreCut's own Project model directly. This
+    // is the fix for Ryan's report -- footage gets declared once, here,
+    // and Ingest's pipeline runs against the same `project.sources`.
+    for (const p of toAdd) {
+      try {
+        await sendCommand({ type: "add_source", path: p, kind });
+      } catch (e) {
+        console.error(`add_source failed: ${e}`);
+      }
+    }
+    await sendCommand({ type: "get_project_state" });
+  }, [declaredKindByPath]);
+
+  const removePath = useCallback(async (kind, path) => {
+    if (kind === "assets") {
+      setAssetPaths((prev) => prev.filter((p) => p !== path));
+      return;
+    }
+    await sendCommand({ type: "remove_source", path });
+    await sendCommand({ type: "get_project_state" });
     if (kind === "aroll") {
       setDualUseAroll((prev) => {
         if (!(path in prev)) return prev;
@@ -131,10 +176,11 @@ export default function PMTab({ subscribe }) {
     addPaths(kind, Array.isArray(selection) ? selection : [selection]);
   }, [addPaths]);
 
-  // Same drag-drop wiring as IngestTab: DropZone marks itself as the hot
-  // zone on hover, we read that at Tauri's drop event and route paths to
-  // the right kind. See DropZone.jsx's own docstring for why (broken
-  // position-payload coordinates on macOS, Tauri 2.8's duplicate-fire bug).
+  // Same drag-drop wiring IngestTab used to own: DropZone marks itself as
+  // the hot zone on hover, we read that at Tauri's drop event and route
+  // paths to the right kind. See DropZone.jsx's own docstring for why
+  // (broken position-payload coordinates on macOS, Tauri 2.8's
+  // duplicate-fire bug).
   const addPathsRef = useRef(addPaths);
   useEffect(() => { addPathsRef.current = addPaths; }, [addPaths]);
   const lastDropRef = useRef({ t: 0, key: "" });
@@ -187,19 +233,21 @@ export default function PMTab({ subscribe }) {
     } catch (e) { console.error("Folder picker failed:", e); }
   };
 
-  const totalSources = Object.values(pathsByKind).reduce((n, arr) => n + arr.length, 0);
+  const totalSources = realByKind.aroll.length + realByKind.broll.length
+    + realByKind.audio.length + assetPaths.length;
   const canSubmit = rootDir.trim() && clientName.trim() && projectName.trim() && projectType && totalSources > 0 && !submitting;
 
   const handleOrganize = async () => {
     setSubmitting(true); setResult(null); setError(null);
     const sources = [];
-    for (const [kind, paths] of Object.entries(pathsByKind)) {
-      for (const path of paths) {
-        const entry = { path, kind };
-        if (kind === "aroll" && dualUseAroll[path]) entry.dual_use = true;
+    for (const kind of ["aroll", "broll", "audio"]) {
+      for (const s of realByKind[kind]) {
+        const entry = { path: s.root_path, kind: CONTRACT_KIND[kind] };
+        if (kind === "aroll" && dualUseAroll[s.root_path]) entry.dual_use = true;
         sources.push(entry);
       }
     }
+    for (const p of assetPaths) sources.push({ path: p, kind: "assets" });
     try {
       await sendCommand({
         type: "organize_project",
@@ -219,8 +267,9 @@ export default function PMTab({ subscribe }) {
     <div className="pm-tab">
       <h2>Project Manager</h2>
       <p className="pm-tab-sub">
-        Point this at one real project. It organizes the declared sources,
-        stages brand assets if given, and writes the Project Manifest.
+        Point this at one real project. Footage declared here is what
+        Ingest processes and what the Project Manifest records — one
+        declaration, not two.
       </p>
 
       <FolderField
@@ -250,7 +299,7 @@ export default function PMTab({ subscribe }) {
             label={z.label}
             title={z.title}
             description={z.description}
-            items={pathsByKind[z.kind]}
+            items={z.kind === "assets" ? assetPaths : realByKind[z.kind]}
             onRemove={(p) => removePath(z.kind, p)}
             onPick={() => handlePickFiles(z.kind)}
             onPickFolder={() => handlePickFolder(z.kind)}
@@ -258,21 +307,21 @@ export default function PMTab({ subscribe }) {
         ))}
       </div>
 
-      {pathsByKind.aroll.length > 0 && (
+      {realByKind.aroll.length > 0 && (
         <div className="pm-tab-dualuse">
           <span className="pm-tab-dualuse-label">
             Dual-use — A-Roll that also serves as B-Roll (the subject keeps
             talking while the shooter grabs coverage). Culled under both
             rulesets later; check any that apply:
           </span>
-          {pathsByKind.aroll.map((p) => (
-            <label key={p} className="pm-tab-dualuse-row">
+          {realByKind.aroll.map((s) => (
+            <label key={s.root_path} className="pm-tab-dualuse-row">
               <input
                 type="checkbox"
-                checked={!!dualUseAroll[p]}
-                onChange={() => toggleDualUse(p)}
+                checked={!!dualUseAroll[s.root_path]}
+                onChange={() => toggleDualUse(s.root_path)}
               />
-              <span title={p}>{basename(p)}</span>
+              <span title={s.root_path}>{s.display_name || basename(s.root_path)}</span>
             </label>
           ))}
         </div>
@@ -349,7 +398,7 @@ function basename(p) {
   return parts[parts.length - 1] || p;
 }
 
-const KIND_LABELS = { aroll: "A-Roll", broll: "B-Roll", source_audio: "Source Audio", assets: "Assets" };
+const KIND_LABELS = { aroll: "A-Roll", broll: "B-Roll", audio: "Source Audio", assets: "Assets" };
 function labelFor(kind) {
   return KIND_LABELS[kind] || kind;
 }

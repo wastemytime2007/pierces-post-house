@@ -4396,3 +4396,13 @@ kbd {
   color: var(--error);
   font-size: 12px;
 }
+
+.ingest-no-sources {
+  border: 1px dashed var(--bg-3);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--fg-2);
+  text-align: center;
+}

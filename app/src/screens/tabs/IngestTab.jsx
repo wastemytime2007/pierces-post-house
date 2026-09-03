@@ -1,18 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
-import { listen } from "@tauri-apps/api/event";
+import { useCallback, useState } from "react";
 import { sendCommand } from "../../App.jsx";
-import DropZone, { getHoveredKind, clearHoveredKind } from "../../components/DropZone.jsx";
 import StageProgress from "../../components/StageProgress.jsx";
 import SyncMatrix from "../../components/SyncMatrix.jsx";
 
 /**
- * IngestTab — Drop 1 + project awareness.
+ * IngestTab — runs PreCut's processing pipeline over whatever footage the
+ * Project tab has declared, and shows progress.
  *
- * Three zones: A-roll, B-roll, Source Audio.
- *
- * Dropping into a zone sends add_source with the right kind.
- * The backend classifies it and we show it in the per-zone source list.
+ * Revised 2026-09-03 (Ryan): this tab used to have its own A-roll/B-roll/
+ * Source-Audio drop zones, calling add_source directly -- the same three
+ * zones the Project tab (PMTab) also had, for the Project Manifest. Ryan
+ * caught that he was declaring the same folders twice. Source declaration
+ * now lives only in the Project tab, which writes straight to PreCut's
+ * own `project.sources` (via the same add_source/remove_source commands
+ * this tab used to call). This tab reads that state and does the rest:
  *
  * Clicking "Run pipeline" submits run_pipeline, which:
  *   - Encodes proxies for videos → stream of file_done events
@@ -28,133 +29,6 @@ export default function IngestTab({ project, jobs, hasRunning, onGoToIdeas }) {
     broll: project.sources.filter((s) => s.kind === "broll"),
     audio: project.sources.filter((s) => s.kind === "audio"),
   };
-
-  const handleAdd = useCallback(async (kind, paths) => {
-    for (const p of paths) {
-      try {
-        await sendCommand({ type: "add_source", path: p, kind });
-      } catch (e) {
-        console.error(`add_source failed: ${e}`);
-      }
-    }
-    // Refresh project state to pick up the added source(s)
-    await sendCommand({ type: "get_project_state" });
-  }, []);
-
-  const handleRemove = useCallback(async (path) => {
-    await sendCommand({ type: "remove_source", path });
-    await sendCommand({ type: "get_project_state" });
-  }, []);
-
-  const handlePickFiles = useCallback(async (kind) => {
-    const selection = await open({
-      multiple: true, directory: false,
-      title: `Add ${kind} files`,
-    });
-    if (!selection) return;
-    const paths = Array.isArray(selection) ? selection : [selection];
-    handleAdd(kind, paths);
-  }, [handleAdd]);
-
-  const handlePickFolder = useCallback(async (kind) => {
-    const selection = await open({
-      multiple: true, directory: true,
-      title: `Add ${kind} folders`,
-    });
-    if (!selection) return;
-    const paths = Array.isArray(selection) ? selection : [selection];
-    handleAdd(kind, paths);
-  }, [handleAdd]);
-
-  // ---------------------------------------------------------------------
-  // Drag-and-drop from the OS (Finder, Desktop, etc.)
-  // ---------------------------------------------------------------------
-  //
-  // Each DropZone owns its own hover tracking via mouse/drag events on
-  // its DOM element. When a zone detects the cursor entering, it marks
-  // itself as the current hot zone in a module-level variable inside
-  // DropZone.jsx. We read that variable here when Tauri tells us a
-  // drop happened, and route the paths to the right handler.
-  //
-  // This sidesteps the broken coordinate math in Tauri's `position`
-  // payload (issue #10744 reports an ~28px y-offset on macOS, and
-  // DPR conversion adds another failure mode). DOM-native events
-  // deliver cursor-inside-element information directly with no
-  // arithmetic to get wrong.
-  //
-  // Tauri 2.8 has a duplicate-fire bug on drag-drop (issue #14134);
-  // we dedupe by tracking last-processed paths + timestamp.
-
-  // Keep handleAdd in a ref so the listener set up once below can
-  // always call the latest version without re-subscribing on every
-  // render (re-subscribing would race against in-flight drops).
-  const handleAddRef = useRef(handleAdd);
-  useEffect(() => { handleAddRef.current = handleAdd; }, [handleAdd]);
-
-  // De-dup state for Tauri's duplicate-fire bug.
-  const lastDropRef = useRef({ t: 0, key: "" });
-
-  useEffect(() => {
-    const unlistens = [];
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const u = await listen("tauri://drag-drop", (event) => {
-          const paths = event.payload?.paths || [];
-          if (paths.length === 0) {
-            clearHoveredKind();
-            return;
-          }
-
-          // Dedupe Tauri 2.8 double-fire.
-          const key = paths.join("|");
-          const now = Date.now();
-          if (now - lastDropRef.current.t < 300 && lastDropRef.current.key === key) {
-            clearHoveredKind();
-            return;
-          }
-          lastDropRef.current = { t: now, key };
-
-          // Read whichever zone is currently marked as hot (set by
-          // DropZone's own mouseenter/dragenter handlers).
-          const kind = getHoveredKind();
-          clearHoveredKind();
-          if (!kind) {
-            // Cursor wasn't over any zone when the drop happened.
-            // Could mean the user dropped on the tab background, or
-            // the platform didn't deliver any enter events for the
-            // drag at all. Ignore silently rather than guess a zone.
-            return;
-          }
-          handleAddRef.current(kind, paths);
-        });
-        if (cancelled) { u(); return; }
-        unlistens.push(u);
-
-        // Also clear hover state on drag-leave at the window level —
-        // catches the case where the user drags out of the app
-        // entirely without a corresponding mouseleave on a zone.
-        const u2 = await listen("tauri://drag-leave", () => {
-          clearHoveredKind();
-        });
-        if (cancelled) { u2(); return; }
-        unlistens.push(u2);
-      } catch (e) {
-        console.error("Failed to register drag-drop listeners:", e);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      for (const u of unlistens) {
-        try { u(); } catch { /* ignore */ }
-      }
-    };
-    // Empty deps: listeners live for the tab's lifetime; handleAdd
-    // changes are picked up via handleAddRef.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [showRunModal, setShowRunModal] = useState(false);
 
@@ -209,41 +83,13 @@ export default function IngestTab({ project, jobs, hasRunning, onGoToIdeas }) {
 
   return (
     <>
-      <div className="drop-row">
-        <DropZone
-          kind="aroll"
-          label="01 · A-roll"
-          title="Interviews & talking heads"
-          description="Primary camera footage with the subject speaking. Will be proxied and transcribed."
-          help={<>Your <strong>primary camera footage</strong> — interviews, monologues, anything with a person talking on camera. Transcripts come from this.</>}
-          items={sourcesByKind.aroll}
-          onRemove={handleRemove}
-          onPick={() => handlePickFiles("aroll")}
-          onPickFolder={() => handlePickFolder("aroll")}
-        />
-        <DropZone
-          kind="broll"
-          label="02 · B-roll"
-          title="Cutaways & visuals"
-          description="Supplementary footage. Will be proxied, tagged with CLIP, and indexed."
-          help={<><strong>Supporting visuals</strong> — cutaways, scenery, anything that isn't the main interview. Each clip gets tagged with searchable keywords so the editor can pull the right shot.</>}
-          items={sourcesByKind.broll}
-          onRemove={handleRemove}
-          onPick={() => handlePickFiles("broll")}
-          onPickFolder={() => handlePickFolder("broll")}
-        />
-        <DropZone
-          kind="audio"
-          label="03 · Source audio"
-          title="Clean mic recordings"
-          description="Wireless lav or boom recordings. Indexed only — original files stay where they are."
-          help={<>Separate <strong>lav or boom recordings</strong> that captured the same conversation as your A-roll. Used to sync clean audio against the camera's reference mic during export.</>}
-          items={sourcesByKind.audio}
-          onRemove={handleRemove}
-          onPick={() => handlePickFiles("audio")}
-          onPickFolder={() => handlePickFolder("audio")}
-        />
-      </div>
+      {totalSources === 0 && (
+        <div className="ingest-no-sources">
+          No footage declared yet. Go to the <strong>Project</strong> tab
+          to drop in A-roll, B-roll, and Source Audio — this tab processes
+          whatever's declared there.
+        </div>
+      )}
 
       <div className="action-bar">
         <button
@@ -276,7 +122,7 @@ export default function IngestTab({ project, jobs, hasRunning, onGoToIdeas }) {
       {/* Per-stage progress panels */}
       {activePipelineJobs.length === 0 ? (
         <div className="empty-state">
-          Drop footage into the zones above, then click Run pipeline.
+          Declare footage in the Project tab, then click Run pipeline here.
           <br />
           A-roll proxies + transcription and B-roll proxies + tagging run in parallel.
         </div>

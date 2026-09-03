@@ -270,7 +270,7 @@ export default function ProjectView({
       <div className={`project-main ${showLog ? "log-visible" : "log-hidden"}`}>
         <section className="project-stage">
           {activeTab === "pm" && (
-            <PMTab subscribe={subscribe} />
+            <PMTab subscribe={subscribe} project={project} />
           )}
           {activeTab === "ingest" && (
             <IngestTab
