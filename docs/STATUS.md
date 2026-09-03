@@ -188,6 +188,35 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Transcript flagging wired into the real pipeline and
+  export flow.** Ryan: "go ahead and wire it in." New
+  `PipelineJob.run_transcript_flagging` stage (default on — automatic,
+  same reasoning as the sync-coverage rescue's "made automatic" reversal
+  — Ryan's standing preference against manual multi-step UI). Runs after
+  transcription; a silent no-op when a project has no manifest or no
+  `audience_goal` set. Idempotent like transcription — skips a
+  `project.dir()/flags/<stem>.json` that already exists rather than
+  re-running (and re-billing) on every pipeline click.
+  `_build_all_aroll_sequences` loads any matching flags file per phrase
+  (by source-file stem) and attaches the resulting markers to the "All
+  Synced A-Roll" cutlist. Threaded through `backend.py`'s `run_pipeline`
+  command and PMTab's auto-fire-after-organize defaults and manual
+  stage checkboxes.
+  **Real integration tests, not just the pieces already proven
+  standalone**: the pipeline stage against a real manifest + real
+  cached transcript — found the audience_goal, matched the transcript
+  to its original file by stem (transcripts save under the proxy's own
+  path, not the original), ran real extraction+scoring, saved 11 tagged
+  fragments, confirmed idempotent on a second run (no new API call);
+  the export side against that saved file — correctly loaded by stem
+  match and attached 11 real FlagMarkers to the right phrase. Caught a
+  real bug via this testing: `Project`'s directory accessor is `.dir()`,
+  not `.project_dir()` — fixed before it shipped. *(b6ff479.)*
+  **Not yet tested by Ryan in the real running app** — every piece of
+  this arc has been proven with real data via test scripts, but no one
+  has clicked "Run pipeline" on a real project with an audience goal set
+  and confirmed the flags show up correctly in an actual Premiere
+  import yet.
 - 2026-09-03 — **Transcript flagging: fourth and final underlying piece
   built and proven real — writing tagged fragments as actual color-coded
   FCP7 XML markers.** `FlagMarker` (`cutlist.py`): a genuinely new range
@@ -705,7 +734,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
-| AE: transcript flagging (color-coded storyline ranges) | **All four underlying pieces built and verified real** (exhaustive extraction, PM audience-goal intake, relevance tagging, FCP7 XML marker writing). **Not yet wired into the app itself** — everything so far proven via standalone test scripts, not a backend command + UI trigger a user could actually run. See § Done, 2026-09-03. |
+| AE: transcript flagging (color-coded storyline ranges) | **Built and wired end-to-end, verified with real integration tests** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, and the actual `run_pipeline`/export wiring). **Not yet tested by Ryan in the real running app on a real project** — only standalone/integration test scripts so far. See § Done, 2026-09-03. |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
