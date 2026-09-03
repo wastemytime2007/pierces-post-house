@@ -1,0 +1,4087 @@
+/* ===========================================================
+ * PreCut — Minimal industrial dark theme
+ * ===========================================================
+ * Design intent: the app sits next to Premiere all day. It should
+ * feel native to a dimmed editing bay — low-brightness, neutral
+ * greys, single accent color (cyan — matches our safe-zone overlay).
+ * Typography: IBM Plex Sans for UI, IBM Plex Mono for code/paths.
+ * =========================================================== */
+
+@import url('https://rsms.me/inter/inter.css');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  /* Neutral greys — editing-bay palette */
+  --bg-0: #0d0f11;              /* deepest background */
+  --bg-1: #14171a;              /* panels */
+  --bg-2: #1c2024;              /* raised surfaces */
+  --bg-3: #252a30;              /* hover, input backgrounds */
+  --bg-4: #343a42;              /* borders, dividers */
+
+  --fg-0: #e8ecf0;              /* primary text */
+  --fg-1: #b4bac2;              /* secondary text */
+  --fg-2: #7c848e;              /* dim labels, timestamps */
+  --fg-3: #565c64;              /* placeholder text */
+
+  /* Accent — cyan matches the safe-zone overlay */
+  --accent: #00e0e0;
+  --accent-dim: #00a0a0;
+  --accent-glow: rgba(0, 224, 224, 0.15);
+
+  /* Status colors — muted versions so they don't scream */
+  --success: #5cc08a;
+  --warn: #d6a34e;
+  --error: #e46a6a;
+  --success-bg: rgba(92, 192, 138, 0.08);
+  --warn-bg: rgba(214, 163, 78, 0.08);
+  --error-bg: rgba(228, 106, 106, 0.08);
+
+  /* Typography */
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+
+  /* Sizing */
+  --gutter: 16px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Scrollbars — slim, on-theme */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--bg-4);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--fg-3); }
+
+/* ============================================
+ * App shell
+ * ============================================ */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-0);
+}
+
+.titlebar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--bg-3);
+  -webkit-app-region: drag;
+}
+
+.titlebar-brand {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.titlebar-brand .accent { color: var(--accent); }
+/* Drop 4.41: PreCut logo in titlebar. Height-constrained, auto width. */
+.titlebar-logo {
+  height: 20px;
+  width: auto;
+  display: block;
+}
+
+.titlebar-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-2);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fg-3);
+}
+.status-dot.live {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+
+/* ============================================
+ * Main layout
+ * ============================================ */
+
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  min-height: 0;
+}
+
+.stage {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sidebar {
+  background: var(--bg-1);
+  border-left: 1px solid var(--bg-3);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ============================================
+ * Drop zones
+ * ============================================ */
+
+.drop-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 14px;
+}
+
+.dropzone {
+  position: relative;
+  background: var(--bg-1);
+  border: 1.5px dashed var(--bg-4);
+  border-radius: var(--radius-md);
+  padding: 24px 20px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.18s ease;
+  cursor: default;
+}
+
+.dropzone:hover {
+  border-color: var(--fg-3);
+  background: var(--bg-2);
+}
+
+.dropzone.active {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.dropzone.has-items {
+  border-style: solid;
+  border-color: var(--bg-4);
+  background: var(--bg-2);
+}
+
+.dropzone-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.dropzone-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.dropzone-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent);
+  padding: 2px 6px;
+  background: var(--accent-glow);
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+
+.dropzone-title {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.dropzone-description {
+  font-size: 12px;
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+
+.dropzone-filelist {
+  margin-top: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-1);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 140px;
+}
+
+.dropzone-fileitem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.dropzone-fileitem .item-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropzone-fileitem .remove {
+  opacity: 0;
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: color 0.15s;
+  flex-shrink: 0;
+  padding: 0 4px;
+}
+.dropzone-fileitem:hover .remove { opacity: 1; }
+.dropzone-fileitem .remove:hover { color: var(--error); }
+
+.dropzone-picklink {
+  margin-top: auto;
+  color: var(--fg-2);
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s;
+  align-self: flex-start;
+}
+.dropzone-picklink:hover { color: var(--accent); }
+
+/* ============================================
+ * Action bar
+ * ============================================ */
+
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bg-3);
+}
+
+.btn {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 9px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.btn:hover:not(:disabled) {
+  background: var(--bg-4);
+}
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg-0);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #30eaea;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+
+.btn-danger {
+  background: var(--error);
+  color: var(--bg-0);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--fg-2);
+}
+.btn-ghost:hover:not(:disabled) {
+  color: var(--fg-0);
+  background: var(--bg-2);
+}
+
+.action-spacer { flex: 1; }
+
+/* ============================================
+ * Progress panel
+ * ============================================ */
+
+.progress-group {
+  background: var(--bg-1);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.progress-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.progress-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-1);
+}
+
+.progress-bar {
+  height: 3px;
+  background: var(--bg-3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+  box-shadow: 0 0 8px var(--accent);
+}
+.progress-bar-fill.done {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+.progress-bar-fill.error {
+  background: var(--error);
+}
+
+.progress-current {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================================
+ * Log viewer
+ * ============================================ */
+
+.log-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.log-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--bg-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.log-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+
+.log-clear {
+  font-size: 10px;
+  color: var(--fg-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+.log-clear:hover { color: var(--fg-1); }
+
+.log-entries {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.log-entry .timestamp {
+  color: var(--fg-3);
+  flex-shrink: 0;
+}
+
+.log-entry .message {
+  color: var(--fg-1);
+  word-break: break-word;
+}
+
+.log-entry.success .message { color: var(--success); }
+.log-entry.warn .message { color: var(--warn); }
+.log-entry.error .message { color: var(--error); }
+.log-entry.accent .message { color: var(--accent); }
+
+.log-entry .icon {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+/* ============================================
+ * Empty states
+ * ============================================ */
+
+.empty-state {
+  text-align: center;
+  color: var(--fg-3);
+  padding: 40px 20px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* ============================================
+ * Keyframe animations
+ * ============================================ */
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.log-entry {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* ============================================
+ * Drop 2 — Start screen
+ * ============================================ */
+
+.start-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 60px 40px;
+  overflow-y: auto;
+}
+
+.start-panel {
+  width: 100%;
+  max-width: 640px;
+}
+
+.start-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 32px;
+}
+
+.start-title {
+  font-family: var(--font-ui);
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--fg-0);
+}
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 24px;
+}
+
+.project-row {
+  display: flex;
+  align-items: center;
+  padding: 18px 20px;
+  background: var(--bg-1);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.12s;
+  gap: 16px;
+}
+.project-row:hover {
+  background: var(--bg-2);
+  transform: translateX(2px);
+}
+.project-row-main { flex: 1; min-width: 0; }
+.project-row-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg-0);
+  margin-bottom: 4px;
+}
+.project-row-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+}
+.project-row-date { color: var(--fg-3); }
+.project-row-arrow {
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+  font-size: 18px;
+  transition: color 0.15s;
+}
+.project-row:hover .project-row-arrow {
+  color: var(--accent);
+}
+
+.start-log {
+  position: fixed;
+  bottom: 16px;
+  left: 20px;
+  right: 20px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  max-height: 60px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.start-log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 1px 0;
+}
+.start-log-entry .ts { color: var(--fg-3); }
+.start-log-entry.error .msg { color: var(--error); }
+.start-log-entry.accent .msg { color: var(--accent-dim); }
+
+/* ============================================
+ * Drop 2 — New project form
+ * ============================================ */
+
+.new-project-form {
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.form-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  display: block;
+}
+.form-input, .form-textarea {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--bg-4);
+  border-radius: var(--radius-sm);
+  color: var(--fg-0);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.form-input:focus, .form-textarea:focus {
+  border-color: var(--accent);
+}
+.form-textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 80px;
+}
+.form-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  line-height: 1.5;
+}
+.form-hint code {
+  background: var(--bg-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--fg-2);
+}
+.form-error {
+  font-size: 12px;
+  color: var(--error);
+  padding: 6px 10px;
+  background: var(--error-bg);
+  border-radius: var(--radius-sm);
+}
+.form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* ============================================
+ * Drop 2 — Project view
+ * ============================================ */
+
+.project-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.project-nav {
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--bg-3);
+  gap: 20px;
+  height: 56px;
+}
+.project-nav-back {
+  background: none;
+  border: none;
+  color: var(--fg-2);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+}
+.project-nav-back:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.project-nav-tabs {
+  display: flex;
+  gap: 0;
+  margin-left: 24px;
+}
+.project-tab {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 12px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  text-align: left;
+}
+.project-tab:hover:not(:disabled):not(.active) {
+  background: var(--bg-2);
+}
+.project-tab.active {
+  border-bottom-color: var(--accent);
+}
+.project-tab.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.project-tab-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.project-tab.active .project-tab-label {
+  color: var(--accent);
+}
+.project-tab-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+
+.titlebar-sep { color: var(--fg-3); margin: 0 2px; }
+.titlebar-project {
+  color: var(--fg-0);
+  font-weight: 500;
+  font-family: var(--font-ui);
+  letter-spacing: -0.005em;
+  text-transform: none;
+}
+
+.project-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  min-height: 0;
+  /* Smooth transition when toggling the log drawer so the stage doesn't
+     snap-reflow. The grid-template-columns animation works in modern
+     Chromium/WebKit which is what Tauri uses on macOS. */
+  transition: grid-template-columns 180ms ease;
+}
+
+/* Drop 4.26: when the log is hidden, the grid collapses to a single
+   column so the stage owns the full width. Without this the 400px
+   reserved column leaves a dead strip on the right and everything
+   looks shoved left. */
+.project-main.log-hidden {
+  grid-template-columns: 1fr;
+}
+
+.project-stage {
+  padding: 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Drop 4.26: when the log is hidden, center the stage's inner content
+   with a sensible max-width so it doesn't sprawl edge-to-edge on wide
+   monitors. The stage itself stays full-width (its scroll gutter and
+   padding use the whole viewport) but the children flow into a
+   centered column. When the log is visible we keep the old full-bleed
+   behavior so the narrower column still reads well. */
+.project-main.log-hidden .project-stage > * {
+  max-width: 1200px;
+  width: 100%;
+  align-self: center;
+}
+
+.project-sidebar {
+  background: var(--bg-1);
+  border-left: 1px solid var(--bg-3);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ============================================
+ * Drop 2 — Action bar tweaks
+ * ============================================ */
+
+.action-hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  letter-spacing: 0.02em;
+  max-width: 360px;
+  line-height: 1.5;
+}
+.action-hint code {
+  background: var(--bg-2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--fg-2);
+}
+
+/* ============================================
+ * Drop 2 — Collapsed progress + completion state
+ * ============================================ */
+
+.progress-group.done {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.progress-group.done:hover {
+  opacity: 1;
+}
+.progress-group.error { border-left: 2px solid var(--error); padding-left: 12px; }
+.progress-check { color: var(--success); }
+.error-msg { color: var(--error); font-size: 11px; }
+
+/* ============================================
+ * Drop 2 — Transcripts tab
+ * ============================================ */
+
+.transcripts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.transcripts-header {
+  padding: 4px 2px 16px 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+}
+.transcript-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  background: var(--bg-1);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+}
+.transcript-row.success { border-left-color: var(--success); }
+.transcript-row.error { border-left-color: var(--error); }
+.transcript-row.warn { border-left-color: var(--warn); }
+.transcript-row-main { flex: 1; min-width: 0; }
+.transcript-row-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-0);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.transcript-row-folder {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  margin-top: 3px;
+}
+.transcript-row-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.transcript-row-status.success { color: var(--success); background: var(--success-bg); }
+.transcript-row-status.error { color: var(--error); background: var(--error-bg); }
+.transcript-row-status.warn { color: var(--warn); background: var(--warn-bg); }
+.transcript-row-status.dim { color: var(--fg-3); }
+
+/* ============================================
+ * Drop 2 — Ideas tab
+ * ============================================ */
+
+.ideas-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--bg-3);
+  margin-bottom: 4px;
+}
+
+.ideas-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+@media (max-width: 1100px) {
+  .ideas-grid { grid-template-columns: 1fr; }
+}
+
+.idea-card {
+  background: var(--bg-1);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--bg-3);
+  transition: all 0.15s;
+}
+.idea-card.is-full {
+  border-color: var(--accent-dim);
+}
+.idea-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.idea-card-kind {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.idea-card-refined {
+  color: var(--fg-3);
+  margin-left: 4px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.idea-card-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-2);
+  letter-spacing: 0.02em;
+}
+.idea-card-title {
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--fg-0);
+  margin: 4px 0 0 0;
+  line-height: 1.3;
+}
+.idea-card-tone {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.idea-card-pitch {
+  font-size: 13px;
+  color: var(--fg-1);
+  line-height: 1.5;
+  margin: 4px 0;
+}
+
+.idea-card-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-2);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.idea-card-segments {
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-top: 4px;
+}
+.idea-card-segments-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-1);
+}
+.idea-card-segments-list li {
+  display: flex;
+  gap: 12px;
+  padding: 3px 0;
+  line-height: 1.4;
+}
+.seg-duration {
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+  flex-shrink: 0;
+  min-width: 36px;
+  font-size: 11px;
+}
+.seg-intent { color: var(--fg-1); }
+.seg-more { color: var(--fg-3); font-style: italic; padding-top: 4px !important; }
+
+.idea-card-themes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.idea-card-theme-chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  background: var(--bg-3);
+  color: var(--fg-2);
+  border-radius: 3px;
+  letter-spacing: 0.02em;
+}
+
+.idea-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--bg-3);
+}
+
+/* ============================================
+ * Drop 2 — Modals
+ * ============================================ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Drop 4.47.2: bumped from 100 → 200 so any modal overlay always
+   * stacks above floating bars (.floating-export-bar at z=150, the
+   * new .floating-next-bar also at z=150). Without this, the bottom
+   * row of action buttons (Add File / Add Folder / Done) inside a
+   * modal could get covered by a floating bar that was active when
+   * the modal opened. */
+  z-index: 200;
+  animation: fadeIn 0.15s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.modal {
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-lg);
+  width: 560px;
+  max-width: 92vw;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  animation: modalIn 0.18s ease-out;
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--bg-3);
+}
+.modal-header h2 {
+  font-family: var(--font-ui);
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--fg-0);
+}
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--fg-2);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+}
+.modal-close:hover {
+  background: var(--bg-3);
+  color: var(--fg-0);
+}
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--bg-3);
+}
+.modal-idea-preview {
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 10px;
+}
+.modal-idea-title {
+  font-weight: 500;
+  color: var(--fg-0);
+  margin-bottom: 4px;
+}
+.modal-idea-pitch {
+  font-size: 12px;
+  color: var(--fg-2);
+  line-height: 1.5;
+}
+kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 5px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  color: var(--fg-1);
+  margin: 0 2px;
+}
+
+.item-count {
+  color: var(--fg-3);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+/* ============================================
+ * Drop 2 polish — toasts
+ * ============================================ */
+
+.toast-stack {
+  position: fixed;
+  top: 64px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 200;
+  pointer-events: none;
+  max-width: 360px;
+}
+.toast {
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  font-size: 13px;
+  color: var(--fg-0);
+  animation: toastIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.toast-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--fg-2);
+}
+.toast-info .toast-dot { background: var(--accent); }
+.toast-success .toast-dot { background: var(--success); }
+.toast-success { border-left: 2px solid var(--success); }
+.toast-error .toast-dot { background: var(--error); }
+.toast-error { border-left: 2px solid var(--error); }
+.toast-warn .toast-dot { background: var(--warn); }
+.toast-warn { border-left: 2px solid var(--warn); }
+.toast-message {
+  flex: 1;
+  line-height: 1.4;
+}
+
+/* ============================================
+ * Drop 2 polish — API key badge in titlebar
+ * ============================================ */
+
+.api-key-badge {
+  background: none;
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 4px 9px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-right: 12px;
+}
+.api-key-badge:hover {
+  background: var(--bg-2);
+  color: var(--fg-0);
+}
+.api-key-badge.ok {
+  border-color: var(--success-dim, rgba(80, 200, 150, 0.3));
+  color: var(--success);
+}
+.api-key-badge.ok:hover {
+  background: var(--success-bg);
+}
+.api-key-badge.missing {
+  border-color: var(--warn-dim, rgba(230, 170, 60, 0.3));
+  color: var(--warn);
+}
+.api-key-badge.missing:hover {
+  background: var(--warn-bg);
+}
+.titlebar-status {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.titlebar-status-text {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+}
+
+/* ============================================
+ * Drop 2 polish — settings modal
+ * ============================================ */
+
+.settings-key-status {
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin: 4px 0 8px 0;
+}
+.settings-key-state {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-key-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-0);
+}
+.settings-key-suffix {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.settings-key-state.ok .settings-key-label {
+  color: var(--success);
+}
+.settings-key-state.warn .settings-key-label {
+  color: var(--warn);
+}
+.settings-key-state.missing .settings-key-label {
+  color: var(--fg-2);
+}
+.settings-key-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  line-height: 1.55;
+  margin-top: 6px;
+}
+.settings-key-hint code {
+  background: var(--bg-3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--fg-1);
+  font-size: 10px;
+}
+.settings-clear-confirm {
+  background: var(--error-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--fg-1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.form-link {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: text;
+}
+
+/* ============================================
+ * Drop 2 polish — delete buttons
+ * ============================================ */
+
+.project-row {
+  position: relative;
+}
+.project-row-delete {
+  background: none;
+  border: none;
+  color: var(--fg-3);
+  font-size: 16px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: all 0.15s;
+  margin-right: 6px;
+}
+.project-row:hover .project-row-delete {
+  opacity: 1;
+}
+.project-row-delete:hover {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.project-nav-spacer {
+  flex: 1;
+}
+.project-nav-delete {
+  background: none;
+  border: 1px solid var(--bg-3);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-right: 12px;
+}
+.project-nav-delete:hover {
+  border-color: var(--error);
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.btn-danger {
+  background: var(--error);
+  color: var(--bg-0);
+  border: none;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Dropzone × should be more discoverable */
+.dropzone-fileitem .remove {
+  font-size: 15px;
+  color: var(--fg-3);
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 3px;
+  transition: all 0.15s;
+}
+.dropzone-fileitem .remove:hover {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+/* Missing color vars (these might already be defined but just in case) */
+:root {
+  --success-bg: rgba(80, 200, 150, 0.1);
+  --warn-bg: rgba(230, 170, 60, 0.1);
+}
+
+/* ============================================
+ * Drop 3 — Multi-select on Ideas tab
+ * ============================================ */
+
+.idea-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.idea-card-checkbox {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 12px;
+  cursor: pointer;
+  position: relative;
+}
+.idea-card-checkbox.disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.idea-card-checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 16px;
+  height: 16px;
+  cursor: inherit;
+}
+.idea-card-checkbox-box {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--bg-3);
+  border-radius: 3px;
+  background: var(--bg-1);
+  transition: all 0.15s;
+  position: relative;
+}
+.idea-card-checkbox:hover:not(.disabled) .idea-card-checkbox-box {
+  border-color: var(--accent);
+}
+.idea-card-checkbox input:checked + .idea-card-checkbox-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.idea-card-checkbox input:checked + .idea-card-checkbox-box::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--bg-0);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* ============================================
+ * Drop 3 — Floating export bar
+ * ============================================ */
+
+.floating-export-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 150;
+  animation: floatingBarIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+@keyframes floatingBarIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.floating-export-count {
+  font-size: 13px;
+  color: var(--fg-0);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.floating-export-badge {
+  background: var(--accent);
+  color: var(--bg-0);
+  font-weight: 600;
+  border-radius: 11px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+/* ============================================
+ * Drop 3 — Export modal
+ * ============================================ */
+
+.export-summary {
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+}
+.export-summary-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  margin-bottom: 8px;
+}
+.export-idea-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.export-idea-list li {
+  font-size: 13px;
+  color: var(--fg-0);
+  padding: 4px 0;
+  line-height: 1.45;
+}
+.export-idea-meta {
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.export-save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+.export-save-path {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;  /* keep filename visible when truncating long paths */
+  text-align: left;
+}
+.export-save-placeholder {
+  color: var(--fg-3);
+  font-style: normal;
+  direction: ltr;
+}
+
+.export-option {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.export-option input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.export-option-text {
+  flex: 1;
+}
+.export-option-label {
+  font-size: 13px;
+  color: var(--fg-0);
+  line-height: 1.4;
+}
+.export-option-hint {
+  font-size: 11px;
+  color: var(--fg-3);
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.export-progress {
+  background: var(--bg-0);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.export-progress-idle {
+  color: var(--fg-3);
+  font-style: italic;
+}
+.export-progress-line {
+  color: var(--fg-1);
+  padding: 1px 0;
+}
+.export-progress-accent { color: var(--accent); font-weight: 500; }
+.export-progress-warn { color: var(--warn); }
+.export-progress-error { color: var(--error); }
+
+.export-done {
+  text-align: center;
+  padding: 10px 10px 0 10px;
+}
+.export-done-icon {
+  font-size: 40px;
+  color: var(--success);
+  line-height: 1;
+  margin-bottom: 14px;
+}
+.export-done-msg {
+  font-size: 14px;
+  color: var(--fg-0);
+  line-height: 1.5;
+  max-width: 440px;
+  margin: 0 auto;
+}
+.export-done-path {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  background: var(--bg-2);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  margin-top: 16px;
+  word-break: break-all;
+  text-align: left;
+}
+
+.export-error-msg {
+  background: var(--error-bg);
+  border-left: 3px solid var(--error);
+  padding: 12px 14px;
+  color: var(--fg-0);
+  font-size: 13px;
+  line-height: 1.5;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+/* Delete project icon button — demoted from text-button to icon-only
+ * so it doesn't compete with primary actions in that nav-bar slot. */
+.project-nav-delete-icon {
+  background: none;
+  border: none;
+  color: var(--fg-3);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  margin-right: 8px;
+}
+.project-nav-delete-icon:hover {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+/* Hint shown in place of the checkbox on concept cards — communicates
+ * clearly that the card is not selectable WHY without looking broken. */
+.idea-card-export-hint {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  background: var(--bg-2);
+  border: 1px dashed var(--bg-3);
+  border-radius: 3px;
+  padding: 3px 7px;
+  margin-right: 12px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* Make toast messages wrap nicely when they're long-ish but still concise */
+.toast-message {
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* =========================================================================
+   Drop 3.6 — Log toggle + Audio sync matrix
+   ========================================================================= */
+
+/* Collapsed state: slim tab along the right edge that reveals the log */
+.log-reveal-tab {
+  position: fixed;
+  right: 0;
+  top: 40%;
+  writing-mode: vertical-rl;
+  background: var(--bg-2);
+  color: var(--fg-2);
+  border: 1px solid var(--bg-4);
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  padding: 12px 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  z-index: 5;
+  transition: color 120ms ease, background 120ms ease;
+}
+.log-reveal-tab:hover {
+  color: var(--accent);
+  background: var(--bg-3);
+}
+
+/* Hide button at the top of the log sidebar when it's visible */
+.log-toggle-bar {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--bg-3);
+  display: flex;
+  justify-content: flex-end;
+}
+.log-toggle {
+  background: transparent;
+  color: var(--fg-2);
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms ease, background 120ms ease;
+}
+.log-toggle:hover {
+  color: var(--accent);
+  background: var(--bg-2);
+}
+
+/* ------------------ Sync matrix ------------------ */
+
+.sync-matrix-wrap {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+}
+
+.sync-matrix-empty {
+  margin-top: 24px;
+  padding: 20px;
+  background: var(--bg-1);
+  border: 1px dashed var(--bg-3);
+  border-radius: var(--radius-md);
+  color: var(--fg-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.sync-matrix-header {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--bg-3);
+}
+.sync-matrix-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-1);
+}
+.sync-matrix-sub {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.sync-matrix-scroll {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.sync-matrix {
+  border-collapse: separate;
+  border-spacing: 2px;
+  width: 100%;
+}
+.sync-cell-corner {
+  background: transparent;
+  min-width: 140px;
+}
+.sync-cell-head,
+.sync-cell-row {
+  background: var(--bg-2);
+  color: var(--fg-1);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: normal;
+  letter-spacing: 0.08em;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sync-cell-head {
+  text-align: center;
+  vertical-align: bottom;
+}
+.sync-cell-row {
+  text-align: right;
+}
+
+/* Data cells */
+.sync-cell {
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  text-align: center;
+  min-width: 72px;
+  line-height: 1.2;
+  cursor: help;
+}
+.sync-cell.sync-strong {
+  background: var(--success-bg);
+  border: 1px solid rgba(92, 192, 138, 0.35);
+}
+/* Drop 4.47.4: cross-validated cell. Same green family as "strong" so
+ * users immediately read it as "this gets used", but with a dashed
+ * border to convey that the reliability comes from inference (offset
+ * agreement with strong matches on other clips) rather than a high
+ * raw score. The tooltip explains the full story. */
+.sync-cell.sync-promoted {
+  background: var(--success-bg);
+  border: 1px dashed rgba(92, 192, 138, 0.6);
+}
+.sync-cell.sync-maybe {
+  background: var(--warn-bg);
+  border: 1px solid rgba(214, 163, 78, 0.35);
+}
+.sync-cell.sync-weak {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  color: var(--fg-3);
+}
+.sync-cell.sync-empty {
+  background: transparent;
+  border: 1px dashed var(--bg-3);
+  color: var(--fg-3);
+}
+.sync-cell.sync-error {
+  background: var(--error-bg);
+  border: 1px solid rgba(228, 106, 106, 0.35);
+  color: var(--error);
+}
+
+.sync-score {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-0);
+  font-weight: 500;
+}
+.sync-cell.sync-weak .sync-score {
+  color: var(--fg-2);
+}
+.sync-offset {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--fg-2);
+  margin-top: 2px;
+}
+
+/* Legend */
+.sync-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--bg-3);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+.sync-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sync-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-sm);
+}
+.sync-swatch.sync-strong {
+  background: var(--success-bg);
+  border: 1px solid rgba(92, 192, 138, 0.35);
+}
+.sync-swatch.sync-promoted {
+  background: var(--success-bg);
+  border: 1px dashed rgba(92, 192, 138, 0.6);
+}
+.sync-swatch.sync-maybe {
+  background: var(--warn-bg);
+  border: 1px solid rgba(214, 163, 78, 0.35);
+}
+.sync-swatch.sync-weak {
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+}
+
+/* =========================================================================
+ * Drop 4.0 — Story Angle cards, legacy-tools reveal, export modal angle row
+ * ========================================================================= */
+
+.idea-card.is-angle {
+  border-color: rgba(255, 200, 0, 0.35);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 200, 0, 0.04) 0%,
+    var(--bg-1) 60%
+  );
+}
+
+.idea-card-angle-badge {
+  color: #e8b83a;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.idea-card-hook {
+  margin: 10px 0 6px;
+  color: var(--text-1);
+  line-height: 1.45;
+}
+
+.idea-card-meta-row {
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+.idea-card-meta-label {
+  color: var(--text-3);
+  font-weight: 500;
+  margin-right: 4px;
+}
+
+.idea-card-phrases {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bg-3);
+}
+
+.idea-card-phrases-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.idea-card-phrase-item {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-1);
+}
+
+.phrase-index {
+  flex: 0 0 24px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.phrase-text {
+  flex: 1;
+}
+
+.idea-card-format {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--bg-3);
+}
+
+.idea-card-format-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.idea-card-format-select {
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm);
+  color: var(--text-1);
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.idea-card-format-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.btn-link {
+  background: transparent;
+  border: 0;
+  color: var(--accent);
+  padding: 4px 0;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.btn-link:hover {
+  text-decoration: underline;
+}
+
+.btn-sm {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+
+/* Legacy tools reveal */
+.legacy-actions {
+  display: inline-block;
+  position: relative;
+}
+
+.legacy-actions[open] .legacy-actions-summary {
+  color: var(--text-1);
+}
+
+.legacy-actions-summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.legacy-actions-summary::-webkit-details-marker {
+  display: none;
+}
+
+.legacy-actions-body {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* Export modal: angle badge */
+.export-angle-badge {
+  color: #e8b83a;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+/* Drop 4.1 — source range styling in Story Angle cards */
+.range-duration {
+  color: var(--text-3);
+  font-size: 12px;
+  margin-left: 4px;
+}
+.range-label {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+}
+.range-summary {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+/* Drop 4.4 — platform + aspect dropdown hints */
+.idea-card-format-hint {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-style: italic;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+/* Drop 4.16 — portable projects */
+.start-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.form-row .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Drop 4.24 — transcripts moved inline under the audio-sync matrix */
+.transcripts-section {
+  margin-top: 24px;
+}
+.transcripts-section-title {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-0);
+  letter-spacing: 0.02em;
+}
+
+/* Drop 4.39 — Run Pipeline stage picker modal */
+.run-pipeline-modal {
+  width: 520px;
+}
+.run-pipeline-section {
+  margin-bottom: 20px;
+}
+.run-pipeline-section:last-child {
+  margin-bottom: 0;
+}
+.run-pipeline-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--fg-3);
+  margin-bottom: 10px;
+}
+.run-pipeline-presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.run-pipeline-preset {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+.run-pipeline-stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  margin-bottom: 4px;
+}
+.run-pipeline-stage:hover:not(.disabled) {
+  background: var(--bg-2);
+}
+.run-pipeline-stage.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.run-pipeline-stage input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.run-pipeline-stage.disabled input[type="checkbox"] {
+  cursor: not-allowed;
+}
+.run-pipeline-stage-body {
+  flex: 1;
+  min-width: 0;
+}
+.run-pipeline-stage-label {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-0);
+  margin-bottom: 2px;
+}
+.run-pipeline-stage-sub {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+
+/* ============================================
+ * First-launch setup screen (Drop 4.44)
+ * ============================================
+ * Shown before StartScreen on the first launch when deps are missing.
+ * Full-viewport panel with a centered scrollable column.
+ */
+
+.setup-splash {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  background: var(--bg-0);
+}
+.setup-splash-logo {
+  /* Wordmark — preserve aspect ratio. See .setup-logo rationale. */
+  height: 48px;
+  width: auto;
+  opacity: 0.9;
+}
+.setup-splash-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--bg-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: setup-spin 0.8s linear infinite;
+}
+.setup-splash-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  letter-spacing: 0.08em;
+}
+
+@keyframes setup-spin {
+  to { transform: rotate(360deg); }
+}
+
+.setup-screen {
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--bg-0);
+  display: flex;
+  justify-content: center;
+}
+
+.setup-scroll {
+  max-width: 720px;
+  width: 100%;
+  padding: 48px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.setup-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.setup-logo {
+  /* The logo is a wordmark (374x96, ~3.9:1). Forcing it to a square
+   * crushes it. Set the height only and let the browser preserve the
+   * aspect ratio via width:auto — same pattern as .titlebar-logo. */
+  height: 44px;
+  width: auto;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.setup-title {
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 0;
+}
+
+.setup-subtitle {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--fg-1);
+  line-height: 1.55;
+  margin: 0;
+  max-width: 600px;
+}
+
+.setup-loading {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.setup-error {
+  padding: 12px 14px;
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-md);
+  color: var(--fg-0);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.setup-error strong {
+  color: var(--error);
+}
+
+.setup-components {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setup-component {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s, background 0.15s;
+}
+.setup-component-ok {
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+.setup-component-missing {
+  border-color: var(--bg-4);
+}
+.setup-component.installing {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.setup-component-icon {
+  flex: 0 0 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--fg-2);
+  margin-top: 1px;
+}
+.setup-component-ok .setup-component-icon {
+  color: var(--success);
+}
+.setup-component.installing .setup-component-icon {
+  color: var(--accent);
+}
+
+.setup-component-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.setup-component-title {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-0);
+}
+
+.setup-component-subtitle {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--fg-1);
+  margin-top: 2px;
+  line-height: 1.45;
+}
+
+.setup-component-detail {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  margin-top: 6px;
+  word-break: break-word;
+}
+
+.setup-component-note {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--warn);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+.setup-component-action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.setup-component-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+}
+.setup-component-tag.ok {
+  color: var(--success);
+  background: transparent;
+  border: 1px solid var(--success);
+}
+.setup-component-tag.installing {
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+}
+
+.setup-install-btn {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 14px;
+  background: var(--bg-3);
+  color: var(--fg-0);
+  border: 1px solid var(--bg-4);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.setup-install-btn:hover:not(:disabled) {
+  background: var(--bg-4);
+  border-color: var(--accent-dim);
+}
+.setup-install-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.setup-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--bg-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: setup-spin 0.8s linear infinite;
+}
+
+.setup-log-panel {
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.setup-log-header {
+  padding: 8px 14px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--bg-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
+.setup-log {
+  margin: 0;
+  padding: 10px 14px;
+  max-height: 240px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-1);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg-0);
+}
+.setup-log-line {
+  padding: 1px 0;
+}
+.setup-log-line.ok { color: var(--success); }
+.setup-log-line.err { color: var(--error); }
+.setup-log-line.accent { color: var(--accent); font-weight: 500; }
+
+.setup-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+}
+.setup-actions-right {
+  display: flex;
+  gap: 10px;
+}
+
+.setup-btn-primary,
+.setup-btn-secondary,
+.setup-btn-skip {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.setup-btn-primary {
+  background: var(--accent);
+  color: var(--bg-0);
+  border: 1px solid var(--accent);
+}
+.setup-btn-primary:hover:not(:disabled) {
+  background: var(--accent-dim);
+}
+.setup-btn-primary:disabled {
+  background: var(--bg-3);
+  color: var(--fg-2);
+  border-color: var(--bg-4);
+  cursor: not-allowed;
+}
+.setup-btn-secondary {
+  background: transparent;
+  color: var(--fg-1);
+  border: 1px solid var(--bg-4);
+}
+.setup-btn-secondary:hover:not(:disabled) {
+  border-color: var(--fg-3);
+  color: var(--fg-0);
+}
+.setup-btn-secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.setup-btn-skip {
+  background: transparent;
+  color: var(--fg-2);
+  border: 1px solid transparent;
+}
+.setup-btn-skip:hover:not(:disabled) {
+  color: var(--fg-1);
+  background: var(--bg-2);
+}
+.setup-btn-skip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* =============================================================
+ * Onboarding: welcome modal, API key help panel, tour tooltips
+ * (Drop 4.44)
+ * =============================================================
+ *
+ * Three related UIs, all sharing the app's dark palette:
+ *   1. WelcomeModal    — 4-screen first-launch intro
+ *   2. ApiKeyHelp      — "Don't know what Claude is?" reference
+ *   3. TourTooltip     — lightweight contextual hints
+ *
+ * All three piggyback on the existing .modal-overlay / .modal
+ * conventions for consistency with SettingsModal and other modals.
+ */
+
+/* ----- Shared additions to SettingsModal --------------------- */
+
+/* Row that holds the label + a little (?) button next to it. Used
+ * by SettingsModal to link out to the ApiKeyHelp panel. */
+.form-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.form-help-button {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--bg-4);
+  background: transparent;
+  color: var(--fg-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.form-help-button:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-0);
+}
+
+/* .form-link was previously styled as a span; now it's a real button
+ * when we want clickable links in form hints. Keep text-button look. */
+.form-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(0, 224, 224, 0.4);
+  text-underline-offset: 2px;
+}
+.form-link:hover {
+  text-decoration-color: var(--accent);
+}
+
+/* ----- WelcomeModal ----------------------------------------- */
+
+/* The overlay is non-dismissable (no onClick on .modal-overlay in
+ * component). We also make the backdrop a hair darker than the normal
+ * modal backdrop so this feels more "hero/onboarding" and less
+ * "settings dialog". */
+.welcome-overlay {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+.welcome-modal {
+  /* Overrides the default .modal size to feel more poster-like */
+  width: 560px;
+  max-width: 90vw;
+  max-height: 88vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Progress dots across the top of the welcome modal */
+.welcome-progress {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 0 0;
+}
+.welcome-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  transition: background 0.2s, transform 0.2s;
+}
+.welcome-dot.active {
+  background: var(--accent);
+  transform: scale(1.3);
+}
+.welcome-dot.past {
+  background: var(--accent-dim);
+}
+
+/* Main body — generous padding, centered layout, icon at top */
+.welcome-body {
+  padding: 28px 44px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.welcome-icon {
+  width: 72px;
+  height: 72px;
+  color: var(--accent);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-title {
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 0 0 16px;
+}
+
+.welcome-text {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg-1);
+  max-width: 440px;
+}
+.welcome-text p {
+  margin: 0 0 12px;
+}
+.welcome-text p:last-child {
+  margin-bottom: 0;
+}
+.welcome-body-muted {
+  color: var(--fg-2) !important;
+  font-size: 13px !important;
+  font-style: italic;
+}
+
+/* Numbered list on the workflow screen */
+.welcome-numbered {
+  text-align: left;
+  padding-left: 0;
+  margin: 0;
+  list-style: none;
+  counter-reset: welcome-step;
+}
+.welcome-numbered li {
+  counter-increment: welcome-step;
+  position: relative;
+  padding-left: 36px;
+  margin-bottom: 14px;
+  line-height: 1.55;
+}
+.welcome-numbered li:last-child {
+  margin-bottom: 0;
+}
+.welcome-numbered li::before {
+  content: counter(welcome-step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* "Don't know what this is?" link on the API key screen */
+.welcome-help-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  margin-top: 18px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+}
+.welcome-help-link:hover {
+  background: var(--accent-glow, rgba(0, 224, 224, 0.1));
+}
+
+/* Footer actions — Skip on left, Back/Next on right */
+.welcome-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 28px 24px;
+  border-top: 1px solid var(--bg-3);
+}
+.welcome-skip {
+  font-size: 12px !important;
+  color: var(--fg-2) !important;
+}
+.welcome-nav {
+  display: flex;
+  gap: 10px;
+}
+
+/* ----- ApiKeyHelp ------------------------------------------- */
+
+.help-modal {
+  width: 640px;
+  max-width: 92vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.help-body {
+  padding: 20px 28px !important;
+  overflow-y: auto;
+}
+
+.help-section {
+  margin-bottom: 28px;
+}
+.help-section:last-child {
+  margin-bottom: 8px;
+}
+.help-section p {
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--fg-1);
+  margin: 0 0 12px;
+}
+.help-section p:last-child {
+  margin-bottom: 0;
+}
+.help-section code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-0);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-1);
+}
+
+.help-heading {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bg-3);
+}
+
+/* Numbered signup steps — same vibe as .welcome-numbered but less
+ * hero-y. Counter in cyan, text in normal body weight. */
+.help-steps {
+  list-style: none;
+  counter-reset: help-step;
+  padding: 0;
+  margin: 0;
+}
+.help-steps li {
+  counter-increment: help-step;
+  position: relative;
+  padding-left: 32px;
+  margin-bottom: 14px;
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--fg-1);
+}
+.help-steps li::before {
+  content: counter(help-step);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(0, 224, 224, 0.5);
+  text-underline-offset: 2px;
+}
+.help-link:hover {
+  text-decoration-color: var(--accent);
+}
+
+/* Pricing table */
+.help-pricing-table-wrap {
+  margin: 14px 0 10px;
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.help-pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+}
+.help-pricing-table th,
+.help-pricing-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--bg-3);
+}
+.help-pricing-table thead th {
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.help-th-sub {
+  font-size: 9px;
+  color: var(--fg-3, var(--fg-2));
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.help-pricing-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.help-pricing-table tbody td {
+  color: var(--fg-1);
+}
+.help-pricing-table tbody strong {
+  color: var(--fg-0);
+}
+.help-pricing-default {
+  background: rgba(0, 224, 224, 0.04);
+}
+.help-pricing-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  background: var(--accent);
+  color: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+
+.help-pricing-caveat {
+  font-size: 11px !important;
+  color: var(--fg-2) !important;
+  margin-top: 4px !important;
+}
+
+/* Collapsible FAQs */
+.help-faq {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm);
+}
+.help-faq summary {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-0);
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+  padding-right: 20px;
+}
+.help-faq summary::-webkit-details-marker {
+  display: none;
+}
+.help-faq summary::after {
+  content: "+";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1;
+}
+.help-faq[open] summary::after {
+  content: "−";
+}
+.help-faq p {
+  margin: 10px 0 0 !important;
+  padding-top: 8px;
+  border-top: 1px solid var(--bg-3);
+  font-size: 12.5px !important;
+  color: var(--fg-1) !important;
+}
+
+/* ----- TourTooltip ------------------------------------------ */
+
+.tour-tooltip {
+  position: fixed;
+  z-index: 9000;
+  width: 280px;
+  padding: 16px 18px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55),
+              0 0 0 4px rgba(0, 224, 224, 0.12);
+  /* start hidden until positioned — the component sets visibility
+     inline once position is computed. */
+}
+
+/* Little arrow that points at the target. Uses two stacked triangles:
+ * one for the border, one for the fill — a classic CSS pattern that
+ * avoids rendering a <svg> child. */
+.tour-tooltip::before,
+.tour-tooltip::after {
+  content: "";
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* Bottom: arrow points UP */
+.tour-tooltip-bottom::before {
+  top: -8px;
+  left: 50%;
+  margin-left: -9px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-bottom: 9px solid var(--accent);
+}
+.tour-tooltip-bottom::after {
+  top: -7px;
+  left: 50%;
+  margin-left: -8px;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 8px solid var(--bg-1);
+}
+
+/* Top: arrow points DOWN */
+.tour-tooltip-top::before {
+  bottom: -8px;
+  left: 50%;
+  margin-left: -9px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 9px solid var(--accent);
+}
+.tour-tooltip-top::after {
+  bottom: -7px;
+  left: 50%;
+  margin-left: -8px;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 8px solid var(--bg-1);
+}
+
+/* Right: arrow points LEFT */
+.tour-tooltip-right::before {
+  left: -8px;
+  top: 50%;
+  margin-top: -9px;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-right: 9px solid var(--accent);
+}
+.tour-tooltip-right::after {
+  left: -7px;
+  top: 50%;
+  margin-top: -8px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-right: 8px solid var(--bg-1);
+}
+
+/* Left: arrow points RIGHT */
+.tour-tooltip-left::before {
+  right: -8px;
+  top: 50%;
+  margin-top: -9px;
+  border-top: 9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left: 9px solid var(--accent);
+}
+.tour-tooltip-left::after {
+  right: -7px;
+  top: 50%;
+  margin-top: -8px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 8px solid var(--bg-1);
+}
+
+.tour-tooltip-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  border-radius: var(--radius-sm);
+}
+.tour-tooltip-close:hover {
+  color: var(--fg-0);
+  background: var(--bg-2);
+}
+
+.tour-tooltip-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.tour-tooltip-title {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-bottom: 6px;
+  padding-right: 18px; /* room for the close X */
+}
+
+.tour-tooltip-body {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+
+.tour-tooltip-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tour-tooltip-skip {
+  background: none;
+  border: none;
+  color: var(--fg-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.tour-tooltip-skip:hover {
+  color: var(--fg-1);
+  background: var(--bg-2);
+}
+
+.tour-tooltip-ok {
+  background: var(--accent);
+  color: var(--bg-0);
+  border: none;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.tour-tooltip-ok:hover {
+  background: var(--accent-dim);
+}
+
+/* ============================================================
+ * Ingest tab: Next → Ideas CTA (Drop 4.44)
+ * ============================================================
+ * Shown at the bottom of the Ingest tab once a pipeline run has
+ * finished successfully. Visually distinct from the other panels
+ * (accent-glow border, pale accent fill) so it reads as a forward
+ * action, not another status readout.
+ */
+.ingest-next-cta {
+  margin-top: 32px;
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 224, 224, 0.08) 0%,
+    rgba(0, 224, 224, 0.03) 100%
+  );
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 4px rgba(0, 224, 224, 0.08);
+}
+
+.ingest-next-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ingest-next-title {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-bottom: 4px;
+}
+
+.ingest-next-sub {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+
+.ingest-next-button {
+  /* Override generic .btn-primary sizing — we want this one to feel
+   * like the primary action on the screen. */
+  font-size: 14px !important;
+  padding: 10px 20px !important;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+ * Ideas tab: generating feedback (Drop 4.44)
+ * ============================================================
+ * Two purposes:
+ *   1. `.generating-panel` (default) — replaces the "No ideas yet"
+ *      empty state while producer is running. Full-size panel that
+ *      makes it unambiguously clear the app is thinking.
+ *   2. `.generating-panel-compact` — thin strip at top of the ideas
+ *      grid when user clicks "Generate more". Existing ideas stay
+ *      visible; this tells the user new ones are being added.
+ *
+ * Also defines `.btn-spinner` — small inline spinner for buttons
+ * that are in a busy state.
+ */
+
+/* Inline spinner used inside buttons when an action is in progress.
+ * Sits flush next to the button label. Smaller and thinner than the
+ * setup-screen spinner since it shares space with text. */
+.btn-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: setup-spin 0.7s linear infinite;
+  margin-right: 8px;
+  vertical-align: -2px;
+}
+
+/* Big panel for the empty-ideas loading state */
+.generating-panel {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 28px;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 224, 224, 0.05) 0%,
+    rgba(0, 224, 224, 0.02) 100%
+  );
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px rgba(0, 224, 224, 0.08);
+  /* Break out of ideas-grid's column layout so the panel spans full width.
+   * ideas-grid uses a grid with auto-fill of ideally-300px-columns, so a
+   * direct child would only take one column. grid-column: 1 / -1 spans
+   * all columns. */
+  grid-column: 1 / -1;
+}
+
+/* Compact variant for the top-strip case — used when ideas already
+ * exist and we're generating more. Much shorter vertically so it
+ * doesn't push existing ideas below the fold. */
+.generating-panel-compact {
+  padding: 14px 20px;
+  gap: 12px;
+}
+
+.generating-spinner {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--bg-3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: setup-spin 0.8s linear infinite;
+}
+.generating-panel-compact .generating-spinner {
+  /* Match the compact strip — smaller spinner so the strip stays thin */
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+}
+
+.generating-panel-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.generating-panel-title {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-bottom: 3px;
+}
+.generating-panel-compact .generating-panel-title {
+  font-size: 13px;
+  margin-bottom: 1px;
+}
+
+.generating-panel-sub {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--fg-2);
+  line-height: 1.4;
+}
+.generating-panel-compact .generating-panel-sub {
+  font-size: 11.5px;
+}
+
+
+/* ============================================================
+ * HelpTooltip (Drop 4.44 follow-up)
+ * ============================================================
+ * Small '?' icon that shows a contextual tip on hover or focus.
+ * Placed next to section titles throughout the app.
+ *
+ * CSS-only: no positioning library, no state. Visibility is driven
+ * by :hover and :focus-within on the wrapping span, so keyboard
+ * users (Tab → icon) see the tip too.
+ */
+.help-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  vertical-align: baseline;
+}
+
+.help-tooltip-trigger {
+  /* Reset button styles so it looks like an icon */
+  background: transparent;
+  border: 1px solid var(--bg-4);
+  color: var(--fg-2);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.help-tooltip-wrap:hover .help-tooltip-trigger,
+.help-tooltip-wrap:focus-within .help-tooltip-trigger {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg-0);
+}
+
+.help-tooltip-content {
+  /* Hidden by default; revealed on hover/focus of the wrap */
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 100;
+  width: 260px;
+  padding: 10px 12px;
+  background: var(--bg-0);
+  border: 1px solid var(--bg-4);
+  border-radius: var(--radius-md);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--fg-1);
+  text-transform: none;     /* section labels are often uppercased; text isn't */
+  letter-spacing: 0;
+  opacity: 0;
+  visibility: hidden;
+  /* Faint pointer arrow at top */
+  /* Delay the reveal so a mouse passing over the icon doesn't flash
+   * the tooltip on/off constantly */
+  transition: opacity 0.12s ease-out 0.08s, visibility 0s linear 0.2s;
+  pointer-events: none;
+}
+
+.help-tooltip-wrap:hover .help-tooltip-content,
+.help-tooltip-wrap:focus-within .help-tooltip-content {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.12s ease-out, visibility 0s linear 0s;
+  pointer-events: auto;
+}
+
+/* Horizontal anchor — default opens right-of-icon (left:0 means left
+ * edge of tooltip aligns with left edge of trigger). For right-side
+ * icons, align=right flips so the tooltip extends leftward. */
+.help-tooltip-left .help-tooltip-content {
+  left: 0;
+}
+.help-tooltip-right .help-tooltip-content {
+  right: 0;
+}
+
+/* Strong/em inside tooltip content */
+.help-tooltip-content strong {
+  color: var(--fg-0);
+  font-weight: 600;
+}
+
+/* ============================================================
+ * Ideas tab — no-API-key empty state (Drop 4.44)
+ * ============================================================
+ * Shown in the Ideas grid when the user has no API key but has
+ * indexed footage. Gives them two paths forward: set up a key
+ * (opens the ApiKeyHelp modal) or export the library-only XML
+ * right now with no AI involvement.
+ */
+.ideas-nokey-empty {
+  max-width: 520px;
+  margin: 48px auto;
+  padding: 28px 32px;
+  background: var(--bg-1);
+  border: 1px solid var(--bg-4);
+  border-radius: var(--radius-md);
+  text-align: left;
+  /* Soft accent glow so it reads as a call-to-action, not an error */
+  box-shadow: 0 0 0 1px var(--accent-glow), 0 8px 28px rgba(0, 0, 0, 0.25);
+}
+
+.ideas-nokey-title {
+  font-family: var(--font-ui);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--fg-0);
+  margin-bottom: 12px;
+  line-height: 1.35;
+}
+
+.ideas-nokey-body {
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--fg-2);
+  margin-bottom: 20px;
+}
+
+.ideas-nokey-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ideas-nokey-actions .btn {
+  /* Slight size bump over default .btn so the CTAs feel weighty */
+  padding: 9px 16px;
+  font-size: 13px;
+}
+
+/* ============================================================
+ * Auto-include rules (Drop 4.46) — used by AutoIncludeModal
+ * ============================================================
+ *
+ * "Default Includes" — a list of files/folders the user wants
+ * silently added to every export, routed to specific bins. Each
+ * row shows: source (file vs folder), bin path field, optional
+ * glob filter (folder only), and a delete button.
+ */
+
+/* Wider modal for this screen — the rule editor needs more
+ * horizontal room than the 560px API key modal. */
+.modal.modal-wide {
+  width: 720px;
+}
+
+.auto-include-empty {
+  padding: 24px 20px;
+  color: var(--fg-2);
+  font-size: 13px;
+  border: 1px dashed var(--bg-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+}
+
+.auto-include-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+  margin-bottom: 8px;
+}
+
+.auto-include-empty-body p {
+  margin: 0 0 10px 0;
+  line-height: 1.5;
+}
+
+.auto-include-empty-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auto-include-empty-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg-1);
+  border-radius: var(--radius-sm, 4px);
+  border: 1px solid var(--bg-3);
+}
+
+.auto-include-empty-list code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  color: var(--fg-1);
+}
+
+.auto-include-empty-icon {
+  font-size: 13px;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.auto-include-error {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  background: var(--accent-danger-bg, rgba(220, 80, 80, 0.1));
+  border: 1px solid var(--accent-danger, #cc4444);
+  border-radius: var(--radius-md);
+  color: var(--accent-danger, #cc4444);
+  font-size: 12px;
+}
+
+.auto-include-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auto-include-row {
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auto-include-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auto-include-row-icon {
+  font-size: 16px;
+  width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.auto-include-row-source {
+  flex: 1;
+  min-width: 0;  /* needed for child text-overflow */
+}
+
+.auto-include-row-source-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+  font-weight: 600;
+  margin-bottom: 1px;
+}
+
+.auto-include-row-source-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.auto-include-row-delete {
+  background: transparent;
+  border: 1px solid var(--bg-3);
+  color: var(--fg-2);
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.auto-include-row-delete:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--fg-1);
+}
+
+.auto-include-row-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auto-include-row-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.auto-include-row-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-include-row-field-glob {
+  flex: 0 0 140px;
+}
+
+.auto-include-row-field-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-2);
+  font-weight: 600;
+}
+
+.auto-include-row-field-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: normal;
+  color: var(--fg-3, var(--fg-2));
+  margin-left: 4px;
+}
+
+.auto-include-row-fields .form-input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+/* Subtle warning state for an obviously-malformed bin path
+ * (e.g., empty segments). Does NOT block save — backend will
+ * just skip the rule at export time and log a warning. */
+.form-input.form-input-warn {
+  border-color: var(--accent-warn, #d4a634);
+}
+
+/* ----- Intro panel ------------------------------------------- */
+
+.auto-include-intro {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+}
+
+.auto-include-intro-text {
+  margin: 0 0 12px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.auto-include-intro-tree {
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm, 4px);
+  padding: 10px 12px;
+}
+
+.auto-include-intro-tree-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fg-2);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.auto-include-intro-tree-grid {
+  display: grid;
+  /* Two columns on wider modals so the tree doesn't get tall. */
+  grid-template-columns: 1fr 1fr;
+  column-gap: 24px;
+  row-gap: 4px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.auto-include-intro-tree-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.auto-include-intro-tree-header {
+  /* "Footage", "Audio", "Files" — top-level container bins */
+  font-weight: 600;
+  color: var(--fg-1);
+  /* Headers can span full row of the grid for readability */
+  grid-column: 1 / -1;
+  margin-top: 4px;
+}
+
+.auto-include-intro-tree-header:first-child {
+  margin-top: 0;
+}
+
+.auto-include-intro-tree-leaf {
+  /* Leaf bins under a header (e.g. "B-Roll" under Footage) */
+  color: var(--fg-1);
+  padding-left: 14px;
+}
+
+.auto-include-intro-tree-bullet {
+  display: inline-block;
+  width: 14px;
+  margin-left: -14px;
+  color: var(--fg-2);
+  opacity: 0.6;
+}
+
+.auto-include-intro-tree-name {
+  flex-shrink: 0;
+}
+
+.auto-include-intro-tree-hint {
+  color: var(--fg-2);
+  font-family: var(--font-base, inherit);
+  font-size: 11px;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* On narrow widths, stack to single column. */
+@media (max-width: 640px) {
+  .auto-include-intro-tree-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ----- Rule row destination dropdown ------------------------- */
+
+.auto-include-row-select {
+  /* Style the native <select> the same as text inputs.
+   * The form-input class already provides border/padding/font;
+   * we just remove the platform default appearance for consistency. */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--fg-2) 50%),
+    linear-gradient(135deg, var(--fg-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 9px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 26px;
+  cursor: pointer;
+}
+
+.auto-include-row-select:disabled {
+  cursor: not-allowed;
+}
+
+.auto-include-row-custom-input {
+  margin-top: 6px;
+}
+
+.auto-include-row-field-warn {
+  color: var(--accent-warn, #d4a634);
+  font-weight: normal;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ----- Help-modal additions (Drop 4.46.2) -------------------- */
+
+/* Preformatted block used in AutoIncludeHelp to show the bin tree.
+ * Uses the same monospace family + bg as inline <code> in help. */
+.help-pre {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-0);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-sm, 4px);
+  padding: 12px 14px;
+  margin: 8px 0 10px 0;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--fg-1);
+  line-height: 1.5;
+}
+
+/* Inline tooltip-style "learn more" link in the empty state. Uses the
+ * existing .form-link visual but is a button for accessibility. */
+.auto-include-empty-link {
+  background: none;
+  border: none;
+  color: var(--accent, #4d9eff);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+
+.auto-include-empty-link:hover {
+  text-decoration: none;
+}
+
+/* The (?) help button in the AutoIncludeModal header — placed inline
+ * with the title rather than as a separate row. Matches the pattern
+ * used in SettingsModal where the form-help-button sits beside the
+ * label. We need a header variant since the title text is already
+ * in an h2. */
+.auto-include-header-help {
+  background: transparent;
+  border: 1px solid var(--bg-3);
+  color: var(--fg-2);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  margin-left: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.auto-include-header-help:hover {
+  background: var(--bg-3);
+  color: var(--fg-1);
+}
+
+/* ----- Auto-include nudge (Drop 4.47) ------------------------ */
+
+.auto-include-nudge-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0 18px 0;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+}
+
+.auto-include-nudge-example {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.auto-include-nudge-example-icon {
+  font-size: 14px;
+  width: 18px;
+  flex-shrink: 0;
+}
+
+.auto-include-nudge-example-from {
+  color: var(--fg-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.auto-include-nudge-example-arrow {
+  color: var(--fg-2);
+  flex-shrink: 0;
+}
+
+.auto-include-nudge-example-to {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--bg-3);
+  padding: 2px 8px;
+  border-radius: 3px;
+  color: var(--fg-1);
+  flex-shrink: 0;
+}
+
+/* Persistence/scope callout in AutoIncludeModal intro panel.
+ * Visually distinct from the surrounding intro paragraph so users
+ * notice it's important. (Drop 4.47.2) */
+.auto-include-intro-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 0 0 12px 0;
+  background: var(--bg-1);
+  border: 1px solid var(--accent, #4d9eff);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+.auto-include-intro-scope-icon {
+  color: var(--accent, #4d9eff);
+  font-size: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Drop 4.47.2: Empty-state link for the "skip ideas → export footage"
+ * escape hatch. Same visual as other inline links elsewhere. */
+.empty-state-link {
+  background: none;
+  border: none;
+  color: var(--accent, #4d9eff);
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
+  text-decoration: underline;
+}
+.empty-state-link:hover:not(:disabled) {
+  text-decoration: none;
+}
+.empty-state-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Variant of empty-state with extra padding to accommodate the action
+ * link below the main message. */
+.empty-state-with-action {
+  padding: 32px 16px 28px;
+}
+
+/* Drop 4.47.2: Floating "Next → Ideas" bar on the Ingest tab.
+ * Mirrors .floating-export-bar so the user sees the same pattern when
+ * progressing forward through the workflow. Appears as soon as the
+ * pipeline finishes (canAdvanceToIdeas) and stays visible as the user
+ * scrolls. Replaces the static .ingest-next-cta panel buried at the
+ * bottom of the tab. */
+.floating-next-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-1);
+  border: 1px solid var(--bg-3);
+  border-radius: var(--radius-md);
+  padding: 12px 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 150;
+  animation: floatingBarIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+  /* No max-width — text + button is naturally narrow. */
+}
+
+.floating-next-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.floating-next-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.floating-next-sub {
+  font-size: 11.5px;
+  color: var(--fg-2);
+}
+
+/* Drop 1.0.0-beta.2: inline warning row in AutoIncludeModal for files
+ * Premiere can't import via FCP7 XML (LUTs, PSDs, PDFs, etc.). Sits
+ * between the source-path row and the destination fields so it's
+ * visually obvious without disrupting the field layout. */
+.auto-include-row-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--warn-bg, rgba(214, 163, 78, 0.12));
+  border: 1px solid rgba(214, 163, 78, 0.45);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-1);
+}
+
+.auto-include-row-warning-icon {
+  color: var(--accent-warn, #d4a634);
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-top: 1px;
+}

@@ -1,0 +1,39 @@
+# B-Roll Buddy Python backend dependencies
+#
+# Installed into the user's system Python (via pip3 --user --break-system-packages)
+# by scripts/install.sh. Keeping this list minimal and pinned to stable
+# versions that have known macOS wheels so first-install doesn't need to
+# build from source.
+
+# Imaging — used for overlay PNG generation and icon rendering
+Pillow>=10.0
+
+# AI producer (Claude API)
+anthropic>=0.40
+
+# Transcription
+openai-whisper>=20240930
+
+# CLIP embeddings for B-roll semantic search
+open-clip-torch>=2.24
+
+# Vector database for B-roll index
+lancedb>=0.15
+
+# ffmpeg-python — Python wrapper around ffmpeg binary, used by the
+# frame extractor in the B-roll tagger. (Discovered missing during
+# first real-world Drop 2 test.)
+ffmpeg-python>=0.2
+
+# Torch — required by whisper + open-clip. On Apple Silicon macOS the
+# CPU/MPS wheel is fine; we don't need CUDA builds.
+torch>=2.2
+
+# HTTP client for Ollama (used optionally for LLaVA tagging)
+requests>=2.31
+
+# Audio sync via MFCC cross-correlation (Drop 3.6). Replaced audalign —
+# audalign required building scipy from source on Python 3.12, which needs
+# a Fortran compiler. audio-offset-finder is pure-Python + ffmpeg only,
+# and the BBC maintains/tests it for Python 3.8-3.12 on macOS.
+audio-offset-finder>=0.5

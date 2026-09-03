@@ -1,0 +1,31 @@
+# Build output
+dist/
+dist-release/
+target/
+src-tauri/target/
+*.app
+*.dmg
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# Local secrets and state. The Anthropic API key lives in
+# ~/Library/Application Support/PreCut/settings.json, never in the repo.
+.env
+*.local
+
+# Generated icon (built by scripts/make_icns_from_icon.py)
+src-tauri/icons/icon.icns
+
+# Tauri-generated ACL/permission schemas (regenerated every build)
+src-tauri/gen/schemas/
