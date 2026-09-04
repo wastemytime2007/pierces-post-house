@@ -202,6 +202,23 @@ def run_pipeline(
     # the pipeline complete.
     stage_threads: list[threading.Thread] = []
 
+    # 2026-09-03: a dual_use source is deliberately collected into BOTH
+    # aroll_videos and broll_videos (_collect_videos's own docstring
+    # calls this "a safe, idempotent skip, not a conflicting second
+    # encode" — true only if the two collections are processed
+    # sequentially). They're actually processed by two CONCURRENT
+    # threads (aroll below, broll further down), so both independently
+    # see "proxy doesn't exist yet" at the same moment and both launch
+    # ffmpeg on the SAME source file at the SAME time. Found for real:
+    # 12 ffmpeg processes running in 6 duplicate pairs, each pair
+    # encoding one file twice in parallel — genuinely wasted time and
+    # CPU (likely why Ryan's run "took forever"), not just a
+    # correctness risk. `proxy_worker`'s per-path lock (passed to both
+    # `_run_video_pipeline` calls below) makes the second thread to
+    # reach a given proxy_path wait for the first instead of racing it.
+    proxy_locks: dict[str, threading.Lock] = {}
+    proxy_locks_guard = threading.Lock()
+
     # ---- Audio indexing (fast, no dependency) ----
     if job.run_audio_index and audio_files:
         t = threading.Thread(
@@ -217,6 +234,7 @@ def run_pipeline(
         t = threading.Thread(
             target=_run_video_pipeline,
             args=(job, aroll_videos, "aroll", ffmpeg, emit),
+            kwargs={"proxy_locks": proxy_locks, "proxy_locks_guard": proxy_locks_guard},
             daemon=True,
         )
         t.start()
@@ -227,6 +245,7 @@ def run_pipeline(
         t = threading.Thread(
             target=_run_video_pipeline,
             args=(job, broll_videos, "broll", ffmpeg, emit),
+            kwargs={"proxy_locks": proxy_locks, "proxy_locks_guard": proxy_locks_guard},
             daemon=True,
         )
         t.start()
@@ -611,12 +630,20 @@ def _run_video_pipeline(
     kind: str,  # "aroll" or "broll"
     ffmpeg: str,
     emit: Callable[[dict], None],
+    proxy_locks: Optional[dict] = None,
+    proxy_locks_guard: Optional[threading.Lock] = None,
 ) -> None:
     """For each video in this list, generate proxy, then trigger downstream stage.
 
     We use a thread pool to encode multiple proxies concurrently. As each
     proxy finishes, we immediately hand off the proxy path to the downstream
     queue (transcribe for aroll, tag for broll).
+
+    ``proxy_locks``/``proxy_locks_guard`` are shared across the aroll and
+    broll invocations of this function within one `run_pipeline` call —
+    see that call site's 2026-09-03 comment. A dual_use source appears in
+    BOTH invocations' `files`, running concurrently; without this lock
+    both would race to encode the same proxy_path at the same time.
     """
     from proxy_manager import _encode_proxy  # reuse existing function
     import multiprocessing
@@ -653,24 +680,46 @@ def _run_video_pipeline(
         # Figure out proxy output path, mirroring subfolder structure if any
         proxy_path = _compute_proxy_path(source_file, src_folder)
 
-        # Skip if already up to date. Validated, not just present/nonzero
-        # (see proxy_manager.proxy_is_valid's docstring — a real corrupt
-        # proxy was found and silently trusted here on 2026-09-03).
         from proxy_manager import proxy_is_valid
-        if proxy_path.exists() and proxy_path.stat().st_size > 0 and proxy_is_valid(proxy_path):
-            result = {
-                "status": "skipped",
-                "file": source_file.name,
-                "elapsed_sec": 0.0,
-                "output_path": str(proxy_path),
-                "source_path": str(source_file),
-                "error": None,
-            }
+
+        def _check_and_maybe_skip():
+            if proxy_path.exists() and proxy_path.stat().st_size > 0 and proxy_is_valid(proxy_path):
+                return {
+                    "status": "skipped",
+                    "file": source_file.name,
+                    "elapsed_sec": 0.0,
+                    "output_path": str(proxy_path),
+                    "source_path": str(source_file),
+                    "error": None,
+                }
+            return None
+
+        # A dual_use source is processed by both the aroll and broll
+        # threads concurrently — without this lock both would see "not
+        # there yet" at the same moment and launch ffmpeg on the same
+        # file twice in parallel (found for real, 2026-09-03: 12 ffmpeg
+        # processes running as 6 duplicate pairs). Serialize per
+        # proxy_path: whichever thread gets here first encodes; the
+        # other waits, then re-checks and sees a real, valid result to
+        # skip instead of racing it.
+        if proxy_locks is not None and proxy_locks_guard is not None:
+            path_key = str(proxy_path)
+            with proxy_locks_guard:
+                lock = proxy_locks.setdefault(path_key, threading.Lock())
+            with lock:
+                result = _check_and_maybe_skip()
+                if result is None:
+                    proxy_path.parent.mkdir(parents=True, exist_ok=True)
+                    result = _encode_proxy(
+                        source_file, proxy_path, job.cancel_flag, start, ffmpeg
+                    )
         else:
-            proxy_path.parent.mkdir(parents=True, exist_ok=True)
-            result = _encode_proxy(
-                source_file, proxy_path, job.cancel_flag, start, ffmpeg
-            )
+            result = _check_and_maybe_skip()
+            if result is None:
+                proxy_path.parent.mkdir(parents=True, exist_ok=True)
+                result = _encode_proxy(
+                    source_file, proxy_path, job.cancel_flag, start, ffmpeg
+                )
 
         # Update counters + project status
         with counters_lock:
