@@ -1999,3 +1999,30 @@ with Ryan touching only the intake and the checkpoints.
      API-level (not agent-level) live web search in this project;
      re-test before switching to a newer dated variant, don't assume
      newer is better here.
+- **2026-09-04 — Ryan corrected the `soldfast-brand-voice` skill's tone
+  doctrine: "not comedic" is superseded, and a new structural rule
+  applies to all SoldFast content.** Prompted by the real Bob
+  Recruitment cut (`Bob Recruitment_Final.mp4`) he set up as a proof
+  unit for Creative Editor story+assembly — its actual vibe was
+  "comedic (not corny), show a soft side to the gruff contractor,
+  then give the CTA and purpose." The skill's original tone rule 1
+  said "heart-driven, not comedic... the laugh is never the goal."
+  Asked directly whether this was a funnel-specific exception or a
+  correction to the brand voice itself; Ryan's answer: **update the
+  brand voice itself** — genuine, character-true comedy (never
+  manufactured/corny) is now a legitimate register, not merely
+  tolerated as "incidental." Also added as its own rule: **humanize
+  the SoldFast people (via heart, humor, or a real character reveal)
+  before any ask or offer, always** — this is now structural across
+  every piece, not just tonal. Both changes made directly in the skill
+  (`~/.claude/skills/soldfast-brand-voice/SKILL.md`) — global, not
+  repo-tracked, noted here so any session working on SoldFast content
+  knows the doctrine changed and why. Propagated the same correction
+  into the seeded "Contractor Recruiting" audience profile
+  (`settings.py`'s `_DEFAULT_AUDIENCE_PROFILES` AND the already-seeded
+  live copy in `~/Library/Application Support/Post House/settings.json`
+  — the seed-once mechanism means editing only the Python default would
+  never reach an already-seeded real install) and into the "Runnells
+  House" project's live `manifest.json` `audience_goal`, since that's
+  the exact text `story_architect` reads for the real benchmark
+  comparison this correction was made in service of.

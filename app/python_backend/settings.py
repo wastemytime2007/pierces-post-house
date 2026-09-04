@@ -285,9 +285,13 @@ _DEFAULT_AUDIENCE_PROFILES = [
         "description": (
             "Recruit skilled tradespeople into SoldFast's in-house/partner "
             "network. Audience: contractors exposed to feast-or-famine job "
-            "cycles. Leads with the real pain (gaps between jobs, chasing "
-            "invoices) and proves steady pipeline, reliable payment, and "
-            "real volume through real stories, not claims."
+            "cycles. Humanize the SoldFast people first -- heart, genuine "
+            "humor, or a real character reveal (e.g. a gruff contractor's "
+            "surprising soft side) -- before any pitch or ask; the "
+            "relatable human moment always comes before the offer, never "
+            "after or instead of it. Once that connection is real, prove "
+            "steady pipeline, reliable payment, and real volume through "
+            "real stories, not claims."
         ),
     },
     {
