@@ -46,14 +46,19 @@ _extract_json = _story_planner._extract_json
 VALID_FITS = ("strong", "possible", "off_topic")
 
 # Maps to real, distinct RGB marker colors — reusing the mechanism
-# exporter.py already writes into FCP7 XML markers (confirmed working,
-# arbitrary RGB, not a fixed palette). Picked for clear visual
-# distinction at a glance on a timeline: green=strong, amber=possible,
-# gray=off-topic (present, not deleted -- nothing gets silently dropped).
+# exporter.py already writes into FCP7 XML markers (confirmed working
+# in the exported XML: verified the actual <color> elements carry
+# distinct RGB per fit). The first, muted palette (green/amber/gray)
+# all showed as the same color in Premiere's own marker UI, 2026-09-03
+# — real Premiere behavior, not a bug in our XML: Premiere's marker
+# color swatches snap to its own limited named palette, and those
+# muted/desaturated tones apparently landed on the same nearest match.
+# Ryan's fix, bold and unambiguous: red=off-topic, green=possible,
+# gold/yellow=strong.
 FIT_COLORS = {
-    "strong": (80, 200, 100),
-    "possible": (230, 180, 60),
-    "off_topic": (140, 140, 140),
+    "strong": (255, 204, 0),      # gold/yellow
+    "possible": (0, 200, 0),      # green
+    "off_topic": (220, 20, 20),   # red
 }
 
 RELEVANCE_SYSTEM_PROMPT = """You are helping an editor triage transcript material against a specific content goal. You judge fit honestly — most real interviews contain material that doesn't serve the stated goal, and pretending otherwise wastes the editor's time. Never inflate relevance to seem more useful; a fragment that doesn't fit should be marked off_topic.
