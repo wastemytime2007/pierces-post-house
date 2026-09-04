@@ -218,6 +218,51 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **Real, serious multi-file export bug found and fixed
+  while building the previous entry's requests — every future agent
+  touching story-angle export needs to know this.** `assemble_cut_from_
+  angle` (PreCut's own, unmodified) resolves which source file a range
+  belongs to purely from where its start/end fall in the COMBINED
+  multi-transcript timeline — it never reads `TopicRange.source_file`
+  for that. But every fragment `story_architect.py` works with is
+  extracted per-file, in that file's OWN local time (unlike PreCut's
+  `generate_angles()`, which only ever sees one pre-concatenated
+  transcript and never has this problem). **Confirmed concretely on
+  real data**: a real fragment at local 565.3s in file `..._0004_D`
+  fell, in the combined timeline, inside a DIFFERENT file's span (565.3
+  is before that file's own combined-offset start of 578.0) — meaning
+  the wrong clip would have been silently placed on export for any
+  multi-file arc, with no error. **Fixed**: new
+  `build_source_offset_lookup()` (reuses `exporter.py`'s own
+  `_build_source_offset_map`/`_build_proxy_to_original_map` — the exact
+  convention that needs matching, not reimplemented) adds the correct
+  offset to each range before it's emitted. Verified against real
+  output: a generated range at 676.9s for file `..._0004_D` (real
+  offset 578.0) resolves back to local 98.9s, matching an
+  independently-confirmed real fragment exactly. Brief/log display
+  subtracts the same offset back out so editors still see real in-video
+  timecodes.
+  **Three more real fixes, from Ryan's next round of feedback:**
+  1. **No longer gated on flagging.** "I don't want the ideas created to
+     only be generated from flagged fragments. I'm not that confident in
+     the flagging yet." `run_generate_story_angle` no longer requires
+     the separate transcript-flagging pipeline stage to have run —
+     any transcript without a matching flags file gets fresh, real
+     exhaustive extraction right there instead, marked
+     fit="possible"/category="" rather than excluded.
+  2. **3 ideas per click.** "It should also provide 3 ideas each time
+     the generate ideas button is pressed." Generates 3 distinct angles
+     per call now, each told not to repeat the theses already proposed
+     earlier in the same batch — trend research runs once and is
+     shared/cached across all 3, not re-paid 3x.
+  3. (Real listen/download links, the standalone Brief file, and the
+     72h research cache were already logged in the entry below — this
+     entry's fixes build directly on top of that work.)
+  **Tested live end-to-end**: 3 genuinely distinct real angles generated
+  in one real run against the Runnells House project, each with
+  correctly-offset ranges spanning multiple real source files, each
+  with its own real idea/brief/research files. *(1676546.)* **Not yet
+  reviewed by Ryan in the running app.**
 - 2026-09-04 — **Real end-to-end proof on the Bob Recruitment benchmark,
   plus three more real fixes Ryan asked for after reviewing it.** Set up
   a real "Runnells House" project combining both footage folders Ryan
@@ -1135,7 +1180,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
 | AE: transcript flagging (color-coded storyline ranges) | **Signed off by Ryan on real footage, end-to-end** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, `run_pipeline`/export wiring, and marker color — the last required moving color-setting from the FCP7 XML into the Premiere ExtendScript extension, since Premiere never honors `<marker><color>`). Ryan: "Ok that worked." See § Done, 2026-09-03. |
-| Creative Editor: story + assembly | **Selection step built, wired into the app, and visible** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Live trend research now actually downloads and watches real videos (not just text search), with a visible sourced audit trail per idea card. PreCut's existing assembler/export reused unmodified. **Not yet reviewed by Ryan in the running app.** See § Done, 2026-09-03. |
+| Creative Editor: story + assembly | **Selection step built, wired into the app, and proven on a real benchmark** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Generates 3 distinct angles per click, not gated on flagging having run, real listen links + standalone Brief file + 72h research cache, and a real multi-file export bug fixed (see § Done + ROADMAP Decision Log, 2026-09-04). **Not yet reviewed by Ryan in the running app with today's changes.** See § Done, 2026-09-03/04. |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |

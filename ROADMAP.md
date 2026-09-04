@@ -2026,3 +2026,26 @@ with Ryan touching only the intake and the checkpoints.
   House" project's live `manifest.json` `audience_goal`, since that's
   the exact text `story_architect` reads for the real benchmark
   comparison this correction was made in service of.
+- **2026-09-04 -- Structural finding, binding on all future story-angle
+  work: `assemble_cut_from_angle` resolves a range's source file from
+  its position in the COMBINED multi-transcript timeline, never from
+  `TopicRange.source_file` itself.** This is invisible in PreCut's own
+  `generate_angles()`, because that planner only ever sees one
+  pre-concatenated transcript blob and never has genuinely per-file
+  local coordinates to begin with. `story_architect.py` does, because it
+  extracts fragments per-file (transcript_coverage) -- and that mismatch
+  produced a real, silent bug: a fragment's local in-file timestamp can
+  fall inside a DIFFERENT file's span once mapped onto the combined
+  timeline, causing the wrong clip to be placed at export with no error
+  at all. Confirmed concretely, not theorized: a real fragment at local
+  565.3s in one file fell inside the previous file's combined-timeline
+  span (565.3 < that file's own combined-offset start of 578.0).
+  Anyone building a NEW path that produces `StoryAngle`/`TopicRange`
+  objects with real per-file source knowledge (not PreCut's own
+  concatenated-blob planner) MUST translate local time to combined-
+  timeline time before handing ranges to `assemble_cut_from_angle` --
+  `posthouse/story_architect.py`'s `build_source_offset_lookup()` is the
+  reusable fix (wraps `exporter.py`'s own `_build_source_offset_map`/
+  `_build_proxy_to_original_map`, the exact convention that has to be
+  matched, not reimplemented). Do not assume `TopicRange.source_file` is
+  ever consulted for resolution -- it isn't.
