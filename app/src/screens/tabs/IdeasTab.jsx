@@ -905,6 +905,12 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
                     {research.video_findings.filter((v) => v.relevant).map((v, i) => (
                       <li key={i}>
                         <a href={v.url} target="_blank" rel="noreferrer">{v.url}</a>
+                        {v.detected_cuts != null && (
+                          <div className="idea-card-research-metric">
+                            {v.detected_cuts} real detected cuts over {v.duration_sec}s
+                            {" "}({v.cuts_per_sec} cuts/sec) — measured, not estimated
+                          </div>
+                        )}
                         <div className="idea-card-research-note">{v.observed}</div>
                       </li>
                     ))}

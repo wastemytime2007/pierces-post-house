@@ -68,6 +68,25 @@ category-page results, and Claude itself flagged this rather than
 inventing more). So video-verified findings will often be zero or one
 per run, not three — `research_trends()` reports that honestly via
 `unverified` rather than padding the count.
+
+**Correction, 2026-09-03, same day: fixed-interval still frames cannot
+tell you anything about editing.** Ryan's exact, correct objection: "You
+cant understand video editing trends by looking at 4 random frames."
+Editing pacing, rhythm, and transition style are properties of CUTS over
+TIME — no number of evenly-spaced stills can show that, only more of the
+same category of nothing. The fix wasn't more frames; it was sampling at
+the right MOMENTS: `_detect_cuts()` runs ffmpeg's real scene-change
+filter on the downloaded video to find actual cut timestamps, then
+`_watch_video()` extracts the real frame immediately before and after a
+spread of those real cuts (not just the first few — the whole video's
+length) so the model sees actual transition character, not guesses from
+isolated pictures. It's also handed the real, MEASURED cuts-per-second
+and average-shot-length numbers computed from the real detected cuts —
+a hard number, not an impression — and told explicitly not to claim a
+pacing reading when a video has zero detected cuts (a genuinely static
+single-shot video), falling back to a few stills for content-only
+description in that case, with that limitation stated plainly rather
+than smoothed over.
 """
 from __future__ import annotations
 
@@ -151,9 +170,18 @@ instagram.com/reel/abc123, youtube.com/shorts/xyz) that could actually be opened
 not discover/hashtag/category pages, and never fabricated. Just search; you don't need to \
 summarize results in your final text."""
 
-VIDEO_WATCH_PROMPT = """These frames are sampled from a real, currently-circulating video found \
-via a search meant to target this audience/content goal's niche — but web search over TikTok/\
-Instagram is unreliable and sometimes returns something unrelated. Judge that honestly first.
+VIDEO_WATCH_PROMPT = """These frame pairs are sampled from a real, currently-circulating video \
+found via a search meant to target this audience/content goal's niche — but web search over \
+TikTok/Instagram is unreliable and sometimes returns something unrelated. Judge that honestly \
+first.
+
+**A single still frame can't tell you anything about editing — pacing, rhythm, and transition \
+style are properties of CUTS over time, not of any one image.** So instead of evenly-spaced \
+stills, these are the frame immediately BEFORE and immediately AFTER each of several real, \
+ffmpeg-detected cut points in this specific video — you're seeing what actually changes at real \
+edit points, not guessing from isolated pictures. The video has {total_cuts} detected cuts over \
+{duration:.1f}s ({cuts_per_sec:.2f} cuts/sec, {avg_shot_len:.2f}s average shot length) — a real, \
+measured pacing number, not an impression. {sample_note}
 
 <audience_goal>
 {audience_goal}
@@ -162,7 +190,7 @@ Instagram is unreliable and sometimes returns something unrelated. Judge that ho
 Return ONLY this JSON, in a fenced ```json block:
 {{
   "relevant": true or false — is this video actually in the niche this audience goal implies?,
-  "observed": "what you actually SEE across these frames — real visual format, text-overlay pattern, pacing, lighting/mood — concrete and specific to these images, not generic knowledge. If not relevant, briefly say what it actually is instead."
+  "observed": "grounded in the real cut rate above and what actually changes across these before/after pairs: is pacing fast or slow for this niche, are cuts hard or do they use a visible transition effect, does subject/framing change dramatically at cuts or stay continuous, any consistent text-overlay pattern. Concrete and specific to these images and the real numbers, not generic knowledge. If not relevant, briefly say what it actually is instead."
 }}"""
 
 ARCHITECT_SYSTEM_PROMPT = """You are a documentary/branded-content story architect. An Assistant \
@@ -262,12 +290,66 @@ def _looks_like_video_permalink(url: str) -> bool:
     return bool(url and _VIDEO_PERMALINK_RE.search(url))
 
 
+MAX_CUT_PAIRS = 4  # frame-before/frame-after pairs sent to the vision call
+SCENE_THRESHOLD = 0.3  # ffmpeg scene-detection sensitivity, same default the tool ships with
+
+
+def _probe_duration(video_path: Path) -> Optional[float]:
+    try:
+        out = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(video_path)],
+            check=True, capture_output=True, timeout=15, text=True,
+        )
+        return float(out.stdout.strip())
+    except Exception:
+        return None
+
+
+def _detect_cuts(video_path: Path) -> List[float]:
+    """Real ffmpeg scene-change detection — the actual cut points in this
+    specific video, not a guess. Editing pacing/rhythm is a property of
+    WHEN cuts happen, which no fixed-interval frame sample can capture."""
+    try:
+        out = subprocess.run(
+            ["ffmpeg", "-i", str(video_path),
+             "-filter:v", f"select='gt(scene,{SCENE_THRESHOLD})',showinfo",
+             "-f", "null", "-"],
+            capture_output=True, timeout=30, text=True,
+        )
+    except Exception:
+        return []
+    timestamps = []
+    for match in re.finditer(r"pts_time:([\d.]+)", out.stderr):
+        try:
+            timestamps.append(float(match.group(1)))
+        except ValueError:
+            continue
+    return timestamps
+
+
+def _extract_frame_at(video_path: Path, timestamp: float, out_path: Path) -> bool:
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-ss", f"{max(0.0, timestamp):.3f}", "-i", str(video_path),
+             "-vf", "scale=400:-1", "-frames:v", "1", str(out_path)],
+            check=True, capture_output=True, timeout=15,
+        )
+        return out_path.exists()
+    except Exception:
+        return False
+
+
 def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[dict]:
-    """Actually download a real video and have Claude look at real sampled
-    frames from it — genuinely watched, not described secondhand. Returns
-    None on ANY failure (blocked, deleted, unsupported format, etc. are all
-    real and expected against TikTok/Instagram) rather than fabricating a
-    description of a video that was never actually opened."""
+    """Actually download a real video and have Claude look at frames sampled
+    at REAL, ffmpeg-detected cut points — not fixed time intervals. A
+    single still can't say anything about editing pacing/rhythm; those are
+    properties of cuts over time. Sampling before/after real cut points
+    lets the model see actual transition character and a real, measured
+    cuts-per-second rate, not an impression from isolated pictures.
+    Returns None on ANY failure (blocked, deleted, unsupported format are
+    all real and expected against TikTok/Instagram) rather than
+    fabricating a description of a video that was never actually opened."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         video_glob = tmp_path / "v.%(ext)s"
@@ -283,23 +365,60 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
         video_files = [p for p in tmp_path.glob("v.*")]
         if not video_files:
             return None
+        video_file = video_files[0]
 
-        frame_pattern = tmp_path / "frame_%02d.jpg"
-        try:
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", str(video_files[0]),
-                 "-vf", "fps=1/3,scale=400:-1", "-frames:v", "4", str(frame_pattern)],
-                check=True, capture_output=True, timeout=30,
-            )
-        except Exception:
+        duration = _probe_duration(video_file)
+        cuts = _detect_cuts(video_file)
+        if not duration or duration <= 0:
             return None
 
-        frames = sorted(tmp_path.glob("frame_*.jpg"))
+        total_cuts = len(cuts)
+        cuts_per_sec = total_cuts / duration
+        avg_shot_len = duration / (total_cuts + 1)
+
+        # Sample cut points spread across the whole video, not just the
+        # first few — a video that starts slow and speeds up (or vice
+        # versa) needs coverage across its length to describe honestly.
+        if cuts:
+            step = max(1, len(cuts) // MAX_CUT_PAIRS)
+            sampled_cuts = cuts[::step][:MAX_CUT_PAIRS]
+        else:
+            sampled_cuts = []
+
+        frames: List[Path] = []
+        for i, cut_t in enumerate(sampled_cuts):
+            before_path = tmp_path / f"cut{i}_before.jpg"
+            after_path = tmp_path / f"cut{i}_after.jpg"
+            if _extract_frame_at(video_file, cut_t - 0.15, before_path):
+                frames.append(before_path)
+            if _extract_frame_at(video_file, cut_t + 0.15, after_path):
+                frames.append(after_path)
+
         if not frames:
-            return None
+            # No detected cuts (a genuinely static/single-shot video) or
+            # extraction failed for all of them — fall back to a few
+            # evenly-spaced stills so we can still say SOMETHING real
+            # about visual content, but sample_note below makes clear no
+            # real pacing claim is being made from these.
+            for i, t in enumerate([duration * f for f in (0.2, 0.5, 0.8)]):
+                p = tmp_path / f"fallback{i}.jpg"
+                if _extract_frame_at(video_file, t, p):
+                    frames.append(p)
+            if not frames:
+                return None
+            sample_note = ("No cuts were detected (or frame extraction at "
+                            "cut points failed) — these are evenly-spaced stills "
+                            "instead. Do not claim a specific pacing/cuts-per-second "
+                            "reading from these; describe only what you can see.")
+        else:
+            sample_note = (f"These are {len(frames)} real before/after frames from "
+                            f"{len(sampled_cuts)} of the {total_cuts} detected cuts, "
+                            "spread across the video's full length.")
 
         content = [{"type": "text", "text": VIDEO_WATCH_PROMPT.format(
-            url=url, audience_goal=audience_goal)}]
+            url=url, audience_goal=audience_goal, total_cuts=total_cuts,
+            duration=duration, cuts_per_sec=cuts_per_sec, avg_shot_len=avg_shot_len,
+            sample_note=sample_note)}]
         for fp in frames:
             content.append({
                 "type": "image",
@@ -310,7 +429,7 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
                 },
             })
         try:
-            resp = client.messages.create(model=model, max_tokens=500,
+            resp = client.messages.create(model=model, max_tokens=600,
                                            messages=[{"role": "user", "content": content}])
         except Exception:
             return None
@@ -326,6 +445,13 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
             "relevant": bool(parsed.get("relevant", False)),
             "observed": str(parsed.get("observed", ""))[:1000],
             "frames_analyzed": len(frames),
+            # Real, measured — not the model's impression — so the UI/audit
+            # trail can show a hard number, not just prose (Ryan: "you
+            # can't understand video editing trends by looking at 4
+            # random frames" — this is the actual fix, not a bigger N).
+            "detected_cuts": total_cuts,
+            "duration_sec": round(duration, 1),
+            "cuts_per_sec": round(cuts_per_sec, 2),
         }
 
 
