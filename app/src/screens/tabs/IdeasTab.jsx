@@ -962,6 +962,45 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
                   </ul>
                 </div>
               )}
+              {research.marketing_findings?.length > 0 && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">
+                    Audience-targeting / social strategy findings
+                  </div>
+                  <ul className="idea-card-research-list">
+                    {research.marketing_findings.map((f, i) => (
+                      <li key={i}>
+                        {f.finding}
+                        {f.source && (
+                          <>
+                            {" "}—{" "}
+                            <a href={f.source} target="_blank" rel="noreferrer">source</a>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {research.strategy_video_findings?.filter((f) => f.relevant).length > 0 && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">
+                    From real strategy videos (real transcripts, not summaries)
+                  </div>
+                  <ul className="idea-card-research-list">
+                    {research.strategy_video_findings.filter((f) => f.relevant).map((f, i) => (
+                      <li key={i}>
+                        <a href={f.url} target="_blank" rel="noreferrer">{f.url}</a>
+                        <ul className="idea-card-research-list">
+                          {(f.points || []).map((p, j) => (
+                            <li key={j} className="idea-card-research-note">{p}</li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {research.video_findings?.some((v) => !v.relevant) && (
                 <div className="idea-card-research-section">
                   <div className="idea-card-section-label">

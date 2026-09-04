@@ -141,6 +141,14 @@ _VIDEO_PERMALINK_RE = re.compile(
     r"|youtube\.com/shorts/[\w-]+)"
 )
 
+# A full-length YouTube video (not a Short) — for real strategy/educational
+# content, where the transcript is the signal, not editing pacing.
+_YOUTUBE_VIDEO_RE = re.compile(
+    r"(?:youtube\.com/watch\?v=[\w-]+|youtu\.be/[\w-]+)"
+)
+
+MAX_STRATEGY_VIDEOS_TO_WATCH = 2
+
 TREND_TEXT_SEARCH_PROMPT = """Search the web for what's currently trending in short-form video \
 content for the real niche implied by this audience/content goal:
 
@@ -152,7 +160,9 @@ Scope searches to the real niche (home renovation / real estate / contractor / s
 content), not generic virality. Report real, sourced findings only.
 
 After searching, return ONLY this JSON in a fenced ```json block — no prose synthesis, no \
-preamble, nothing before or after the fence:
+preamble, nothing before or after the fence. Keep each "finding" as plain prose WITHOUT \
+quotation marks inside it (paraphrase any quoted material instead of quoting it directly) so \
+the JSON string doesn't break:
 {{"findings": [{{"finding": "...", "source": "https://..."}}]}}
 
 Omit anything you can't actually source — do not pad the list with a guess."""
@@ -175,6 +185,64 @@ After searching, return ONLY this JSON in a fenced ```json block — no preamble
 If you genuinely cannot find a specific named trend for this niche, return an EMPTY list — \
 {{"trends": []}} — do NOT invent a placeholder entry explaining that none was found; an empty \
 list already says that."""
+
+MARKETING_STRATEGY_SEARCH_PROMPT = """Search the web for CURRENT (2026), real, sourced advice on \
+social media strategy, algorithm-aware content strategy, and audience targeting — specifically \
+useful for reaching the audience and achieving the goal described here:
+
+<audience_goal>
+{audience_goal}
+</audience_goal>
+
+This is distinct from "what's trending" — I want real marketing/strategy craft: how to actually \
+identify and reach a specific target audience on social platforms, what makes content \
+genuinely resonate with that audience rather than a general one, and current \
+platform-algorithm-aware posting/targeting practice. Not generic "post consistently" advice —
+look for something with real specificity.
+
+After searching, return ONLY this JSON in a fenced ```json block — no preamble. Keep each \
+"finding" to ONE tight sentence, plain prose, WITHOUT quotation marks inside it (paraphrase any \
+quoted material instead of quoting it directly) so the JSON stays short and doesn't break:
+{{"findings": [{{"finding": "one sentence, concrete and specific", "source": "https://..."}}]}}
+
+Omit anything you can't actually source — do not pad the list with a guess. Return at most 6 \
+findings."""
+
+MARKETING_VIDEO_SEARCH_PROMPT = """Search the web for 2-4 real, INDIVIDUAL YouTube video URLs \
+(full videos, not Shorts) that are genuine how-to/educational content about social media \
+marketing strategy or audience targeting relevant to this audience/content goal:
+
+<audience_goal>
+{audience_goal}
+</audience_goal>
+
+I need actual individual video URLs (youtube.com/watch?v=... or youtu.be/...) for real \
+educational/strategy content — a marketing expert or creator teaching audience targeting, \
+content strategy, or platform algorithm behavior. Not a Short, not a channel page, not \
+fabricated. Just search; you don't need to summarize results in your final text."""
+
+STRATEGY_TRANSCRIPT_PROMPT = """This is the real transcript of a video found via a search for \
+social-media/audience-targeting strategy content, relevant to this audience/content goal:
+
+<audience_goal>
+{audience_goal}
+</audience_goal>
+
+<transcript>
+{transcript}
+</transcript>
+
+Extract 2-4 of the most CONCRETE, ACTIONABLE pieces of advice this video actually gives about \
+reaching a target audience or making content that audience wants — grounded in what's actually \
+said in the transcript above, not generic marketing knowledge. Each point should be traceable \
+to something in the transcript. If the transcript doesn't actually contain concrete, actionable \
+advice (e.g. it's off-topic, or pure filler), say so honestly rather than padding.
+
+Return ONLY this JSON, in a fenced ```json block:
+{{
+  "relevant": true or false — does this video actually contain real audience-targeting/content-strategy advice relevant to the niche?,
+  "points": ["concrete point 1, grounded in the transcript", "concrete point 2"]
+}}"""
 
 VIDEO_PERMALINK_SEARCH_PROMPT = """Search the web for 3-5 real, INDIVIDUAL (not category/hashtag/\
 discover-page) TikTok, Instagram Reels, or YouTube Shorts video URLs that are currently popular \
@@ -335,6 +403,94 @@ def _get_audio_credit(url: str) -> Optional[dict]:
     if not track and not artist:
         return None
     return {"track": track, "artist": artist}
+
+
+def _looks_like_youtube_video(url: str) -> bool:
+    return bool(url and _YOUTUBE_VIDEO_RE.search(url))
+
+
+_VTT_TIMESTAMP_RE = re.compile(r"\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}")
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _parse_vtt(vtt_text: str) -> str:
+    """Real transcript text from a .vtt caption file — strips cue numbers,
+    timestamps, and inline formatting tags, and dedupes the rolling-caption
+    repetition auto-generated captions produce (each line often repeats
+    the previous one plus a word or two)."""
+    lines = []
+    for raw in vtt_text.splitlines():
+        line = raw.strip()
+        if not line or line == "WEBVTT" or line.isdigit() or _VTT_TIMESTAMP_RE.search(line):
+            continue
+        if line.startswith("Kind:") or line.startswith("Language:"):
+            continue
+        line = _VTT_TAG_RE.sub("", line).strip()
+        if line and (not lines or line != lines[-1]):
+            lines.append(line)
+    return " ".join(lines)
+
+
+def _get_transcript(url: str) -> Optional[str]:
+    """Real captions for a real YouTube video via yt-dlp — no download of
+    the video itself needed, since for strategy/educational content the
+    SPOKEN content is the signal, not visual editing pacing (that's what
+    `_watch_video` is for, for short-form trend clips)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        out_base = tmp_path / "cap"
+        try:
+            subprocess.run(
+                ["yt-dlp", "--no-warnings", "--write-auto-sub", "--skip-download",
+                 "--sub-lang", "en", "--sub-format", "vtt",
+                 "-o", str(out_base) + ".%(ext)s", url],
+                check=True, capture_output=True, timeout=45,
+            )
+        except Exception:
+            return None
+        vtt_files = list(tmp_path.glob("cap*.vtt"))
+        if not vtt_files:
+            return None
+        try:
+            text = _parse_vtt(vtt_files[0].read_text(errors="ignore"))
+        except Exception:
+            return None
+        return text or None
+
+
+def _watch_strategy_video(url: str, client, model: str, audience_goal: str) -> Optional[dict]:
+    """Real, transcript-grounded extraction from a real strategy/educational
+    video — never summarized from the video's title/description alone.
+    Returns None if no real transcript is available or the model's
+    response doesn't parse, rather than fabricating advice."""
+    transcript = _get_transcript(url)
+    if not transcript:
+        return None
+    # Cap transcript length fed to the model — long videos can run well
+    # past a reasonable prompt budget; the real advice in a strategy
+    # video is almost always front-loaded or clearly signposted anyway.
+    transcript = transcript[:12000]
+    try:
+        resp = client.messages.create(
+            model=model, max_tokens=700,
+            system="Return ONLY the requested JSON, in a fenced ```json block. No preamble.",
+            messages=[{"role": "user", "content": STRATEGY_TRANSCRIPT_PROMPT.format(
+                audience_goal=audience_goal, transcript=transcript)}],
+        )
+    except Exception:
+        return None
+    text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+    if not text:
+        return None
+    try:
+        parsed = _extract_json(text)
+    except StoryPlannerError:
+        return None
+    return {
+        "url": url,
+        "relevant": bool(parsed.get("relevant", False)),
+        "points": [str(p)[:300] for p in parsed.get("points", [])][:6],
+    }
 
 
 MAX_CUT_PAIRS = 4  # frame-before/frame-after pairs sent to the vision call
@@ -528,7 +684,10 @@ def research_trends(
     always says plainly when a search or a video came up empty rather
     than padding either list."""
     client = build_anthropic_client(api_key=api_key)
-    result: dict = {"named_trends": [], "text_findings": [], "video_findings": [], "unverified": []}
+    result: dict = {
+        "named_trends": [], "text_findings": [], "video_findings": [],
+        "marketing_findings": [], "strategy_video_findings": [], "unverified": [],
+    }
 
     try:
         resp = client.messages.create(
@@ -633,17 +792,89 @@ def research_trends(
                 "TikTok/Instagram sometimes)."
             )
 
+    # --- Marketing/audience-targeting strategy research (2026-09-04) ---
+    # Ryan: "it also needs to do actual research into the most current
+    # social media, marketing, targeting information out there... blogs,
+    # articles, videos on how to take real command of your social media
+    # and advertising." Distinct from trend-spotting above (what's
+    # circulating right now) — this is craft/strategy (how to reach and
+    # actually serve a specific audience), and it's real, sourced
+    # article research PLUS real transcript-grounded extraction from
+    # real long-form YouTube strategy videos (never frame-sampled —
+    # the spoken content is the signal here, not editing pacing).
+    try:
+        resp_mkt = client.messages.create(
+            model=model, max_tokens=3000, tools=[WEB_SEARCH_TOOL],
+            system="Return ONLY the requested JSON, in a fenced ```json block. No preamble.",
+            messages=[{"role": "user", "content": MARKETING_STRATEGY_SEARCH_PROMPT.format(
+                audience_goal=audience_goal)}],
+        )
+        text_mkt = "".join(b.text for b in resp_mkt.content if getattr(b, "type", None) == "text").strip()
+        result["marketing_findings"] = _extract_json(text_mkt).get("findings", []) if text_mkt else []
+        if not text_mkt:
+            result["unverified"].append("Marketing-strategy search returned no text output.")
+    except Exception as e:
+        result["marketing_findings"] = []
+        result["unverified"].append(f"Marketing-strategy search failed: {e}")
+
+    strategy_video_urls: List[str] = []
+    try:
+        resp_mkt_vid = client.messages.create(
+            model=model, max_tokens=600, tools=[WEB_SEARCH_TOOL],
+            messages=[{"role": "user", "content": MARKETING_VIDEO_SEARCH_PROMPT.format(
+                audience_goal=audience_goal)}],
+        )
+        for block in resp_mkt_vid.content:
+            if getattr(block, "type", None) == "web_search_tool_result":
+                items = block.content if isinstance(block.content, list) else []
+                for item in items:
+                    url = getattr(item, "url", None)
+                    if url and _looks_like_youtube_video(url):
+                        strategy_video_urls.append(url)
+    except Exception as e:
+        result["unverified"].append(f"Strategy-video search failed: {e}")
+
+    result["strategy_video_findings"] = []
+    if not strategy_video_urls:
+        result["unverified"].append(
+            "No individual strategy/educational YouTube video URLs found via search this run."
+        )
+    seen_mkt = set()
+    for url in strategy_video_urls:
+        if len(result["strategy_video_findings"]) >= MAX_STRATEGY_VIDEOS_TO_WATCH:
+            break
+        if url in seen_mkt:
+            continue
+        seen_mkt.add(url)
+        extracted = _watch_strategy_video(url, client, model, audience_goal)
+        if extracted:
+            result["strategy_video_findings"].append(extracted)
+        else:
+            result["unverified"].append(
+                f"Found candidate strategy video {url} but could not get/use its transcript "
+                "(no captions available, or the model found no real actionable content in it)."
+            )
+
     return result
 
 
 def _format_research_for_llm(research: dict) -> str:
     lines = []
+    for t in research.get("named_trends", []):
+        lines.append(f"[named trend] {t.get('name','')} — {t.get('description','')} (source: {t.get('source','')})")
     for f in research.get("text_findings", []):
         lines.append(f"[text-sourced, from an article] {f.get('finding','')} (source: {f.get('source','')})")
     for f in research.get("video_findings", []):
         if not f.get("relevant", False):
             continue  # honestly flagged as off-niche by the watch step — not real signal
         lines.append(f"[ACTUALLY WATCHED — real video at {f.get('url','')}] {f.get('observed','')}")
+    for f in research.get("marketing_findings", []):
+        lines.append(f"[audience-targeting/strategy advice, from an article] {f.get('finding','')} (source: {f.get('source','')})")
+    for f in research.get("strategy_video_findings", []):
+        if not f.get("relevant", False):
+            continue
+        for point in f.get("points", []):
+            lines.append(f"[from a real strategy video's transcript, {f.get('url','')}] {point}")
     for u in research.get("unverified", []):
         lines.append(f"[UNVERIFIED] {u}")
     return "\n".join(lines) if lines else "(no trend research available this run)"
