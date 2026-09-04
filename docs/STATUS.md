@@ -218,6 +218,43 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **Story architect: real marketing/audience-targeting
+  strategy research added, distinct from trend-spotting.** Ryan: "it
+  also needs to do actual research into the most current social media,
+  marketing, targeting information out there. Look into blogs, articles,
+  videos on how to take real command of your social media and
+  advertising." Two new real, sourced research passes in
+  `research_trends()`:
+  1. `marketing_findings` — real, current (2026) articles on algorithm
+     behavior and audience-targeting practice. **Tested live, specific
+     and real, not generic**: LinkedIn's 2026 "topic authority" algorithm
+     shift (interest-graph over relationship-graph), Meta ad targeting
+     favoring first-party CRM data over manual audience selection, B2B
+     thought-leadership research findings — each with a real source URL.
+     **Real bug hit and fixed**: verbose multi-sentence findings were
+     long enough to risk the response truncating mid-JSON (`Expecting
+     ',' delimiter` — a real, reproduced failure, not theorized) —
+     tightened the prompt to one sentence per finding, capped the count,
+     and raised the token budget; confirmed fixed by re-running the
+     exact same failing call afterward.
+  2. `strategy_video_findings` — real, individual YouTube videos (not
+     Shorts) about marketing strategy, analyzed via their ACTUAL
+     TRANSCRIPT (`yt-dlp` caption extraction + a real `.vtt` parser, not
+     frame-sampling — for educational content the spoken content is the
+     signal, not visual editing pacing, which `_watch_video` already
+     covers for trend clips). Every extracted point must trace to the
+     real transcript; the model is told to say so honestly if a video
+     turns out to have no real actionable content rather than padding.
+     **Tested live**: correctly extracted concrete, non-generic advice
+     from two real strategy videos — "match your thought leader to your
+     target audience, not internal prestige," "use audience engagement
+     (comments, DMs) as a direct source of future content ideas,"
+     "identify who your target audience is before creating any content."
+  Both feed into the story angle's sequencing reasoning and are visible
+  in "Show research" under new "Audience-targeting / social strategy
+  findings" and "From real strategy videos (real transcripts, not
+  summaries)" sections. *(9e9df35.)* Restarted the app; confirmed synced
+  and clean compile. **Not yet reviewed by Ryan.**
 - 2026-09-04 — **Story architect: real named-trend discovery and real
   audio credit extraction, per Ryan's next real objection.** "it also
   needs to learn trending music and sounds for reels and trends that
