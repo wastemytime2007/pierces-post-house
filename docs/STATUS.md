@@ -218,6 +218,44 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Marker colors: root cause found and fixed for real —
+  Premiere's FCP7 XML import never honors marker `<color>` at all; the
+  two rounds of RGB tuning before this were solving the wrong problem.**
+  Ryan reported markers "all still the default green" after the bold
+  red/green/gold RGB fix (`eaeb61d`) — a SECOND failure of the same
+  mechanism (muted RGB, then bold RGB), which is the project's own
+  "three failures means the approach is wrong" signal, so this time the
+  investigation went to the spec instead of a third color variant.
+  Confirmed via the actual FCP7/xmeml DTD (Apple's interchange-format
+  reference) that the `<marker>` element's schema is only
+  `name`/`in`/`out`/`comment` — there is no color field at all. Our
+  exporter's `<color>` block was never read by Premiere's importer;
+  every imported marker silently defaults to Premiere's own color index
+  0 (green) regardless of what RGB we wrote. This also means the
+  earlier claim (2026-09-03, in the transcript-flagging entries below)
+  that `exporter.py`'s "existing marker-writing mechanism (arbitrary
+  RGB)" was "already confirmed working" was never actually verified in
+  Premiere's UI — only verified as correct XML, which is not the same
+  claim. **Real fix**: color has to be set in-app via Premiere's own
+  ExtendScript API, confirmed against Adobe's own `Marker` scripting
+  docs and a working example in `Adobe-CEP/Samples`'
+  `PProPanel/jsx/PPRO/Premiere.jsx` (`marker.setColorByIndex(index)`,
+  palette confirmed against Ryan's own marker-color-picker screenshots:
+  0=Green 1=Red 2=Purple 3=Orange 4=Yellow 5=White 6=Blue 7=Cyan).
+  Extended the already-running, already-proven invisible CEP extension
+  (`com.posthouse.interpret`, the same one that fixed the analogous
+  frame-rate-interpretation gap) with `scanAndColorMarkers()`: walks
+  every sequence and clip marker, parses the fit prefix
+  (`strong:`/`possible:`/`off_topic:`) that
+  `build_flag_markers_for_phrase` already writes into each marker's
+  comment, maps to the real palette index (strong=4/yellow,
+  possible=0/green, off_topic=1/red), idempotent (skips a marker
+  already at its target index). Wired into `index.js`'s existing poll
+  loop alongside `scanAndInterpret()`. *(2d7cbfb.)* **Not yet confirmed
+  by Ryan in a live Premiere session** — the extension folder is a live
+  symlink so the fix is already in place, but it needs Premiere
+  restarted (or the panel reloaded) to load the new ExtendScript, which
+  hasn't happened yet as of this writing.
 - 2026-09-03 — **Correction to the entry below, found while verifying
   the fix actually worked: the real, primary cause was a genuine
   pre-existing concurrency race, not (mainly) this session's kill -9
@@ -839,7 +877,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
-| AE: transcript flagging (color-coded storyline ranges) | **Built and wired end-to-end, verified with real integration tests** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, and the actual `run_pipeline`/export wiring). **Not yet tested by Ryan in the real running app on a real project** — only standalone/integration test scripts so far. See § Done, 2026-09-03. |
+| AE: transcript flagging (color-coded storyline ranges) | **Built and wired end-to-end, verified with real integration tests** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, and the actual `run_pipeline`/export wiring). Marker color itself required a second fix — Premiere's FCP7 XML import doesn't honor `<color>` at all, real color-setting moved to the Premiere ExtendScript extension. **Not yet confirmed by Ryan on real footage in a live Premiere session with the extension reloaded.** See § Done, 2026-09-03. |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
