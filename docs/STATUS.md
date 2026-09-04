@@ -218,6 +218,48 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **Three real bugs Ryan found reviewing an actual export,
+  all confirmed and fixed against his real data.**
+  1. **Duplicate timeline placements** ("Premiere's Duplicate Frame
+     Markers" showed footage/audio placed twice). Confirmed exactly on
+     his real exported idea (`idea_ae9abb8edc.json`): range 10 duplicated
+     range 0 verbatim — same file, same start/end to the decimal
+     (1562.6–1907.6s) — because the sequencing model picked the same
+     fragment index twice, once as "hook" and once as "payoff." Fixed
+     with a hard dedup guard on fragment index in the ranges-building
+     loop (never trust a prompt "don't repeat" instruction alone for
+     something this concrete) plus a tightened prompt rule. Verified on
+     a fresh real generation against the same project: 12 ranges, 0
+     duplicates.
+  2. **Audio that "doesn't sync up at all or make sense to be there."**
+     Very likely a direct downstream consequence of #1 — a duplicated
+     video range independently triggers PreCut's own real audio-sync
+     lookup a second time, placing the same matching audio again at the
+     duplicate's timeline position. Not independently verified by
+     listening (not possible from here) — flagged to Ryan to confirm
+     after re-exporting with the dedup fix; if audio problems persist
+     with zero duplicate ranges, that's a genuinely separate issue to
+     investigate next.
+  3. **"The brief isn't in the Premiere project... I don't want to
+     search Finder for an arbitrary .md file."** Confirmed the on-timeline
+     frame-0 Creative Brief marker (PreCut's own
+     `_build_creative_brief_marker`, unmodified) already fires correctly
+     for story-angle exports — but `why_it_works` was capped at 3000
+     chars and never included the sourced links Ryan explicitly asked
+     for. Since an editor may only ever open the Premiere project itself
+     (never Post House), the full brief has to live inside the XML, not
+     just the standalone `.md` file from the earlier entry. Raised the
+     cap to 12000 chars and added a real, plain-text "SOURCES / EXAMPLES"
+     section (real trend/video/strategy links) into the same content.
+     Verified on a fresh real generation: 5623 chars, full citations
+     section with real URLs present. **Caveat, not yet investigated
+     further**: per the 2026-09-03 finding that Premiere ignores FCP7
+     XML `<marker><color>`, this brief marker's own "gold" color likely
+     also renders as default green like flag markers did before the
+     ExtendScript fix — its distinctive name (`★ BRIEF: <title>`) should
+     still make it findable in Premiere's Markers panel regardless of
+     color, but this hasn't been separately confirmed live.
+  *(f82313c.)* **Not yet reviewed by Ryan on a fresh export.**
 - 2026-09-04 — **Real, serious multi-file export bug found and fixed
   while building the previous entry's requests — every future agent
   touching story-angle export needs to know this.** `assemble_cut_from_
