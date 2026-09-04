@@ -188,6 +188,33 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Correction to the entry below, found while verifying
+  the fix actually worked: the real, primary cause was a genuine
+  pre-existing concurrency race, not (mainly) this session's kill -9
+  restarts.** After deploying the atomic-write fix, Ryan ran the
+  pipeline again and hit the same failures. Caught live, not
+  theorized: `ps aux` showed 12 ffmpeg processes running as 6 duplicate
+  pairs, each pair independently encoding the SAME 5GB source file at
+  the same time. Root cause: `_collect_videos` deliberately puts a
+  `dual_use` source in BOTH `aroll_videos` and `broll_videos` (its own
+  docstring calls this "a safe, idempotent skip... not a conflicting
+  second encode" — true only if the two lists are processed
+  sequentially). `run_pipeline` actually processes them via two
+  CONCURRENT threads, so both independently see "proxy doesn't exist
+  yet" at the same instant and both launch ffmpeg on the same file in
+  parallel — a race that would occur any time a dual-use source needs a
+  fresh proxy, regardless of any restart. Fixed with a per-proxy-path
+  `threading.Lock` shared between the aroll and broll `_run_video_
+  pipeline` calls within one `run_pipeline` invocation — whichever
+  thread reaches a path first encodes it, the other waits and then
+  skips a real, valid result instead of racing it. *(1c3ea98.)*
+  Confirmed the still-running old-code backend kept spawning new
+  duplicate pairs for queued files even after killing the first 12 —
+  had to stop the whole job (kill the backend process), not chase
+  individual ffmpeg processes. The atomic-write fix below remains
+  correct and worth keeping (it's what prevented this exact race from
+  corrupting the final file this second time) — it just wasn't the
+  whole story on its own.
 - 2026-09-03 — **Real proxy corruption found and fixed, self-inflicted
   by this session's own restart habit.** Ryan: "It took forever and did
   this" — 6/10 B-roll tagging and 9/10 transcriptions failed with
