@@ -188,6 +188,33 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Real proxy corruption found and fixed, self-inflicted
+  by this session's own restart habit.** Ryan: "It took forever and did
+  this" — 6/10 B-roll tagging and 9/10 transcriptions failed with
+  ffmpeg "moov atom not found" / "Invalid data found when processing
+  input". Root-caused against his real project (`new`), not assumed:
+  all 10 proxies in the affected folder were genuinely corrupt
+  (confirmed via ffprobe), their 5GB original sources probed perfectly
+  clean. Real mechanism: `kill -9` on the backend process (used
+  repeatedly this session to restart the app for code changes) doesn't
+  kill its ffmpeg children — they're orphaned and keep writing. A later
+  restart's fresh proxy encode to the SAME output path then writes
+  concurrently with the orphan, corrupting the file. The "skip if
+  already exists" idempotency check only checked existence + nonzero
+  size, so it silently trusted the corrupted result forever after.
+  Fixed: `_encode_proxy` now writes to a private uuid-suffixed temp path
+  and atomically renames on confirmed success only; the pipeline's skip
+  check now calls a new `proxy_manager.proxy_is_valid()` (quick ffprobe)
+  before trusting an existing file, so an already-corrupted proxy gets
+  re-encoded instead of trusted. Verified for real: the validator
+  correctly flags the known-corrupt file; a real re-encode with the fix
+  produced a genuinely valid proxy. *(e294370.)* Checked other
+  real projects touched this session for the same corruption — none
+  found, this appears isolated to the one folder mid-encode during a
+  restart. **Going forward**: restarting this app now needs to also
+  check for and kill orphaned `ffmpeg` processes, not just the
+  backend/Rust ones — noted here so a future session doesn't reintroduce
+  this by restarting the old way.
 - 2026-09-03 — **Real bug found and fixed testing transcript flagging on
   a real project: dual-use checkbox toggled after the fact didn't
   trigger B-roll tagging.** Ryan: "It didnt pull in any b-roll i dont
