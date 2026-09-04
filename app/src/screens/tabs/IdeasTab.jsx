@@ -896,6 +896,19 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
             </div>
           ) : (
             <div className="idea-card-research-body">
+              {research.editorial_qna && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">
+                    Editorial Q&amp;A (also folded into "why it works" above)
+                  </div>
+                  <ul className="idea-card-research-list">
+                    <li><strong>Bigger story:</strong> {research.editorial_qna.bigger_story}</li>
+                    <li><strong>Why watch:</strong> {research.editorial_qna.why_watch}</li>
+                    <li><strong>Relates to the viewer:</strong> {research.editorial_qna.viewer_relevance}</li>
+                    <li><strong>CTA:</strong> {research.editorial_qna.cta}</li>
+                  </ul>
+                </div>
+              )}
               {research.named_trends?.length > 0 && (
                 <div className="idea-card-research-section">
                   <div className="idea-card-section-label">

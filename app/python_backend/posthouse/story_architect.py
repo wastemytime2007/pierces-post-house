@@ -331,6 +331,9 @@ already-extracted fragment.
 you left out and why, in `omitted_reasoning`.
 - Live trend research (given below) informs framing/tone only — never overrides what the \
 footage and thesis actually support.
+- Every arc must concretely answer, in `editorial_qna`: what's the bigger overall story, what \
+makes it worth watching, how it relates to the viewer, and what the CTA is. None of these may be \
+blank or generic filler — a real answer traces to the actual fragments and thesis you chose.
 
 Return ONLY the structured output specified in the prompt, as a fenced ```json code block."""
 
@@ -362,6 +365,11 @@ serve the thesis, and say what you left out and why. Do not restrict yourself to
 fragments — a small, individually-odd moment that genuinely serves the thesis belongs in the \
 arc even if its isolated fit score was lower.
 
+**Every arc must be able to answer these specific editorial questions (Ryan, 2026-09-04) — fill \
+in `editorial_qna` with a real, specific, concrete answer for each. None may be generic filler \
+or left blank; "no CTA" is not an acceptable answer for `cta` — every piece asks for SOMETHING, \
+even if it's soft ("follow for more," "DM to apply," a specific link):**
+
 Return this exact JSON shape, in a fenced ```json block:
 
 {{
@@ -369,10 +377,16 @@ Return this exact JSON shape, in a fenced ```json block:
   "title": "short concept title",
   "hook": "1-2 sentence opening hook/headline",
   "why_it_works": "why this arc serves the thesis and the stated audience goal, citing which fragments (including any 'strange choice' ones and why they earn their place) and, if relevant, which real trend finding informed the framing",
+  "editorial_qna": {{
+    "bigger_story": "What is the bigger overall story being told in this video? (the arc as a whole, not just the thesis restated)",
+    "why_watch": "What makes this specifically worth watching? Be concrete, not 'it's engaging.'",
+    "viewer_relevance": "How does this actually relate to the viewer watching it — what's in it for them, or what do they recognize in it?",
+    "cta": "What is the specific call to action, and why this one (not a generic 'follow us')?"
+  }},
   "tone": "editorial tone guidance, e.g. 'quiet, unhurried, heart-led'",
   "target_duration_sec": <rough number, not enforced>,
   "target_audience": "who this is for, restated from the audience goal",
-  "call_to_action": "",
+  "call_to_action": "same specific CTA as editorial_qna.cta",
   "sequence": [
     {{"index": 0, "role": "hook"}},
     {{"index": 3, "role": "build"}},
@@ -1011,14 +1025,41 @@ def generate_story_angle(
         )
 
     thesis = str(data.get("narrative_thesis", "")).strip()
-    why_it_works = str(data.get("why_it_works", ""))
-    if thesis:
-        # PreCut's CreativeBrief has no narrative_thesis field (see
-        # research["narrative_thesis"] above for the full audit copy) —
-        # prepended here too so it's visible on the card itself, not only
-        # in the expanded research panel. This is the core editorial
-        # claim the whole arc rests on; it shouldn't require a click.
-        why_it_works = f"Thesis: {thesis}\n\n{why_it_works}"
+    qna = data.get("editorial_qna", {}) or {}
+    bigger_story = str(qna.get("bigger_story", "")).strip()
+    why_watch = str(qna.get("why_watch", "")).strip()
+    viewer_relevance = str(qna.get("viewer_relevance", "")).strip()
+    qna_cta = str(qna.get("cta", "")).strip()
+
+    # Ryan (2026-09-04): every story suggestion has to be able to answer
+    # these specific questions concretely — never blank, never generic
+    # filler. Enforced here, not just requested in the prompt: a missing
+    # answer is a real defect in the output, not a cosmetic gap.
+    missing_qna = [k for k, v in {
+        "bigger_story": bigger_story, "why_watch": why_watch,
+        "viewer_relevance": viewer_relevance, "cta": qna_cta,
+    }.items() if not v]
+    if missing_qna:
+        raise StoryPlannerError(
+            f"Claude's response left editorial_qna field(s) blank: {missing_qna} — "
+            "every story suggestion must answer these concretely."
+        )
+
+    call_to_action = str(data.get("call_to_action", "")).strip() or qna_cta
+
+    # PreCut's CreativeBrief has no fields for narrative_thesis or the
+    # editorial Q&A (see the matching `research[...]` copies below for the
+    # full audit trail) — folded into why_it_works, clearly labeled, so
+    # every answer is visible on the card itself without an extra click.
+    # These are arguably the most important editorial judgments in the
+    # whole output; they shouldn't be buried in an expandable panel.
+    why_it_works = (
+        f"Thesis: {thesis}\n\n"
+        f"Bigger story: {bigger_story}\n\n"
+        f"Why watch: {why_watch}\n\n"
+        f"How it relates to the viewer: {viewer_relevance}\n\n"
+        f"{str(data.get('why_it_works', '')).strip()}"
+    )
 
     brief = CreativeBrief(
         title=str(data.get("title", ""))[:200],
@@ -1027,7 +1068,7 @@ def generate_story_angle(
         tone=str(data.get("tone", ""))[:200],
         target_duration_sec=float(data.get("target_duration_sec", 0.0) or 0.0),
         target_audience=str(data.get("target_audience", ""))[:300],
-        call_to_action=str(data.get("call_to_action", ""))[:300],
+        call_to_action=call_to_action[:300],
     )
 
     angle = StoryAngle(
@@ -1042,6 +1083,10 @@ def generate_story_angle(
     # single most important piece of editorial judgment in the whole
     # output: the specific thesis the arc is actually built to serve.
     research["narrative_thesis"] = data.get("narrative_thesis", "")
+    research["editorial_qna"] = {
+        "bigger_story": bigger_story, "why_watch": why_watch,
+        "viewer_relevance": viewer_relevance, "cta": qna_cta,
+    }
     return angle, research
 
 
