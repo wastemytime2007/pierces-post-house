@@ -61,7 +61,23 @@ FIT_COLORS = {
     "off_topic": (220, 20, 20),   # red
 }
 
-RELEVANCE_SYSTEM_PROMPT = """You are helping an editor triage transcript material against a specific content goal. You judge fit honestly — most real interviews contain material that doesn't serve the stated goal, and pretending otherwise wastes the editor's time. Never inflate relevance to seem more useful; a fragment that doesn't fit should be marked off_topic.
+RELEVANCE_SYSTEM_PROMPT = """You are helping an editor triage transcript material against a specific content goal. You judge fit honestly — most real interviews contain material that doesn't serve the stated goal, and pretending otherwise wastes the editor's time.
+
+**Two distinct, equally real paths to "strong" — corrected 2026-09-04, per Ryan directly.** \
+Topical on-message content (real educational/story/construction/company substance) is one path. \
+The other is just as real: a genuine human, heart, comedy, or character moment that humanizes \
+the person on camera — even when it has nothing to do with the stated topic on its face. Ryan's \
+own example: a real finished cut used a moment of the subject saving a toad rather than killing \
+it. Scored on topical relevance alone against a recruiting goal, that fragment looks worthless — \
+it was actually essential, because it revealed a genuine caring side that countered a real \
+on-the-job perception the subject dealt with. A fragment doesn't have to relate to the stated \
+topic to be "strong" — it has to be either substantively on-topic OR genuinely human/character-\
+revealing. Reserve "off_topic" for material that is neither: not substantive, and not a real \
+character/heart/humor moment either (small talk, dead air, a technical aside nobody will use).
+
+Never inflate relevance to seem more useful — most interviews still have real off_topic material \
+by this standard, and calling everything "strong" helps no one. But don't undersell a genuine \
+character moment just because it isn't topical; that's the exact mistake this correction fixes.
 
 Return ONLY valid JSON. No preamble, no markdown fences."""
 
@@ -77,19 +93,21 @@ Here are transcript fragments already identified in this project's interview, ea
 {fragments}
 </fragments>
 
-For EVERY fragment listed above, judge how well it serves the stated audience/content goal. Use exactly one of these three fits:
-- "strong": directly serves the goal — this is exactly the kind of material the stated audience/goal is looking for.
-- "possible": has some relevance or could support the goal indirectly, but isn't a direct hit.
-- "off_topic": doesn't serve this particular goal, even if it's good material for something else.
+For EVERY fragment listed above, judge its fit using exactly one of these three labels:
+- "strong": EITHER directly, substantively serves the stated goal (real educational/story/construction/company content), OR is a genuine human/heart/comedy/character moment that humanizes the person on camera — these are two separate, equally valid reasons to mark something "strong," not just one.
+- "possible": has some relevance or could support the goal indirectly, but isn't a direct hit on either path above.
+- "off_topic": neither substantively on-topic nor a real character/heart moment — genuinely disposable material (small talk, dead air, an aside nobody would use).
 
-Be honest, not generous — most interviews have plenty of off_topic material relative to any one goal, and calling everything "strong" helps no one.
+Be honest, not generous on either path — most interviews have real off_topic material by this standard too. But actively look for genuine character/heart/comedy moments, not just topical ones; a moment that looks small or unrelated on its face can still be exactly right if it's real and humanizing.
+
+For each fragment, also note in `category` which path earned the fit (or best describes it if off_topic): "substantive" (real educational/story/construction/company content) or "character" (human/heart/comedy/relatability moment).
 
 Return JSON in this exact shape, one entry per fragment, in the same order given:
 
 {{
   "scored": [
-    {{"index": 0, "fit": "strong", "reasoning": "1 sentence: why this fit"}},
-    {{"index": 1, "fit": "off_topic", "reasoning": "1 sentence: why this fit"}}
+    {{"index": 0, "fit": "strong", "category": "character", "reasoning": "1 sentence: why this fit"}},
+    {{"index": 1, "fit": "off_topic", "category": "substantive", "reasoning": "1 sentence: why this fit"}}
   ]
 }}"""
 
@@ -97,10 +115,18 @@ Return JSON in this exact shape, one entry per fragment, in the same order given
 @dataclass
 class TaggedFragment:
     """One exhaustively-extracted fragment plus its judged fit against a
-    project's stated audience/content goal."""
+    project's stated audience/content goal.
+
+    `category` (added 2026-09-04, Ryan): which of the two real, equally
+    valid paths to "strong" this fragment took — "substantive" (real
+    educational/story/construction/company content) or "character"
+    (human/heart/comedy/relatability). Best-effort even for
+    possible/off_topic fragments; empty string if the model didn't
+    supply one (never blocks anything downstream)."""
     fragment: object  # TopicRange
     fit: str          # one of VALID_FITS
     reasoning: str
+    category: str = ""  # "substantive" | "character" | ""
 
     @property
     def color_rgb(self):
@@ -171,6 +197,7 @@ def score_fragments_for_audience(
             fragment=fragments[idx] if 0 <= idx < len(fragments) else None,
             fit=fit,
             reasoning=str(entry.get("reasoning", ""))[:300],
+            category=str(entry.get("category", ""))[:20],
         )
 
     results: List[TaggedFragment] = []
@@ -205,6 +232,7 @@ def save_tagged_fragments(path, source_file: str, audience_goal: str,
                 "summary": tf.fragment.summary,
                 "fit": tf.fit,
                 "reasoning": tf.reasoning,
+                "category": tf.category,
             }
             for tf in tagged_fragments
         ],
@@ -235,5 +263,6 @@ def load_tagged_fragments(path) -> List[TaggedFragment]:
             fit = "off_topic"
         results.append(TaggedFragment(
             fragment=fragment, fit=fit, reasoning=entry.get("reasoning", ""),
+            category=entry.get("category", ""),
         ))
     return results

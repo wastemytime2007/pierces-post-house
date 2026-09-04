@@ -116,12 +116,6 @@ TopicRange = _cutlist.TopicRange
 StoryPlannerError = _story_planner.StoryPlannerError
 _extract_json = _story_planner._extract_json
 
-# Below this many "strong" fragments, widen the candidate pool to include
-# "possible" ones too rather than trying to build an arc out of too little
-# real material. Never invents fragments — only widens which real,
-# already-extracted ones are eligible.
-MIN_STRONG_FRAGMENTS = 3
-
 # Confirmed 2026-09-03 by a real side-by-side call (see module docstring)
 # — the direct-search tool variant, not the code-execution one.
 WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
@@ -285,22 +279,58 @@ Return ONLY this JSON, in a fenced ```json block:
   "observed": "grounded in the real cut rate above and what actually changes across these before/after pairs: is pacing fast or slow for this niche, are cuts hard or do they use a visible transition effect, does subject/framing change dramatically at cuts or stay continuous, any consistent text-overlay pattern. Concrete and specific to these images and the real numbers, not generic knowledge. If not relevant, briefly say what it actually is instead."
 }}"""
 
-ARCHITECT_SYSTEM_PROMPT = """You are a documentary/branded-content story architect. An Assistant \
-Editor has already exhaustively read a project's raw interview transcripts and scored every \
-storyline-worthy moment against this project's stated audience/content goal — you are not \
-finding material, you are the first pass at SEQUENCING already-vetted real material into an \
-actual narrative arc (hook, build, payoff), the way an experienced editor would before ever \
-touching a timeline. Live trend research (some of it from actually-watched real videos, some \
-from articles about trends — clearly labeled which is which) has already been gathered \
-separately and is given to you below; use it to inform framing and tone only — never to justify \
-picking a fragment that doesn't actually serve the stated audience goal.
+ARCHITECT_SYSTEM_PROMPT = """You are a documentary/branded-content story architect — an \
+experienced editor, not a relevance filter. An Assistant Editor has already exhaustively read \
+this project's raw interview transcripts and independently scored each moment's fit against the \
+general audience/content goal (strong / possible / off_topic). That per-fragment score is \
+CONTEXT for you, never a gate: it was computed one fragment at a time, in isolation, with no \
+narrative frame — real editorial judgment doesn't work that way.
+
+**The thing you actually have to do, per Ryan's own words (2026-09-04):** "the individual \
+choices on their own may seem like strange choices, [but] you need to step back and see the \
+bigger overall picture. This is what real, successful editing/storytelling does." His concrete \
+example: a real cut used a moment of the subject saving a toad rather than killing it — on its \
+own, scored in isolation against a recruiting audience goal, that fragment looks irrelevant, \
+maybe even "off_topic." It was actually essential, because the footage's real opportunity was \
+countering a real on-the-job perception ("he's an asshole") by revealing a genuine, caring side \
+— and a small, odd, specific moment like that does more to prove real character than any \
+on-topic-sounding generic statement could. A generic relevance score can't see that; only a \
+chosen narrative thesis can.
+
+So your job has two real phases, in order — do not skip to phase 2:
+
+**Phase 1 — find the actual narrative thesis this SPECIFIC footage can tell.** Read across ALL \
+the fragments below (not just the ones already scored "strong") and identify a real, specific \
+tension, misconception, or character truth this particular material reveals — not a restatement \
+of the generic audience goal. Ask: what would someone who only knows the surface (the gruff \
+exterior, the sales pitch, the generic funnel framing) be surprised or moved to learn from this \
+footage specifically? That's your thesis. While you read, actively look for BOTH of the two real \
+kinds of gold (each fragment's `category` tag names which one the Assistant Editor thought it \
+was, but judge for yourself too):
+- **Human/heart/comedy/fun** — a genuine character moment, a real laugh, real warmth, real \
+vulnerability. This is what makes the people of the piece relatable, and it very often lives in \
+fragments that look small or off-topic when scored against the literal subject at hand.
+- **Real substantive content** — the actual educational value, the story, the craft/construction \
+knowledge, the concrete SoldFast specifics. This is what proves the point once the audience \
+already cares about the people telling it.
+A strong arc usually needs both, and per SoldFast's own brand doctrine, the humanizing beat comes \
+FIRST — the audience connects with the people before any pitch, ask, or substantive claim lands \
+(never the reverse, and never a humanizing beat used only to soften an ask that precedes it).
+
+**Phase 2 — select fragments that serve THAT thesis, from the FULL list, not the pre-scored \
+"strong" subset.** A fragment that's small, individually odd, or scored "possible"/"off_topic" \
+in isolation can be exactly right if it serves your thesis — judge it against the thesis you \
+found, not the generic score. You are not obligated to use only "strong"-fit material, and you \
+are not obligated to ignore something just because it looked minor out of context.
 
 Hard rules:
 - You may ONLY select from the fragments given to you, by their [index]. Never invent a time \
 range, a quote, or a moment that isn't in the list — every selection must trace to a real, \
 already-extracted fragment.
-- Most real interviews have more usable material than fits in one story — be honest about which \
-fragments you're leaving out and why, in `omitted_reasoning`.
+- Most real interviews have more usable material than fits in one story — be honest about what \
+you left out and why, in `omitted_reasoning`.
+- Live trend research (given below) informs framing/tone only — never overrides what the \
+footage and thesis actually support.
 
 Return ONLY the structured output specified in the prompt, as a fenced ```json code block."""
 
@@ -310,8 +340,8 @@ ARCHITECT_PROMPT_TEMPLATE = """This project's stated audience/content goal:
 {audience_goal}
 </audience_goal>
 
-Real, already-extracted and audience-scored transcript fragments available to build from \
-(fit={fit_note}):
+ALL real, already-extracted transcript fragments — the fit label is the Assistant Editor's \
+ISOLATED, per-fragment score (context, not a gate; see system prompt):
 
 <fragments>
 {fragments}
@@ -323,17 +353,22 @@ Live trend research already gathered for this project (use to inform framing/ton
 {trend_research}
 </trend_research>
 
-Build ONE story arc from the fragments above: pick which ones to use (by index), what role \
+First, in `narrative_thesis`, name the SPECIFIC real tension/misconception/character truth this \
+footage can address — not the generic audience goal restated. Then build ONE story arc that \
+serves that thesis: pick which fragments to use (by index, from the full list above), what role \
 each plays (hook / build / payoff — you may use more than one fragment per role), and the order \
 they should play in. You do not have to use every fragment — leave out anything that doesn't \
-serve a coherent single arc, and say what you left out and why.
+serve the thesis, and say what you left out and why. Do not restrict yourself to "strong"-fit \
+fragments — a small, individually-odd moment that genuinely serves the thesis belongs in the \
+arc even if its isolated fit score was lower.
 
 Return this exact JSON shape, in a fenced ```json block:
 
 {{
+  "narrative_thesis": "the specific real tension/misconception/character truth this footage addresses",
   "title": "short concept title",
   "hook": "1-2 sentence opening hook/headline",
-  "why_it_works": "why this arc serves the stated audience goal, citing which fragments and (if relevant) which real trend finding informed the framing",
+  "why_it_works": "why this arc serves the thesis and the stated audience goal, citing which fragments (including any 'strange choice' ones and why they earn their place) and, if relevant, which real trend finding informed the framing",
   "tone": "editorial tone guidance, e.g. 'quiet, unhurried, heart-led'",
   "target_duration_sec": <rough number, not enforced>,
   "target_audience": "who this is for, restated from the audience goal",
@@ -350,30 +385,37 @@ Return this exact JSON shape, in a fenced ```json block:
 def _collect_candidate_fragments(
     tagged_by_source: Dict[str, List[TaggedFragment]],
 ) -> List[TaggedFragment]:
-    """Flatten a project's per-source tagged fragments into one candidate
-    pool, `strong` fragments first. Widens to include `possible` fragments
-    too when there aren't enough `strong` ones to build a real arc from —
-    never fabricates material, only widens which REAL, already-extracted
-    fragments are eligible for selection."""
+    """Flatten a project's per-source tagged fragments into ONE candidate
+    pool — ALL of them, every fit level included.
+
+    Corrected 2026-09-04 (Ryan): this used to filter down to "strong"
+    (widening to "possible" only if there weren't enough) BEFORE the
+    architect ever saw the material. That's backwards — a real editor
+    doesn't pre-filter by an isolated per-fragment relevance score and
+    then look for a story in what's left; they find the actual narrative
+    thesis first, and THEN judge which real fragments serve it, including
+    small/odd ones a naive relevance check would call "off_topic" (Ryan's
+    own example: a real cut used a moment of the subject saving a toad —
+    worthless by isolated topical relevance, essential once you know the
+    thesis was "reveal the gruff guy's genuine heart"). The fit label is
+    now passed through as context in the prompt, never used to exclude
+    material before the architect reasons about it."""
     all_tagged: List[TaggedFragment] = []
     for tagged_list in tagged_by_source.values():
         all_tagged.extend(tagged_list)
-
-    strong = [t for t in all_tagged if t.fit == "strong"]
-    if len(strong) >= MIN_STRONG_FRAGMENTS:
-        return strong
-    possible = [t for t in all_tagged if t.fit == "possible"]
-    return strong + possible
+    return all_tagged
 
 
 def _format_candidates_for_llm(candidates: List[TaggedFragment]) -> str:
     lines = []
     for i, tf in enumerate(candidates):
         f = tf.fragment
+        category = f" category={tf.category}" if tf.category else ""
+        reasoning = f" — AE's reasoning: {tf.reasoning}" if tf.reasoning else ""
         lines.append(
-            f'[{i}] fit={tf.fit} file="{f.source_file}" '
+            f'[{i}] fit={tf.fit}{category} file="{f.source_file}" '
             f'{f.source_start_sec:.1f}s-{f.source_end_sec:.1f}s '
-            f'"{f.topic_label}": {f.summary}'
+            f'"{f.topic_label}": {f.summary}{reasoning}'
         )
     return "\n".join(lines)
 
@@ -913,12 +955,9 @@ def generate_story_angle(
     candidates = _collect_candidate_fragments(tagged_by_source)
     if not candidates:
         raise StoryPlannerError(
-            "No strong or possible fragments available — nothing real to "
+            "No extracted fragments available at all — nothing real to "
             "build a story arc from. Run transcript flagging first."
         )
-
-    strong_count = sum(1 for t in candidates if t.fit == "strong")
-    fit_note = "strong" if strong_count == len(candidates) else "strong + possible (not enough strong fragments alone)"
 
     if research is None:
         research = research_trends(audience_goal.strip(), model=model, api_key=api_key)
@@ -927,7 +966,6 @@ def generate_story_angle(
     user_prompt = ARCHITECT_PROMPT_TEMPLATE.format(
         audience_goal=audience_goal.strip(),
         fragments=_format_candidates_for_llm(candidates),
-        fit_note=fit_note,
         trend_research=_format_research_for_llm(research),
     )
     try:
@@ -972,10 +1010,20 @@ def generate_story_angle(
             f"raw sequence field: {data.get('sequence')!r}"
         )
 
+    thesis = str(data.get("narrative_thesis", "")).strip()
+    why_it_works = str(data.get("why_it_works", ""))
+    if thesis:
+        # PreCut's CreativeBrief has no narrative_thesis field (see
+        # research["narrative_thesis"] above for the full audit copy) —
+        # prepended here too so it's visible on the card itself, not only
+        # in the expanded research panel. This is the core editorial
+        # claim the whole arc rests on; it shouldn't require a click.
+        why_it_works = f"Thesis: {thesis}\n\n{why_it_works}"
+
     brief = CreativeBrief(
         title=str(data.get("title", ""))[:200],
         hook=str(data.get("hook", ""))[:500],
-        why_it_works=str(data.get("why_it_works", ""))[:3000],
+        why_it_works=why_it_works[:3000],
         tone=str(data.get("tone", ""))[:200],
         target_duration_sec=float(data.get("target_duration_sec", 0.0) or 0.0),
         target_audience=str(data.get("target_audience", ""))[:300],
@@ -988,6 +1036,12 @@ def generate_story_angle(
         source_ranges=ranges,
     )
     research["omitted_reasoning"] = data.get("omitted_reasoning", "")
+    # PreCut's CreativeBrief schema has no field for this (same situation as
+    # trend findings — see module docstring) — persisted in the research
+    # audit trail so it's never silently dropped. This is arguably the
+    # single most important piece of editorial judgment in the whole
+    # output: the specific thesis the arc is actually built to serve.
+    research["narrative_thesis"] = data.get("narrative_thesis", "")
     return angle, research
 
 
