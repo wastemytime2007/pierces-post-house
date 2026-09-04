@@ -1217,13 +1217,31 @@ def generate_story_angle(
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            # Raised from the original 4096, 2026-09-04: the output schema
+            # has grown substantially (tight-cut sequence + full pool_indices
+            # list + narrative_thesis + 4-part editorial_qna) since that
+            # value was first set, with no corresponding increase — pure
+            # safety margin against truncation on larger fragment pools.
+            max_tokens=8192,
             temperature=0.4,
             system=ARCHITECT_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )
     except Exception as e:
         raise StoryPlannerError(f"Anthropic API error: {e}") from e
+
+    if response.stop_reason == "max_tokens":
+        # A truncated response can still parse as technically-valid JSON if
+        # the cutoff happens to land somewhere _extract_json's lenient
+        # repair can patch — producing a real but silently degenerate
+        # result (e.g. a 1-range sequence, empty pool) instead of a clear
+        # error. Fail loud instead; this is what the raised max_tokens
+        # above is meant to prevent, but never trust that alone.
+        raise StoryPlannerError(
+            "Claude's response was truncated (stop_reason=max_tokens) before "
+            "finishing — the sequence/pool this would have produced can't be "
+            "trusted. Retry, or reduce candidate fragment count."
+        )
 
     text_parts = [b.text for b in response.content if getattr(b, "type", None) == "text"]
     text = "".join(text_parts).strip()
@@ -1272,6 +1290,15 @@ def generate_story_angle(
         raise StoryPlannerError(
             "Claude's response selected no valid fragment indices — "
             f"raw sequence field: {data.get('sequence')!r}"
+        )
+    if len(ranges) < 2:
+        # A real hook/build/payoff arc can't legitimately be a single
+        # clip — this is more likely a sign of a degraded/truncated
+        # response than an intentional creative choice. Fail loud rather
+        # than persist an idea that isn't a real arc.
+        raise StoryPlannerError(
+            f"Claude's response produced only {len(ranges)} range(s) for the "
+            "tight cut — too few to be a real arc. Likely a degraded response; retry."
         )
 
     # 2026-09-04: the "pool" — everything else genuinely relevant to the
@@ -1608,18 +1635,39 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
                          f"real video(s) watched and relevant."})
 
         avoid_theses: List[str] = []
+        succeeded = 0
         for i in range(N_ANGLES):
             emit({"type": "log", "level": "info",
                   "message": f"Building story arc {i + 1}/{N_ANGLES}..."})
-            angle, angle_research = generate_story_angle(
-                audience_goal, tagged_by_source, research=research,
-                source_offset_lookup=source_offset_lookup, avoid_theses=avoid_theses,
-            )
+            # One retry per slot, not the whole batch: a degraded/truncated
+            # response on angle 2 shouldn't discard angle 1, which already
+            # succeeded and is sitting on disk (Ryan hit a real version of
+            # this — a bad response needs to fail that ONE slot loudly, not
+            # take the whole click down with it).
+            angle = angle_research = None
+            last_error = None
+            for attempt in range(2):
+                try:
+                    angle, angle_research = generate_story_angle(
+                        audience_goal, tagged_by_source, research=research,
+                        source_offset_lookup=source_offset_lookup, avoid_theses=avoid_theses,
+                    )
+                    break
+                except Exception as e:
+                    last_error = e
+                    emit({"type": "log", "level": "warn",
+                          "message": f"Arc {i + 1}/{N_ANGLES} attempt {attempt + 1} failed: {e}"})
+            if angle is None:
+                emit({"type": "log", "level": "warn",
+                      "message": f"Arc {i + 1}/{N_ANGLES} failed twice, skipping it: {last_error}"})
+                continue
+
             avoid_theses.append(angle_research.get("narrative_thesis", angle.brief.title))
 
             idea_path = save_story_angle_as_idea(project.plans_dir(), angle)
             research_path = save_story_research(project_dir, angle, angle_research)
             brief_path = save_story_brief(project_dir, angle, angle_research, source_offset_lookup)
+            succeeded += 1
 
             emit({
                 "type": "producer_angle",
@@ -1629,10 +1677,15 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
                 "research_path": str(research_path),
                 "brief_path": str(brief_path),
             })
+
+        if succeeded == 0:
+            emit({"type": "producer_error", "job_id": job_id,
+                  "message": "All 3 attempts to build a story arc failed — see the log above for why."})
+            return
     except Exception as e:
         emit({"type": "producer_error", "job_id": job_id, "message": str(e)})
         return
-    emit({"type": "producer_done", "job_id": job_id, "mode": "story_architect", "angle_count": N_ANGLES})
+    emit({"type": "producer_done", "job_id": job_id, "mode": "story_architect", "angle_count": succeeded})
 
 
 def _angle_to_dict(angle: "StoryAngle") -> dict:

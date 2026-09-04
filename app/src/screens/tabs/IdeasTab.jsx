@@ -274,71 +274,57 @@ export default function IdeasTab({
   return (
     <>
       <div className="ideas-actions">
-        {/* Drop 4.25: one button that adapts based on existing angles.
-            First click → "Generate ideas" (no prior context).
-            After angles exist → "Generate more" (passes existing angles
-            back as context so the LLM excludes them).
-            Collapsing the two buttons protects against an editor hitting
-            "Generate" at any stage and burning credits on duplicate angles. */}
+        {/* 2026-09-04: this is now THE "Generate ideas" button. Ryan's own
+            words made clear he doesn't think of "generate from flagged
+            fragments" as a separate tool from "the generate ideas button" —
+            he expects the one button to behave the way he's been
+            describing (3 tight-cut+pool ideas, live research, real
+            citations). Confirmed a real confusion this caused: he reviewed
+            output from the OLD button below (PreCut's own generate_angles,
+            now demoted to Legacy tools) believing it came from this one —
+            identifiable after the fact only by its source_phrase_ids field,
+            which story_architect never sets. Routing the primary button to
+            story_architect removes that ambiguity going forward. */}
         <button
           className="btn btn-primary"
-          onClick={hasAngles ? handleRequestMoreAngles : handleGenerateAngles}
-          disabled={transcriptCount === 0 || producerBusy}
-          title={
-            transcriptCount === 0
-              ? "Run transcription first"
-              : hasAngles
-                ? "Generate more story angles — the existing ones are passed to the AI as context so it won't duplicate them"
-                : "Generate 3 story angles from the transcript"
-          }
-        >
-          {producerBusy
-            ? (
-              <>
-                <span className="btn-spinner" aria-hidden="true" />
-                {activeRun?.mode === "more" ? "Generating more…" : "Generating ideas…"}
-              </>
-            )
-            : hasAngles
-              ? "Generate more"
-              : "Generate ideas"}
-        </button>
-        <HelpTooltip>
-          The AI producer reads your transcripts and proposes{" "}
-          <strong>3 story angles</strong> you could cut from the footage.
-          Each one appears as a card below. <strong>Tick the checkboxes</strong>{" "}
-          on the ones you want — a floating <strong>Export</strong> bar
-          appears at the bottom of the screen once you've selected at least
-          one.
-        </HelpTooltip>
-        <button
-          className="btn btn-secondary"
           onClick={handleGenerateStoryArchitect}
           disabled={transcriptCount === 0 || producerBusy}
-          title="Builds one story arc from the audience-scored transcript-flagging fragments plus live trend research (real web search, real trending videos actually watched) — requires an audience/content goal set on the Project tab, and the pipeline's transcript-flagging stage to have run"
+          title="Builds 3 real story ideas from your footage, each with a tight one-throughline cut plus a selects pool of everything else on-topic, informed by live trend research (real web search, real trending videos actually watched) — requires an audience/content goal set on the Project tab, and the pipeline's transcript-flagging stage to have run"
         >
           {producerBusy && activeRun?.mode === "story_architect"
             ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                Researching + building arc…
+                Researching + building ideas…
               </>
             )
-            : "Generate from flagged fragments"}
+            : "Generate ideas"}
         </button>
         <HelpTooltip>
-          Builds <strong>one story arc</strong> from the fragments Assistant
-          Editor already flagged as relevant to this project's stated
-          audience/content goal, informed by <strong>live trend research</strong>{" "}
-          — real web search plus real trending videos actually downloaded
-          and watched, not read about. Expand a card's <strong>Research</strong>{" "}
-          section to see the sources. Needs an audience goal set on the
-          Project tab and transcript flagging to have already run.
+          Builds <strong>3 real story ideas</strong> from your footage. Each
+          one is a two-zone timeline: a tight, single-throughline cut on one
+          side, and a selects pool of everything else on-topic on the
+          other, separated by a gap — informed by <strong>live trend
+          research</strong> (real web search plus real trending videos
+          actually downloaded and watched, not read about). Expand a
+          card's <strong>Show research</strong> section to see the sources.
+          Needs an audience goal set on the Project tab and transcript
+          flagging to have already run.
         </HelpTooltip>
         <div className="action-spacer" />
         <details className="legacy-actions">
           <summary className="btn btn-ghost legacy-actions-summary">Legacy tools</summary>
           <div className="legacy-actions-body">
+            <button
+              className="btn"
+              onClick={hasAngles ? handleRequestMoreAngles : handleGenerateAngles}
+              disabled={transcriptCount === 0 || producerBusy}
+              title="PreCut's own original angle generator — one skimmed pass over the raw transcript, no audience-goal awareness, no live research, no tight-cut/pool split. Kept for direct comparison against the real 'Generate ideas' button above, not because it's better."
+            >
+              {producerBusy && (activeRun?.mode === "angles" || activeRun?.mode === "more")
+                ? "Generating…"
+                : hasAngles ? "Generate more (PreCut, legacy)" : "Generate ideas (PreCut, legacy)"}
+            </button>
             <button
               className="btn"
               onClick={handleAnalyze}
