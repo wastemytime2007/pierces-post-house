@@ -201,9 +201,14 @@ def run_export(
             # CLIP matching, no pacing — phrases in source order + brief).
             if idea_kind == "story_angle":
                 try:
-                    from precut_pipeline.story_assembler import (
-                        assemble_cut_from_angle,
-                    )
+                    # 2026-09-04: story_architect angles may carry a
+                    # `pool_ranges` selects pool alongside the tight cut
+                    # (Ryan's real editing workflow — see that module's
+                    # assemble_two_zone_cutlist docstring). It degrades to
+                    # a plain assemble_cut_from_angle call when pool_ranges
+                    # is empty, so this is safe for PreCut's own
+                    # generate_angles ideas too.
+                    from posthouse.story_architect import assemble_two_zone_cutlist as assemble_cut_from_angle
                     from producer import _angle_from_dict  # reuse helper
                 except ImportError as e:
                     emit({"type": "export_error", "job_id": job_id,

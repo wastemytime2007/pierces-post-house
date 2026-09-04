@@ -115,6 +115,7 @@ _anthropic_client = import_precut("precut_pipeline.anthropic_client")
 _config = import_precut("precut_pipeline.config")
 _cutlist = import_precut("precut_pipeline.cutlist")
 _story_planner = import_precut("precut_pipeline.story_planner")
+_story_assembler = import_precut("precut_pipeline.story_assembler")
 
 build_anthropic_client = _anthropic_client.build_anthropic_client
 ANTHROPIC_MODEL = _config.ANTHROPIC_MODEL
@@ -330,11 +331,28 @@ A strong arc usually needs both, and per SoldFast's own brand doctrine, the huma
 FIRST — the audience connects with the people before any pitch, ask, or substantive claim lands \
 (never the reverse, and never a humanizing beat used only to soften an ask that precedes it).
 
-**Phase 2 — select fragments that serve THAT thesis, from the FULL list, not the pre-scored \
-"strong" subset.** A fragment that's small, individually odd, or scored "possible"/"off_topic" \
-in isolation can be exactly right if it serves your thesis — judge it against the thesis you \
-found, not the generic score. You are not obligated to use only "strong"-fit material, and you \
-are not obligated to ignore something just because it looked minor out of context.
+**Phase 2 — build a TIGHT, single-throughline cut, not a sprawling collection of everything \
+relevant.** Corrected 2026-09-04, per Ryan directly, after watching the earlier version produce \
+too much: "It seems like we're just having the ideas spit out anything that could be relevant to \
+the story that could be told... I think more intentional, tighter cuts... that are built out to \
+align more with the researched example found[s] would be better." This is how he actually works: \
+a clean, deliberate, one-throughline build on one side of the timeline, everything else usable on \
+the other. Your `sequence` is that clean build — pick the SMALLEST set of fragments that tells \
+ONE clear thread start to finish (e.g., for a how-to: the real intro, the real steps in order, \
+the one real caution/tip — not every tangent that touched the topic). Favor a structure that \
+matches a real example from the trend research below when one's genuinely relevant (e.g., a real \
+how-to format's pacing) over including one more "nice to have" beat. A fragment that's small, \
+individually odd, or scored "possible"/"off_topic" in isolation can still belong in this tight \
+cut if it's essential to the thesis (see the toad example above) — but "essential" is the bar, \
+not "relevant."
+
+**Phase 3 — everything else genuinely relevant to the SAME topic/thesis goes in `pool_indices`, \
+not the sequence.** This is the raw selects Ryan pulls from on the other side of the timeline \
+while tightening the main cut — real, on-topic, usable material that didn't make the tight cut \
+because it wasn't essential to the one throughline, not because it's bad. Be inclusive here: if a \
+fragment is genuinely about the same subject, include it in the pool even if it repeats or \
+tangents from the main cut. Leave out only genuinely off-topic material (nothing to do with the \
+subject at all) — that goes in neither list.
 
 Hard rules:
 - You may ONLY select from the fragments given to you, by their [index]. Never invent a time \
@@ -373,13 +391,12 @@ Live trend research already gathered for this project (use to inform framing/ton
 </trend_research>
 
 First, in `narrative_thesis`, name the SPECIFIC real tension/misconception/character truth this \
-footage can address — not the generic audience goal restated. Then build ONE story arc that \
-serves that thesis: pick which fragments to use (by index, from the full list above), what role \
-each plays (hook / build / payoff — you may use more than one fragment per role), and the order \
-they should play in. You do not have to use every fragment — leave out anything that doesn't \
-serve the thesis, and say what you left out and why. Do not restrict yourself to "strong"-fit \
-fragments — a small, individually-odd moment that genuinely serves the thesis belongs in the \
-arc even if its isolated fit score was lower.
+footage can address — not the generic audience goal restated. Then produce TWO separate lists, \
+per the tight-cut/pool split above: `sequence` — the tight, single-throughline cut (by index, \
+role hook/build/payoff, in order) — and `pool_indices` — every other genuinely on-topic fragment \
+that didn't make the tight cut. Do not restrict yourself to "strong"-fit fragments for either \
+list — a small, individually-odd moment that genuinely serves the thesis belongs in the sequence \
+even if its isolated fit score was lower, and the pool should be generous with on-topic material.
 
 **Every arc must be able to answer these specific editorial questions (Ryan, 2026-09-04) — fill \
 in `editorial_qna` with a real, specific, concrete answer for each. None may be generic filler \
@@ -408,7 +425,8 @@ Return this exact JSON shape, in a fenced ```json block:
     {{"index": 3, "role": "build"}},
     {{"index": 7, "role": "payoff"}}
   ],
-  "omitted_reasoning": "1-2 sentences on what real fragments were left out and why"
+  "pool_indices": [1, 2, 4, 5, 6, 8, 9],
+  "omitted_reasoning": "1-2 sentences on what's genuinely off-topic and left out of both the sequence and the pool, and why"
 }}"""
 
 
@@ -1256,6 +1274,31 @@ def generate_story_angle(
             f"raw sequence field: {data.get('sequence')!r}"
         )
 
+    # 2026-09-04: the "pool" — everything else genuinely relevant to the
+    # same topic, deliberately left OUT of the tight sequence (see module
+    # docstring / Ryan's real editing workflow). Same dedup + offset
+    # handling as the main sequence; never overlaps it (seen_indices is
+    # shared).
+    pool_ranges: List[TopicRange] = []
+    for raw_idx in data.get("pool_indices", []):
+        try:
+            idx = int(raw_idx)
+        except (TypeError, ValueError):
+            continue
+        if not (0 <= idx < len(candidates)) or idx in seen_indices:
+            continue
+        seen_indices.add(idx)
+        tf = candidates[idx]
+        f = tf.fragment
+        offset = (source_offset_lookup or {}).get(f.source_file, 0.0)
+        pool_ranges.append(TopicRange(
+            source_file=f.source_file,
+            source_start_sec=f.source_start_sec + offset,
+            source_end_sec=f.source_end_sec + offset,
+            topic_label=f.topic_label,
+            summary=f.summary,
+        ))
+
     thesis = str(data.get("narrative_thesis", "")).strip()
     qna = data.get("editorial_qna", {}) or {}
     bigger_story = str(qna.get("bigger_story", "")).strip()
@@ -1317,6 +1360,7 @@ def generate_story_angle(
         angle_id=f"angle_{uuid.uuid4().hex[:10]}",
         brief=brief,
         source_ranges=ranges,
+        pool_ranges=pool_ranges,
     )
     research["omitted_reasoning"] = data.get("omitted_reasoning", "")
     # PreCut's CreativeBrief schema has no field for this (same situation as
@@ -1330,6 +1374,82 @@ def generate_story_angle(
         "viewer_relevance": viewer_relevance, "cta": qna_cta,
     }
     return angle, research
+
+
+POOL_GAP_SEC = 45.0  # real blank timeline space between the tight cut and the selects pool
+
+
+def assemble_two_zone_cutlist(angle: "StoryAngle", transcript, db=None, **assemble_kwargs):
+    """Real editing workflow, per Ryan directly (2026-09-04): "I build my
+    storyline on the left side of the timeline and then I pull in all of
+    the extra sound bites, b-roll and other things that I might use on the
+    right side... with a little bit of space between those two chunks."
+
+    Builds the tight cut (`angle.source_ranges`) and the selects pool
+    (`angle.pool_ranges`) as two SEPARATE calls to PreCut's own, unmodified
+    `assemble_cut_from_angle` — reusing its real file resolution, native
+    dims, and B-roll marker generation for both halves rather than
+    reimplementing any of it — then merges them onto one CutList: the
+    pool's phrases/markers are timeline-shifted to start after the tight
+    cut plus a real gap, with phrase ids remapped to a disjoint range so
+    attached B-roll/flag markers still resolve correctly after the merge.
+
+    `assemble_kwargs` should be exactly what the caller would otherwise
+    pass straight to `assemble_cut_from_angle` (preset_key,
+    source_offset_map, source_to_original, aspect_key, platform_key) —
+    both halves are built with the same real project state.
+
+    Returns a plain `assemble_cut_from_angle`-equivalent CutList when
+    `angle.pool_ranges` is empty (nothing to merge) — safe to call
+    unconditionally on any angle, including PreCut's own generate_angles
+    output, which never sets pool_ranges."""
+    assemble_cut_from_angle = _story_assembler.assemble_cut_from_angle
+
+    left = assemble_cut_from_angle(angle=angle, transcript=transcript, db=db, **assemble_kwargs)
+    if not angle.pool_ranges:
+        return left
+
+    pool_angle = StoryAngle(
+        angle_id=angle.angle_id + "_pool",
+        brief=CreativeBrief(title="", hook="", why_it_works="", tone="", target_duration_sec=0.0),
+        source_ranges=angle.pool_ranges,
+        selected_platform_key=angle.selected_platform_key,
+        selected_aspect_key=angle.selected_aspect_key,
+    )
+    right = assemble_cut_from_angle(angle=pool_angle, transcript=transcript, db=db, **assemble_kwargs)
+    if not right.aroll_track:
+        return left
+
+    shift = left.total_duration + POOL_GAP_SEC
+    # Disjoint from both halves' own internal id counters (each starts
+    # fresh at 1_000_000 inside assemble_cut_from_angle) so attached
+    # markers can be remapped without colliding with the left side's ids.
+    id_offset = 5_000_000
+    remap = {}
+    for p in right.aroll_track:
+        remap[p.phrase_id] = p.phrase_id + id_offset
+        p.phrase_id += id_offset
+        p.timeline_start += shift
+        p.timeline_end += shift
+
+    for m in right.broll_markers:
+        m.timeline_time += shift
+        if m.phrase_id in remap:
+            m.phrase_id = remap[m.phrase_id]
+        if m.attach_to_phrase_id in remap:
+            m.attach_to_phrase_id = remap[m.attach_to_phrase_id]
+
+    for m in right.flag_markers:
+        m.timeline_start += shift
+        m.timeline_end += shift
+        if m.attach_to_phrase_id in remap:
+            m.attach_to_phrase_id = remap[m.attach_to_phrase_id]
+
+    left.aroll_track.extend(right.aroll_track)
+    left.broll_markers.extend(right.broll_markers)
+    left.flag_markers.extend(right.flag_markers)
+    left.total_duration = shift + right.total_duration
+    return left
 
 
 def save_story_angle_as_idea(project_plans_dir: Path, angle: "StoryAngle") -> Path:

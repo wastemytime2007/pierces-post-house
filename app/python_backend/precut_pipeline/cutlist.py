@@ -192,6 +192,16 @@ class StoryAngle:
     # having to re-load the full transcript every time.
     phrase_previews: list[str] = field(default_factory=list)
 
+    # 2026-09-04 (posthouse's story_architect, per Ryan's real editing
+    # workflow): a SECOND, separate list of ranges — genuinely relevant
+    # to the same topic/thesis as source_ranges, but deliberately left
+    # OUT of the tight narrative cut. Placed after a real gap on the
+    # timeline as a raw selects pool the editor can pull from while
+    # tightening the main cut — never sequenced into a story. Empty for
+    # any angle that doesn't use this (e.g. PreCut's own generate_angles
+    # output), so old code paths and old persisted angles are unaffected.
+    pool_ranges: list[TopicRange] = field(default_factory=list)
+
     @property
     def total_duration_sec(self) -> float:
         """Sum of all range durations. Used for UI display and budget guard."""

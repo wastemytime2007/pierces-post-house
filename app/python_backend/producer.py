@@ -651,22 +651,31 @@ def _angle_from_dict(d: dict):
         target_audience=brief_d.get("target_audience", ""),
         call_to_action=brief_d.get("call_to_action", ""),
     )
-    source_ranges: list = []
-    for rr in d.get("source_ranges", []) or []:
-        try:
-            source_ranges.append(TopicRange(
-                source_file=str(rr.get("source_file", "")),
-                source_start_sec=float(rr.get("source_start_sec", 0.0)),
-                source_end_sec=float(rr.get("source_end_sec", 0.0)),
-                topic_label=str(rr.get("topic_label", "")),
-                summary=str(rr.get("summary", "")),
-            ))
-        except (TypeError, ValueError):
-            continue
+    def _parse_ranges(raw_list):
+        out = []
+        for rr in raw_list or []:
+            try:
+                out.append(TopicRange(
+                    source_file=str(rr.get("source_file", "")),
+                    source_start_sec=float(rr.get("source_start_sec", 0.0)),
+                    source_end_sec=float(rr.get("source_end_sec", 0.0)),
+                    topic_label=str(rr.get("topic_label", "")),
+                    summary=str(rr.get("summary", "")),
+                ))
+            except (TypeError, ValueError):
+                continue
+        return out
+
+    source_ranges = _parse_ranges(d.get("source_ranges"))
+    # 2026-09-04: posthouse's story_architect-only field — see
+    # cutlist.StoryAngle.pool_ranges docstring. Empty for any angle that
+    # doesn't set it (e.g. PreCut's own generate_angles output).
+    pool_ranges = _parse_ranges(d.get("pool_ranges"))
     return StoryAngle(
         angle_id=d.get("angle_id", ""),
         brief=brief,
         source_ranges=source_ranges,
+        pool_ranges=pool_ranges,
         phrase_ids=list(d.get("phrase_ids", [])),
         suggested_preset=d.get("suggested_preset", ""),
         selected_platform_key=d.get("selected_platform_key", "") or "",
