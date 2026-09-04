@@ -218,6 +218,27 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Correction to the entry below, same day: fixed-interval
+  still frames cannot tell you anything about editing.** Ryan's exact,
+  correct objection: "You cant understand video editing trends by
+  looking at 4 random frames." He was right — pacing, rhythm, and
+  transition style are properties of CUTS over TIME, not of any single
+  image; more evenly-spaced stills would have been the same category of
+  nothing, just more of it. Real fix: `_detect_cuts()` runs ffmpeg's
+  actual scene-change filter on the downloaded video to find real cut
+  timestamps; `_watch_video()` extracts the real frame immediately
+  before/after a spread of those cuts (across the whole video, not just
+  the start) and computes real MEASURED cuts-per-second and
+  average-shot-length from the actual detected cuts — a hard number
+  handed to Claude explicitly, not an impression. Re-tested directly
+  against the same real `@rooshome` TikTok as the entry below: 13 real
+  detected cuts over 17.1s (0.76 cuts/sec, ~1.2s avg shot), hard cuts
+  with no transition effects — verified correct by inspection. Also
+  verified the zero-cuts edge case (a real static single-shot reel)
+  honestly reports 0.0 cuts/sec and falls back to content-only stills
+  rather than fabricating a pacing claim it has no basis for. Surfaced
+  the real numbers directly in the "Show research" UI as a hard metric
+  line. *(7833b66.)* **Not yet reviewed by Ryan.**
 - 2026-09-03 — **Story architect: trend research made to actually watch
   real videos, and made visible in the app — two real gaps Ryan found in
   the entry below, both fixed for real.** He asked, correctly: "Where do
