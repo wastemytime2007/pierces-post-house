@@ -69,6 +69,19 @@ class SyncPair:
     # mutating the score. Lets the UI keep showing the original score
     # while is_reliable returns True.
     promoted_via_consistency: bool = False
+    # 2026-09-03: the windowed coverage rescue (posthouse/sync_coverage.py,
+    # run automatically for every unreliable pair) is expensive -- N
+    # windowed correlations vs one whole-file pass. Ryan hit this for
+    # real: clicking "Organize" again re-ran the rescue for all 42 weak
+    # pairs from scratch, unconditionally, every time, even though
+    # sync_project()'s own reliability score for a pair never changes
+    # run to run (it's deterministic). Set True the first time a rescue
+    # is ATTEMPTED for this pair (success or not) so a later run can
+    # reuse that outcome instead of re-scanning -- distinct from
+    # promoted_via_consistency, which is only true on a SUCCESSFUL
+    # rescue; this tracks "already tried," including failed attempts,
+    # so those don't get retried forever either.
+    rescue_attempted: bool = False
 
     @property
     def is_reliable(self) -> bool:

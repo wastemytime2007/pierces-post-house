@@ -375,6 +375,18 @@ def _run_audio_sync(
     """
     from precut_pipeline.audio_sync import sync_project
 
+    # 2026-09-03: capture the PRIOR run's rescue outcomes before
+    # force_audio_sync (if set) wipes them, or before sync_project()
+    # overwrites job.project.audio_sync with fresh (but rescue-blank)
+    # pairs. Keyed by (aroll_file, audio_file) since that's a pair's
+    # real identity across runs. See SyncPair.rescue_attempted's
+    # docstring for why this exists.
+    previous_rescues: dict[tuple[str, str], dict] = {}
+    if job.project.audio_sync and not job.force_audio_sync:
+        for p in job.project.audio_sync.get("pairs", []):
+            if p.get("rescue_attempted"):
+                previous_rescues[(p.get("aroll_file"), p.get("audio_file"))] = p
+
     if job.force_audio_sync:
         job.project.audio_sync = None
 
@@ -401,17 +413,45 @@ def _run_audio_sync(
     # match just stays as PreCut originally scored it -- this never
     # invents a sync that isn't there.
     unreliable = [p for p in state.pairs if not p.is_reliable]
+    # Split out pairs whose rescue was already attempted last time —
+    # reuse that outcome instead of re-scanning. See SyncPair.
+    # rescue_attempted's docstring: this is what stops "Organize" from
+    # re-running an expensive windowed correlation over the same weak
+    # pairs on every click when nothing about them has changed.
+    to_reuse = []
+    to_scan = []
+    for pair in unreliable:
+        prev = previous_rescues.get((pair.aroll_file, pair.audio_file))
+        if prev is not None:
+            to_reuse.append((pair, prev))
+        else:
+            to_scan.append(pair)
+
     rescued_count = 0
-    if unreliable and not job.cancel_flag.is_set():
+    if to_reuse:
+        emit({
+            "type": "log", "level": "dim", "job_id": job.job_id,
+            "message": f"Reusing {len(to_reuse)} previously-attempted rescue result(s) — "
+                       f"nothing changed since last run.",
+        })
+        for pair, prev in to_reuse:
+            pair.rescue_attempted = True
+            if prev.get("promoted_via_consistency"):
+                pair.offset_sec = prev.get("offset_sec", pair.offset_sec)
+                pair.promoted_via_consistency = True
+                rescued_count += 1
+
+    if to_scan and not job.cancel_flag.is_set():
         from posthouse.sync_coverage import analyze_pair_coverage
 
         emit({
             "type": "log", "level": "accent", "job_id": job.job_id,
-            "message": f"━━ Rescuing {len(unreliable)} weak sync pair(s) — checking for usable stretches ━━",
+            "message": f"━━ Rescuing {len(to_scan)} weak sync pair(s) — checking for usable stretches ━━",
         })
-        for i, pair in enumerate(unreliable):
+        for i, pair in enumerate(to_scan):
             if job.cancel_flag.is_set():
                 break
+            pair.rescue_attempted = True
             try:
                 coverage = analyze_pair_coverage(
                     Path(pair.aroll_proxy), Path(pair.audio_file),
@@ -431,7 +471,7 @@ def _run_audio_sync(
                       "message": f"  ✓ {aroll_name} ↔ {audio_name}: found a usable stretch, offset {coverage.accepted_offset_sec:+.2f}s"})
             else:
                 emit({"type": "log", "level": "dim", "job_id": job.job_id,
-                      "message": f"  ✗ {aroll_name} ↔ {audio_name}: no usable stretch found ({i + 1}/{len(unreliable)})"})
+                      "message": f"  ✗ {aroll_name} ↔ {audio_name}: no usable stretch found ({i + 1}/{len(to_scan)})"})
 
     # Persist on the project object — save() call in run_pipeline handles disk
     job.project.audio_sync = state.to_dict()
