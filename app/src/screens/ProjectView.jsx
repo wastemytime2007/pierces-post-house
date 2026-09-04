@@ -45,6 +45,11 @@ export default function ProjectView({
   // Keyed by job_id. Each entry tracks per-stage progress.
   const [jobs, setJobs] = useState({});
   const [ideas, setIdeas] = useState([]);
+  // 2026-09-03: sourced trend-research audit trail behind a story_architect
+  // angle, keyed by idea_id — fetched on demand (get_story_research), not
+  // preloaded with the idea list, since most ideas (PreCut's own
+  // story_generate) have none.
+  const [researchByIdea, setResearchByIdea] = useState({});
 
   // Subscribe to pipeline/producer events
   useEffect(() => {
@@ -193,6 +198,8 @@ export default function ProjectView({
         setIdeas(ev.ideas || []);
       } else if (ev.type === "idea_deleted") {
         setIdeas((prev) => prev.filter((i) => i.idea_id !== ev.idea_id));
+      } else if (ev.type === "story_research") {
+        setResearchByIdea((prev) => ({ ...prev, [ev.idea_id]: ev.research }));
       }
     });
   }, [subscribe]);
@@ -269,6 +276,7 @@ export default function ProjectView({
             <IdeasTab
               project={project}
               ideas={ideas}
+              researchByIdea={researchByIdea}
               jobs={jobs}
               transcriptCount={transcriptCount}
               settings={settings}

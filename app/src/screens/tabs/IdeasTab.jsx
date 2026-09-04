@@ -26,7 +26,7 @@ import AutoIncludeNudge from "../../components/AutoIncludeNudge.jsx";
  * for now (opens ExportModal as usual).
  */
 export default function IdeasTab({
-  project, ideas, jobs, transcriptCount, settings, onOpenApiKeyHelp,
+  project, ideas, researchByIdea, jobs, transcriptCount, settings, onOpenApiKeyHelp,
   shouldShowAutoIncludeNudge, onMarkAutoIncludeNudgeSeen, onOpenAutoIncludeModal,
   // Drop 4.47.3: live rule count for the ExportModal "Apply default
   // includes" toggle. We just forward it; the toggle and gating logic
@@ -104,7 +104,7 @@ export default function IdeasTab({
     );
     const producerJobs = Object.entries(jobs).filter(([id]) =>
       id.startsWith("analyze-") || id.startsWith("plan-") || id.startsWith("refine-") ||
-      id.startsWith("angles-")
+      id.startsWith("angles-") || id.startsWith("story-architect-")
     );
     const producerRunning = producerJobs.some(([, j]) => j.status === "running");
     setProducerBusy(producerRunning);
@@ -148,6 +148,26 @@ export default function IdeasTab({
     } catch (e) {
       setActiveRun(null);
       console.error("story_generate failed:", e);
+    }
+  }, [ideas.length]);
+
+  // 2026-09-03: story architect — builds ONE angle from already-flagged,
+  // audience-scored transcript fragments plus live trend research (real
+  // web search + real videos actually downloaded and watched). Distinct
+  // from "Generate ideas" (PreCut's own generate_angles: no audience-goal
+  // awareness, no live research, re-skims the transcript every time) so
+  // both stay comparable side by side rather than one silently replacing
+  // the other.
+  const handleGenerateStoryArchitect = useCallback(async () => {
+    setActiveRun({ mode: "story_architect", expected: 1, ideasAtStart: ideas.length });
+    try {
+      await sendCommand({
+        type: "story_architect_generate",
+        job_id: `story-architect-${Date.now()}`,
+      });
+    } catch (e) {
+      setActiveRun(null);
+      console.error("story_architect_generate failed:", e);
     }
   }, [ideas.length]);
 
@@ -291,6 +311,30 @@ export default function IdeasTab({
           appears at the bottom of the screen once you've selected at least
           one.
         </HelpTooltip>
+        <button
+          className="btn btn-secondary"
+          onClick={handleGenerateStoryArchitect}
+          disabled={transcriptCount === 0 || producerBusy}
+          title="Builds one story arc from the audience-scored transcript-flagging fragments plus live trend research (real web search, real trending videos actually watched) — requires an audience/content goal set on the Project tab, and the pipeline's transcript-flagging stage to have run"
+        >
+          {producerBusy && activeRun?.mode === "story_architect"
+            ? (
+              <>
+                <span className="btn-spinner" aria-hidden="true" />
+                Researching + building arc…
+              </>
+            )
+            : "Generate from flagged fragments"}
+        </button>
+        <HelpTooltip>
+          Builds <strong>one story arc</strong> from the fragments Assistant
+          Editor already flagged as relevant to this project's stated
+          audience/content goal, informed by <strong>live trend research</strong>{" "}
+          — real web search plus real trending videos actually downloaded
+          and watched, not read about. Expand a card's <strong>Research</strong>{" "}
+          section to see the sources. Needs an audience goal set on the
+          Project tab and transcript flagging to have already run.
+        </HelpTooltip>
         <div className="action-spacer" />
         <details className="legacy-actions">
           <summary className="btn btn-ghost legacy-actions-summary">Legacy tools</summary>
@@ -425,6 +469,10 @@ export default function IdeasTab({
               <IdeaCard
                 key={idea.idea_id}
                 idea={idea}
+                research={researchByIdea?.[idea.idea_id]}
+                onFetchResearch={() =>
+                  sendCommand({ type: "get_story_research", idea_id: idea.idea_id }).catch(() => {})
+                }
                 onRefine={() => setRefineTarget(idea.idea_id)}
                 onDiscard={() => handleDiscard(idea.idea_id)}
                 onSetPreset={handleSetAnglePreset}
@@ -571,7 +619,7 @@ function GeneratingPanel({ activeRun, generatedCount, compact = false }) {
 }
 
 
-function IdeaCard({ idea, onRefine, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
+function IdeaCard({ idea, research, onFetchResearch, onRefine, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
   const d = idea.data || {};
   const isAngle = idea.kind === "story_angle";
   const isFull = idea.kind === "deliverable";
@@ -581,6 +629,8 @@ function IdeaCard({ idea, onRefine, onDiscard, onSetPreset, onSetPlatformAndAspe
     return (
       <StoryAngleCard
         idea={idea}
+        research={research}
+        onFetchResearch={onFetchResearch}
         onDiscard={onDiscard}
         onSetPreset={onSetPreset}
         onSetPlatformAndAspect={onSetPlatformAndAspect}
@@ -696,7 +746,7 @@ function IdeaCard({ idea, onRefine, onDiscard, onSetPreset, onSetPlatformAndAspe
 // Story Angle card — Drop 4.0
 // ---------------------------------------------------------------------------
 
-function StoryAngleCard({ idea, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
+function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
   const d = idea.data || {};
   const brief = d.brief || {};
   const title = brief.title || "Untitled angle";
@@ -732,6 +782,18 @@ function StoryAngleCard({ idea, onDiscard, onSetPreset, onSetPlatformAndAspect, 
   const [showAllItems, setShowAllItems] = useState(false);
   const visibleRanges = showAllItems ? sourceRanges : sourceRanges.slice(0, 3);
   const visiblePreviews = showAllItems ? previews : previews.slice(0, 4);
+
+  // 2026-09-03: sourced trend-research audit trail — the answer to "where
+  // do I see any of that." `research` is undefined until fetched, null
+  // once fetched but this angle has none (PreCut's own generate_angles
+  // cards never will), or the real {text_findings, video_findings,
+  // unverified} object once loaded.
+  const [showResearch, setShowResearch] = useState(false);
+  const handleToggleResearch = () => {
+    const next = !showResearch;
+    setShowResearch(next);
+    if (next && research === undefined) onFetchResearch?.();
+  };
 
   // Compute which aspects are valid for the selected platform. If platform
   // is "" (None), all aspects are valid. When platform has a constraint and
@@ -812,6 +874,94 @@ function StoryAngleCard({ idea, onDiscard, onSetPreset, onSetPlatformAndAspect, 
           <span className="idea-card-meta-label">CTA:</span> {cta}
         </div>
       )}
+
+      <div className="idea-card-research">
+        <button
+          type="button"
+          className="btn btn-link btn-sm"
+          onClick={handleToggleResearch}
+        >
+          {showResearch ? "Hide research" : "Show research"}
+        </button>
+        {showResearch && (
+          research === undefined ? (
+            <div className="idea-card-research-body idea-card-research-loading">
+              Loading…
+            </div>
+          ) : research === null ? (
+            <div className="idea-card-research-body idea-card-research-empty">
+              No research on file for this idea — it wasn't built by the
+              story architect (probably one of PreCut's own "Generate
+              ideas" angles, which don't do live trend research).
+            </div>
+          ) : (
+            <div className="idea-card-research-body">
+              {research.video_findings?.filter((v) => v.relevant).length > 0 && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">
+                    Actually watched (real videos, real frames)
+                  </div>
+                  <ul className="idea-card-research-list">
+                    {research.video_findings.filter((v) => v.relevant).map((v, i) => (
+                      <li key={i}>
+                        <a href={v.url} target="_blank" rel="noreferrer">{v.url}</a>
+                        <div className="idea-card-research-note">{v.observed}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {research.text_findings?.length > 0 && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">Sourced from articles</div>
+                  <ul className="idea-card-research-list">
+                    {research.text_findings.map((f, i) => (
+                      <li key={i}>
+                        {f.finding}
+                        {f.source && (
+                          <>
+                            {" "}—{" "}
+                            <a href={f.source} target="_blank" rel="noreferrer">source</a>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {research.video_findings?.some((v) => !v.relevant) && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">
+                    Checked, but not actually relevant (excluded from reasoning)
+                  </div>
+                  <ul className="idea-card-research-list idea-card-research-list-muted">
+                    {research.video_findings.filter((v) => !v.relevant).map((v, i) => (
+                      <li key={i}>
+                        <a href={v.url} target="_blank" rel="noreferrer">{v.url}</a>
+                        <div className="idea-card-research-note">{v.observed}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {research.unverified?.length > 0 && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">Unverified / came up empty</div>
+                  <ul className="idea-card-research-list idea-card-research-list-muted">
+                    {research.unverified.map((u, i) => <li key={i}>{u}</li>)}
+                  </ul>
+                </div>
+              )}
+              {research.omitted_reasoning && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">Real material left out</div>
+                  <p className="idea-card-research-note">{research.omitted_reasoning}</p>
+                </div>
+              )}
+            </div>
+          )
+        )}
+      </div>
 
       {useRanges && (
         <div className="idea-card-phrases">

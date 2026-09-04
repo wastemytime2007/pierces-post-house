@@ -583,6 +583,77 @@ def handle_story_generate(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_story_architect_generate(cmd: dict) -> None:
+    """2026-09-03: generate ONE real story angle from a project's already-
+    exhaustive, audience-scored transcript-flagging fragments plus live
+    trend research (posthouse.story_architect) — the Creative Editor's
+    story+assembly selection step. Distinct from `story_generate`
+    (PreCut's own generate_angles, which re-skims the transcript with no
+    audience-goal awareness and no live research) — this is deliberately
+    a separate button, not a replacement, so both remain comparable in
+    the Ideas UI."""
+    proj = _require_project()
+    if proj is None:
+        return
+    job_id = cmd.get("job_id") or f"story-architect-{int(time.time())}"
+
+    cancel_flag = threading.Event()
+    with _jobs_lock:
+        _jobs[job_id] = ActiveJob(job_id, cancel_flag)
+
+    def worker():
+        try:
+            from posthouse.story_architect import run_generate_story_angle
+            run_generate_story_angle(proj, job_id, emit=emit)
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+        finally:
+            with _jobs_lock:
+                _jobs.pop(job_id, None)
+
+    _executor.submit(worker)
+
+
+def handle_get_story_research(cmd: dict) -> None:
+    """Fetch the sourced trend-research audit trail behind one story
+    angle (2026-09-03) — the "where do I see any of that" answer: real
+    text findings with URLs, real videos actually downloaded and watched
+    with what was observed, and what searches came up empty. Not folded
+    into the idea JSON itself (PreCut's own schema) — a separate file,
+    fetched on demand when the UI expands a card."""
+    proj = _require_project()
+    if proj is None:
+        return
+    idea_id = cmd.get("idea_id", "").strip()
+    if not idea_id:
+        err("idea_id is required")
+        return
+
+    # The idea JSON's angle_id is what names the research file (they're
+    # created together in run_generate_story_angle, but the idea_id the
+    # UI knows is the plans/*.json filename stem).
+    idea_path = proj.plans_dir() / f"{idea_id}.json"
+    if not idea_path.exists():
+        emit({"type": "story_research", "idea_id": idea_id, "research": None})
+        return
+    try:
+        payload = json.loads(idea_path.read_text())
+        angle_id = (payload.get("data") or {}).get("angle_id", "")
+    except Exception:
+        emit({"type": "story_research", "idea_id": idea_id, "research": None})
+        return
+
+    research_path = proj.dir() / "story_research" / f"{angle_id}.json"
+    if not research_path.exists():
+        emit({"type": "story_research", "idea_id": idea_id, "research": None})
+        return
+    try:
+        research = json.loads(research_path.read_text())
+    except Exception:
+        research = None
+    emit({"type": "story_research", "idea_id": idea_id, "research": research})
+
+
 def handle_set_angle_preset(cmd: dict) -> None:
     """Drop 4.0: update the per-angle format preset (from Idea card dropdown)."""
     proj = _require_project()
@@ -878,6 +949,10 @@ HANDLERS = {
     "delete_idea": handle_delete_idea,
     # Drop 4.0: story angles
     "story_generate": handle_story_generate,
+    # 2026-09-03: Creative Editor story architect (audience-goal + live
+    # trend research + flagged fragments, distinct from story_generate)
+    "story_architect_generate": handle_story_architect_generate,
+    "get_story_research": handle_get_story_research,
     "set_angle_preset": handle_set_angle_preset,
     "set_angle_platform_and_aspect": handle_set_angle_platform_and_aspect,
     # Settings

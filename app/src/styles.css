@@ -2008,6 +2008,58 @@ kbd {
   border: 1px solid var(--bg-3);
 }
 
+.idea-card-research {
+  margin-top: 8px;
+}
+
+.idea-card-research-body {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--bg-3);
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.idea-card-research-loading,
+.idea-card-research-empty {
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.idea-card-research-section {
+  margin-bottom: 10px;
+}
+
+.idea-card-research-section:last-child {
+  margin-bottom: 0;
+}
+
+.idea-card-research-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.idea-card-research-list a {
+  color: var(--accent, #4a9eff);
+  word-break: break-all;
+}
+
+.idea-card-research-list-muted {
+  opacity: 0.65;
+}
+
+.idea-card-research-note {
+  margin-top: 2px;
+  color: var(--text-2);
+  line-height: 1.4;
+}
+
 .idea-card-phrases-list {
   list-style: none;
   padding: 0;
