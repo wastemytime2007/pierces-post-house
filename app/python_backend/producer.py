@@ -117,7 +117,11 @@ def run_analyze(
         producer_error
     """
     # Gather transcript paths
-    transcript_paths = sorted(project.transcripts_dir().glob("*.json"))
+    # Path.glob("*.json") matches macOS AppleDouble sidecars ("._<name>.json")
+    # too, unlike shell glob — confirmed real on an external drive, 2026-09-04.
+    transcript_paths = sorted(
+        p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+    )
     if not transcript_paths:
         emit({"type": "producer_error", "job_id": job_id,
               "message": "No transcripts found. Run the pipeline first."})
@@ -212,7 +216,11 @@ def run_directed_plan(
         producer_done
         producer_error
     """
-    transcript_paths = sorted(project.transcripts_dir().glob("*.json"))
+    # Path.glob("*.json") matches macOS AppleDouble sidecars ("._<name>.json")
+    # too, unlike shell glob — confirmed real on an external drive, 2026-09-04.
+    transcript_paths = sorted(
+        p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+    )
     if not transcript_paths:
         emit({"type": "producer_error", "job_id": job_id,
               "message": "No transcripts found. Run the pipeline first."})
@@ -310,7 +318,11 @@ def run_refine(
         emit({"type": "producer_error", "job_id": job_id, "message": str(e)})
         return
 
-    transcript_paths = sorted(project.transcripts_dir().glob("*.json"))
+    # Path.glob("*.json") matches macOS AppleDouble sidecars ("._<name>.json")
+    # too, unlike shell glob — confirmed real on an external drive, 2026-09-04.
+    transcript_paths = sorted(
+        p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+    )
     if not transcript_paths:
         emit({"type": "producer_error", "job_id": job_id,
               "message": "No transcripts — can't refine without source material."})
@@ -467,7 +479,11 @@ def run_generate_angles(
         producer_done (with total count)
         producer_error
     """
-    transcript_paths = sorted(project.transcripts_dir().glob("*.json"))
+    # Path.glob("*.json") matches macOS AppleDouble sidecars ("._<name>.json")
+    # too, unlike shell glob — confirmed real on an external drive, 2026-09-04.
+    transcript_paths = sorted(
+        p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+    )
     if not transcript_paths:
         emit({"type": "producer_error", "job_id": job_id,
               "message": "No transcripts found. Run the pipeline first."})

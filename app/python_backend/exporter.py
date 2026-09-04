@@ -152,8 +152,13 @@ def run_export(
                   "traceback": traceback.format_exc()})
             return
 
-        # Matcher needs the combined transcript + B-roll index
-        transcript_paths = sorted(project.transcripts_dir().glob("*.json"))
+        # Matcher needs the combined transcript + B-roll index.
+        # Path.glob("*.json") matches macOS AppleDouble sidecars
+        # ("._<name>.json") too, unlike shell glob — confirmed real on an
+        # external drive, 2026-09-04. Filter explicitly.
+        transcript_paths = sorted(
+            p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+        )
         if not transcript_paths:
             emit({"type": "export_error", "job_id": job_id,
                   "message": "No A-roll transcripts found."})
@@ -837,6 +842,8 @@ def _build_all_aroll_sequences(
     # out a duration, skip the file.
     transcript_duration_by_path: dict[str, float] = {}
     for tp in project.transcripts_dir().glob("*.json"):
+        if tp.name.startswith("."):
+            continue  # AppleDouble sidecar, not a real transcript — see note above
         try:
             with open(tp) as f:
                 data = json.load(f)

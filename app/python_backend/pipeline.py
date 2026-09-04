@@ -531,7 +531,13 @@ def _run_transcript_flagging(
         return
 
     transcript_dir = job.project.transcripts_dir()
-    transcript_files = sorted(transcript_dir.glob("*.json"))
+    # Path.glob("*.json") matches macOS AppleDouble sidecars ("._<name>.json")
+    # too, unlike shell glob — confirmed real on the RDOSS external drive,
+    # 2026-09-04 (posthouse/story_architect.py hit the same issue on its own
+    # flags-dir glob). Filter explicitly rather than relying on glob semantics.
+    transcript_files = sorted(
+        p for p in transcript_dir.glob("*.json") if not p.name.startswith(".")
+    )
     if not transcript_files:
         return
 

@@ -469,6 +469,7 @@ export default function IdeasTab({
               <IdeaCard
                 key={idea.idea_id}
                 idea={idea}
+                projectDir={project?.resolved_dir}
                 research={researchByIdea?.[idea.idea_id]}
                 onFetchResearch={() =>
                   sendCommand({ type: "get_story_research", idea_id: idea.idea_id }).catch(() => {})
@@ -619,7 +620,7 @@ function GeneratingPanel({ activeRun, generatedCount, compact = false }) {
 }
 
 
-function IdeaCard({ idea, research, onFetchResearch, onRefine, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
+function IdeaCard({ idea, projectDir, research, onFetchResearch, onRefine, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
   const d = idea.data || {};
   const isAngle = idea.kind === "story_angle";
   const isFull = idea.kind === "deliverable";
@@ -629,6 +630,7 @@ function IdeaCard({ idea, research, onFetchResearch, onRefine, onDiscard, onSetP
     return (
       <StoryAngleCard
         idea={idea}
+        projectDir={projectDir}
         research={research}
         onFetchResearch={onFetchResearch}
         onDiscard={onDiscard}
@@ -746,7 +748,7 @@ function IdeaCard({ idea, research, onFetchResearch, onRefine, onDiscard, onSetP
 // Story Angle card — Drop 4.0
 // ---------------------------------------------------------------------------
 
-function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
+function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
   const d = idea.data || {};
   const brief = d.brief || {};
   const title = brief.title || "Untitled angle";
@@ -755,6 +757,14 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
   const tone = brief.tone || "";
   const audience = brief.target_audience || "";
   const cta = brief.call_to_action || "";
+  // 2026-09-04: the on-disk Brief file's path is fully derivable from the
+  // project dir + this angle's own id (see save_story_brief) — no need to
+  // thread a one-time event field through state that would go stale on
+  // reload. Only story_architect angles have angle_id; PreCut's own
+  // generate_angles cards don't produce a brief file.
+  const briefPath = (projectDir && d.angle_id)
+    ? `${projectDir}/briefs/${d.angle_id}.md`
+    : null;
   // Drop 4.1: prefer source_ranges for the preview list; fall back to
   // phrase_previews for old Drop 4.0 angles persisted before the 4.1 pivot.
   const sourceRanges = d.source_ranges || [];
@@ -874,6 +884,14 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
           <span className="idea-card-meta-label">CTA:</span> {cta}
         </div>
       )}
+      {briefPath && (
+        <div className="idea-card-meta-row">
+          <span className="idea-card-meta-label">Brief file:</span>{" "}
+          <span className="idea-card-brief-path" title="Open this file to see the full pitch, sequence, and every sourced example link — for the editor cutting this timeline">
+            {briefPath}
+          </span>
+        </div>
+      )}
 
       <div className="idea-card-research">
         <button
@@ -922,6 +940,12 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
                         {t.source && (
                           <div className="idea-card-research-note">
                             <a href={t.source} target="_blank" rel="noreferrer">source</a>
+                            {t.listen_url && (
+                              <>
+                                {" · "}
+                                <a href={t.listen_url} target="_blank" rel="noreferrer">🎵 listen/download</a>
+                              </>
+                            )}
                           </div>
                         )}
                       </li>
@@ -949,6 +973,12 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
                             🎵 {v.audio_track || "Unknown track"}
                             {v.audio_artist ? ` — ${v.audio_artist}` : ""}
                             {" "}(real audio credit from the video's own metadata)
+                            {v.audio_listen_url && (
+                              <>
+                                {" · "}
+                                <a href={v.audio_listen_url} target="_blank" rel="noreferrer">listen/download</a>
+                              </>
+                            )}
                           </div>
                         )}
                         <div className="idea-card-research-note">{v.observed}</div>

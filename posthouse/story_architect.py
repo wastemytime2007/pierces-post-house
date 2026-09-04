@@ -91,6 +91,7 @@ than smoothed over.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import re
 import subprocess
@@ -102,6 +103,13 @@ from typing import Dict, List, Optional
 
 from posthouse.precut_bridge import import_precut
 from posthouse.audience_relevance import TaggedFragment, load_tagged_fragments
+
+# app_support_dir() lives in the app's own project.py, not PreCut donor
+# code — safe to import directly (unlike precut_pipeline, which must go
+# through import_precut). Used for the cross-project research cache: a
+# audience/goal profile is shared across projects, so the cache should be
+# too, not siloed per-project.
+from project import app_support_dir
 
 _anthropic_client = import_precut("precut_pipeline.anthropic_client")
 _config = import_precut("precut_pipeline.config")
@@ -173,8 +181,13 @@ I need actual NAMES — a specific trending sound/song title, a named challenge/
 format — not a generic statement like "short-form video is popular" or "before/after content \
 does well."
 
+**If a trend is a specific sound/song, also find a real, direct link where an editor could \
+actually listen to or download it** (Spotify, Apple Music, YouTube, SoundCloud, or the TikTok/\
+Instagram sound-page itself) — not just an article that mentions it. Leave `listen_url` empty if \
+you can't find a real one; never fabricate a link.
+
 After searching, return ONLY this JSON in a fenced ```json block — no preamble:
-{{"trends": [{{"name": "the specific trend/sound/challenge name", "description": "...", "source": "https://..."}}]}}
+{{"trends": [{{"name": "the specific trend/sound/challenge name", "description": "...", "source": "https://...", "listen_url": "https://... or empty string if not a sound/not found"}}]}}
 
 If you genuinely cannot find a specific named trend for this niche, return an EMPTY list — \
 {{"trends": []}} — do NOT invent a placeholder entry explaining that none was found; an empty \
@@ -461,6 +474,40 @@ def _get_audio_credit(url: str) -> Optional[dict]:
     return {"track": track, "artist": artist}
 
 
+AUDIO_LISTEN_LINK_PROMPT = """Search the web for a real, direct link where someone could \
+actually listen to or download this specific track:
+
+Track: {track}
+Artist: {artist}
+
+I need a real link — Spotify, Apple Music, YouTube, SoundCloud, or a TikTok/Instagram sound \
+page — not a page that merely mentions the song. Return ONLY this JSON, in a fenced ```json \
+block: {{"listen_url": "https://... or empty string if you can't find a real one"}}. Never \
+fabricate a link."""
+
+
+def _find_listen_link(track: str, artist: str, client, model: str) -> str:
+    """Real, searched link to actually hear the track credited on a
+    watched video — Ryan, 2026-09-04: a trending-audio finding is only
+    useful if an editor can actually go listen to it, not just read its
+    name. Returns "" on any failure rather than a guessed URL."""
+    if not track and not artist:
+        return ""
+    try:
+        resp = client.messages.create(
+            model=model, max_tokens=300, tools=[WEB_SEARCH_TOOL],
+            system="Return ONLY the requested JSON, in a fenced ```json block. No preamble.",
+            messages=[{"role": "user", "content": AUDIO_LISTEN_LINK_PROMPT.format(
+                track=track or "(unknown)", artist=artist or "(unknown)")}],
+        )
+        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+        if not text:
+            return ""
+        return str(_extract_json(text).get("listen_url", "")).strip()
+    except Exception:
+        return ""
+
+
 def _looks_like_youtube_video(url: str) -> bool:
     return bool(url and _YOUTUBE_VIDEO_RE.search(url))
 
@@ -707,9 +754,20 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
             parsed = _extract_json(text)
         except StoryPlannerError:
             return None
+
+        relevant = bool(parsed.get("relevant", False))
+        listen_url = ""
+        if relevant and audio_credit and (audio_credit.get("track") or audio_credit.get("artist")):
+            # Only spend the extra search on videos that were actually
+            # relevant — no point sourcing a listen link for a video the
+            # watch step already threw out.
+            listen_url = _find_listen_link(
+                audio_credit.get("track", ""), audio_credit.get("artist", ""), client, model,
+            )
+
         return {
             "url": url,
-            "relevant": bool(parsed.get("relevant", False)),
+            "relevant": relevant,
             "observed": str(parsed.get("observed", ""))[:1000],
             "frames_analyzed": len(frames),
             # Real, measured — not the model's impression — so the UI/audit
@@ -724,21 +782,86 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
             # sound trend signal, 2026-09-03).
             "audio_track": (audio_credit or {}).get("track"),
             "audio_artist": (audio_credit or {}).get("artist"),
+            # Real, searched listen/download link (Ryan, 2026-09-04) — "" if
+            # none found, never fabricated.
+            "audio_listen_url": listen_url,
         }
+
+
+RESEARCH_CACHE_MAX_AGE_SEC = 72 * 3600  # Ryan, 2026-09-04: don't re-research
+
+
+def _research_cache_path(audience_goal: str) -> Path:
+    """Shared across ALL projects, not per-project — the same audience/goal
+    profile (e.g. "Contractor Recruiting") gets reused across shoots, and
+    the whole point of caching is not paying for the same research twice.
+    Keyed by the exact audience_goal text (a hash of it, for a safe
+    filename) rather than a profile id, since story_architect only ever
+    sees the resolved description text, never the profile id it came
+    from."""
+    cache_dir = app_support_dir() / "research_cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(audience_goal.strip().encode("utf-8")).hexdigest()[:24]
+    return cache_dir / f"{key}.json"
+
+
+def _load_cached_research(audience_goal: str) -> Optional[dict]:
+    path = _research_cache_path(audience_goal)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text())
+    except Exception:
+        return None
+    age_sec = time.time() - payload.get("cached_at", 0)
+    if age_sec > RESEARCH_CACHE_MAX_AGE_SEC:
+        return None
+    if payload.get("audience_goal") != audience_goal.strip():
+        return None  # hash collision or stale key reuse — never trust a mismatch
+    return payload.get("research")
+
+
+def _save_research_cache(audience_goal: str, research: dict) -> None:
+    path = _research_cache_path(audience_goal)
+    try:
+        path.write_text(json.dumps({
+            "audience_goal": audience_goal.strip(),
+            "cached_at": time.time(),
+            "research": research,
+        }, indent=2))
+    except Exception:
+        pass  # caching is a cost optimization, never allowed to break a real run
 
 
 def research_trends(
     audience_goal: str,
     model: str = ANTHROPIC_MODEL,
     api_key: Optional[str] = None,
+    force_refresh: bool = False,
 ) -> dict:
-    """Live trend research, per Ryan's explicit call — run fresh every
-    time, never cached. Two kinds of finding, clearly labeled and never
-    conflated: `text_findings` (read from articles about trends, sourced
-    by URL) and `video_findings` (a real video actually downloaded and
-    watched via real sampled frames — see module docstring). `unverified`
-    always says plainly when a search or a video came up empty rather
-    than padding either list."""
+    """Live trend research. Cached per exact audience_goal text for up to
+    72 hours (Ryan, 2026-09-04: "if the researcher has gone through or
+    found research for a specific audience/goal in the last 72 hours it
+    shouldn't do that work a second time, so we can save time and
+    money") — shared across every project using that same audience/goal,
+    not just re-runs of one project. Superseded from the original "live,
+    run it fresh every time, never cached" rule (2026-09-03) by this
+    later, more specific instruction. Pass `force_refresh=True` to bypass
+    the cache deliberately. A cache hit is marked `research["cached"] =
+    True` / `research["cached_at"]` so callers and the UI can tell.
+
+    Two kinds of finding, clearly labeled and never conflated:
+    `text_findings` (read from articles about trends, sourced by URL) and
+    `video_findings` (a real video actually downloaded and watched via
+    real sampled frames — see module docstring). `unverified` always says
+    plainly when a search or a video came up empty rather than padding
+    either list."""
+    if not force_refresh:
+        cached = _load_cached_research(audience_goal)
+        if cached is not None:
+            cached["cached"] = True
+            return cached
+
     client = build_anthropic_client(api_key=api_key)
     result: dict = {
         "named_trends": [], "text_findings": [], "video_findings": [],
@@ -911,6 +1034,8 @@ def research_trends(
                 "(no captions available, or the model found no real actionable content in it)."
             )
 
+    result["cached"] = False
+    _save_research_cache(audience_goal, result)
     return result
 
 
@@ -1155,7 +1280,16 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
         return
 
     flags_dir = project_dir / "flags"
-    flags_files = sorted(flags_dir.glob("*.json")) if flags_dir.exists() else []
+    # Confirmed real, 2026-09-04: on the RDOSS external drive, every real
+    # file gets a macOS AppleDouble sidecar (`._<name>.json`) that
+    # `Path.glob("*.json")` — unlike shell glob — DOES match, since it
+    # doesn't apply Unix's "no leading dot" convention. json.loads() on
+    # one of these binary sidecars raises UnicodeDecodeError. Filter them
+    # out explicitly rather than relying on glob semantics.
+    flags_files = sorted(
+        p for p in (flags_dir.glob("*.json") if flags_dir.exists() else [])
+        if not p.name.startswith(".")
+    )
     if not flags_files:
         emit({"type": "producer_error", "job_id": job_id,
               "message": "No transcript-flagging results yet — run the pipeline "
@@ -1174,6 +1308,10 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
     try:
         emit({"type": "log", "level": "info", "message": "Researching live trends (real web search + real video watching)..."})
         research = research_trends(audience_goal)
+        if research.get("cached"):
+            emit({"type": "log", "level": "info",
+                  "message": "Reused research from the last 72 hours for this exact audience/"
+                             "goal — no new search/video calls made this run."})
         emit({"type": "log", "level": "info",
               "message": f"Trend research: {len(research['text_findings'])} text findings, "
                          f"{sum(1 for v in research['video_findings'] if v.get('relevant'))} "
@@ -1187,6 +1325,7 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
 
     idea_path = save_story_angle_as_idea(project.plans_dir(), angle)
     research_path = save_story_research(project_dir, angle, research)
+    brief_path = save_story_brief(project_dir, angle, research)
 
     emit({
         "type": "producer_angle",
@@ -1194,6 +1333,7 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
         "idea_id": idea_path.stem,
         "angle": _angle_to_dict(angle),
         "research_path": str(research_path),
+        "brief_path": str(brief_path),
     })
     emit({"type": "producer_done", "job_id": job_id, "mode": "story_architect", "angle_count": 1})
 
@@ -1216,4 +1356,100 @@ def save_story_research(project_dir: Path, angle: "StoryAngle", research: dict) 
         "title": angle.brief.title,
         **research,
     }, indent=2))
+    return out_path
+
+
+def save_story_brief(project_dir: Path, angle: "StoryAngle", research: dict) -> Path:
+    """A real, human-readable brief for the EDITOR — Ryan, 2026-09-04: "we
+    need to also kick out a Brief of some sort that sits alongside or on
+    the timeline so we as the editors can see what the pitch is
+    specifically and the intention of what we're supposed to be editing.
+    This should also include the links to the examples that it is basing
+    its findings off of."
+
+    A real file on disk (`<project_dir>/briefs/<angle_id>.md`), not just
+    the frame-0 sequence marker PreCut already emits from `why_it_works` —
+    a Premiere marker comment isn't the place for a dozen citation links.
+    The marker still carries the core pitch (it reads `why_it_works`,
+    which already has the thesis/Q&A folded in); this file is the full
+    version, with every real source and example link this angle is
+    actually based on, so an editor can open it standalone."""
+    out_dir = Path(project_dir) / "briefs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{angle.angle_id}.md"
+
+    b = angle.brief
+    lines = [
+        f"# {b.title or 'Untitled angle'}",
+        "",
+        f"**Hook:** {b.hook}",
+        "",
+        f"**Tone:** {b.tone}",
+        "",
+        f"**Target audience:** {b.target_audience}",
+        "",
+        f"**Call to action:** {b.call_to_action}",
+        "",
+        "## Why it works (thesis, editorial Q&A, reasoning)",
+        "",
+        b.why_it_works,
+        "",
+        "## Sequence",
+        "",
+    ]
+    for i, r in enumerate(angle.source_ranges, 1):
+        lines.append(
+            f"{i}. **[{r.topic_label}]** `{Path(r.source_file).name}` "
+            f"{r.source_start_sec:.1f}s–{r.source_end_sec:.1f}s — {r.summary}"
+        )
+    lines += ["", "---", "", "## Research this arc is based on", ""]
+
+    if research.get("named_trends"):
+        lines.append("### Specific named trends found")
+        for t in research["named_trends"]:
+            listen = f" — [listen/download]({t['listen_url']})" if t.get("listen_url") else ""
+            lines.append(f"- **{t.get('name','')}** — {t.get('description','')} "
+                         f"([source]({t.get('source','')})){listen}")
+        lines.append("")
+
+    relevant_videos = [v for v in research.get("video_findings", []) if v.get("relevant")]
+    if relevant_videos:
+        lines.append("### Real videos actually watched — what we're suggesting to build similarly to")
+        for v in relevant_videos:
+            audio = ""
+            if v.get("audio_track") or v.get("audio_artist"):
+                link = f" — [listen/download]({v['audio_listen_url']})" if v.get("audio_listen_url") else ""
+                audio = f"\n  Audio: {v.get('audio_track') or '?'} — {v.get('audio_artist') or 'unknown'}{link}"
+            pacing = ""
+            if v.get("detected_cuts") is not None:
+                pacing = f"\n  Pacing: {v['detected_cuts']} cuts over {v.get('duration_sec')}s ({v.get('cuts_per_sec')} cuts/sec)"
+            lines.append(f"- [{v['url']}]({v['url']})\n  {v.get('observed','')}{pacing}{audio}")
+        lines.append("")
+
+    if research.get("marketing_findings"):
+        lines.append("### Audience-targeting / social strategy findings")
+        for f in research["marketing_findings"]:
+            lines.append(f"- {f.get('finding','')} ([source]({f.get('source','')}))")
+        lines.append("")
+
+    relevant_strategy = [f for f in research.get("strategy_video_findings", []) if f.get("relevant")]
+    if relevant_strategy:
+        lines.append("### From real strategy videos (real transcripts)")
+        for f in relevant_strategy:
+            lines.append(f"- [{f['url']}]({f['url']})")
+            for p in f.get("points", []):
+                lines.append(f"  - {p}")
+        lines.append("")
+
+    if research.get("omitted_reasoning"):
+        lines += ["### Real material left out of this arc, and why", "", research["omitted_reasoning"], ""]
+
+    lines += [
+        "---",
+        "",
+        f"*Full sourced audit trail (including what was checked and excluded as irrelevant, "
+        f"and anything unverified): `{Path(project_dir) / 'story_research' / (angle.angle_id + '.json')}`*",
+    ]
+
+    out_path.write_text("\n".join(lines))
     return out_path
