@@ -251,11 +251,12 @@ because this session violated them once each.
   comment, maps to the real palette index (strong=4/yellow,
   possible=0/green, off_topic=1/red), idempotent (skips a marker
   already at its target index). Wired into `index.js`'s existing poll
-  loop alongside `scanAndInterpret()`. *(2d7cbfb.)* **Not yet confirmed
-  by Ryan in a live Premiere session** — the extension folder is a live
-  symlink so the fix is already in place, but it needs Premiere
-  restarted (or the panel reloaded) to load the new ExtendScript, which
-  hasn't happened yet as of this writing.
+  loop alongside `scanAndInterpret()`. *(2d7cbfb.)* **Confirmed by Ryan
+  on real footage after restarting Premiere: "Ok that worked."** All
+  four transcript-flagging pieces (exhaustive extraction, PM
+  audience-goal intake, relevance tagging, XML marker writing) plus this
+  marker-color fix are now signed off end-to-end on a real project — not
+  just standalone/integration test scripts.
 - 2026-09-03 — **Correction to the entry below, found while verifying
   the fix actually worked: the real, primary cause was a genuine
   pre-existing concurrency race, not (mainly) this session's kill -9
@@ -877,7 +878,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: dual-use tagging + B-roll frame-rate interpretation | **Signed off**, incl. Premiere extension |
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
-| AE: transcript flagging (color-coded storyline ranges) | **Built and wired end-to-end, verified with real integration tests** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, and the actual `run_pipeline`/export wiring). Marker color itself required a second fix — Premiere's FCP7 XML import doesn't honor `<color>` at all, real color-setting moved to the Premiere ExtendScript extension. **Not yet confirmed by Ryan on real footage in a live Premiere session with the extension reloaded.** See § Done, 2026-09-03. |
+| AE: transcript flagging (color-coded storyline ranges) | **Signed off by Ryan on real footage, end-to-end** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, `run_pipeline`/export wiring, and marker color — the last required moving color-setting from the FCP7 XML into the Premiere ExtendScript extension, since Premiere never honors `<marker><color>`). Ryan: "Ok that worked." See § Done, 2026-09-03. |
 | Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |

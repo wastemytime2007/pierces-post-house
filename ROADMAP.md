@@ -1926,3 +1926,41 @@ with Ryan touching only the intake and the checkpoints.
   a new Premiere behavior from indirect evidence -- it's the actual
   source of truth for whether/what it processed, cheaper to check than
   re-deriving Premiere's import behavior from XML inspection alone.
+- **2026-09-03 -- Structural finding, binding on all future marker/XML
+  work: Premiere's FCP7 XML import does not honor `<marker><color>` at
+  all, confirmed against the actual xmeml DTD.** Ryan reported markers
+  "all still the default green" after a bold-RGB fix (`eaeb61d`) that
+  followed an already-failed muted-RGB attempt -- two failures of the
+  same mechanism, the project's own "three failures means the approach
+  is wrong" signal, so the third attempt was not a third color variant.
+  Checked Apple's own FCP7/xmeml interchange-format DTD: the `<marker>`
+  element's schema is only `name`/`in`/`out`/`comment` -- no color
+  field exists in the spec at all. `exporter.py`'s `<color>` block was
+  syntactically valid XML but semantically inert; every marker Premiere
+  imports defaults to its own color index 0 (green), regardless of any
+  RGB written into the file. **This retroactively means the "color-coded
+  B-roll suggestion markers" capability documented in the
+  `precut-capabilities` skill and PreCut's own exporter comments was
+  never actually verified as displaying distinct colors in Premiere's
+  UI** -- only ever verified as correct XML output, which this session
+  now knows is not the same claim. Nobody has re-checked that PreCut
+  feature against this finding; it's flagged here so a future agent
+  doesn't repeat the same unverified assumption on it.
+  **The real fix, confirmed working by Ryan ("Ok that worked"):** marker
+  color must be set in-app, post-import, via Premiere's ExtendScript
+  `Marker.setColorByIndex(index)` API (confirmed against Adobe's own
+  scripting docs and a working example in `Adobe-CEP/Samples`'
+  `PProPanel/jsx/PPRO/Premiere.jsx`; palette confirmed against Ryan's
+  own marker-color-picker screenshots: 0=Green 1=Red 2=Purple 3=Orange
+  4=Yellow 5=White 6=Blue 7=Cyan). Implemented as `scanAndColorMarkers()`
+  in the already-running, already-proven invisible CEP extension
+  (`com.posthouse.interpret`) -- the same shape as that extension's
+  existing frame-rate-interpretation fix, because a static XML export
+  genuinely cannot express this; an in-app script can. *(2d7cbfb.)*
+  **General rule for this project going forward: any Premiere-visible
+  property that isn't literally geometry/timing (color, custom icons,
+  anything past the FCP7 DTD's actual element list) should be assumed
+  NOT to survive XML import until checked against the DTD or proven live
+  in Premiere -- verifying the XML is well-formed and contains the
+  right values is not the same as verifying Premiere does anything with
+  them.**
