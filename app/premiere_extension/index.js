@@ -12,16 +12,24 @@
   var currentInterval = FAST_MS;
 
   function poll() {
-    csInterface.evalScript("scanAndInterpret()", function (result) {
+    csInterface.evalScript("scanAndInterpret()", function (interpretResult) {
       var hadActivity = false;
       try {
-        var parsed = JSON.parse(result);
+        var parsed = JSON.parse(interpretResult);
         hadActivity = parsed.processed.length > 0 || parsed.errors.length > 0;
       } catch (e) {
         // Malformed/empty response — treat as idle, back off same as normal.
       }
-      currentInterval = hadActivity ? FAST_MS : Math.min(currentInterval + STEP_MS, MAX_MS);
-      setTimeout(poll, currentInterval);
+      csInterface.evalScript("scanAndColorMarkers()", function (colorResult) {
+        try {
+          var parsedColor = JSON.parse(colorResult);
+          hadActivity = hadActivity || parsedColor.colored.length > 0 || parsedColor.errors.length > 0;
+        } catch (e) {
+          // Same as above — malformed/empty treated as idle.
+        }
+        currentInterval = hadActivity ? FAST_MS : Math.min(currentInterval + STEP_MS, MAX_MS);
+        setTimeout(poll, currentInterval);
+      });
     });
   }
 

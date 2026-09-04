@@ -19,6 +19,23 @@ var TAG_PATTERN = /\[INTERPRET TO ([\d.]+)fps\]\s*$/;
 var FPS_TOLERANCE = 0.01; // fps
 var LOG_PATH = Folder.userData.fsName + "/posthouse_interpreter.log";
 
+/**
+ * Transcript-flagging marker colors, real Premiere Marker.setColorByIndex()
+ * indices — confirmed 2026-09-03 that Premiere's FCP7 XML import does NOT
+ * honor the <color><red>/<green>/<blue> block our exporter writes on
+ * <marker> (that element isn't part of the xmeml marker schema at all —
+ * only name/in/out/comment are). Every imported marker silently defaults
+ * to color index 0 (green), which is exactly the "all markers are the
+ * same default green" Ryan reported. The only real way to set a marker's
+ * color in Premiere is this ExtendScript API, post-import, in-app — same
+ * shape as scanAndInterpret() below solving the analogous frame-rate gap.
+ * Index mapping is Premiere's own fixed 8-swatch palette (confirmed via
+ * Ryan's screenshots of the marker color picker): 0=Green 1=Red 2=Purple
+ * 3=Orange 4=Yellow 5=White 6=Blue 7=Cyan.
+ */
+var FIT_COLOR_INDEX = { "strong": 4, "possible": 0, "off_topic": 1 };
+var FIT_PREFIX_PATTERN = /^(strong|possible|off_topic):/;
+
 function ping() {
     return JSON.stringify({ ok: true });
 }
@@ -98,6 +115,71 @@ function scanAndInterpret() {
         } catch (e) {
             result.errors.push({ name: item.name, error: e.toString() });
             writeLog("ERROR on " + item.name + ": " + e.toString());
+        }
+    }
+
+    return JSON.stringify(result);
+}
+
+/**
+ * Recolor every marker (sequence-level and clip-attached) whose comment
+ * starts with a fit prefix ("strong:"/"possible:"/"off_topic:" — see
+ * posthouse/transcript_markers.py build_flag_markers_for_phrase) to its
+ * real Premiere color. Idempotent: skips a marker already at the target
+ * index. Returns { colored: [{name, fit}], skipped: [...], errors: [...] }.
+ */
+function recolorMarkerCollection(markers, ownerLabel, result) {
+    if (!markers || !markers.numMarkers) return;
+    for (var m = markers.getFirstMarker(); m !== undefined; m = markers.getNextMarker(m)) {
+        try {
+            var comments = m.comments || "";
+            var match = FIT_PREFIX_PATTERN.exec(comments);
+            if (!match) continue;
+            var fit = match[1];
+            var targetIndex = FIT_COLOR_INDEX[fit];
+            if (targetIndex === undefined) continue;
+
+            var current = m.getColorByIndex();
+            if (current === targetIndex) {
+                result.skipped.push({ name: m.name, reason: "already " + fit });
+                continue;
+            }
+            m.setColorByIndex(targetIndex);
+            result.colored.push({ name: m.name, fit: fit, owner: ownerLabel });
+            writeLog("Colored marker '" + m.name + "' (" + ownerLabel + ") -> " + fit + " (index " + targetIndex + ")");
+        } catch (e) {
+            result.errors.push({ name: m.name || "(unnamed)", error: e.toString() });
+            writeLog("ERROR coloring marker on " + ownerLabel + ": " + e.toString());
+        }
+    }
+}
+
+function scanAndColorMarkers() {
+    var result = { colored: [], skipped: [], errors: [] };
+
+    if (!app.project) {
+        result.errors.push({ name: "(no project)", error: "No project open." });
+        return JSON.stringify(result);
+    }
+
+    if (app.project.activeSequence) {
+        recolorMarkerCollection(app.project.activeSequence.markers, "sequence", result);
+    }
+
+    var items = [];
+    try {
+        collectClipItems(app.project.rootItem, items);
+    } catch (e) {
+        result.errors.push({ name: "(scan)", error: e.toString() });
+        return JSON.stringify(result);
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        try {
+            recolorMarkerCollection(item.getMarkers(), "clip:" + item.name, result);
+        } catch (e) {
+            result.errors.push({ name: item.name, error: e.toString() });
         }
     }
 
