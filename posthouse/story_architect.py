@@ -1061,15 +1061,64 @@ def _format_research_for_llm(research: dict) -> str:
     return "\n".join(lines) if lines else "(no trend research available this run)"
 
 
+def build_source_offset_lookup(project) -> Dict[str, float]:
+    """original_file_path -> combined-timeline offset (seconds).
+
+    Real bug found and fixed 2026-09-04: `assemble_cut_from_angle`
+    resolves which source file a range belongs to purely from where its
+    `source_start_sec` falls in the COMBINED multi-transcript timeline
+    (`resolve_real_source`, exporter.py/story_assembler.py) — it does
+    NOT trust `TopicRange.source_file`. But every fragment this module
+    works with (`transcript_coverage`/`audience_relevance`) is extracted
+    from ONE transcript at a time, so its start/end are in that FILE'S
+    OWN local time, not the combined timeline. Confirmed concretely on
+    real data: a fragment at local 565.3s in file `..._0004_D` was, by
+    the combined timeline, inside file `..._0003_D`'s span instead
+    (565.3 < that file's own combined-offset start of 578.0) — meaning
+    the wrong clip would have been silently placed on export. This
+    lookup lets `generate_story_angle` add the correct offset before
+    emitting a range, so its coordinates actually mean what
+    `assemble_cut_from_angle` assumes they mean.
+    """
+    import exporter as _exporter  # top-level app module, not PreCut donor code
+    from precut_pipeline.transcriber import Transcript as _Transcript
+
+    transcript_paths = sorted(
+        p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+    )
+    if not transcript_paths:
+        return {}
+    offset_by_proxy = _exporter._build_source_offset_map(transcript_paths)
+    proxy_to_original = _exporter._build_proxy_to_original_map(project, transcript_paths)
+    return {
+        proxy_to_original[proxy]: offset
+        for proxy, offset in offset_by_proxy.items()
+        if proxy in proxy_to_original
+    }
+
+
 def generate_story_angle(
     audience_goal: str,
     tagged_by_source: Dict[str, List[TaggedFragment]],
     model: str = ANTHROPIC_MODEL,
     api_key: Optional[str] = None,
     research: Optional[dict] = None,
+    source_offset_lookup: Optional[Dict[str, float]] = None,
+    avoid_theses: Optional[List[str]] = None,
 ) -> tuple:
     """Build one real StoryAngle from a project's exhaustively-extracted,
     audience-scored fragments plus live trend research.
+
+    `source_offset_lookup` (original_file_path -> combined-timeline
+    offset seconds, see `build_source_offset_lookup`) is added to each
+    selected fragment's start/end before building its `TopicRange` — see
+    that function's docstring for the real bug this fixes. Pass None only
+    when you know the export path (`assemble_cut_from_angle`) will never
+    see this angle's ranges.
+
+    `avoid_theses`, when given, is folded into the prompt so this call
+    produces a genuinely distinct angle instead of repeating one already
+    generated in the same batch (see `generate_story_angles`).
 
     `research` should normally come from a prior `research_trends()` call
     (kept separate so it's independently inspectable/persistable — see
@@ -1101,12 +1150,21 @@ def generate_story_angle(
     if research is None:
         research = research_trends(audience_goal.strip(), model=model, api_key=api_key)
 
+    avoid_clause = ""
+    if avoid_theses:
+        titles = "\n".join(f"- {t}" for t in avoid_theses)
+        avoid_clause = (
+            "\n\nThis is one of several angles being generated from the same material. "
+            f"Do NOT repeat these already-proposed theses — find a genuinely different real "
+            f"angle in the footage instead:\n{titles}"
+        )
+
     client = build_anthropic_client(api_key=api_key)
     user_prompt = ARCHITECT_PROMPT_TEMPLATE.format(
         audience_goal=audience_goal.strip(),
         fragments=_format_candidates_for_llm(candidates),
         trend_research=_format_research_for_llm(research),
-    )
+    ) + avoid_clause
     try:
         response = client.messages.create(
             model=model,
@@ -1135,10 +1193,17 @@ def generate_story_angle(
         tf = candidates[idx]
         f = tf.fragment
         role = str(entry.get("role", ""))
+        # Add the combined-timeline offset for this fragment's real source
+        # file, if we have one — see build_source_offset_lookup's
+        # docstring for the real bug this fixes. Fragments are extracted
+        # per-file in local time; assemble_cut_from_angle resolves the
+        # source file purely from where start/end fall in the COMBINED
+        # timeline, so local time alone would silently pick the wrong file.
+        offset = (source_offset_lookup or {}).get(f.source_file, 0.0)
         ranges.append(TopicRange(
             source_file=f.source_file,
-            source_start_sec=f.source_start_sec,
-            source_end_sec=f.source_end_sec,
+            source_start_sec=f.source_start_sec + offset,
+            source_end_sec=f.source_end_sec + offset,
             topic_label=role or f.topic_label,
             summary=f.summary,
         ))
@@ -1245,18 +1310,25 @@ def save_story_angle_as_idea(project_plans_dir: Path, angle: "StoryAngle") -> Pa
 
 
 def run_generate_story_angle(project, job_id: str, emit) -> None:
-    """Backend-job wrapper: load a project's real audience goal + already-
-    tagged transcript-flagging fragments, generate one real story angle
-    with live trend research, and persist both the idea (PreCut's format)
-    and the research audit trail. Emits progress the same shape as
-    `producer.run_generate_angles` so the existing job-tracking UI works
-    unchanged.
+    """Backend-job wrapper: load a project's real audience goal and every
+    real transcript fragment available — flagged (audience-scored) or
+    not — generate 3 real, distinct story angles with live trend research
+    (shared across all 3; see `research_trends`'s 72h cache), and persist
+    each as its own idea (PreCut's format) + brief + research audit
+    trail. Emits progress the same shape as `producer.run_generate_angles`
+    so the existing job-tracking UI works unchanged.
+
+    Ryan, 2026-09-04: "I don't want the ideas created to only be
+    generated from flagged fragments. I'm not that confident in the
+    flagging yet" — flagging is no longer a hard prerequisite. Any
+    transcript without a matching flags file gets fresh, real exhaustive
+    extraction right here instead of being excluded. "It should also
+    provide 3 ideas each time the generate ideas button is pressed" —
+    generates 3 distinct angles per call, each told not to repeat the
+    theses already proposed earlier in the same batch.
 
     A no-op (not an error) when there's no manifest/audience_goal yet, or
-    no tagged fragments yet — same rule `pipeline._run_transcript_flagging`
-    already applies, since this stage strictly depends on that one having
-    run first.
-    """
+    no transcripts at all yet (nothing real to build from either way)."""
     from posthouse.manifest import load_manifest
 
     project_dir = project.dir()
@@ -1279,32 +1351,78 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
                          "(Project Manager intake) — nothing to build a story arc against."})
         return
 
-    flags_dir = project_dir / "flags"
     # Confirmed real, 2026-09-04: on the RDOSS external drive, every real
     # file gets a macOS AppleDouble sidecar (`._<name>.json`) that
     # `Path.glob("*.json")` — unlike shell glob — DOES match, since it
     # doesn't apply Unix's "no leading dot" convention. json.loads() on
     # one of these binary sidecars raises UnicodeDecodeError. Filter them
     # out explicitly rather than relying on glob semantics.
+    flags_dir = project_dir / "flags"
     flags_files = sorted(
         p for p in (flags_dir.glob("*.json") if flags_dir.exists() else [])
         if not p.name.startswith(".")
     )
-    if not flags_files:
+    transcript_files = sorted(
+        p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
+    )
+    if not flags_files and not transcript_files:
         emit({"type": "producer_error", "job_id": job_id,
-              "message": "No transcript-flagging results yet — run the pipeline "
-                         "first so there's real, scored material to build from."})
+              "message": "No transcripts yet — run the pipeline first so there's "
+                         "real material to build from."})
         return
 
-    tagged_by_source = {}
+    # Ryan, 2026-09-04: "I don't want the ideas created to only be generated
+    # from flagged fragments. I'm not that confident in the flagging yet."
+    # So flagging is no longer a hard prerequisite: any transcript WITHOUT
+    # a matching flags file gets its own fresh, real exhaustive extraction
+    # right here (transcript_coverage — the same real mechanism, just not
+    # gated behind the separate flagging pipeline stage having already
+    # run). Those fragments are marked fit="possible"/category="" — real
+    # and eligible, but explicitly not claiming a relevance judgment that
+    # was never actually made for them.
+    tagged_by_source: Dict[str, List[TaggedFragment]] = {}
+    flagged_stems = set()
     for fp in flags_files:
         try:
             tagged_by_source[fp.stem] = load_tagged_fragments(fp)
+            flagged_stems.add(fp.stem)
         except Exception:
             continue
 
+    from posthouse.transcript_coverage import extract_exhaustive_fragments
+    from precut_pipeline.transcriber import Transcript
+
+    unflagged = [tp for tp in transcript_files if tp.stem not in flagged_stems]
+    for i, tp in enumerate(unflagged):
+        emit({"type": "log", "level": "info",
+              "message": f"No flagging yet for {tp.stem} — extracting fresh, real "
+                         f"material directly from its transcript ({i + 1}/{len(unflagged)})..."})
+        try:
+            transcript = Transcript.load(tp)
+            fragments, coverage = extract_exhaustive_fragments(transcript)
+        except Exception as e:
+            emit({"type": "log", "level": "warn",
+                  "message": f"Raw extraction failed for {tp.stem}: {e}"})
+            continue
+        tagged_by_source[tp.stem] = [
+            TaggedFragment(fragment=f, fit="possible", reasoning=(
+                "Not yet scored by transcript flagging — raw exhaustive "
+                "extraction only, included on its own merits."
+            ), category="")
+            for f in fragments
+        ]
+
+    if not tagged_by_source:
+        emit({"type": "producer_error", "job_id": job_id,
+              "message": "No fragments available at all (flagged or freshly extracted) — "
+                         "nothing real to build a story arc from."})
+        return
+
+    source_offset_lookup = build_source_offset_lookup(project)
+
     emit({"type": "producer_started", "job_id": job_id, "mode": "story_architect"})
 
+    N_ANGLES = 3  # Ryan, 2026-09-04: "It should also provide 3 ideas each time"
     try:
         emit({"type": "log", "level": "info", "message": "Researching live trends (real web search + real video watching)..."})
         research = research_trends(audience_goal)
@@ -1317,25 +1435,32 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
                          f"{sum(1 for v in research['video_findings'] if v.get('relevant'))} "
                          f"real video(s) watched and relevant."})
 
-        emit({"type": "log", "level": "info", "message": "Building story arc from flagged fragments..."})
-        angle, research = generate_story_angle(audience_goal, tagged_by_source, research=research)
+        avoid_theses: List[str] = []
+        for i in range(N_ANGLES):
+            emit({"type": "log", "level": "info",
+                  "message": f"Building story arc {i + 1}/{N_ANGLES}..."})
+            angle, angle_research = generate_story_angle(
+                audience_goal, tagged_by_source, research=research,
+                source_offset_lookup=source_offset_lookup, avoid_theses=avoid_theses,
+            )
+            avoid_theses.append(angle_research.get("narrative_thesis", angle.brief.title))
+
+            idea_path = save_story_angle_as_idea(project.plans_dir(), angle)
+            research_path = save_story_research(project_dir, angle, angle_research)
+            brief_path = save_story_brief(project_dir, angle, angle_research, source_offset_lookup)
+
+            emit({
+                "type": "producer_angle",
+                "job_id": job_id,
+                "idea_id": idea_path.stem,
+                "angle": _angle_to_dict(angle),
+                "research_path": str(research_path),
+                "brief_path": str(brief_path),
+            })
     except Exception as e:
         emit({"type": "producer_error", "job_id": job_id, "message": str(e)})
         return
-
-    idea_path = save_story_angle_as_idea(project.plans_dir(), angle)
-    research_path = save_story_research(project_dir, angle, research)
-    brief_path = save_story_brief(project_dir, angle, research)
-
-    emit({
-        "type": "producer_angle",
-        "job_id": job_id,
-        "idea_id": idea_path.stem,
-        "angle": _angle_to_dict(angle),
-        "research_path": str(research_path),
-        "brief_path": str(brief_path),
-    })
-    emit({"type": "producer_done", "job_id": job_id, "mode": "story_architect", "angle_count": 1})
+    emit({"type": "producer_done", "job_id": job_id, "mode": "story_architect", "angle_count": N_ANGLES})
 
 
 def _angle_to_dict(angle: "StoryAngle") -> dict:
@@ -1359,7 +1484,8 @@ def save_story_research(project_dir: Path, angle: "StoryAngle", research: dict) 
     return out_path
 
 
-def save_story_brief(project_dir: Path, angle: "StoryAngle", research: dict) -> Path:
+def save_story_brief(project_dir: Path, angle: "StoryAngle", research: dict,
+                      source_offset_lookup: Optional[Dict[str, float]] = None) -> Path:
     """A real, human-readable brief for the EDITOR — Ryan, 2026-09-04: "we
     need to also kick out a Brief of some sort that sits alongside or on
     the timeline so we as the editors can see what the pitch is
@@ -1398,9 +1524,15 @@ def save_story_brief(project_dir: Path, angle: "StoryAngle", research: dict) -> 
         "",
     ]
     for i, r in enumerate(angle.source_ranges, 1):
+        # r.source_start_sec/end are combined-timeline coordinates (needed
+        # for correct export — see build_source_offset_lookup) — subtract
+        # the same offset back out here so an editor reads the actual
+        # in-video timecode for the named file, not a confusing large
+        # number with no relation to that file's own length.
+        offset = (source_offset_lookup or {}).get(r.source_file, 0.0)
         lines.append(
             f"{i}. **[{r.topic_label}]** `{Path(r.source_file).name}` "
-            f"{r.source_start_sec:.1f}s–{r.source_end_sec:.1f}s — {r.summary}"
+            f"{r.source_start_sec - offset:.1f}s–{r.source_end_sec - offset:.1f}s — {r.summary}"
         )
     lines += ["", "---", "", "## Research this arc is based on", ""]
 
