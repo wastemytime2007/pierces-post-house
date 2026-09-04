@@ -1882,3 +1882,32 @@ with Ryan touching only the intake and the checkpoints.
   proved `posthouse/audience_relevance.py` (fragment relevance scoring
   against the single stated goal) against real data -- see
   `docs/STATUS.md` for the full real test result.
+- **2026-09-03 -- Third real falsification of B-roll frame-rate
+  interpretation via duplicate masterclips, confirmed by Ryan in real
+  Premiere.** Ryan: "it didn't interpret the footage even though i
+  chose 29.97 from the dropdown... just the folder with the tagged
+  clips at their original framerate." Verified the EXPORTED FILE itself
+  is correct, not assumed: the real XML Ryan imported has 20 masterclip
+  entries in the B-Roll bin (10 native + 10 "[INTERPRET TO 29.970fps]"
+  duplicates, confirmed by direct inspection), each with a fully
+  distinct masterclip id, file id, AND uuid -- no XML-level collision
+  anywhere. Ryan confirmed Premiere's Project panel shows only 10 items
+  in that bin. Premiere is silently collapsing the two masterclips per
+  file into one, despite every XML identifier being unique between
+  them -- the only thing they share is the real underlying source file
+  path and otherwise near-identical declared metadata (rate, duration,
+  dimensions), which is what Premiere appears to use for footage
+  identity, not the XML's own id attributes.
+  This is the THIRD distinct mechanism tried and falsified in real
+  Premiere for this feature (raw XML rate declaration; reference-
+  sequence frame math; now duplicate masterclips with unique ids) --
+  per the standing "three failures" rule, stopping here rather than
+  guessing a fourth variant. Also worth naming: the same collapse-by-
+  underlying-file-identity behavior may threaten the dual-use A-roll/
+  B-roll split too (same source file, two masterclips, different bins)
+  -- that one visually appeared to work in this same test (10 A-Roll +
+  10 B-Roll both showed real content), which is reassuring but was
+  never independently confirmed as two truly separate, independently
+  usable Premiere items the way this investigation just disproved for
+  interpretation -- worth keeping in mind if dual-use ever shows the
+  same symptom.

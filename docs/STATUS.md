@@ -62,6 +62,36 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-03 — Third real falsification of B-roll frame-rate
+  interpretation, confirmed by Ryan in real Premiere; stopped per the
+  "three failures" rule.** Ryan: "it didn't interpret the footage even
+  though i chose 29.97 from the dropdown... just the folder with the
+  tagged clips at their original framerate." Verified the actual
+  exported file first, not assumed: it genuinely has 20 masterclip
+  entries in the B-Roll bin (10 native + 10 "[INTERPRET TO 29.970fps]"
+  duplicates), each with a fully distinct masterclip id, file id, AND
+  uuid — no XML-level collision anywhere. Ryan confirmed Premiere shows
+  only 10 items. Premiere is silently collapsing the pair per file
+  despite every XML identifier being unique — the only thing shared is
+  the real underlying source path and otherwise near-identical declared
+  metadata (rate, duration, dimensions), which is apparently what
+  Premiere uses for footage identity on import, not the XML's own ids.
+  This is the THIRD distinct mechanism tried and falsified for this
+  feature (raw rate declaration; reference-sequence frame math; now
+  duplicate masterclips with unique ids) — full history in
+  `posthouse/broll_interpret.py` and `ROADMAP.md`'s Decision Log.
+  Stopping here rather than guessing a fourth variant; **needs Ryan's
+  direction on what to try instead, or whether to park this the way
+  Phase 4's motion cull is parked.**
+  **Also flagged, not yet confirmed either way**: this same
+  collapse-by-underlying-identity behavior could threaten the dual-use
+  A-roll/B-roll split (same source file, two masterclips, different
+  bins) — it visually appeared to work in this same test (10 A-Roll +
+  10 B-Roll both showed real content), but that's never been
+  independently confirmed as two truly separate, independently-usable
+  Premiere items the rigorous way this investigation just disproved for
+  interpretation. Worth testing directly if dual-use ever shows a
+  similar symptom.
 - **First real Assistant Editor tasks: dual-use B-roll tagging confirmed
   on real footage; B-roll frame-rate interpretation built and verified,
   neither yet confirmed by Ryan in the app/Premiere itself.** Ryan chose
