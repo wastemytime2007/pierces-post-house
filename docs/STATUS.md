@@ -218,6 +218,39 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **The real root cause of "the two-zone work isn't
+  working": two competing "generate ideas" buttons, and Ryan doesn't
+  think of them as separate tools.** He reported the previous entry's
+  work broken (single-clip exports, old-format brief, overlapping
+  audio). Investigated the actual idea JSON he'd exported and found it
+  was never produced by `story_architect` at all — it had
+  `source_phrase_ids` populated, a field only PreCut's own native
+  `generate_angles()` ever sets, and none of `story_architect`'s
+  `narrative_thesis`/citations content. He'd clicked the ORIGINAL
+  "Generate ideas" button, not the new one — and given his own words
+  earlier ("provide 3 ideas each time the generate ideas button is
+  pressed," singular), he never modeled these as two separate systems.
+  **Real fix**: `story_architect` is now what the primary "Generate
+  ideas" button actually does. PreCut's own `generate_angles` moved into
+  Legacy tools, relabeled to make clear it's the older, weaker mechanism
+  kept only for comparison — removing the ambiguity that caused this
+  whole review cycle to be aimed at the wrong system's output.
+  **Also hardened against a real failure class this surfaced**: a
+  truncated model response can still parse as technically-valid JSON,
+  producing a silently degenerate result (a 1-range "arc," empty pool)
+  instead of a clear error. Raised the sequencing call's `max_tokens`
+  4096 → 8192 (the output schema grew substantially today with no
+  corresponding budget increase), added an explicit
+  `stop_reason=="max_tokens"` check that fails loud, added a real-arc
+  sanity check (fewer than 2 ranges isn't a legitimate arc, now
+  rejected), and made the 3-angle batch resilient per-angle (one retry
+  per slot) so one bad response can't discard angles that already
+  succeeded. **Verified live end-to-end**: a fresh 3-angle generation
+  against the real project succeeded cleanly on the first attempt for
+  all 3 — tight cuts of 6-8 ranges, pools of 10-16 ranges, full
+  5700–6183 char `why_it_works` content, cached research correctly
+  reused. *(5e23009.)* **Not yet reviewed by Ryan against the actually-
+  correct button.**
 - 2026-09-04 — **Real editing-workflow redesign, per Ryan's own words,
   plus a real second-bug investigation on the previous entry's audio
   complaint.** After re-reviewing an export, Ryan confirmed the audio
