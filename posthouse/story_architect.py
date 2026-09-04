@@ -313,44 +313,54 @@ chosen narrative thesis can.
 
 So your job has two real phases, in order — do not skip to phase 2:
 
-**Phase 1 — find the actual narrative thesis this SPECIFIC footage can tell.** Read across ALL \
-the fragments below (not just the ones already scored "strong") and identify a real, specific \
-tension, misconception, or character truth this particular material reveals — not a restatement \
-of the generic audience goal. Ask: what would someone who only knows the surface (the gruff \
-exterior, the sales pitch, the generic funnel framing) be surprised or moved to learn from this \
-footage specifically? That's your thesis. While you read, actively look for BOTH of the two real \
-kinds of gold (each fragment's `category` tag names which one the Assistant Editor thought it \
-was, but judge for yourself too):
-- **Human/heart/comedy/fun** — a genuine character moment, a real laugh, real warmth, real \
-vulnerability. This is what makes the people of the piece relatable, and it very often lives in \
-fragments that look small or off-topic when scored against the literal subject at hand.
-- **Real substantive content** — the actual educational value, the story, the craft/construction \
-knowledge, the concrete SoldFast specifics. This is what proves the point once the audience \
-already cares about the people telling it.
-A strong arc usually needs both, and per SoldFast's own brand doctrine, the humanizing beat comes \
-FIRST — the audience connects with the people before any pitch, ask, or substantive claim lands \
-(never the reverse, and never a humanizing beat used only to soften an ask that precedes it).
+**Phase 1 — find ONE concrete, narrow topic this footage can actually carry start to finish. \
+Corrected 2026-09-04 after a real failure, per Ryan directly.** The first version of this \
+instruction produced a "thesis" broad enough that the tight cut wandered across five unrelated \
+rooms/subjects in one project (a personal reflection, wallpaper steaming, an ADA cabinet theory, \
+track lighting/trusses, and a bathroom renovation hypothetical) — Ryan's own words reviewing it: \
+"the stuff on the left doesn't feel like a polished, intentional build of anything, it just feels \
+like a bunch of random ideas." A broad theme ("this footage shows Bob reading a house's history") \
+is not a topic — it's an excuse to include everything loosely related to it. His own concrete \
+example of what he actually wants: "the wallpaper would be a really good storyline to do like a \
+how-to video... a clean cut... that is basically the start of Bob introducing the room and then \
+how to get the wallpaper off and having to make sure you get rid of the glue because it'll mess \
+with the paint." That is ONE topic — a specific technique, procedure, room, or single scene — not \
+a tour. Scan the fragments for the topic with the most real, connected coverage (an actual \
+beginning, a middle, an end — not just scattered mentions), and commit to THAT ONE topic. Reject \
+any candidate topic that would require jumping between unrelated rooms/subjects to fill it out. \
+Only after you've picked the topic, name in `narrative_thesis` why THIS topic (not a broad theme) \
+is worth telling — a real angle on it, not a permission slip to wander.
 
-**Phase 2 — build a TIGHT, single-throughline cut, not a sprawling collection of everything \
-relevant.** Corrected 2026-09-04, per Ryan directly, after watching the earlier version produce \
-too much: "It seems like we're just having the ideas spit out anything that could be relevant to \
-the story that could be told... I think more intentional, tighter cuts... that are built out to \
-align more with the researched example found[s] would be better." This is how he actually works: \
-a clean, deliberate, one-throughline build on one side of the timeline, everything else usable on \
-the other. Your `sequence` is that clean build — pick the SMALLEST set of fragments that tells \
-ONE clear thread start to finish (e.g., for a how-to: the real intro, the real steps in order, \
-the one real caution/tip — not every tangent that touched the topic). Favor a structure that \
-matches a real example from the trend research below when one's genuinely relevant (e.g., a real \
-how-to format's pacing) over including one more "nice to have" beat. A fragment that's small, \
-individually odd, or scored "possible"/"off_topic" in isolation can still belong in this tight \
-cut if it's essential to the thesis (see the toad example above) — but "essential" is the bar, \
-not "relevant."
+While you read, also watch for the two real kinds of gold (each fragment's `category` tag names \
+which one the Assistant Editor thought it was, but judge for yourself too) — but ONLY within or \
+directly bookending your chosen topic, not as license to pull in an unrelated room's character \
+moment just because it's charming:
+- **Human/heart/comedy/fun** — a genuine character moment connected to the chosen topic/scene \
+(a joke made while doing the actual work, a real reaction in that same moment) — this is what \
+makes the topic feel like real people doing it, not a disconnected humanizing detour.
+- **Real substantive content** — the actual step-by-step/technique/craft knowledge for THIS one \
+topic. This is the spine.
+Per SoldFast's own brand doctrine, a humanizing beat still comes FIRST as the hook — but it should \
+be the humanizing moment INSIDE or immediately around the chosen topic/scene, not an unrelated \
+character beat borrowed from somewhere else in the footage just because it's good on its own.
 
-**Phase 3 — everything else genuinely relevant to the SAME topic/thesis goes in `pool_indices`, \
-not the sequence.** This is the raw selects Ryan pulls from on the other side of the timeline \
-while tightening the main cut — real, on-topic, usable material that didn't make the tight cut \
-because it wasn't essential to the one throughline, not because it's bad. Be inclusive here: if a \
-fragment is genuinely about the same subject, include it in the pool even if it repeats or \
+**Phase 2 — build a TIGHT cut from ONLY that one topic's fragments, not a sprawling tour.** Your \
+`sequence` is the smallest set of fragments, ALL from the topic you picked in Phase 1, that tells \
+that one thread start to finish (intro → the real steps in order → the one real caution/tip/\
+payoff) — never a different room, a different procedure, or a different subject, no matter how \
+good it is on its own. Favor a structure that matches a real example from the trend research \
+below when one's genuinely relevant (e.g., a real how-to format's pacing) over including one more \
+"nice to have" beat. A fragment that's small or individually odd can still belong here if it's \
+essential to THIS topic (see the toad-style example above) — but it still has to be about the \
+same topic, not just thematically supportive of a broader idea.
+
+**Phase 3 — everything else goes in `pool_indices`, including real material about OTHER topics.** \
+This is the raw selects Ryan pulls from on the other side of the timeline while tightening the \
+main cut. Unlike the tight cut, the pool is NOT restricted to one topic — put every other \
+genuinely on-topic-for-the-audience-goal fragment here, including the other rooms/subjects that \
+didn't make the cut (the ADA cabinet, the track lighting, the bathroom hypothetical, etc. — all \
+real, all usable, just not part of THIS piece's one throughline). Be inclusive here: if a \
+fragment is genuinely usable for this audience goal, include it in the pool even if it repeats or \
 tangents from the main cut. Leave out only genuinely off-topic material (nothing to do with the \
 subject at all) — that goes in neither list.
 
@@ -361,6 +371,9 @@ already-extracted fragment.
 - Each fragment index may appear AT MOST ONCE in `sequence` — never reuse the same index for two \
 different roles (e.g. once as "hook" and again as "payoff"). If a moment genuinely serves two \
 purposes, pick ONE role for it rather than placing the same real clip on the timeline twice.
+- `sequence` must be about ONE topic, no exceptions. If you're tempted to include a fragment \
+because it's a good moment "from the same footage" rather than because it's genuinely part of the \
+one topic's own start-to-finish arc, it belongs in `pool_indices`, not `sequence`.
 - Most real interviews have more usable material than fits in one story — be honest about what \
 you left out and why, in `omitted_reasoning`.
 - Live trend research (given below) informs framing/tone only — never overrides what the \
@@ -390,13 +403,15 @@ Live trend research already gathered for this project (use to inform framing/ton
 {trend_research}
 </trend_research>
 
-First, in `narrative_thesis`, name the SPECIFIC real tension/misconception/character truth this \
-footage can address — not the generic audience goal restated. Then produce TWO separate lists, \
-per the tight-cut/pool split above: `sequence` — the tight, single-throughline cut (by index, \
-role hook/build/payoff, in order) — and `pool_indices` — every other genuinely on-topic fragment \
-that didn't make the tight cut. Do not restrict yourself to "strong"-fit fragments for either \
-list — a small, individually-odd moment that genuinely serves the thesis belongs in the sequence \
-even if its isolated fit score was lower, and the pool should be generous with on-topic material.
+First, pick the ONE concrete, narrow topic (per Phase 1) this footage can carry start to finish, \
+and in `narrative_thesis` name why THIS topic is worth telling — not a broad theme, not the \
+generic audience goal restated. Then produce TWO separate lists: `sequence` — the tight, \
+single-topic cut (by index, role hook/build/payoff, in order), every fragment genuinely about \
+that one topic — and `pool_indices` — every other genuinely on-topic-for-the-audience-goal \
+fragment, INCLUDING real material about other topics/rooms that didn't make this piece. Do not \
+restrict yourself to "strong"-fit fragments for either list — a small, individually-odd moment \
+that genuinely serves the chosen topic belongs in the sequence even if its isolated fit score was \
+lower, and the pool should be generous with on-topic material regardless of topic.
 
 **Every arc must be able to answer these specific editorial questions (Ryan, 2026-09-04) — fill \
 in `editorial_qna` with a real, specific, concrete answer for each. None may be generic filler \
@@ -406,7 +421,7 @@ even if it's soft ("follow for more," "DM to apply," a specific link):**
 Return this exact JSON shape, in a fenced ```json block:
 
 {{
-  "narrative_thesis": "the specific real tension/misconception/character truth this footage addresses",
+  "narrative_thesis": "the ONE concrete, narrow topic this piece is about, and why it's worth telling — not a broad theme",
   "title": "short concept title",
   "hook": "1-2 sentence opening hook/headline",
   "why_it_works": "why this arc serves the thesis and the stated audience goal, citing which fragments (including any 'strange choice' ones and why they earn their place) and, if relevant, which real trend finding informed the framing",
