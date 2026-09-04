@@ -218,6 +218,38 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **Story architect: real named-trend discovery and real
+  audio credit extraction, per Ryan's next real objection.** "it also
+  needs to learn trending music and sounds for reels and trends that
+  people are doing specifically not just look at the first video that
+  pops up in a search result for construction or renovation." Two fixes:
+  1. **Named trends drive the video search now, not a generic keyword.**
+     New `research_trends()` pass (`TREND_NAMES_SEARCH_PROMPT`) searches
+     specifically for named sounds/challenges/formats actually
+     circulating in the niche — not generic advice restated as a
+     "trend." Those real names then target the video-permalink search
+     ("find a video actually doing trend X") instead of a bare niche
+     keyword returning whatever ranks first. **Tested live both ways**:
+     one run genuinely found none and said so honestly via
+     `unverified`; another found 3 real named formats with sources (a
+     real-estate agents' "#OfCourseChallenge," a "Clients Asked Me..."
+     format credited to a named creator/business). **Real bug caught and
+     fixed**: the model once wrapped "no trend found" as a fake JSON
+     entry instead of an empty list, which leaked into the video search
+     as a nonsense query — tightened the prompt and added a defensive
+     filter (reject any "trend name" that's actually a disclaimer
+     sentence).
+  2. **Real audio/sound credit, never AI-guessed.** `_get_audio_credit()`
+     pulls track/artist straight from `yt-dlp`'s own metadata extraction
+     for the downloaded video — genuine platform data, confirmed real by
+     testing ("Wait I Can Do That Better" by ditto for one video,
+     "original sound" credited to the creator for another). The vision
+     call is explicitly told never to guess a song from silent frames —
+     only report what this real metadata gives it.
+  Both surfaced in the "Show research" UI: a new "Specific named trends
+  found" section, and a real 🎵 audio-credit line under each watched
+  video. *(24393b7.)* Restarted the app; confirmed synced, clean compile
+  before/after. **Not yet reviewed by Ryan.**
 - 2026-09-03 — **Correction to the entry below, same day: fixed-interval
   still frames cannot tell you anything about editing.** Ryan's exact,
   correct objection: "You cant understand video editing trends by
