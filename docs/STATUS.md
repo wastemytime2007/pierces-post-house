@@ -218,6 +218,35 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **The tight cut was mechanically correct but editorially
+  bad — it surveyed five rooms instead of committing to one topic.**
+  After the button-confusion fix (entry below), Ryan reviewed a real
+  export from the ACTUAL correct button and confirmed a real, separate
+  problem: "the stuff on the left doesn't feel like a polished
+  intentional build of anything, it just feels like a bunch of random
+  ideas." Checked the real idea file: its tight cut spanned 5 unrelated
+  topics (a personal reflection, wallpaper steaming, an ADA cabinet
+  theory, track lighting/trusses, a bathroom hypothetical) all loosely
+  justified under one broad "thesis" — a broad theme isn't a topic, it's
+  permission to include anything adjacent. Rewrote Phase 1/2/3 to force
+  topic-first selection: find the ONE concrete, narrow topic (Ryan's own
+  example — "the start of Bob introducing the room and then how to get
+  the wallpaper off... making sure you get rid of the glue") with real
+  start-to-finish coverage, commit to it, and build the sequence ONLY
+  from fragments genuinely about that topic — everything else (including
+  real material about other rooms/topics) goes in the pool instead of
+  being smuggled into the tight cut or dropped. **Verified live**:
+  regenerated against the same real project and got "The Step Nobody
+  Talks About: Wallpaper Removal Done Right" — a real single-topic
+  how-to title, 3 of 4 tight-cut ranges genuinely about wallpaper removal
+  (up from 0 of 5). **Not perfect yet** — one range still drifted to a
+  bathroom shower-head tangent — a real, substantial, verified
+  improvement, not a fully solved problem. *(f589d69.)*
+  **Still open, not addressed in this entry**: the real audio-sync
+  consistency-promotion gap (flagged two entries back, not fixed — still
+  PreCut's own proven engine, still needs its own focused decision) and
+  Ryan's report of a missing "V1 folder" in the Premiere project panel,
+  which wasn't independently confirmed or investigated this round.
 - 2026-09-04 — **The real root cause of "the two-zone work isn't
   working": two competing "generate ideas" buttons, and Ryan doesn't
   think of them as separate tools.** He reported the previous entry's
