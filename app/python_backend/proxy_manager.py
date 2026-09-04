@@ -66,6 +66,40 @@ def find_ffmpeg() -> Optional[str]:
     return None
 
 
+def proxy_is_valid(proxy_path: Path) -> bool:
+    """Quick ffprobe check that an existing proxy is actually a readable,
+    complete video — not just present with a nonzero size.
+
+    2026-09-03: found real corrupt proxies on a real project (all 10 in
+    one folder) after repeated `kill -9` app restarts during this
+    session — killing the backend process doesn't kill its ffmpeg
+    children, so an orphaned encode can keep writing to a proxy path
+    that a LATER restart's fresh encode writes to as well, interleaving
+    and corrupting the file. `_encode_proxy` now writes to a private
+    temp path and renames atomically on success, which prevents this
+    going forward — but an existing, already-corrupted file from before
+    that fix (or from any other future interruption) would otherwise be
+    silently trusted forever by the "skip if proxy already exists"
+    check, exactly what happened here. This check is the recovery path:
+    a corrupt existing proxy gets treated as missing and re-encoded,
+    not trusted.
+    """
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(proxy_path)],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0 or result.stderr.strip():
+        return False
+    try:
+        return float(result.stdout.strip()) > 0
+    except ValueError:
+        return False
+
+
 # ---------- Data classes ----------
 
 @dataclass
@@ -332,6 +366,19 @@ def _encode_proxy(
     start: float,
     ffmpeg_path: str,
 ) -> dict:
+    # 2026-09-03: encode to a unique temp path and atomically rename to
+    # proxy_path only on confirmed success. Real corruption found on
+    # Ryan's project: killing the backend process (kill -9, done
+    # repeatedly during this session's restarts) doesn't kill its
+    # ffmpeg children -- they're orphaned and keep writing. A later
+    # restart's fresh encode to the SAME proxy_path then writes
+    # concurrently with the orphan, interleaving/corrupting the file.
+    # Writing to a private temp name means an orphan can only corrupt
+    # its OWN abandoned temp file, never the path anything else trusts.
+    # (uuid, not just PID, since a killed-and-relaunched process can
+    # reuse the same PID.)
+    import uuid
+    tmp_path = proxy_path.with_name(f".{proxy_path.stem}.{uuid.uuid4().hex[:8]}.tmp{proxy_path.suffix}")
     cmd = [
         ffmpeg_path,
         "-hide_banner", "-loglevel", "error", "-y",
@@ -344,7 +391,7 @@ def _encode_proxy(
         "-c:a", "aac",
         "-b:a", AUDIO_BITRATE,
         "-movflags", "+faststart",
-        str(proxy_path),
+        str(tmp_path),
     ]
 
     try:
@@ -367,8 +414,8 @@ def _encode_proxy(
                         proc.communicate(timeout=5)
                     except subprocess.TimeoutExpired:
                         pass
-                    if proxy_path.exists():
-                        proxy_path.unlink()
+                    if tmp_path.exists():
+                        tmp_path.unlink()
                     return {
                         "status": "failed",
                         "file": source.name,
@@ -379,7 +426,12 @@ def _encode_proxy(
                     }
 
         elapsed = time.time() - start
-        if proc.returncode == 0 and proxy_path.exists() and proxy_path.stat().st_size > 0:
+        if proc.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
+            # Rename only on confirmed success — this is the moment the
+            # file becomes something other code is allowed to trust as
+            # "the proxy." A concurrent/orphaned encoder can only ever
+            # race on its own private tmp_path, never on proxy_path.
+            os.replace(tmp_path, proxy_path)
             return {
                 "status": "success",
                 "file": source.name,
@@ -389,8 +441,8 @@ def _encode_proxy(
                 "error": None,
             }
 
-        if proxy_path.exists():
-            proxy_path.unlink()
+        if tmp_path.exists():
+            tmp_path.unlink()
         err_line = ((stderr or "").strip().split("\n") or ["unknown error"])[-1]
         return {
             "status": "failed",
@@ -402,8 +454,8 @@ def _encode_proxy(
         }
 
     except Exception as e:
-        if proxy_path.exists():
-            proxy_path.unlink()
+        if tmp_path.exists():
+            tmp_path.unlink()
         return {
             "status": "failed",
             "file": source.name,

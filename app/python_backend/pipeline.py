@@ -653,8 +653,11 @@ def _run_video_pipeline(
         # Figure out proxy output path, mirroring subfolder structure if any
         proxy_path = _compute_proxy_path(source_file, src_folder)
 
-        # Skip if already up to date
-        if proxy_path.exists() and proxy_path.stat().st_size > 0:
+        # Skip if already up to date. Validated, not just present/nonzero
+        # (see proxy_manager.proxy_is_valid's docstring — a real corrupt
+        # proxy was found and silently trusted here on 2026-09-03).
+        from proxy_manager import proxy_is_valid
+        if proxy_path.exists() and proxy_path.stat().st_size > 0 and proxy_is_valid(proxy_path):
             result = {
                 "status": "skipped",
                 "file": source_file.name,
