@@ -218,6 +218,64 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **Real end-to-end proof on the Bob Recruitment benchmark,
+  plus three more real fixes Ryan asked for after reviewing it.** Set up
+  a real "Runnells House" project combining both footage folders Ryan
+  named (`Clean Out, Carpets, Grass, wallpaper` + `Bob intv_Recruitment`)
+  against his real finished export (`Bob Recruitment_Final.mp4`) as the
+  first real benchmark for Creative Editor story+assembly. Ran the full
+  real pipeline (proxies, transcription, audio sync, transcript
+  flagging — 79 real fragments, 25 flagged `character` category) and the
+  story architect against it. **Real validation of the thesis-first
+  fix**: the architect's own output explicitly named "Fragment [28]...
+  is the toad-saving moment of this footage: scored 'strong' but easily
+  cut as 'off-topic' by a relevance filter" — applying Ryan's exact
+  pattern to real material, unprompted. **Cross-checked against ground
+  truth**: transcribed the real final export and found its actual
+  opening line — "we're not gonna hurt you... put you out of the
+  lawnmower range" — is VERBATIM one of our own flagged `character`
+  fragments, and the real cut's structure (humanize first, steady-work/
+  career pitch second) matches what the corrected system produced on
+  its own. Along the way, found and fixed a real, reproducible bug:
+  `Path.glob("*.json")` matches macOS AppleDouble sidecar files
+  (`._<name>.json`) on this external drive — unlike shell glob, Python's
+  doesn't apply the "no leading dot" convention — which crashed
+  `json.loads()` on 5 separate call sites across `story_architect.py`,
+  `pipeline.py`, `producer.py`, and `exporter.py`. Fixed everywhere, not
+  just where it was first hit.
+  **Three more real fixes from Ryan's review of that output:**
+  1. **Real listen/download links for trending audio.** Both
+     `named_trends` (when a trend IS a specific sound) and every watched
+     video's real audio credit now get a dedicated, sourced search for
+     an actual Spotify/Apple Music/YouTube/SoundCloud/TikTok-sound link —
+     never fabricated, empty string if none found. **Tested live**: real
+     link found for a known track (`https://music.apple.com/us/song/
+     wait-i-can-do-that-better/1715919564`).
+  2. **A real, standalone Brief file for the editor.** New
+     `save_story_brief()` writes `<project_dir>/briefs/<angle_id>.md` —
+     the full pitch, thesis, editorial Q&A, real sequence, and every
+     sourced example link (named trends, watched videos, marketing
+     articles, strategy videos) an editor can open directly, since a
+     Premiere marker comment isn't the place for a dozen citation links.
+     The frame-0 sequence marker (`why_it_works`) still carries the core
+     pitch inline; this is the full version. Path shown directly on the
+     Ideas-tab card (derived client-side from the project dir + angle
+     id — no state to go stale on reload).
+  3. **72-hour research cache, shared across projects.** Superseding the
+     2026-09-03 "live, run it fresh every time" rule with Ryan's more
+     specific 2026-09-04 instruction: "if the researcher has gone
+     through or found research for a specific audience/goal in the last
+     72 hours it shouldn't do that work a second time." Cached by the
+     exact audience_goal text (not per-project) under a shared
+     `~/Library/Application Support/Post House/research_cache/` dir,
+     since the same seeded profile (e.g. "Contractor Recruiting") gets
+     reused across shoots — cost savings apply everywhere that profile
+     is used, not just repeat runs on one project. **Tested live**: first
+     call 168.7s (real research), second identical call 0.0s (real cache
+     hit, `research["cached"] = True`).
+  All verified to import/compile cleanly; UI updated to surface listen
+  links and the brief path. **Not yet reviewed by Ryan in the running
+  app.**
 - 2026-09-04 — **Story architect: real marketing/audience-targeting
   strategy research added, distinct from trend-spotting.** Ryan: "it
   also needs to do actual research into the most current social media,
