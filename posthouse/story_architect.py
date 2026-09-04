@@ -157,6 +157,25 @@ preamble, nothing before or after the fence:
 
 Omit anything you can't actually source — do not pad the list with a guess."""
 
+TREND_NAMES_SEARCH_PROMPT = """Search the web for SPECIFIC NAMED trends currently circulating on \
+TikTok/Instagram Reels in the niche implied by this audience/content goal:
+
+<audience_goal>
+{audience_goal}
+</audience_goal>
+
+I need actual NAMES — a specific trending sound/song title, a named challenge/format (e.g. "the \
+'wait I can do that better' sound", "the [name] transition"), or a named creator's signature \
+format — not a generic statement like "short-form video is popular" or "before/after content \
+does well."
+
+After searching, return ONLY this JSON in a fenced ```json block — no preamble:
+{{"trends": [{{"name": "the specific trend/sound/challenge name", "description": "...", "source": "https://..."}}]}}
+
+If you genuinely cannot find a specific named trend for this niche, return an EMPTY list — \
+{{"trends": []}} — do NOT invent a placeholder entry explaining that none was found; an empty \
+list already says that."""
+
 VIDEO_PERMALINK_SEARCH_PROMPT = """Search the web for 3-5 real, INDIVIDUAL (not category/hashtag/\
 discover-page) TikTok, Instagram Reels, or YouTube Shorts video URLs that are currently popular \
 in the niche implied by this audience goal:
@@ -164,6 +183,7 @@ in the niche implied by this audience goal:
 <audience_goal>
 {audience_goal}
 </audience_goal>
+{trend_names_clause}
 
 I need actual video permalink URLs (e.g. tiktok.com/@user/video/1234567890, \
 instagram.com/reel/abc123, youtube.com/shorts/xyz) that could actually be opened and watched — \
@@ -182,6 +202,10 @@ ffmpeg-detected cut points in this specific video — you're seeing what actuall
 edit points, not guessing from isolated pictures. The video has {total_cuts} detected cuts over \
 {duration:.1f}s ({cuts_per_sec:.2f} cuts/sec, {avg_shot_len:.2f}s average shot length) — a real, \
 measured pacing number, not an impression. {sample_note}
+
+{audio_note} (This came straight from the video's own platform metadata — not from you looking \
+at silent frames, which cannot identify a song. Never guess a track/artist name yourself; only \
+report what's given here.)
 
 <audience_goal>
 {audience_goal}
@@ -290,6 +314,29 @@ def _looks_like_video_permalink(url: str) -> bool:
     return bool(url and _VIDEO_PERMALINK_RE.search(url))
 
 
+def _get_audio_credit(url: str) -> Optional[dict]:
+    """Real audio/sound credit straight from the video's own metadata —
+    not AI-identified, not guessed. TikTok/Reels expose this directly
+    (track/artist, or "original sound - <creator>" for a creator's own
+    audio) via yt-dlp's info extraction, confirmed 2026-09-03 against
+    real videos. Ryan asked for real trending audio/music signal — this
+    is the honest source for it, not asking a vision model to name a
+    song from silent frames, which it cannot actually do."""
+    try:
+        out = subprocess.run(
+            ["yt-dlp", "--no-warnings", "-j", url],
+            check=True, capture_output=True, timeout=30, text=True,
+        )
+        info = json.loads(out.stdout)
+    except Exception:
+        return None
+    track = info.get("track")
+    artist = info.get("artist") or (info.get("artists") or [None])[0]
+    if not track and not artist:
+        return None
+    return {"track": track, "artist": artist}
+
+
 MAX_CUT_PAIRS = 4  # frame-before/frame-after pairs sent to the vision call
 SCENE_THRESHOLD = 0.3  # ffmpeg scene-detection sensitivity, same default the tool ships with
 
@@ -367,6 +414,7 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
             return None
         video_file = video_files[0]
 
+        audio_credit = _get_audio_credit(url)
         duration = _probe_duration(video_file)
         cuts = _detect_cuts(video_file)
         if not duration or duration <= 0:
@@ -415,10 +463,17 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
                             f"{len(sampled_cuts)} of the {total_cuts} detected cuts, "
                             "spread across the video's full length.")
 
+        if audio_credit and (audio_credit.get("track") or audio_credit.get("artist")):
+            audio_note = (f"Real audio credit from this video's own metadata (not "
+                           f"AI-guessed): track \"{audio_credit.get('track') or '?'}\" "
+                           f"by {audio_credit.get('artist') or 'unknown'}.")
+        else:
+            audio_note = "No audio credit metadata available for this video."
+
         content = [{"type": "text", "text": VIDEO_WATCH_PROMPT.format(
             url=url, audience_goal=audience_goal, total_cuts=total_cuts,
             duration=duration, cuts_per_sec=cuts_per_sec, avg_shot_len=avg_shot_len,
-            sample_note=sample_note)}]
+            sample_note=sample_note, audio_note=audio_note)}]
         for fp in frames:
             content.append({
                 "type": "image",
@@ -452,6 +507,11 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
             "detected_cuts": total_cuts,
             "duration_sec": round(duration, 1),
             "cuts_per_sec": round(cuts_per_sec, 2),
+            # Real, from the video's own platform metadata — never AI-guessed
+            # from silent frames (Ryan asked specifically for real audio/
+            # sound trend signal, 2026-09-03).
+            "audio_track": (audio_credit or {}).get("track"),
+            "audio_artist": (audio_credit or {}).get("artist"),
         }
 
 
@@ -468,7 +528,7 @@ def research_trends(
     always says plainly when a search or a video came up empty rather
     than padding either list."""
     client = build_anthropic_client(api_key=api_key)
-    result: dict = {"text_findings": [], "video_findings": [], "unverified": []}
+    result: dict = {"named_trends": [], "text_findings": [], "video_findings": [], "unverified": []}
 
     try:
         resp = client.messages.create(
@@ -487,12 +547,56 @@ def research_trends(
     except Exception as e:
         result["unverified"].append(f"Text trend search failed: {e}")
 
+    # Find SPECIFIC named trends (a sound, a challenge, a signature format)
+    # first, so the video search can target an actual example of one of
+    # them — rather than a generic niche keyword search that just returns
+    # whatever ranks first for "construction" or "renovation" (Ryan:
+    # "not just look at the first video that pops up in a search result").
+    named_trends: List[dict] = []
+    try:
+        resp_names = client.messages.create(
+            model=model, max_tokens=1200, tools=[WEB_SEARCH_TOOL],
+            system="Return ONLY the requested JSON, in a fenced ```json block. No preamble.",
+            messages=[{"role": "user", "content": TREND_NAMES_SEARCH_PROMPT.format(
+                audience_goal=audience_goal)}],
+        )
+        text_names = "".join(b.text for b in resp_names.content if getattr(b, "type", None) == "text").strip()
+        if text_names:
+            raw_trends = _extract_json(text_names).get("trends", [])
+            # Defensive filter: despite the prompt saying "empty list if
+            # none found," a model can still wrap that refusal as a fake
+            # entry (seen for real, 2026-09-03) — a real trend name is
+            # short; a disclaimer sentence isn't.
+            named_trends = [
+                t for t in raw_trends
+                if t.get("name") and len(t["name"]) <= 80
+                and "no specific" not in t["name"].lower()
+                and "not found" not in t["name"].lower()
+            ]
+        result["named_trends"] = named_trends
+    except Exception as e:
+        result["unverified"].append(f"Named-trend search failed: {e}")
+
+    if not named_trends:
+        result["unverified"].append(
+            "No specific NAMED trend (a sound, a challenge, a signature format) found for "
+            "this niche this run — video search below falls back to a general niche search "
+            "rather than targeting a named trend."
+        )
+        trend_names_clause = ""
+    else:
+        names_list = ", ".join(f'"{t.get("name","")}"' for t in named_trends if t.get("name"))
+        trend_names_clause = (
+            f"\nSpecifically, find a video actually doing one of these named trends found above: "
+            f"{names_list}. Prefer that over a generic niche-keyword result."
+        )
+
     candidate_urls: List[str] = []
     try:
         resp2 = client.messages.create(
             model=model, max_tokens=600, tools=[WEB_SEARCH_TOOL],
             messages=[{"role": "user", "content": VIDEO_PERMALINK_SEARCH_PROMPT.format(
-                audience_goal=audience_goal)}],
+                audience_goal=audience_goal, trend_names_clause=trend_names_clause)}],
         )
         for block in resp2.content:
             if getattr(block, "type", None) == "web_search_tool_result":

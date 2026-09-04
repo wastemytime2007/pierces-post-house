@@ -896,6 +896,26 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
             </div>
           ) : (
             <div className="idea-card-research-body">
+              {research.named_trends?.length > 0 && (
+                <div className="idea-card-research-section">
+                  <div className="idea-card-section-label">
+                    Specific named trends found (not generic advice)
+                  </div>
+                  <ul className="idea-card-research-list">
+                    {research.named_trends.map((t, i) => (
+                      <li key={i}>
+                        <strong>{t.name}</strong>
+                        {t.description && <div className="idea-card-research-note">{t.description}</div>}
+                        {t.source && (
+                          <div className="idea-card-research-note">
+                            <a href={t.source} target="_blank" rel="noreferrer">source</a>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {research.video_findings?.filter((v) => v.relevant).length > 0 && (
                 <div className="idea-card-research-section">
                   <div className="idea-card-section-label">
@@ -909,6 +929,13 @@ function StoryAngleCard({ idea, research, onFetchResearch, onDiscard, onSetPrese
                           <div className="idea-card-research-metric">
                             {v.detected_cuts} real detected cuts over {v.duration_sec}s
                             {" "}({v.cuts_per_sec} cuts/sec) — measured, not estimated
+                          </div>
+                        )}
+                        {(v.audio_track || v.audio_artist) && (
+                          <div className="idea-card-research-metric">
+                            🎵 {v.audio_track || "Unknown track"}
+                            {v.audio_artist ? ` — ${v.audio_artist}` : ""}
+                            {" "}(real audio credit from the video's own metadata)
                           </div>
                         )}
                         <div className="idea-card-research-note">{v.observed}</div>
