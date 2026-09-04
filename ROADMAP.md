@@ -1911,3 +1911,18 @@ with Ryan touching only the intake and the checkpoints.
   usable Premiere items the way this investigation just disproved for
   interpretation -- worth keeping in mind if dual-use ever shows the
   same symptom.
+- **2026-09-03 -- CORRECTION to the entry above (third falsification):
+  interpretation actually worked, just with a visible lag before Ryan
+  checked it.** The conclusion that Premiere was silently collapsing
+  duplicate masterclips was reached without first checking
+  `posthouse_interpreter.log` (the companion extension's own log),
+  which already proved all 10 "[INTERPRET TO 29.970fps]" clips were
+  found and interpreted at 21:20:46, exactly matching the import
+  timestamp -- meaning the 20 distinct masterclips genuinely existed
+  as separate Project-panel items all along. Ryan confirmed directly:
+  "It did interpret it just had a bit of a lag." No real third failure
+  occurred; the "three failures" rule was invoked on a false premise.
+  Lesson for next time: check the extension's own log before concluding
+  a new Premiere behavior from indirect evidence -- it's the actual
+  source of truth for whether/what it processed, cheaper to check than
+  re-deriving Premiere's import behavior from XML inspection alone.
