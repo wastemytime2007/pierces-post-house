@@ -218,6 +218,55 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Story architect: trend research made to actually watch
+  real videos, and made visible in the app — two real gaps Ryan found in
+  the entry below, both fixed for real.** He asked, correctly: "Where do
+  I see any of that though?" (nothing surfaced the sourced research
+  anywhere) and asked for it to actually use video vision to watch real
+  reels rather than "just making all of this up" from text search alone.
+  **On the second point**: `claude-video-vision`'s MCP tool only exists
+  inside an interactive agent session, not a bare `anthropic` SDK call
+  from this backend — so `research_trends()` now does the equivalent
+  directly in Python: search for a real INDIVIDUAL video permalink (not
+  a `/discover/`/category page), `yt-dlp` downloads the actual video,
+  `ffmpeg` samples real frames, and those frames go to Claude as real
+  image content — genuinely watched. **Proven live before writing final
+  code** (per the standing "cite or don't assert" rule): downloaded a
+  real, currently-trending `@rooshome` TikTok, extracted 4 frames, and
+  got a correct description of its actual before/after text-overlay and
+  lighting-driven pacing pattern from the real pixels. Confirmed it
+  generalizes on 3 more real runs against different videos afterward (a
+  real-estate creator reel, an Instagram farmhouse reveal), not a
+  one-off. **Real limitation found and reported honestly, not smoothed
+  over**: a dedicated search for "3-5 real individual video URLs"
+  returned only ONE genuine permalink out of many category-page results
+  — search engines mostly can't find individual TikTok/Instagram
+  permalinks, a structural limitation of the platforms, not a bug here.
+  Also caught a genuinely irrelevant result once (an unrelated Argentine
+  product-shipping video matched the permalink pattern) — the watch step
+  now returns a structured `relevant: true/false` verdict instead of
+  burying that judgment in prose, so an off-niche match gets excluded
+  from the story-sequencing reasoning while staying visible in the audit
+  trail. Also fixed a real bug hit while re-testing: the text-search call
+  ran out of its 1200-token budget writing a prose preamble before
+  reaching the JSON block — bumped the budget and added a "no preamble"
+  system prompt (the pattern `audience_relevance.py` already uses
+  reliably).
+  **On the first point (visibility)**: new `story_architect_generate`/
+  `get_story_research` backend commands; a **"Generate from flagged
+  fragments" button** in IdeasTab, placed alongside (not replacing)
+  PreCut's own "Generate ideas" so the two stay directly comparable; and
+  an expandable **"Show research"** section per story-angle card
+  rendering actually-watched videos (with links), text-sourced findings
+  (with links), what was checked and excluded as off-niche, and what
+  real transcript material got left out of the arc and why. *(1be6f65.)*
+  **Verified the app itself picks this up**: `tauri.conf.json` bundles
+  `python_backend/**/*.py` as a resource copied into
+  `src-tauri/target/debug/_up_` on build — confirmed the new files
+  landed there identically after a full restart, and the HMR log showed
+  every JSX/CSS edit compiling clean with no errors before that restart.
+  **Not yet reviewed by Ryan on the real Runnells project** — this is
+  the next real judgment call, not a passing test.
 - 2026-09-03 — **Creative Editor: story + assembly — scoped and its
   selection/sequencing half built and proven real end-to-end on Runnells,
   the flagship gap this project exists to close.** PreCut's own
@@ -938,7 +987,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
 | AE: transcript flagging (color-coded storyline ranges) | **Signed off by Ryan on real footage, end-to-end** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, `run_pipeline`/export wiring, and marker color — the last required moving color-setting from the FCP7 XML into the Premiere ExtendScript extension, since Premiere never honors `<marker><color>`). Ryan: "Ok that worked." See § Done, 2026-09-03. |
-| Creative Editor: story + assembly | **Selection step built and proven real end-to-end on Runnells** (`posthouse/story_architect.py`, live trend research, PreCut's existing assembler/export reused unmodified). **Not yet wired into `backend.py`/UI, not yet reviewed by Ryan.** See § Done, 2026-09-03. |
+| Creative Editor: story + assembly | **Selection step built, wired into the app, and visible** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Live trend research now actually downloads and watches real videos (not just text search), with a visible sourced audit trail per idea card. PreCut's existing assembler/export reused unmodified. **Not yet reviewed by Ryan in the running app.** See § Done, 2026-09-03. |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |
