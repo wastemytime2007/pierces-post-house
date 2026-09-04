@@ -218,6 +218,55 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-04 — **Real editing-workflow redesign, per Ryan's own words,
+  plus a real second-bug investigation on the previous entry's audio
+  complaint.** After re-reviewing an export, Ryan confirmed the audio
+  problem persisted even on an idea with zero duplicate ranges —
+  disproving "it's just the dedup bug" as the sole cause. Investigated
+  directly against his real audio-sync data and found a real, separate,
+  pre-existing issue in PreCut's own consistency-promotion mechanism
+  (not something this session built): `Bob 3.WAV` was promoted from a
+  weak raw score (5.9, below the 10.0 `SCORE_USE` threshold) to
+  "reliable" via the consistency check, but its promoted offset
+  (583.3s) overlaps heavily with `Bob 1.WAV` (ends 857.6s) and
+  `Bob 2.WAV` (857.6–2707.2s) instead of continuing sequentially after
+  them — which is exactly what you'd expect if `Bob 1/2/3.WAV` are
+  sequential rollover files from ONE lav (not three independent
+  simultaneous mics, which is the model the promotion algorithm
+  assumes). **Flagged, not fixed** — this touches PreCut's own proven,
+  "don't rebuild" audio-sync engine and deserves its own focused
+  decision from Ryan before anyone touches it.
+  **The bigger, real ask**: Ryan described his actual editing workflow —
+  a tight, intentional build on the left side of the timeline, then all
+  the extra relevant material (soundbites, B-roll, anything on-topic)
+  on the right with a gap between, so he has one clear main cut to
+  tighten plus everything else to pull from. "It seems like we're just
+  having the ideas spit out anything that could be relevant... more
+  intentional, tighter cuts... would be better." Built for real:
+  - `StoryAngle` gets a new `pool_ranges` field (defaults empty — old
+    angles and PreCut's own `generate_angles` output are unaffected).
+  - The architect's prompt now produces TWO lists: `sequence` (the
+    tight, single-throughline cut — smallest set of fragments telling
+    ONE clear thread) and `pool_indices` (everything else genuinely
+    on-topic, deliberately left out of the tight cut, not because it's
+    bad).
+  - New `assemble_two_zone_cutlist()`: calls PreCut's own unmodified
+    `assemble_cut_from_angle()` TWICE (tight cut, then the pool as a
+    throwaway wrapper angle) — reusing its real file resolution, native
+    dims, and B-roll marker generation for both halves — then merges
+    onto one CutList with the pool timeline-shifted past the tight cut
+    plus a real 45s gap, phrase ids remapped to a disjoint range so
+    attached markers still resolve. Degrades to a plain
+    `assemble_cut_from_angle` call when `pool_ranges` is empty, so it's
+    safe unconditionally — wired into `exporter.py`'s story_angle
+    export branch in place of the old direct call.
+  **Tested live end-to-end on the real "How to remove wallpaper"
+  project**: tight cut came back as 7 focused ranges (down from 11-12
+  in the old undifferentiated version, still correctly keeping the real
+  "toad moment" beat), pool as 18 broader on-topic ranges, merged
+  CutList showed the tight cut at 0–1249s, a real 45s gap, then the pool
+  at 1294–2410s with correctly remapped phrase ids and zero overlap.
+  *(4b1910c.)* **Not yet reviewed by Ryan in the running app.**
 - 2026-09-04 — **Three real bugs Ryan found reviewing an actual export,
   all confirmed and fixed against his real data.**
   1. **Duplicate timeline placements** ("Premiere's Duplicate Frame
@@ -1222,7 +1271,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
 | AE: transcript flagging (color-coded storyline ranges) | **Signed off by Ryan on real footage, end-to-end** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, `run_pipeline`/export wiring, and marker color — the last required moving color-setting from the FCP7 XML into the Premiere ExtendScript extension, since Premiere never honors `<marker><color>`). Ryan: "Ok that worked." See § Done, 2026-09-03. |
-| Creative Editor: story + assembly | **Selection step built, wired into the app, and proven on a real benchmark** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Generates 3 distinct angles per click, not gated on flagging having run, real listen links + standalone Brief file + 72h research cache, and a real multi-file export bug fixed (see § Done + ROADMAP Decision Log, 2026-09-04). **Not yet reviewed by Ryan in the running app with today's changes.** See § Done, 2026-09-03/04. |
+| Creative Editor: story + assembly | **Selection + assembly built, wired into the app, and proven on a real benchmark** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Now exports a real two-zone timeline (tight cut + gap + selects pool) matching Ryan's actual editing workflow, not one undifferentiated sequence. Real multi-file export bug fixed, duplicate-range bug fixed, real listen links + standalone Brief file + full sourced brief embedded on-timeline + 72h research cache. Real gap flagged (not yet fixed) in PreCut's own audio-sync promotion — see ROADMAP Decision Log, 2026-09-04. **Not yet reviewed by Ryan on the new two-zone export.** See § Done, 2026-09-03/04. |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |

@@ -2049,3 +2049,41 @@ with Ryan touching only the intake and the checkpoints.
   `_build_proxy_to_original_map`, the exact convention that has to be
   matched, not reimplemented). Do not assume `TopicRange.source_file` is
   ever consulted for resolution -- it isn't.
+- **2026-09-04 -- Real gap found in PreCut's own audio-sync consistency-
+  promotion, flagged for a future decision, not fixed yet.** Investigated
+  directly against Ryan's real "How to remove wallpaper" project after he
+  reported nonsensical audio persisting on an export with zero duplicate
+  video ranges (ruling out the same-day dedup bug as the cause). Real
+  data: `Bob 3.WAV` scored 5.9 (below the 10.0 `SCORE_USE` threshold) but
+  was promoted to "reliable" via `_promote_consistent_pairs`'s offset-
+  difference consistency check; its promoted offset (583.3s) overlaps
+  `Bob 1.WAV` (covers up to 857.6s) and `Bob 2.WAV` (857.6-2707.2s)
+  instead of continuing sequentially after them. The promotion algorithm
+  models every audio file as an independently-running mic with a fixed
+  relative offset to every other mic -- true for genuinely separate
+  microphones, false for sequential rollover files from one recorder
+  (which `Bob 1/2/3.WAV`'s naming strongly suggests). Not fixed: this is
+  PreCut's own proven, explicitly "don't rebuild" audio-sync engine, and
+  a change to its promotion heuristic needs its own focused investigation
+  and Ryan's explicit go-ahead, not a same-turn patch alongside unrelated
+  work. Whoever picks this up next: check whether a promoted pair's
+  claimed coverage window overlaps a STRONGER already-reliable pair's
+  window for the same file before trusting the promotion -- two mics
+  can't really both own the same slice of a sequentially-named file.
+- **2026-09-04 -- Real editing-workflow decision: story_architect
+  exports now build a two-zone timeline (tight cut + gap + selects
+  pool), not one undifferentiated sequence.** Ryan's own description of
+  his real process: a tight, intentional build on the left, everything
+  else relevant on the right with space between, so there's one clear
+  cut to tighten plus a real reserve of extra material to pull from.
+  `StoryAngle.pool_ranges` (new field, defaults empty, backward
+  compatible) holds the pool; `assemble_two_zone_cutlist()` calls
+  PreCut's own unmodified `assemble_cut_from_angle()` twice and merges
+  the results with a real 45s gap and remapped phrase ids, rather than
+  reimplementing any of PreCut's real assembly/file-resolution/B-roll-
+  marker logic. Anyone touching story-angle export going forward: this
+  function is now the entry point in `exporter.py`'s story_angle branch,
+  not a direct `assemble_cut_from_angle` call -- it degrades safely to
+  the old single-zone behavior when `pool_ranges` is empty (e.g. for
+  PreCut's own `generate_angles` ideas), so it's safe to call
+  unconditionally.
