@@ -303,6 +303,18 @@ class Project:
         """
         d = self.to_dict()
         d["broll_clip_count"] = self.broll_clip_count()
+        # 2026-09-03: root_dir above is the RAW field -- None unless a
+        # custom location was chosen at creation, which left PMTab's
+        # "Project folder" picker with nothing to pre-fill for any
+        # project using the default (hidden, Application-Support)
+        # storage location. Real bug this caused: re-running Organize
+        # on an already-open project with an empty picker field wrote a
+        # brand-new, disconnected manifest.json wherever the user
+        # happened to browse to, silently orphaned from the real
+        # project. resolved_dir is always the TRUE working directory
+        # (self.dir() falls back to the registry/default location),
+        # so the frontend can always pre-fill correctly.
+        d["resolved_dir"] = str(self.dir())
         return d
 
     @classmethod

@@ -85,6 +85,27 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
 
+  // 2026-09-03: pre-fill from the already-loaded project so re-running
+  // Organize (e.g. just to set an audience/content goal) targets the
+  // SAME real directory instead of an empty picker field. Real bug this
+  // caused: the field started blank for every project regardless of
+  // whether it was already open, so re-organizing wrote a brand-new,
+  // disconnected manifest.json wherever the user happened to browse to
+  // -- most projects live in a hidden Application-Support folder the
+  // user has no practical way to navigate to anyway. resolved_dir is
+  // always the project's TRUE working directory (falls back to the
+  // registry/default location when no custom root_dir was set at
+  // creation) -- see project.py's to_wire_dict().
+  // Guarded to run once per project name so it doesn't fight the user's
+  // own edits on every job-progress update to the `project` prop.
+  const prefilledForRef = useRef(null);
+  useEffect(() => {
+    if (!project?.name || prefilledForRef.current === project.name) return;
+    prefilledForRef.current = project.name;
+    if (project.resolved_dir) setRootDir(project.resolved_dir);
+    if (project.name) setProjectName(project.name);
+  }, [project?.name, project?.resolved_dir]);
+
   // Real (PreCut-backed) sources by kind, straight from project state.
   const realByKind = {
     aroll: project.sources.filter((s) => s.kind === "aroll"),
