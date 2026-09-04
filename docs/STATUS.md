@@ -218,6 +218,65 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-03 — **Creative Editor: story + assembly — scoped and its
+  selection/sequencing half built and proven real end-to-end on Runnells,
+  the flagship gap this project exists to close.** PreCut's own
+  `story_planner.generate_angles()` is one Claude call capped at ~3
+  angles / ~9 ranges / ~13 minutes, re-skimming a whole project's
+  transcripts every time. Confirmed by reading `story_assembler.py` and
+  `exporter.py` directly that PreCut ALREADY has a complete, shipped,
+  wired path from a `StoryAngle` to a real assembled `CutList` to real
+  XML export (`assemble_cut_from_angle`, plus the existing Ideas UI
+  `IdeasTab.jsx`/`ExportModal.jsx` and `project.plans_dir()` idea-JSON
+  persistence) — so the only real gap is the SELECTION step, and only
+  that was built. New `posthouse/story_architect.py`: given a project's
+  already-exhaustive, audience-scored transcript-flagging fragments
+  (reuses `transcript_coverage.py`/`audience_relevance.py` output —
+  no re-skimming), one Claude call sequences the `strong` fragments
+  (widening to `possible` if there aren't enough — never fabricates
+  material) into a real hook/build/payoff arc, live web-search-informed
+  per Ryan's explicit call ("Live, run it fresh each time"). Output is
+  persisted in PreCut's own exact idea-JSON shape so it flows through
+  the unmodified export path with zero new UI/export code — a genuine
+  "build the missing piece, not the machine" case.
+  **Real finding while proving the web_search mechanism**: the newer
+  `web_search_20260318` tool variant routes through Claude's
+  code-execution sandbox — a real live test burned ~137K input tokens
+  across ~15 failed programmatic search attempts, hit a rate limit, and
+  gave up with an honest disclosure instead of real results. The older
+  `web_search_20250305` variant did a clean direct 2-query search for
+  ~17K tokens and returned real sourced links. Used the one that
+  actually worked, not the newer one, precisely because it was tested
+  before committing to it.
+  **Full real proof chain, every step actually run, not assumed**: (1)
+  loaded the real "new" Runnells project's 84 real tagged fragments (5
+  strong) and real `audience_goal`; (2) generated a real story angle —
+  title "10,000 Windows — And Still Learning" / "Installing 10,000
+  Windows Wrong" across two live runs, both genuinely coherent
+  hook→build→payoff arcs citing real fragments by file/timestamp and
+  real trend sources (autoreelapp.com, homeremodelerseo.com, and others,
+  all checked as real URLs in the search results, not invented); (3)
+  persisted it as a real `plans/*.json` idea; (4) loaded that idea back
+  with PreCut's own unmodified `producer._angle_from_dict`; (5) ran it
+  through PreCut's own unmodified `assemble_cut_from_angle` with the
+  same offset-map helpers `exporter.py` itself uses — produced a real
+  `CutList` with correct source files (resolved through proxy → original
+  camera path), correct timeline placement, and correct native 4K/59.94
+  sequence dims probed from the actual source file. Also fixed a real
+  bug found during this test: `why_it_works` was silently truncating
+  mid-sentence (and mid-citation) at a 1000-char cap — raised to 3000.
+  Also added `save_story_research()` — the sourced trend findings and
+  what real material got left out (and why) don't fit PreCut's own
+  `CreativeBrief` schema, so they're persisted as a separate audit-trail
+  file rather than silently dropped once the function returns.
+  **Not yet wired into `backend.py`/the UI** — proven standalone via
+  direct calls, same staged pattern as transcript flagging (prove each
+  piece for real, wire in as its own explicit later step). A real,
+  judgeable idea file now sits in the real "new" project's `plans/`
+  directory — Ryan can open Post House's Ideas tab and react to it
+  directly if the app's `list_ideas` picks it up without any code
+  changes (it just globs the directory), even before wiring a
+  dedicated "generate from flags" trigger.
 - 2026-09-03 — **Marker colors: root cause found and fixed for real —
   Premiere's FCP7 XML import never honors marker `<color>` at all; the
   two rounds of RGB tuning before this were solving the wrong problem.**
@@ -879,7 +938,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
 | AE: transcript flagging (color-coded storyline ranges) | **Signed off by Ryan on real footage, end-to-end** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, `run_pipeline`/export wiring, and marker color — the last required moving color-setting from the FCP7 XML into the Premiere ExtendScript extension, since Premiere never honors `<marker><color>`). Ryan: "Ok that worked." See § Done, 2026-09-03. |
-| Creative Editor: story + assembly | Not started — B, PreCut has a v1 to improve on and measure against the benchmark |
+| Creative Editor: story + assembly | **Selection step built and proven real end-to-end on Runnells** (`posthouse/story_architect.py`, live trend research, PreCut's existing assembler/export reused unmodified). **Not yet wired into `backend.py`/UI, not yet reviewed by Ryan.** See § Done, 2026-09-03. |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |

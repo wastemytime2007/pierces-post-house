@@ -1964,3 +1964,38 @@ with Ryan touching only the intake and the checkpoints.
   in Premiere -- verifying the XML is well-formed and contains the
   right values is not the same as verifying Premiere does anything with
   them.**
+- **2026-09-03 — Creative Editor: story + assembly scoped and its
+  selection half built (`posthouse/story_architect.py`). Two decisions
+  worth recording for future agents touching this area.**
+  1. **PreCut already has a complete, shipped assembly + export path for
+     story angles — `story_assembler.assemble_cut_from_angle()`, wired
+     into `exporter.py`'s `idea_kind == "story_angle"` branch, the
+     existing `IdeasTab.jsx`/`ExportModal.jsx` UI, and
+     `project.plans_dir()` idea-JSON persistence.** This was NOT obvious
+     from `precut-capabilities`' existing summary of story angles (which
+     only described `generate_angles()`'s skimming problem) — confirmed
+     only by reading `story_assembler.py`, `producer.py`, and
+     `exporter.py` directly. Anyone building on story angles going
+     forward should produce a `StoryAngle` and persist it in the exact
+     idea-JSON shape `producer.py`'s `run_generate_angles`/
+     `_angle_from_dict` use, NOT build new assembly or export code —
+     confirmed by actually round-tripping a real `StoryAngle` through
+     `_angle_from_dict` and `assemble_cut_from_angle` end to end on
+     Runnells and getting a correct real `CutList` back (right source
+     files resolved proxy->original, right timeline placement, right
+     native 4K/59.94 sequence dims).
+  2. **Real-time trend research (Ryan's explicit call: "Live, run it
+     fresh each time") uses the Anthropic API's server-side web_search
+     tool directly inside the same Claude call — not a separate agent
+     step, not the `trend-research` skill invoked manually.** Tool
+     version matters and was NOT assumed — tested both real variants
+     side by side before picking one: `web_search_20260318` runs inside
+     Claude's code-execution sandbox and, in the real test, spun through
+     ~15 failed programmatic search attempts, burned ~137K input tokens,
+     hit a rate limit, and gave up with an honest "I can't get live
+     results" instead of fabricating sources. `web_search_20250305` did
+     a clean direct 2-query search for ~17K tokens and returned real,
+     checkable links. Use `web_search_20250305` for any future
+     API-level (not agent-level) live web search in this project;
+     re-test before switching to a newer dated variant, don't assume
+     newer is better here.
