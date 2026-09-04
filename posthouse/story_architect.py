@@ -340,6 +340,9 @@ Hard rules:
 - You may ONLY select from the fragments given to you, by their [index]. Never invent a time \
 range, a quote, or a moment that isn't in the list — every selection must trace to a real, \
 already-extracted fragment.
+- Each fragment index may appear AT MOST ONCE in `sequence` — never reuse the same index for two \
+different roles (e.g. once as "hook" and again as "payoff"). If a moment genuinely serves two \
+purposes, pick ONE role for it rather than placing the same real clip on the timeline twice.
 - Most real interviews have more usable material than fits in one story — be honest about what \
 you left out and why, in `omitted_reasoning`.
 - Live trend research (given below) informs framing/tone only — never overrides what the \
@@ -1039,6 +1042,34 @@ def research_trends(
     return result
 
 
+def _format_citations_plaintext(research: dict) -> str:
+    """Plain-text (no markdown syntax) citation list — real source/listen
+    links only, for an editor reading the on-timeline Creative Brief
+    marker inside Premiere itself. Skips the noisier audit-trail-only
+    entries (unverified/excluded) that belong in the full .md brief and
+    the research JSON, not a marker comment an editor has to read cold."""
+    lines = ["=== SOURCES / EXAMPLES THIS IS BASED ON ==="]
+    for t in research.get("named_trends", []):
+        listen = f" | listen: {t['listen_url']}" if t.get("listen_url") else ""
+        lines.append(f"- Trend \"{t.get('name','')}\": {t.get('source','')}{listen}")
+    for v in research.get("video_findings", []):
+        if not v.get("relevant"):
+            continue
+        audio = ""
+        if v.get("audio_track") or v.get("audio_artist"):
+            link = f" | listen: {v['audio_listen_url']}" if v.get("audio_listen_url") else ""
+            audio = f" | audio: {v.get('audio_track') or '?'} - {v.get('audio_artist') or 'unknown'}{link}"
+        lines.append(f"- Watched: {v['url']}{audio}")
+    for f in research.get("marketing_findings", []):
+        lines.append(f"- Strategy source: {f.get('source','')}")
+    for f in research.get("strategy_video_findings", []):
+        if f.get("relevant"):
+            lines.append(f"- Strategy video: {f['url']}")
+    if len(lines) == 1:
+        lines.append("(no sourced examples found this run)")
+    return "\n".join(lines)
+
+
 def _format_research_for_llm(research: dict) -> str:
     lines = []
     for t in research.get("named_trends", []):
@@ -1183,6 +1214,7 @@ def generate_story_angle(
     data = _extract_json(text)
 
     ranges: List[TopicRange] = []
+    seen_indices = set()
     for entry in data.get("sequence", []):
         try:
             idx = int(entry.get("index"))
@@ -1190,6 +1222,16 @@ def generate_story_angle(
             continue
         if not (0 <= idx < len(candidates)):
             continue
+        if idx in seen_indices:
+            # Real bug, confirmed 2026-09-04 on a real export Ryan caught
+            # via Premiere's Duplicate Frame markers: the model picked the
+            # SAME fragment index twice (once as "hook", once as "payoff"),
+            # producing the identical clip placed on the timeline twice —
+            # and, downstream, the same audio-sync match placed twice too.
+            # Never trust the prompt's "don't repeat" instruction alone for
+            # a hard constraint; enforce it here.
+            continue
+        seen_indices.add(idx)
         tf = candidates[idx]
         f = tf.fragment
         role = str(entry.get("role", ""))
@@ -1249,12 +1291,22 @@ def generate_story_angle(
         f"Why watch: {why_watch}\n\n"
         f"How it relates to the viewer: {viewer_relevance}\n\n"
         f"{str(data.get('why_it_works', '')).strip()}"
+        f"\n\n{_format_citations_plaintext(research)}"
     )
 
     brief = CreativeBrief(
         title=str(data.get("title", ""))[:200],
         hook=str(data.get("hook", ""))[:500],
-        why_it_works=why_it_works[:3000],
+        # Ryan, 2026-09-04: "The brief isn't in the Premiere project which
+        # is what I'd asked for. I dont want to have to search deep into
+        # the finder... to find an arbitrary .md file." An editor who only
+        # ever opens the Premiere project (not Post House itself) needs
+        # the full brief — including sourced links — reachable from
+        # there. The frame-0 marker this becomes (see exporter's
+        # _build_creative_brief_marker) is the one place guaranteed to be
+        # inside the actual .prproj/XML, so the FULL brief goes here, not
+        # a truncated summary — raised well past the earlier 3000-char cap.
+        why_it_works=why_it_works[:12000],
         tone=str(data.get("tone", ""))[:200],
         target_duration_sec=float(data.get("target_duration_sec", 0.0) or 0.0),
         target_audience=str(data.get("target_audience", ""))[:300],
