@@ -260,9 +260,24 @@ _DEFAULT_AUDIENCE_PROFILES = [
         "id": "brand-authority",
         "name": "Brand / Authority",
         "description": (
+            # 2026-09-04: "not comedic" removed. Ryan caught the planner
+            # arguing itself out of a good hook on the grounds that it
+            # would be comedy ("It's not a joke, it's not a gross-out
+            # gag... that's trust-building, not comedy, which fits your
+            # heart-driven brief") — obeying this text exactly as
+            # written. The rule was already superseded in the
+            # soldfast-brand-voice skill and in the Contractor
+            # Recruiting profile; this profile just never got updated.
+            # Heart includes genuine humor; what's excluded is a
+            # manufactured bit, not a real person being funny.
             "Establish SoldFast as an industry expert and build trust. "
             "Broad audience -- future sellers, franchisees, contractors, "
-            "and the general community. Heart-driven, not comedic; leads "
+            "and the general community. Heart-driven, and heart includes "
+            "genuine humor -- a real person's real humor or a true "
+            "character reveal earns its place the same way any other "
+            "beat does, by being true to the person and the moment; "
+            "what doesn't belong is a manufactured bit, gag, or joke "
+            "bolted onto a moment that wasn't actually funny. Leads "
             "with the burden, not the brand; show don't say. Draws on "
             "finished projects, HGTV behind-the-scenes, sit-down "
             "interviews with Bob and Mitch, and genuine how-to value."
