@@ -994,6 +994,56 @@ def _augment_goal_with_intent(audience_goal: str, stated_intent: str) -> str:
     )
 
 
+def seeded_research_path() -> Optional[Path]:
+    """Where seeded (out-of-band, zero-API-cost) research lives, if the
+    build-phase seed mode is switched on.
+
+    POSTHOUSE_RESEARCH_SEED may be an explicit file path, or "1"/"on" to
+    use the default location under Application Support. Unset = normal
+    live research."""
+    raw = os.environ.get("POSTHOUSE_RESEARCH_SEED", "").strip()
+    if not raw or raw in ("0", "false", "no", "off"):
+        return None
+    if raw in ("1", "true", "yes", "on"):
+        return app_support_dir() / "research_cache" / "seed.json"
+    return Path(raw).expanduser()
+
+
+def _load_seeded_research() -> Optional[dict]:
+    path = seeded_research_path()
+    if path is None:
+        return None
+    if not path.exists():
+        raise StoryPlannerError(
+            f"Seeded research mode is on (POSTHOUSE_RESEARCH_SEED) but no seed file "
+            f"exists at {path}. Refusing to continue with no research rather than "
+            f"pretending the search came up empty."
+        )
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as e:
+        raise StoryPlannerError(f"Seeded research file at {path} could not be read: {e}")
+
+    research = payload.get("research", payload)
+    if not isinstance(research, dict):
+        raise StoryPlannerError(f"Seeded research file at {path} is not the expected shape.")
+
+    # Normalize so downstream formatting/UI never has to guard for a
+    # missing list, and mark it plainly so nothing downstream can present
+    # seeded fixtures as a live research result.
+    for key in ("named_trends", "text_findings", "video_findings",
+                "marketing_findings", "strategy_video_findings", "unverified"):
+        research.setdefault(key, [])
+    research["cached"] = True
+    research["seeded"] = True
+    research.setdefault("seeded_note", (
+        "Research supplied from a seed file for the build/testing phase — gathered "
+        "out-of-band, not by this app calling the API. Real sources, but not fetched "
+        "live this run."
+    ))
+    return research
+
+
 def research_trends(
     audience_goal: str,
     model: str = ANTHROPIC_MODEL,
@@ -1026,6 +1076,28 @@ def research_trends(
     real sampled frames — see module docstring). `unverified` always says
     plainly when a search or a video came up empty rather than padding
     either list."""
+    # Seeded research (2026-09-04). Ryan, during the build phase: "Can we
+    # have you run the research for the testing phase? Once we have the
+    # whole app up and running how we want, we can switch its full
+    # functionality back on with API calls but for the building side of
+    # things its getting way too expensive."
+    #
+    # When POSTHOUSE_RESEARCH_SEED points at a real research file, this
+    # function makes ZERO API calls and serves that file instead — the
+    # research having been done out-of-band (by a Claude Code session,
+    # on its own tooling, not against the user's API key). Deliberately
+    # checked BEFORE the normal cache so it can't be bypassed by a cache
+    # miss, and ignores the 72h age rule, since a seed is a fixture for
+    # testing, not a time-sensitive result.
+    #
+    # It fails LOUD if the seed is missing or unreadable rather than
+    # quietly returning empty findings — presenting "no trends found" as
+    # if it were a real research outcome is exactly the kind of silent
+    # fabrication this module refuses everywhere else.
+    seed = _load_seeded_research()
+    if seed is not None:
+        return seed
+
     if not force_refresh:
         cached = _load_cached_research(audience_goal, stated_intent)
         if cached is not None:

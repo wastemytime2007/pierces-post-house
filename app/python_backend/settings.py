@@ -94,6 +94,27 @@ def apply_settings_to_env() -> dict:
     else:
         summary["workspace_id_source"] = "missing"
 
+    # 2026-09-04, build phase. Ryan: "Can we have you run the research for
+    # the testing phase? Once we have the whole app up and running how we
+    # want, we can switch its full functionality back on with API calls
+    # but for the building side of things its getting way too expensive."
+    #
+    # When "research_seed" is true in settings.json, story_architect
+    # serves research from a seed file gathered out-of-band instead of
+    # spending the user's credits on web searches, video watching and
+    # transcript reads. Lives in settings (not just an env var) so it
+    # survives however the app gets launched. Env still wins, so a
+    # deliberate POSTHOUSE_RESEARCH_SEED=0 can force live research for
+    # one run without editing settings.
+    if not os.environ.get("POSTHOUSE_RESEARCH_SEED"):
+        if settings.get("research_seed"):
+            os.environ["POSTHOUSE_RESEARCH_SEED"] = "1"
+            summary["research"] = "seeded (build phase — no API research calls)"
+        else:
+            summary["research"] = "live"
+    else:
+        summary["research"] = f"env override ({os.environ['POSTHOUSE_RESEARCH_SEED']})"
+
     return summary
 
 
