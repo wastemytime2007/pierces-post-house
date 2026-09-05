@@ -476,6 +476,27 @@ def find_covering_audio_for_phrase(
     common with long takes where the recorder swaps files. With partial
     coverage the editor still gets the audio for whichever portion the
     lav was actually rolling.
+
+    2026-09-04: requires the NATIVE score, not `is_reliable`. Ryan hit
+    this for real, repeatedly, across separate reports ("adding pieces
+    of audio that don't sync up at all", "overlapping audio sources
+    from Bob 2 and Bob 3... those are different points in time so they
+    don't sync up"). Checked against the real project's own saved
+    audio_sync state (`project.json`'s `audio_sync.pairs`): every
+    `promoted_via_consistency` pair on that project scored 5.15-9.98 —
+    squarely inside or bordering the 3-7 range this module's own header
+    documents as the FALSE-match band on Pierce's calibration footage
+    (true matches: 18-38). `_promote_consistent_pairs`'s cross-
+    validation (see its docstring) is a real, deliberate PreCut
+    mechanism for weak-but-genuine mic pairs and isn't touched here —
+    it still runs, still sets the flag, still drives the SyncMatrix UI
+    (`is_reliable` unchanged everywhere else). This is the one place
+    that SILENTLY writes audio onto the editor's real timeline with no
+    review step, so it's the one place that needs the higher bar: only
+    a pair that cleared SCORE_USE on its own raw cross-correlation score
+    gets auto-attached at export. A promoted-only pair no longer gets
+    silently placed as a track the editor didn't ask for and can't
+    explain.
     """
     file_to_group: dict[str, str] = {}
     for g in state.groups:
@@ -487,10 +508,7 @@ def find_covering_audio_for_phrase(
     for p in state.pairs:
         if p.aroll_file != aroll_original_path:
             continue
-        # Drop 4.47.4: include promoted pairs. is_reliable returns True
-        # for native strong matches AND for weak matches that were
-        # cross-validated against strong anchors.
-        if not p.is_reliable:
+        if p.score < SCORE_USE:
             continue
 
         # Audio file's coverage in A-roll timeline: starts at offset_sec,

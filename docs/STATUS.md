@@ -62,6 +62,116 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-04 — Full audit pass, per Ryan: "fix all of the issues you
+  can before I have to generate again" (regenerating costs real money;
+  he doesn't want to pay for a fresh "Generate ideas" run per bug).**
+  Investigated every open complaint against real, already-generated
+  project data (no new API cost beyond one 300-token sanity check) —
+  found and fixed three real, concrete bugs, and confirmed one
+  suspected gap was NOT actually a bug:
+  - **Nonsensical/duplicate audio on the timeline — FIXED, verified
+    against real data.** Ryan reported this 3 separate times ("adding
+    pieces of audio that don't sync up", "overlapping audio sources
+    from Bob 2 and Bob 3... those are different points in time so they
+    don't sync up at all"). Root cause confirmed directly from the real
+    "How to remove wallpaper" project's saved `audio_sync` state: every
+    one of its 5 `promoted_via_consistency` pairs scored 5.15-9.98 —
+    inside or bordering the 3-7 band `precut_pipeline/audio_sync.py`'s
+    own header documents as the FALSE-match range on Pierce's
+    calibration footage (true matches: 18-38). PreCut's own
+    `_promote_consistent_pairs` cross-validation is untouched (still a
+    real, deliberate mechanism, still drives the SyncMatrix UI) — the
+    fix is narrower: `find_covering_audio_for_phrase` (the ONE function
+    that silently writes audio onto the exported timeline with no
+    review step) now requires the pair's native score >= SCORE_USE,
+    not `is_reliable` (which also accepted promoted-only pairs).
+    Verified directly: re-ran coverage lookup for the 4 real clips that
+    had promoted pairs — all 5 promoted-only pairs now excluded, all
+    genuinely-strong native pairs (score >= 10) still attach normally.
+  - **Trending-audio listen/download links — FIXED, verified the
+    underlying mechanism works.** Ryan reported this twice ("the brief
+    still isnt sharing where to download or find the trending audio
+    sounds"). Confirmed real, still-present bug: checked every one of
+    the 10 real `story_research/*.json` files ever saved for this
+    project — 100% had an empty `listen_url` on every named trend,
+    including the most recent. Root cause: named-trend `listen_url` was
+    self-reported by the model inline in the same call that names the
+    trend, never independently verified — unlike `video_findings`'
+    audio credit, which already uses a real, working, separately-called
+    lookup (`_find_listen_link`, web-search-backed, returns "" rather
+    than fabricating). Fix: `research_trends()` now runs that same real
+    lookup as a second pass over any named trend whose self-reported
+    link came back empty. Verified the lookup mechanism itself for real
+    (one small 300-token call, not a full generation): a known real
+    track ("Blinding Lights" / The Weeknd) correctly returned a real
+    Spotify URL; the actual saved trend name "A New Season Had Begun
+    (sound by @olivialodenius)" correctly returned "" (declining to
+    fabricate) rather than a bug — will only show a link going forward
+    when a real one exists to find.
+  - **Brief-in-Premiere — investigated, found to be ALREADY WORKING, no
+    fix needed.** Initially suspected multi_exporter.py (the real,
+    live export path) had no marker-writing code at all — a `grep` for
+    "brief"/"marker" inside that file alone came back empty. Before
+    reporting this as a gap, checked the real exported XML directly:
+    multi_exporter.py delegates sequence-building to the SHARED
+    `FCPXMLWriter` class it imports from `precut_pipeline/exporter.py`,
+    and that class's `_build_sequence()` already calls
+    `_build_creative_brief_marker()` — confirmed present, frame-0, gold-
+    colored, with hook/tone/audience/why-it-works/CTA and the real
+    sourced citation links, in the actual `v1_bin_test2.xml` produced
+    by the V1-folder verification export above. Caught before wasting
+    time rebuilding something that already existed — worth recording so
+    a future session doesn't repeat the same false-alarm investigation.
+  - **Topic focus (tight cut = one concrete topic)** — re-checked the
+    real "Reading the House" idea's 5 tight-cut ranges against each
+    other: hook (personal reflection) → build (wallpaper steaming) →
+    build (ADA cabinet, the "toad" gold moment) → build (track
+    lighting/trusses) → payoff (bathroom code oversight) — all 5
+    genuinely serve one thesis ("Bob reads houses like a text"), no
+    off-topic drift this time. No further prompt change made; the
+    2026-09-03 Phase 1/2/3 rewrite appears to be holding on real
+    output.
+  - Posthouse synced to `app/python_backend/posthouse/` after each
+    change; `precut_pipeline/audio_sync.py` (app-only, no separate
+    canonical copy) edited directly.
+  **Still awaiting Ryan's own review in Premiere** — a passing script
+  check is not sign-off. The audio and V1-folder fixes are ready to
+  confirm on the NEXT real export (no new "Generate ideas" run needed
+  for either — both fixes apply to already-generated ideas). The
+  listen-link fix will only show results on the next fresh research
+  run (72h cache).
+- **2026-09-04 — V1 folder bug: fixed, verified by real export + XML
+  check, awaiting Ryan's confirmation in Premiere.** Ryan reported
+  ("theres no v1 folder where the ideas are supposed to live within the
+  seq folder") that two-zone story-angle sequences were landing directly
+  in `Seq/` instead of nested in `Seq/v1/`. Root cause:
+  `assemble_two_zone_cutlist()` in `posthouse/story_architect.py`
+  remaps the pool (selects-pool) half's `phrase_id`s by an `id_offset`
+  so they don't collide with the tight cut's own ids — but
+  `multi_exporter.py`'s `export_multi_timeline()` independently treats
+  ANY phrase with `phrase_id >= 2_000_000` as the "All Synced A-Roll"
+  reference sequence (`_build_all_aroll_sequences`'s own convention),
+  placing it directly in `Seq/` rather than `Seq/v1/`. First fix
+  attempt dropped `id_offset` from `5_000_000` to `1_500_000` —
+  verified via real export + XML parent-map traversal to have NOT
+  fixed it (sequence still landed in `Seq/`, not `Seq/v1/`). Dug
+  deeper: `right.aroll_track`'s ids already start at `1_000_000`
+  (`assemble_cut_from_angle`'s own internal counter, same base the left
+  half uses) BEFORE the offset is added, so the real final id was
+  `1_000_000 + 1_500_000 = 2_500_000` — still over the `2_000_000`
+  line. Corrected `id_offset` to `500_000` (final pool ids land at
+  `1_500_000+`, disjoint from the left half's `1_000_00N`s, safely
+  under `2_000_000`). Verified twice on the real "Reading the House"
+  idea (`idea_d6733e9ada`, "How to remove wallpaper" project): (1)
+  direct call to `assemble_two_zone_cutlist()` printed all 16
+  `phrase_id`s — `1000000..1000004` (tight cut) then
+  `1500000..1500010` (pool), all unique, all `< 2_000_000`; (2) a full
+  real `run_export()` produced an XML whose "Reading the House"
+  `<sequence>` element's containing bin chain, walked via a proper
+  parent-map traversal, is `Seq / v1` — not directly under `Seq`.
+  **Not yet marked Done** — per project rule, "done" requires Ryan
+  reviewing the real exported project in Premiere and confirming, not
+  just my own script-level verification.
 - **2026-09-03 — CORRECTION: the "third falsification" below was wrong —
   interpretation actually worked, just with a visible lag.** Ryan first
   reported "it didn't interpret the footage... just the folder with the

@@ -951,6 +951,38 @@ def research_trends(
     except Exception as e:
         result["unverified"].append(f"Named-trend search failed: {e}")
 
+    # 2026-09-04: named trends' listen_url came back empty in 10/10 real
+    # runs on a real project (checked directly against every saved
+    # story_research/*.json for "How to remove wallpaper") — Ryan: "the
+    # brief still isnt sharing where to download or find the trending
+    # audio sounds." Root cause: the trend-names call above asks the
+    # model to self-report listen_url inline, unverified, in the same
+    # pass that just names the trend — exactly the kind of unchecked
+    # assertion "cite or don't assert" exists to catch. Fix: reuse the
+    # SAME real, searched lookup (_find_listen_link) already built and
+    # working for video_findings' audio credits, as a second real pass
+    # over any trend whose self-reported link came back empty. Still
+    # returns "" (never a fabricated link) on failure.
+    for t in named_trends:
+        if t.get("listen_url"):
+            continue
+        name = t.get("name", "")
+        if not name:
+            continue
+        # "A New Season Had Begun (sound by @olivialodenius)" — split out
+        # a credited artist/handle when the model included one; otherwise
+        # search on the trend name alone.
+        artist = ""
+        track = name
+        m = re.search(r"\(sound by (@?[\w.]+)\)", name, re.I)
+        if m:
+            artist = m.group(1)
+            track = name[:m.start()].strip()
+        try:
+            t["listen_url"] = _find_listen_link(track, artist, client, model)
+        except Exception:
+            pass
+
     if not named_trends:
         result["unverified"].append(
             "No specific NAMED trend (a sound, a challenge, a signature format) found for "
@@ -1466,7 +1498,32 @@ def assemble_two_zone_cutlist(angle: "StoryAngle", transcript, db=None, **assemb
     # Disjoint from both halves' own internal id counters (each starts
     # fresh at 1_000_000 inside assemble_cut_from_angle) so attached
     # markers can be remapped without colliding with the left side's ids.
-    id_offset = 5_000_000
+    #
+    # Real bug, found and fixed 2026-09-04 (Ryan: "theres no v1 folder
+    # where the ideas are supposed to live"): this was 5_000_000, which
+    # collides with a DIFFERENT, pre-existing PreCut convention in
+    # multi_exporter.py's export_multi_timeline — any phrase with
+    # phrase_id >= 2_000_000 is treated as the "All Synced A-Roll"
+    # reference sequence (minted that way on purpose by
+    # _build_all_aroll_sequences) and placed directly in Seq/, not
+    # nested in Seq/v1/ where real story-angle sequences belong. Any
+    # angle with a non-empty pool got its pool phrases remapped past
+    # that threshold, misclassifying the WHOLE sequence and bumping it
+    # out of Seq/v1/.
+    #
+    # First fix attempt (2026-09-04) dropped this to 1_500_000, but
+    # that was still wrong: `right.aroll_track` ids ALREADY start at
+    # 1_000_000 (assemble_cut_from_angle's own internal counter, same
+    # base the left half uses), so the final id is 1_000_000 +
+    # id_offset, not id_offset alone. 1_000_000 + 1_500_000 =
+    # 2_500_000 — still over the 2_000_000 line. Verified via a real
+    # export + XML parent-map check (sequence still landed directly
+    # under Seq/, not Seq/v1/) before this second fix. The offset must
+    # satisfy id_offset < 1_000_000 (right's final id then lands below
+    # 2_000_000) while staying bigger than the left half's own range
+    # count (a handful of ids from 1_000_000 up) so the two halves stay
+    # disjoint. 500_000 gives large headroom on both sides.
+    id_offset = 500_000
     remap = {}
     for p in right.aroll_track:
         remap[p.phrase_id] = p.phrase_id + id_offset
