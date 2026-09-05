@@ -93,6 +93,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
@@ -133,6 +134,23 @@ WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_use
 # pass — bounds wall-clock time and cost against inherently flaky scraping
 # (blocked, deleted, format-unavailable are all real, expected outcomes).
 MAX_VIDEOS_TO_WATCH = 2
+
+# 2026-09-04, Ryan, mid-run: "it is BURNING through my api credits... It's
+# used $3 already and hasnt spit out one idea... The API isnt supposed to
+# be used for transcript reading. Thats insanely expensive."
+#
+# These two steps are far and away the most expensive part of a research
+# pass: watching a video sends real sampled FRAMES (vision tokens), and
+# the strategy-video step fetches a YouTube transcript and sends up to
+# 12,000 characters of it to be read. Everything else in research is
+# cheap web search. They are now OFF by default, so a cold research pass
+# is search-only, and opt-in per run.
+#
+# Set POSTHOUSE_WATCH_VIDEOS=1 to turn the vision/transcript research
+# back on. Defaulting them ON was the wrong call for a tool whose whole
+# cost argument is not paying twice for the same work.
+def _deep_research_enabled() -> bool:
+    return os.environ.get("POSTHOUSE_WATCH_VIDEOS", "").strip() in ("1", "true", "yes", "on")
 
 # Matches a real INDIVIDUAL video permalink, not a discover/hashtag/
 # category page (confirmed by testing which patterns those two shapes
@@ -1139,6 +1157,13 @@ def research_trends(
         )
 
     seen = set()
+    if not _deep_research_enabled():
+        result["unverified"].append(
+            "Video watching is off (the expensive step: downloading real videos and "
+            "sending sampled frames as vision tokens). Trend findings this run are "
+            "from web search only. Set POSTHOUSE_WATCH_VIDEOS=1 to turn it back on."
+        )
+        candidate_urls = []
     for url in candidate_urls:
         if len(result["video_findings"]) >= MAX_VIDEOS_TO_WATCH:
             break
@@ -1203,6 +1228,14 @@ def research_trends(
             "No individual strategy/educational YouTube video URLs found via search this run."
         )
     seen_mkt = set()
+    if not _deep_research_enabled():
+        result["unverified"].append(
+            "Strategy-video transcript reading is off (fetches a YouTube transcript "
+            "and sends up to 12,000 characters to be read — Ryan, 2026-09-04: \"The "
+            "API isnt supposed to be used for transcript reading\"). Marketing "
+            "findings this run are from web search only."
+        )
+        strategy_video_urls = []
     for url in strategy_video_urls:
         if len(result["strategy_video_findings"]) >= MAX_STRATEGY_VIDEOS_TO_WATCH:
             break
@@ -1842,6 +1875,7 @@ def run_generate_story_angle(
     project, job_id: str, emit,
     stated_intent: str = "",
     max_duration_sec: float = 0.0,
+    research: Optional[dict] = None,
 ) -> None:
     """Backend-job wrapper: load a project's real audience goal and every
     real transcript fragment available — flagged (audience-scored) or
@@ -1884,8 +1918,24 @@ def run_generate_story_angle(
 
     N_ANGLES = 3  # Ryan, 2026-09-04: "It should also provide 3 ideas each time"
     try:
-        emit({"type": "log", "level": "info", "message": "Researching live trends (real web search + real video watching)..."})
-        research = research_trends(audience_goal, stated_intent=stated_intent)
+        # Real cost bug, 2026-09-04 (Ryan: "it is BURNING through my api
+        # credits... It's used $3 already and hasnt spit out one idea").
+        # A planning conversation ALREADY pays for a full research pass
+        # and stores it on the session. This function then threw that
+        # away and bought it again — and because the cache is keyed on
+        # the stated intent, and the conversation's resolved intent is a
+        # different (evolved) string from the one research was cached
+        # under, it missed cache every time and re-ran the expensive
+        # part: downloading and watching real videos with vision frames
+        # and fetching YouTube transcripts. Accept the caller's
+        # already-paid-for research instead.
+        if research is None:
+            emit({"type": "log", "level": "info", "message": "Researching live trends (real web search + real video watching)..."})
+            research = research_trends(audience_goal, stated_intent=stated_intent)
+        else:
+            emit({"type": "log", "level": "info",
+                  "message": "Reusing the research from your planning conversation — "
+                             "no new searches, videos, or transcript reads."})
         if research.get("cached"):
             emit({"type": "log", "level": "info",
                   "message": "Reused research from the last 72 hours for this exact audience/"

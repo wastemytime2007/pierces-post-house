@@ -424,6 +424,11 @@ def generate_from_planning_session(project, job_id: str, emit, session_id: str) 
         emit({"type": "producer_error", "job_id": job_id, "message": str(e)})
         return
 
+    # The resolved intent (what the conversation landed on) is what the
+    # GENERATOR should build to. But it must never be used as a research
+    # cache key: it's a fresh sentence every turn, so it would miss cache
+    # every single time and re-run the expensive research. Research is
+    # passed in explicitly below instead.
     intent = (session.resolved_intent or session.stated_intent or "").strip()
     if intent:
         emit({"type": "log", "level": "info", "job_id": job_id,
@@ -438,4 +443,8 @@ def generate_from_planning_session(project, job_id: str, emit, session_id: str) 
         project, job_id, emit,
         stated_intent=intent,
         max_duration_sec=session.target_duration_sec,
+        # Already paid for when this conversation opened — reuse it
+        # rather than buying a second, near-identical research pass
+        # (real cost bug, see run_generate_story_angle's comment).
+        research=session.research or None,
     )
