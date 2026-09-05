@@ -104,7 +104,40 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
     prefilledForRef.current = project.name;
     if (project.resolved_dir) setRootDir(project.resolved_dir);
     if (project.name) setProjectName(project.name);
+    // 2026-09-04, Ryan: "every single time you open the project all
+    // that's gone again so you have to re-input it... it feels like
+    // there was no purpose in filling all that out in the first place."
+    // The details were never lost — organize_project persists them to
+    // manifest.json — but nothing ever read them back. Ask for them.
+    sendCommand({ type: "get_manifest" }).catch(() => {});
   }, [project?.name, project?.resolved_dir]);
+
+  // Restore what intake already captured, once the backend hands the
+  // saved manifest back. Only fills fields the user hasn't already
+  // typed into this session, so a reload can never clobber live edits.
+  const [savedAudienceGoal, setSavedAudienceGoal] = useState("");
+  useEffect(() => {
+    return subscribe((ev) => {
+      if (ev.type !== "manifest_loaded") return;
+      const proj = ev.manifest?.project;
+      if (!proj) return;
+      if (proj.client?.name) setClientName((cur) => cur || proj.client.name);
+      if (proj.project_type) {
+        setProjectType((cur) =>
+          cur === PROJECT_TYPES[0] ? proj.project_type : cur);
+      }
+      if (proj.audience_goal) {
+        // Keep the real saved goal so re-Organizing can never blank it,
+        // even if no profile matches the text any more (a profile's
+        // description can be edited after the fact — that must not
+        // silently wipe the project's goal).
+        setSavedAudienceGoal(proj.audience_goal);
+        const match = (audienceProfiles || []).find(
+          (p) => p.description === proj.audience_goal);
+        if (match) setAudienceProfileId((cur) => cur || match.id);
+      }
+    });
+  }, [subscribe, audienceProfiles]);
 
   // Real (PreCut-backed) sources by kind, straight from project state.
   const realByKind = {
@@ -336,7 +369,14 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         project_type: projectType,
         sources,
         brand_assets_source_dir: brandAssetsDir.trim() || undefined,
-        audience_goal: selectedProfile?.description || undefined,
+        // Fall back to the goal already saved on the manifest rather
+        // than sending undefined. Real bug this fixes (2026-09-04): a
+        // blank dropdown sent undefined, and build_manifest only sets
+        // audience_goal when truthy — so re-running Organize without
+        // reselecting the profile silently DELETED the project's
+        // audience goal, which every downstream step (research,
+        // planning, story generation) depends on.
+        audience_goal: selectedProfile?.description || savedAudienceGoal || undefined,
       });
     } catch (e) {
       setError(String(e)); setSubmitting(false);

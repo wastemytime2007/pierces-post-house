@@ -339,6 +339,41 @@ def handle_get_project_state(cmd: dict) -> None:
     emit({"type": "project_state", "project": proj.to_wire_dict()})
 
 
+def handle_get_manifest(cmd: dict) -> None:
+    """Read back what Project Manager intake already captured.
+
+    Ryan, 2026-09-04: "every single time you open the project all that's
+    gone again so you have to re-input it... it feels like there was no
+    purpose in filling all that out in the first place."
+
+    The data was never actually lost — `organize_project` writes client,
+    project_type, shoot_dates and audience_goal into manifest.json and
+    they persist correctly. But the manifest was only ever sent to the UI
+    as the RESULT of running Organize (the `project_organized` event),
+    and `Project.to_wire_dict()` doesn't carry any of those fields, so
+    the frontend had no way to retrieve them on reopen. This is that
+    missing read path.
+    """
+    proj = _require_project()
+    if proj is None:
+        return
+    manifest_path = proj.dir() / "manifest.json"
+    if not manifest_path.exists():
+        emit({"type": "manifest_loaded", "manifest": None})
+        return
+    try:
+        from posthouse.manifest import load_manifest
+        manifest = load_manifest(manifest_path)
+    except Exception as exc:
+        # Not an error worth blocking the tab over -- the user can still
+        # fill the form in and re-Organize. Say so plainly rather than
+        # silently presenting an empty form as if nothing was saved.
+        emit({"type": "manifest_loaded", "manifest": None,
+              "message": f"Could not read saved project details: {exc}"})
+        return
+    emit({"type": "manifest_loaded", "manifest": manifest})
+
+
 def handle_organize_project(cmd: dict) -> None:
     """Task 1.1: Project Manager tab.
 
@@ -1024,6 +1059,7 @@ HANDLERS = {
     "get_project_state": handle_get_project_state,
     # Task 1.1: Project Manager tab
     "organize_project": handle_organize_project,
+    "get_manifest": handle_get_manifest,
     "run_pipeline": handle_run_pipeline,
     "cancel_job": handle_cancel_job,
     # AI producer
