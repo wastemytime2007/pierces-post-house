@@ -115,6 +115,21 @@ def apply_settings_to_env() -> dict:
     else:
         summary["research"] = f"env override ({os.environ['POSTHOUSE_RESEARCH_SEED']})"
 
+    # 2026-09-04, build phase. Ryan: "Can we connect all of those to run
+    # through you temporarily as well?" When "llm_via_cli" is true, every
+    # LLM call in the app is routed through the local `claude` CLI
+    # (see posthouse/cli_llm_client.py) so planning turns, idea
+    # generation, extraction and flagging bill to the Claude Code plan
+    # instead of API credits while the app is still being built.
+    if not os.environ.get("POSTHOUSE_LLM_VIA_CLI"):
+        if settings.get("llm_via_cli"):
+            os.environ["POSTHOUSE_LLM_VIA_CLI"] = "1"
+            summary["llm_route"] = "claude CLI (build phase — no API credit spend)"
+        else:
+            summary["llm_route"] = "anthropic api"
+    else:
+        summary["llm_route"] = f"env override ({os.environ['POSTHOUSE_LLM_VIA_CLI']})"
+
     return summary
 
 

@@ -17,10 +17,27 @@ from typing import Optional
 import anthropic
 
 
-def build_anthropic_client(api_key: Optional[str] = None) -> anthropic.Anthropic:
+def build_anthropic_client(api_key: Optional[str] = None):
     """Construct an Anthropic client, adding the workspace-id header only
     when one is actually configured (env var or app settings, injected
-    into env by `settings.apply_settings_to_env()` at backend startup)."""
+    into env by `settings.apply_settings_to_env()` at backend startup).
+
+    2026-09-04 (build phase, Ryan: "Can we connect all of those to run
+    through you temporarily as well?"): when POSTHOUSE_LLM_VIA_CLI is on,
+    this returns a duck-typed client that shells out to the local
+    `claude` CLI instead, so calls bill to the Claude Code plan rather
+    than API credits. Every LLM call site in the app goes through this
+    one factory, so the switch happens here and nowhere else. See
+    posthouse/cli_llm_client.py for what that route can and can't do
+    (text only; no server-side tools).
+    """
+    try:
+        from posthouse.cli_llm_client import cli_mode_enabled, CLIBackedClient
+    except Exception:
+        cli_mode_enabled = None  # posthouse not importable (donor-only context)
+    if cli_mode_enabled is not None and cli_mode_enabled():
+        return CLIBackedClient()
+
     workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     default_headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
     return anthropic.Anthropic(api_key=api_key, default_headers=default_headers)
