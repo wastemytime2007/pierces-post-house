@@ -135,22 +135,31 @@ WEB_SEARCH_TOOL = {"type": "web_search_20250305", "name": "web_search", "max_use
 # (blocked, deleted, format-unavailable are all real, expected outcomes).
 MAX_VIDEOS_TO_WATCH = 2
 
-# 2026-09-04, Ryan, mid-run: "it is BURNING through my api credits... It's
-# used $3 already and hasnt spit out one idea... The API isnt supposed to
-# be used for transcript reading. Thats insanely expensive."
+# Watching real videos (sampled frames as vision tokens) and reading a
+# strategy video's transcript are the most expensive parts of a research
+# pass — and they are also the ONLY parts that actually look at video.
+# They stay ON by default.
 #
-# These two steps are far and away the most expensive part of a research
-# pass: watching a video sends real sampled FRAMES (vision tokens), and
-# the strategy-video step fetches a YouTube transcript and sends up to
-# 12,000 characters of it to be read. Everything else in research is
-# cheap web search. They are now OFF by default, so a cold research pass
-# is search-only, and opt-in per run.
+# History worth keeping, 2026-09-04: after Ryan hit a $3 run these were
+# briefly defaulted OFF. That was the wrong fix and he said so —
+# "Why would we only research text when we need to find video trends? I
+# feel like you're turning things off that we had for a reason." Correct:
+# he asked for real video analysis specifically ("not just look at the
+# first video that pops up in a search result"), and text-only research
+# for a video-trends problem is not research.
 #
-# Set POSTHOUSE_WATCH_VIDEOS=1 to turn the vision/transcript research
-# back on. Defaulting them ON was the wrong call for a tool whose whole
-# cost argument is not paying twice for the same work.
+# The real bug was never that this work happens; it was that it was being
+# PAID FOR REPEATEDLY — generation re-bought research the planning
+# conversation had already stored, and the cache was keyed on an intent
+# string that changed every conversation turn so it never hit. Those are
+# fixed (see run_generate_story_angle's `research` argument). This work is
+# meant to be paid for once per audience/intent per 72h and reused across
+# projects, which is exactly what the cache does when its key is stable.
+#
+# POSTHOUSE_WATCH_VIDEOS=0 remains as a deliberate escape hatch for a
+# cheap run; it is not the default.
 def _deep_research_enabled() -> bool:
-    return os.environ.get("POSTHOUSE_WATCH_VIDEOS", "").strip() in ("1", "true", "yes", "on")
+    return os.environ.get("POSTHOUSE_WATCH_VIDEOS", "1").strip() not in ("0", "false", "no", "off")
 
 # Matches a real INDIVIDUAL video permalink, not a discover/hashtag/
 # category page (confirmed by testing which patterns those two shapes
@@ -1159,9 +1168,9 @@ def research_trends(
     seen = set()
     if not _deep_research_enabled():
         result["unverified"].append(
-            "Video watching is off (the expensive step: downloading real videos and "
-            "sending sampled frames as vision tokens). Trend findings this run are "
-            "from web search only. Set POSTHOUSE_WATCH_VIDEOS=1 to turn it back on."
+            "Video watching was explicitly disabled for this run "
+            "(POSTHOUSE_WATCH_VIDEOS=0), so trend findings are from web search only "
+            "and nothing here was verified against a real video."
         )
         candidate_urls = []
     for url in candidate_urls:
@@ -1230,10 +1239,9 @@ def research_trends(
     seen_mkt = set()
     if not _deep_research_enabled():
         result["unverified"].append(
-            "Strategy-video transcript reading is off (fetches a YouTube transcript "
-            "and sends up to 12,000 characters to be read — Ryan, 2026-09-04: \"The "
-            "API isnt supposed to be used for transcript reading\"). Marketing "
-            "findings this run are from web search only."
+            "Strategy-video transcript reading was explicitly disabled for this run "
+            "(POSTHOUSE_WATCH_VIDEOS=0), so marketing findings are from web search "
+            "only."
         )
         strategy_video_urls = []
     for url in strategy_video_urls:
