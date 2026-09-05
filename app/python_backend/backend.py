@@ -614,6 +614,91 @@ def handle_story_architect_generate(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def _run_planning_job(cmd: dict, default_prefix: str, run):
+    """Shared plumbing for the three planning-conversation commands
+    (2026-09-04). Each is one discrete turn — the backend has no
+    pause-and-resume primitive and doesn't need one; a conversation is
+    repeated command/response cycles over the session file on disk."""
+    proj = _require_project()
+    if proj is None:
+        return
+    job_id = cmd.get("job_id") or f"{default_prefix}-{int(time.time())}"
+
+    cancel_flag = threading.Event()
+    with _jobs_lock:
+        _jobs[job_id] = ActiveJob(job_id, cancel_flag)
+
+    def worker():
+        try:
+            run(proj, job_id)
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+        finally:
+            with _jobs_lock:
+                _jobs.pop(job_id, None)
+
+    _executor.submit(worker)
+
+
+def handle_story_plan_start(cmd: dict) -> None:
+    """Open the planning conversation: read the real footage, run the
+    trend research (targeted at `intent` when the editor stated one up
+    front), and come back with a proposed game plan. Generates NO ideas
+    — Ryan, 2026-09-04: "not actually put anything together until the
+    user tells them what their end goal is." """
+    intent = str(cmd.get("intent") or "")
+
+    def run(proj, job_id):
+        from posthouse.story_conversation import start_planning_session
+        start_planning_session(proj, job_id, emit=emit, stated_intent=intent)
+
+    _run_planning_job(cmd, "story-plan-start", run)
+
+
+def handle_story_plan_reply(cmd: dict) -> None:
+    """One more turn of the back-and-forth. Reuses the session's already-
+    paid-for research, so a reply costs one small call rather than a
+    second research pass."""
+    session_id = str(cmd.get("session_id") or "")
+    message = str(cmd.get("message") or "")
+
+    def run(proj, job_id):
+        from posthouse.story_conversation import continue_planning_session
+        continue_planning_session(proj, job_id, emit=emit,
+                                  session_id=session_id, user_message=message)
+
+    _run_planning_job(cmd, "story-plan-reply", run)
+
+
+def handle_story_plan_generate(cmd: dict) -> None:
+    """The expensive step, run only on an explicit request from the UI —
+    never inferred from the wording of a reply. Passes the conversation's
+    resolved intent and agreed target length into generation as real,
+    enforced constraints."""
+    session_id = str(cmd.get("session_id") or "")
+
+    def run(proj, job_id):
+        from posthouse.story_conversation import generate_from_planning_session
+        generate_from_planning_session(proj, job_id, emit=emit, session_id=session_id)
+
+    _run_planning_job(cmd, "story-plan-generate", run)
+
+
+def handle_story_plan_latest(cmd: dict) -> None:
+    """Return the most recent planning session for this project, if any,
+    so the UI can reopen the conversation the editor was already having
+    instead of starting fresh every time the tab mounts."""
+    proj = _require_project()
+    if proj is None:
+        return
+    from posthouse.story_conversation import latest_session
+    session = latest_session(proj)
+    emit({
+        "type": "story_plan_latest",
+        "session": session.to_dict() if session else None,
+    })
+
+
 def handle_get_story_research(cmd: dict) -> None:
     """Fetch the sourced trend-research audit trail behind one story
     angle (2026-09-03) — the "where do I see any of that" answer: real
@@ -952,6 +1037,10 @@ HANDLERS = {
     # 2026-09-03: Creative Editor story architect (audience-goal + live
     # trend research + flagged fragments, distinct from story_generate)
     "story_architect_generate": handle_story_architect_generate,
+    "story_plan_start": handle_story_plan_start,
+    "story_plan_reply": handle_story_plan_reply,
+    "story_plan_generate": handle_story_plan_generate,
+    "story_plan_latest": handle_story_plan_latest,
     "get_story_research": handle_get_story_research,
     "set_angle_preset": handle_set_angle_preset,
     "set_angle_platform_and_aspect": handle_set_angle_platform_and_aspect,

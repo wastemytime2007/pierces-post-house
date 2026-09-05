@@ -26,7 +26,8 @@ import AutoIncludeNudge from "../../components/AutoIncludeNudge.jsx";
  * for now (opens ExportModal as usual).
  */
 export default function IdeasTab({
-  project, ideas, researchByIdea, jobs, transcriptCount, settings, onOpenApiKeyHelp,
+  project, ideas, researchByIdea, planSession, planError,
+  jobs, transcriptCount, settings, onOpenApiKeyHelp,
   shouldShowAutoIncludeNudge, onMarkAutoIncludeNudgeSeen, onOpenAutoIncludeModal,
   // Drop 4.47.3: live rule count for the ExportModal "Apply default
   // includes" toggle. We just forward it; the toggle and gating logic
@@ -34,6 +35,8 @@ export default function IdeasTab({
   autoIncludeRulesCount,
 }) {
   const [showBriefForm, setShowBriefForm] = useState(false);
+  // 2026-09-04: the plan-first conversation panel.
+  const [showPlanPanel, setShowPlanPanel] = useState(false);
   const [refineTarget, setRefineTarget] = useState(null);  // idea_id being refined
   const [producerBusy, setProducerBusy] = useState(false);
   // Drop 3: multi-select state for XML export
@@ -104,7 +107,11 @@ export default function IdeasTab({
     );
     const producerJobs = Object.entries(jobs).filter(([id]) =>
       id.startsWith("analyze-") || id.startsWith("plan-") || id.startsWith("refine-") ||
-      id.startsWith("angles-") || id.startsWith("story-architect-")
+      id.startsWith("angles-") || id.startsWith("story-architect-") ||
+      // 2026-09-04: planning-conversation turns are producer work too —
+      // without these the panel's own spinner never shows and its buttons
+      // stay clickable mid-turn.
+      id.startsWith("story-plan-")
     );
     const producerRunning = producerJobs.some(([, j]) => j.status === "running");
     setProducerBusy(producerRunning);
@@ -285,8 +292,24 @@ export default function IdeasTab({
             identifiable after the fact only by its source_phrase_ids field,
             which story_architect never sets. Routing the primary button to
             story_architect removes that ambiguity going forward. */}
+        {/* 2026-09-04, Ryan: the app should "have a conversation with the
+            user about what it found and what it thinks is a good game plan
+            with the footage that they have at their disposal, but not
+            actually put anything together until the user tells them what
+            their end goal is." This is that entry point, and it's primary:
+            stating intent first redirects the research and makes the
+            generated cut match what he actually wants, which is the whole
+            cost argument for planning before building. */}
         <button
           className="btn btn-primary"
+          onClick={() => setShowPlanPanel(true)}
+          disabled={transcriptCount === 0 || producerBusy}
+          title="Talk through what's in your footage and what to build with it — research and a proposed game plan first, ideas only once you agree"
+        >
+          {planSession ? "Continue planning" : "Plan with AI"}
+        </button>
+        <button
+          className="btn"
           onClick={handleGenerateStoryArchitect}
           disabled={transcriptCount === 0 || producerBusy}
           title="Builds 3 real story ideas from your footage, each with a tight one-throughline cut plus a selects pool of everything else on-topic, informed by live trend research (real web search, real trending videos actually watched) — requires an audience/content goal set on the Project tab, and the pipeline's transcript-flagging stage to have run"
@@ -472,6 +495,15 @@ export default function IdeasTab({
           </>
         )}
       </div>
+
+      {showPlanPanel && (
+        <StoryPlanningPanel
+          session={planSession}
+          error={planError}
+          busy={producerBusy}
+          onClose={() => setShowPlanPanel(false)}
+        />
+      )}
 
       {refineTarget && (
         <RefineModal
@@ -1176,6 +1208,192 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
 // ---------------------------------------------------------------------------
 // Refine modal
 // ---------------------------------------------------------------------------
+
+/**
+ * StoryPlanningPanel — the conversation that happens BEFORE anything is
+ * generated (2026-09-04).
+ *
+ * Ryan: "the application needs to kind of have a conversation with the
+ * user about what it found and what it thinks is a good game plan with
+ * the footage that they have at their disposal, but not actually put
+ * anything together until the user tells them what their end goal is."
+ *
+ * Deliberate design choices:
+ *  - Generation fires from an explicit BUTTON, never from parsing "go"
+ *    or "sounds good" out of a reply. Guessing readiness from free text
+ *    is exactly the kind of fragile inference that produces expensive
+ *    surprises.
+ *  - The up-front intent box is optional. Filled in, it redirects the
+ *    trend research itself (targeted, cheaper, more useful). Left blank,
+ *    the planner researches the project's audience goal and opens by
+ *    asking what you're after.
+ */
+function StoryPlanningPanel({ session, error, busy, onClose }) {
+  const [intent, setIntent] = useState("");
+  const [reply, setReply] = useState("");
+
+  const started = !!session;
+
+  const handleStart = async () => {
+    try {
+      await sendCommand({
+        type: "story_plan_start",
+        intent: intent.trim(),
+        job_id: `story-plan-start-${Date.now()}`,
+      });
+    } catch (e) {
+      console.error("story_plan_start failed:", e);
+    }
+  };
+
+  const handleReply = async () => {
+    if (!reply.trim()) return;
+    const text = reply.trim();
+    setReply("");
+    try {
+      await sendCommand({
+        type: "story_plan_reply",
+        session_id: session.session_id,
+        message: text,
+        job_id: `story-plan-reply-${Date.now()}`,
+      });
+    } catch (e) {
+      console.error("story_plan_reply failed:", e);
+    }
+  };
+
+  const handleGenerate = async () => {
+    try {
+      await sendCommand({
+        type: "story_plan_generate",
+        session_id: session.session_id,
+        job_id: `story-plan-generate-${Date.now()}`,
+      });
+      onClose();
+    } catch (e) {
+      console.error("story_plan_generate failed:", e);
+    }
+  };
+
+  const handleKey = (e, fn) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      fn();
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Plan before building</h2>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-body plan-panel-body">
+          {!started && (
+            <>
+              <label className="form-label">
+                What are you trying to make? <span className="form-label-hint">(optional)</span>
+              </label>
+              <div className="plan-hint">
+                Saying this up front points the trend research at your actual piece
+                instead of a generic sweep — cheaper, and the plan comes back closer
+                to what you want. Leave it blank and it'll research your project's
+                audience goal and ask you first.
+              </div>
+              <textarea
+                autoFocus
+                className="form-textarea"
+                rows={4}
+                placeholder="A quick how-to on removing wallpaper that makes us look like the experts — engaging, fun to watch."
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                onKeyDown={(e) => handleKey(e, handleStart)}
+              />
+            </>
+          )}
+
+          {started && (
+            <>
+              <div className="plan-turns">
+                {session.turns.map((t, i) => (
+                  <div
+                    key={i}
+                    className={`plan-turn plan-turn-${t.role === "editor" ? "editor" : "assistant"}`}
+                  >
+                    <div className="plan-turn-who">
+                      {t.role === "editor" ? "You" : "Post House"}
+                    </div>
+                    <div className="plan-turn-text">{t.text}</div>
+                  </div>
+                ))}
+                {busy && (
+                  <div className="plan-turn plan-turn-assistant plan-turn-pending">
+                    <span className="btn-spinner" aria-hidden="true" />
+                    Thinking it through…
+                  </div>
+                )}
+              </div>
+
+              {(session.resolved_intent || session.target_duration_sec > 0) && (
+                <div className="plan-resolved">
+                  <div className="plan-resolved-label">What will get built if you generate now</div>
+                  {session.resolved_intent && (
+                    <div className="plan-resolved-intent">{session.resolved_intent}</div>
+                  )}
+                  {session.target_duration_sec > 0 && (
+                    <div className="plan-resolved-duration">
+                      Target length: ~{Math.round(session.target_duration_sec)}s
+                      <span className="plan-resolved-note">
+                        {" "}— enforced; a cut that overruns it is rejected and retried
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <textarea
+                className="form-textarea"
+                rows={3}
+                placeholder="Push back, add a constraint, or answer the question…"
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onKeyDown={(e) => handleKey(e, handleReply)}
+                disabled={busy}
+              />
+            </>
+          )}
+
+          {error && <div className="plan-error">{error}</div>}
+        </div>
+
+        <div className="modal-actions">
+          {!started ? (
+            <button className="btn btn-primary" onClick={handleStart} disabled={busy}>
+              {busy ? (<><span className="btn-spinner" aria-hidden="true" />Researching…</>)
+                    : "Start planning"}
+            </button>
+          ) : (
+            <>
+              <button className="btn" onClick={handleReply} disabled={busy || !reply.trim()}>
+                Send
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleGenerate}
+                disabled={busy}
+                title="Builds 3 real ideas to the plan above, with the agreed intent and length enforced"
+              >
+                Generate ideas from this plan
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function RefineModal({ idea, onClose, onSubmitted }) {
   const [notes, setNotes] = useState("");

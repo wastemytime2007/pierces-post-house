@@ -50,6 +50,11 @@ export default function ProjectView({
   // preloaded with the idea list, since most ideas (PreCut's own
   // story_generate) have none.
   const [researchByIdea, setResearchByIdea] = useState({});
+  // 2026-09-04: the planning conversation held before generation. One
+  // session at a time per project; the backend persists it, so this is
+  // just the live view of it.
+  const [planSession, setPlanSession] = useState(null);
+  const [planError, setPlanError] = useState("");
 
   // Subscribe to pipeline/producer events
   useEffect(() => {
@@ -201,12 +206,27 @@ export default function ProjectView({
       } else if (ev.type === "story_research") {
         setResearchByIdea((prev) => ({ ...prev, [ev.idea_id]: ev.research }));
       }
+      // 2026-09-04: the planning conversation that happens BEFORE any
+      // ideas get generated. A turn is one discrete job, so each reply
+      // arrives as its own story_plan_turn carrying the whole updated
+      // session (small, and simpler than patching turns client-side).
+      else if (ev.type === "story_plan_turn") {
+        setPlanSession(ev.session || null);
+        setPlanError("");
+      } else if (ev.type === "story_plan_latest") {
+        if (ev.session) setPlanSession(ev.session);
+      } else if (ev.type === "story_plan_error") {
+        setPlanError(ev.message || "Planning failed.");
+      }
     });
   }, [subscribe]);
 
   // Fetch ideas list once on mount
   useEffect(() => {
     sendCommand({ type: "list_ideas" }).catch(() => {});
+    // Reopen an in-progress planning conversation rather than making the
+    // editor start over every time they come back to the tab.
+    sendCommand({ type: "story_plan_latest" }).catch(() => {});
   }, []);
 
   const hasRunning = Object.values(jobs).some((j) => j.status === "running");
@@ -277,6 +297,8 @@ export default function ProjectView({
               project={project}
               ideas={ideas}
               researchByIdea={researchByIdea}
+              planSession={planSession}
+              planError={planError}
               jobs={jobs}
               transcriptCount={transcriptCount}
               settings={settings}

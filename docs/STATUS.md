@@ -62,6 +62,66 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-04 — Plan-before-you-build: the conversation now happens
+  BEFORE generation, and research/intent are real constraints on the
+  cut. Built and verified on real material; awaiting Ryan's own review
+  in the app.** Ryan's diagnosis: *"it feels like the app is doing the
+  tasks to check them off but not learning anything to apply to its
+  planning... The steps exist to inform the next step not to just check
+  off and move on."* **Confirmed in code, not assumed** — two lines in
+  `posthouse/story_architect.py` were the whole problem, in plain text:
+  the sequencing prompt said trend research was *"use to inform
+  framing/tone only"*, and `target_duration_sec` was documented as
+  *"not enforced"*. Real consequence, measured: the "Reading the House"
+  tight cut ran **765s (12:44)** while its own brief cited Instagram
+  Reel formats — a 17x overrun nothing checked. What changed:
+  - **New `posthouse/story_conversation.py`** — a real back-and-forth
+    held before anything is generated. `start_planning_session` reads
+    the real footage + runs research and comes back with a game plan
+    and NO generated ideas; `continue_planning_session` is the reply
+    turn; `generate_from_planning_session` is the expensive step, run
+    only on an explicit button press (never by parsing "go" out of a
+    reply — no fragile readiness classification). Turns are discrete
+    jobs over a persisted session file, reusing the existing
+    command/emit architecture; no new IPC primitive was needed.
+  - **Intent now redirects research**: `research_trends(...,
+    stated_intent=)` folds the editor's own stated goal into every
+    search prompt, and the 72h cache key now includes it (a targeted
+    run must never be served the generic sweep, or vice versa — old
+    pre-intent cache entries still validate for generic runs so the
+    upgrade doesn't throw away paid-for research).
+  - **Research is now a constraint, not decoration**: the "framing/tone
+    only" line is gone, replaced with an instruction that format
+    findings govern fragment selection, count, order and length; and
+    `max_duration_sec` is a REAL check measured against the actually-
+    selected ranges (not the model's self-reported number, which is the
+    claim under suspicion), failing loud like the existing
+    `stop_reason`/`len(ranges) < 2` checks.
+  - **`load_project_material` extracted** from `run_generate_story_angle`
+    so the conversation sees the same real material the generator will,
+    with no second copy to drift.
+  - **UI**: "Plan with AI" is now the primary Ideas-tab button
+    (`StoryPlanningPanel` in `IdeasTab.jsx`), with an optional up-front
+    intent box, a rendered turn list, a reply box, a live "what will get
+    built if you generate now" summary, and an explicit "Generate ideas
+    from this plan" button. Direct generate remains as an escape hatch.
+  **Verified on the real "How to remove wallpaper" project** with Ryan's
+  own example intent ("a quick how-to on removing wallpaper that makes
+  us look like the experts... quick and engaging, fun to watch"):
+  (1) research genuinely redirected — 15 findings on how-to/Reels
+  format specifics (15-30s TikTok, 30-60s Reels, hook in 3s, high save
+  rates on home-improvement how-tos) instead of the generic sweep that
+  previously returned "Potential-Maxxing"/"#RocktheBlock"; (2) the
+  opening turn was a legible plan produced with zero ideas generated,
+  and was honestly negative where the footage is thin ("no clean
+  before-and-after visual sequence I can see... no moment where someone
+  demonstrates the full strip-and-glue-removal process"); (3) a real
+  reply moved the plan — target 30s → 45s and the glue-removal warning
+  restructured as the credibility payoff, then it correctly stopped
+  asking questions; (4) the duration check, run against the real 765s
+  cut, rejects it (17x over a 45s target) while passing a reasonable
+  52s cut. **Not Done** — Ryan reviewing this in the app and on real
+  output is what makes it Done.
 - **2026-09-04 — Full audit pass, per Ryan: "fix all of the issues you
   can before I have to generate again" (regenerating costs real money;
   he doesn't want to pay for a fresh "Generate ideas" run per bug).**

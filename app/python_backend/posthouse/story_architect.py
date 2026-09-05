@@ -397,11 +397,17 @@ ISOLATED, per-fragment score (context, not a gate; see system prompt):
 {fragments}
 </fragments>
 
-Live trend research already gathered for this project (use to inform framing/tone only):
+Live trend research already gathered for this project. This is NOT background colour to cite in \
+the write-up — it is a constraint on the cut itself. Where a finding says something concrete \
+about FORMAT (how a piece like this is structured, what the hook pattern is, how long it runs, \
+how fast it cuts), you must actually build to it: it governs which fragments you select, how many, \
+what order they go in, and how long the result runs. Citing a format in `why_it_works` while \
+building something shaped nothing like it is a failure, not a stylistic choice.
 
 <trend_research>
 {trend_research}
 </trend_research>
+{planning_context}
 
 First, pick the ONE concrete, narrow topic (per Phase 1) this footage can carry start to finish, \
 and in `narrative_thesis` name why THIS topic is worth telling — not a broad theme, not the \
@@ -432,7 +438,7 @@ Return this exact JSON shape, in a fenced ```json block:
     "cta": "What is the specific call to action, and why this one (not a generic 'follow us')?"
   }},
   "tone": "editorial tone guidance, e.g. 'quiet, unhurried, heart-led'",
-  "target_duration_sec": <rough number, not enforced>,
+  "target_duration_sec": <number of seconds this cut should run. If a target length was given above, this MUST be within it — and the `sequence` you return must actually add up to roughly that, not overrun it. This is checked after you answer; a sequence whose real duration blows the target is rejected and regenerated.>,
   "target_audience": "who this is for, restated from the audience goal",
   "call_to_action": "same specific CTA as editorial_qna.cta",
   "sequence": [
@@ -443,6 +449,35 @@ Return this exact JSON shape, in a fenced ```json block:
   "pool_indices": [1, 2, 4, 5, 6, 8, 9],
   "omitted_reasoning": "1-2 sentences on what's genuinely off-topic and left out of both the sequence and the pool, and why"
 }}"""
+
+
+def _format_planning_context(stated_intent: str, max_duration_sec: float) -> str:
+    """The block that carries the editor's own stated goal for THIS piece
+    (and the length it has to fit) into the sequencing prompt as a real
+    constraint. Empty string when nothing was stated — the undirected
+    path behaves exactly as before."""
+    intent = (stated_intent or "").strip()
+    if not intent and not (max_duration_sec and max_duration_sec > 0):
+        return ""
+
+    parts = ["\nWHAT THE EDITOR ACTUALLY ASKED FOR — this governs the cut, not just its framing:\n"]
+    if intent:
+        parts.append(
+            f"<stated_intent>\n{intent}\n</stated_intent>\n\n"
+            "Build THIS. If the footage genuinely can't support it, say so plainly in "
+            "`narrative_thesis` rather than quietly building a different piece that happens "
+            "to be easier to assemble from the material."
+        )
+    if max_duration_sec and max_duration_sec > 0:
+        parts.append(
+            f"\n\nTARGET LENGTH: the tight cut (`sequence`) must run about "
+            f"{max_duration_sec:.0f} seconds or less. This is measured against your actual "
+            f"selected fragments after you answer, and a cut that overruns it is rejected. "
+            f"Select fewer, shorter, better fragments — do not select everything good and "
+            f"hope the length works out. Material that's genuinely on-topic but doesn't fit "
+            f"in the time belongs in `pool_indices`, which has no length limit."
+        )
+    return "".join(parts) + "\n"
 
 
 def _collect_candidate_fragments(
@@ -826,23 +861,47 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
 
 RESEARCH_CACHE_MAX_AGE_SEC = 72 * 3600  # Ryan, 2026-09-04: don't re-research
 
+# How far over an agreed target length a tight cut may land before it's
+# rejected. Fragments are whole transcript phrases and can't be trimmed
+# mid-sentence at this stage, so demanding an exact fit would reject
+# genuinely good cuts over a few seconds of unavoidable overshoot. 1.25
+# leaves room for one slightly-long closing phrase while still catching
+# the failure this exists for (a "Reel" that came out 12:44 against a
+# ~60s intent is 12x over, not 25% over).
+DURATION_OVERRUN_TOLERANCE = 1.25
 
-def _research_cache_path(audience_goal: str) -> Path:
+
+def _research_cache_key_text(audience_goal: str, stated_intent: str = "") -> str:
+    """The exact text the cache is keyed on. `stated_intent` MUST be part
+    of it (2026-09-04): once a stated intent redirects the searches (see
+    `research_trends`), targeted research for "how to remove wallpaper,
+    quick and engaging" is a genuinely different result set from the
+    generic sweep for the same audience_goal. Keying on audience_goal
+    alone would serve one as the other from cache — silently returning
+    generic trends for a targeted run, or worse, pinning every later
+    generic run to whatever intent happened to be researched first."""
+    goal = audience_goal.strip()
+    intent = (stated_intent or "").strip()
+    return f"{goal}\n<<INTENT>>\n{intent}" if intent else goal
+
+
+def _research_cache_path(audience_goal: str, stated_intent: str = "") -> Path:
     """Shared across ALL projects, not per-project — the same audience/goal
     profile (e.g. "Contractor Recruiting") gets reused across shoots, and
     the whole point of caching is not paying for the same research twice.
     Keyed by the exact audience_goal text (a hash of it, for a safe
     filename) rather than a profile id, since story_architect only ever
     sees the resolved description text, never the profile id it came
-    from."""
+    from. A stated intent, when present, is part of that key."""
     cache_dir = app_support_dir() / "research_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key = hashlib.sha256(audience_goal.strip().encode("utf-8")).hexdigest()[:24]
+    key_text = _research_cache_key_text(audience_goal, stated_intent)
+    key = hashlib.sha256(key_text.encode("utf-8")).hexdigest()[:24]
     return cache_dir / f"{key}.json"
 
 
-def _load_cached_research(audience_goal: str) -> Optional[dict]:
-    path = _research_cache_path(audience_goal)
+def _load_cached_research(audience_goal: str, stated_intent: str = "") -> Optional[dict]:
+    path = _research_cache_path(audience_goal, stated_intent)
     if not path.exists():
         return None
     try:
@@ -852,16 +911,28 @@ def _load_cached_research(audience_goal: str) -> Optional[dict]:
     age_sec = time.time() - payload.get("cached_at", 0)
     if age_sec > RESEARCH_CACHE_MAX_AGE_SEC:
         return None
-    if payload.get("audience_goal") != audience_goal.strip():
+    stored_key = payload.get("cache_key_text")
+    if stored_key is None:
+        # Pre-2026-09-04 cache entry, written before stated_intent existed.
+        # Still valid for a generic (no-intent) run — accepting it avoids
+        # throwing away a paid-for research pass on upgrade — but never
+        # for a targeted one, which needs genuinely different findings.
+        if (stated_intent or "").strip():
+            return None
+        if payload.get("audience_goal") != audience_goal.strip():
+            return None
+    elif stored_key != _research_cache_key_text(audience_goal, stated_intent):
         return None  # hash collision or stale key reuse — never trust a mismatch
     return payload.get("research")
 
 
-def _save_research_cache(audience_goal: str, research: dict) -> None:
-    path = _research_cache_path(audience_goal)
+def _save_research_cache(audience_goal: str, research: dict, stated_intent: str = "") -> None:
+    path = _research_cache_path(audience_goal, stated_intent)
     try:
         path.write_text(json.dumps({
             "audience_goal": audience_goal.strip(),
+            "stated_intent": (stated_intent or "").strip(),
+            "cache_key_text": _research_cache_key_text(audience_goal, stated_intent),
             "cached_at": time.time(),
             "research": research,
         }, indent=2))
@@ -869,22 +940,58 @@ def _save_research_cache(audience_goal: str, research: dict) -> None:
         pass  # caching is a cost optimization, never allowed to break a real run
 
 
+def _augment_goal_with_intent(audience_goal: str, stated_intent: str) -> str:
+    """Fold a stated intent INTO the goal block every research prompt
+    already interpolates, so one addition redirects every search
+    (trends, named trends, example videos, marketing strategy, strategy
+    videos) instead of five near-identical prompt edits.
+
+    2026-09-04, Ryan: "if I told it straight up what I'm looking for out
+    of this is a how to wallpaper a bathroom type content that makes us
+    look like the experts... then it could go look at high trending
+    how-to renovation videos." Without this the searches only ever see
+    the broad project-level audience profile, so they come back with a
+    generic niche sweep that can't inform a specific piece."""
+    goal = audience_goal.strip()
+    intent = (stated_intent or "").strip()
+    if not intent:
+        return goal
+    return (
+        f"{goal}\n\n"
+        f"THIS SPECIFIC PIECE — the editor has said exactly what they want to make "
+        f"from the footage they have:\n\"{intent}\"\n\n"
+        f"Target every search at THAT specifically: what is working right now for this "
+        f"exact kind of piece — its format, structure, pacing, hook pattern, and typical "
+        f"length — not a broad sweep of the niche. Findings that don't help someone build "
+        f"this particular piece are not useful here."
+    )
+
+
 def research_trends(
     audience_goal: str,
     model: str = ANTHROPIC_MODEL,
     api_key: Optional[str] = None,
     force_refresh: bool = False,
+    stated_intent: str = "",
 ) -> dict:
-    """Live trend research. Cached per exact audience_goal text for up to
-    72 hours (Ryan, 2026-09-04: "if the researcher has gone through or
-    found research for a specific audience/goal in the last 72 hours it
-    shouldn't do that work a second time, so we can save time and
-    money") — shared across every project using that same audience/goal,
-    not just re-runs of one project. Superseded from the original "live,
-    run it fresh every time, never cached" rule (2026-09-03) by this
-    later, more specific instruction. Pass `force_refresh=True` to bypass
-    the cache deliberately. A cache hit is marked `research["cached"] =
-    True` / `research["cached_at"]` so callers and the UI can tell.
+    """Live trend research. Cached per exact audience_goal text (plus
+    stated_intent, when given) for up to 72 hours (Ryan, 2026-09-04: "if
+    the researcher has gone through or found research for a specific
+    audience/goal in the last 72 hours it shouldn't do that work a
+    second time, so we can save time and money") — shared across every
+    project using that same audience/goal, not just re-runs of one
+    project. Superseded from the original "live, run it fresh every
+    time, never cached" rule (2026-09-03) by this later, more specific
+    instruction. Pass `force_refresh=True` to bypass the cache
+    deliberately. A cache hit is marked `research["cached"] = True` /
+    `research["cached_at"]` so callers and the UI can tell.
+
+    `stated_intent` is the editor's own description of the piece they're
+    trying to make ("a quick how-to on wallpaper removal that makes us
+    look like the experts"). When present it redirects every search at
+    that specific piece rather than the broad niche — see
+    `_augment_goal_with_intent`. It is part of the cache key, so a
+    targeted run never gets served the generic sweep or vice versa.
 
     Two kinds of finding, clearly labeled and never conflated:
     `text_findings` (read from articles about trends, sourced by URL) and
@@ -893,10 +1000,19 @@ def research_trends(
     plainly when a search or a video came up empty rather than padding
     either list."""
     if not force_refresh:
-        cached = _load_cached_research(audience_goal)
+        cached = _load_cached_research(audience_goal, stated_intent)
         if cached is not None:
             cached["cached"] = True
             return cached
+
+    # Keep the ORIGINAL goal for cache keying — the cache is keyed on
+    # (raw goal, stated_intent), and `_load_cached_research` above used
+    # exactly that. Writing the augmented text back would save under a
+    # key no read ever looks up, silently disabling the cache.
+    raw_audience_goal = audience_goal
+    # Every prompt below interpolates this as {audience_goal}; when an
+    # intent was stated it carries the redirect (see helper above).
+    audience_goal = _augment_goal_with_intent(audience_goal, stated_intent)
 
     client = build_anthropic_client(api_key=api_key)
     result: dict = {
@@ -1103,7 +1219,8 @@ def research_trends(
             )
 
     result["cached"] = False
-    _save_research_cache(audience_goal, result)
+    result["stated_intent"] = (stated_intent or "").strip()
+    _save_research_cache(raw_audience_goal, result, stated_intent)
     return result
 
 
@@ -1201,6 +1318,8 @@ def generate_story_angle(
     research: Optional[dict] = None,
     source_offset_lookup: Optional[Dict[str, float]] = None,
     avoid_theses: Optional[List[str]] = None,
+    stated_intent: str = "",
+    max_duration_sec: float = 0.0,
 ) -> tuple:
     """Build one real StoryAngle from a project's exhaustively-extracted,
     audience-scored fragments plus live trend research.
@@ -1226,9 +1345,23 @@ def generate_story_angle(
     research would otherwise be silently dropped the moment this function
     returns — `research` exists so the caller persists that audit trail.
 
+    `stated_intent` is the editor's own words for the piece they want
+    ("a quick how-to on wallpaper removal that positions us as the
+    experts"), captured in the planning conversation before any of this
+    runs. `max_duration_sec`, when > 0, is a REAL cap: the assembled
+    tight cut is measured against it after generation and a run that
+    overruns raises rather than shipping. Both exist because research
+    and stated goals used to be prompt decoration only — a cut citing
+    Instagram Reel formats came out 12:44 long (Ryan, 2026-09-04: "The
+    trends are meant to be applied to the edit on the timeline that is
+    pitched. The steps exist to inform the next step not to just check
+    off and move on.").
+
     Raises StoryPlannerError if there isn't enough real material to build
-    from, or if the API call / JSON parsing fails — this never falls back
-    to inventing a story from nothing.
+    from, if the API call / JSON parsing fails, or if the resulting cut
+    overruns `max_duration_sec` — this never falls back to inventing a
+    story from nothing, and never silently ships a cut that ignores the
+    length it was asked for.
     """
     if not audience_goal or not audience_goal.strip():
         raise ValueError(
@@ -1244,7 +1377,10 @@ def generate_story_angle(
         )
 
     if research is None:
-        research = research_trends(audience_goal.strip(), model=model, api_key=api_key)
+        research = research_trends(
+            audience_goal.strip(), model=model, api_key=api_key,
+            stated_intent=stated_intent,
+        )
 
     avoid_clause = ""
     if avoid_theses:
@@ -1255,11 +1391,14 @@ def generate_story_angle(
             f"angle in the footage instead:\n{titles}"
         )
 
+    planning_context = _format_planning_context(stated_intent, max_duration_sec)
+
     client = build_anthropic_client(api_key=api_key)
     user_prompt = ARCHITECT_PROMPT_TEMPLATE.format(
         audience_goal=audience_goal.strip(),
         fragments=_format_candidates_for_llm(candidates),
         trend_research=_format_research_for_llm(research),
+        planning_context=planning_context,
     ) + avoid_clause
     try:
         response = client.messages.create(
@@ -1347,6 +1486,22 @@ def generate_story_angle(
             f"Claude's response produced only {len(ranges)} range(s) for the "
             "tight cut — too few to be a real arc. Likely a degraded response; retry."
         )
+
+    # 2026-09-04: the length the caller asked for is a REAL constraint, not
+    # a suggestion the model reports back and nobody checks. Ryan caught a
+    # cut that cited Instagram Reel formats in its own brief and ran 12:44
+    # — because `target_duration_sec` was documented in the prompt as "not
+    # enforced" and nothing downstream measured anything. Measured from the
+    # real selected ranges, not from the model's self-reported number,
+    # which is exactly the claim under suspicion.
+    if max_duration_sec and max_duration_sec > 0:
+        actual_sec = sum(r.source_end_sec - r.source_start_sec for r in ranges)
+        if actual_sec > max_duration_sec * DURATION_OVERRUN_TOLERANCE:
+            raise StoryPlannerError(
+                f"Tight cut runs {actual_sec:.0f}s but the agreed target is "
+                f"{max_duration_sec:.0f}s — it selected too much material for the "
+                f"format it was asked to build. Retry with fewer/shorter fragments."
+            )
 
     # 2026-09-04: the "pool" — everything else genuinely relevant to the
     # same topic, deliberately left OUT of the tight sequence (see module
@@ -1580,47 +1735,38 @@ def save_story_angle_as_idea(project_plans_dir: Path, angle: "StoryAngle") -> Pa
     return idea_path
 
 
-def run_generate_story_angle(project, job_id: str, emit) -> None:
-    """Backend-job wrapper: load a project's real audience goal and every
-    real transcript fragment available — flagged (audience-scored) or
-    not — generate 3 real, distinct story angles with live trend research
-    (shared across all 3; see `research_trends`'s 72h cache), and persist
-    each as its own idea (PreCut's format) + brief + research audit
-    trail. Emits progress the same shape as `producer.run_generate_angles`
-    so the existing job-tracking UI works unchanged.
+def load_project_material(project, emit) -> tuple:
+    """Load a project's audience goal and every real transcript fragment
+    available — flagged (audience-scored) or freshly extracted.
 
-    Ryan, 2026-09-04: "I don't want the ideas created to only be
-    generated from flagged fragments. I'm not that confident in the
-    flagging yet" — flagging is no longer a hard prerequisite. Any
-    transcript without a matching flags file gets fresh, real exhaustive
-    extraction right here instead of being excluded. "It should also
-    provide 3 ideas each time the generate ideas button is pressed" —
-    generates 3 distinct angles per call, each told not to repeat the
-    theses already proposed earlier in the same batch.
+    Returns `(audience_goal, tagged_by_source)`, or `(None, None)` after
+    emitting a `producer_error` explaining exactly what's missing.
 
-    A no-op (not an error) when there's no manifest/audience_goal yet, or
-    no transcripts at all yet (nothing real to build from either way)."""
+    Extracted from `run_generate_story_angle` (2026-09-04) so the
+    planning conversation (`posthouse/story_conversation.py`) can see the
+    same real material the generator will use, without a second copy of
+    this logic drifting out of sync with it."""
     from posthouse.manifest import load_manifest
 
     project_dir = project.dir()
     manifest_path = project_dir / "manifest.json"
     if not manifest_path.exists():
-        emit({"type": "producer_error", "job_id": job_id,
+        emit({"type": "producer_error",
               "message": "No manifest.json for this project yet — run Organize first."})
-        return
+        return None, None
 
     try:
         manifest = load_manifest(manifest_path)
     except Exception as e:
-        emit({"type": "producer_error", "job_id": job_id, "message": f"Failed to load manifest: {e}"})
-        return
+        emit({"type": "producer_error", "message": f"Failed to load manifest: {e}"})
+        return None, None
 
     audience_goal = (manifest.get("project") or {}).get("audience_goal")
     if not audience_goal:
-        emit({"type": "producer_error", "job_id": job_id,
+        emit({"type": "producer_error",
               "message": "No audience/content goal set for this project "
                          "(Project Manager intake) — nothing to build a story arc against."})
-        return
+        return None, None
 
     # Confirmed real, 2026-09-04: on the RDOSS external drive, every real
     # file gets a macOS AppleDouble sidecar (`._<name>.json`) that
@@ -1637,10 +1783,10 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
         p for p in project.transcripts_dir().glob("*.json") if not p.name.startswith(".")
     )
     if not flags_files and not transcript_files:
-        emit({"type": "producer_error", "job_id": job_id,
+        emit({"type": "producer_error",
               "message": "No transcripts yet — run the pipeline first so there's "
                          "real material to build from."})
-        return
+        return None, None
 
     # Ryan, 2026-09-04: "I don't want the ideas created to only be generated
     # from flagged fragments. I'm not that confident in the flagging yet."
@@ -1684,9 +1830,52 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
         ]
 
     if not tagged_by_source:
-        emit({"type": "producer_error", "job_id": job_id,
+        emit({"type": "producer_error",
               "message": "No fragments available at all (flagged or freshly extracted) — "
                          "nothing real to build a story arc from."})
+        return None, None
+
+    return audience_goal, tagged_by_source
+
+
+def run_generate_story_angle(
+    project, job_id: str, emit,
+    stated_intent: str = "",
+    max_duration_sec: float = 0.0,
+) -> None:
+    """Backend-job wrapper: load a project's real audience goal and every
+    real transcript fragment available — flagged (audience-scored) or
+    not — generate 3 real, distinct story angles with live trend research
+    (shared across all 3; see `research_trends`'s 72h cache), and persist
+    each as its own idea (PreCut's format) + brief + research audit
+    trail. Emits progress the same shape as `producer.run_generate_angles`
+    so the existing job-tracking UI works unchanged.
+
+    Ryan, 2026-09-04: "I don't want the ideas created to only be
+    generated from flagged fragments. I'm not that confident in the
+    flagging yet" — flagging is no longer a hard prerequisite. Any
+    transcript without a matching flags file gets fresh, real exhaustive
+    extraction right here instead of being excluded. "It should also
+    provide 3 ideas each time the generate ideas button is pressed" —
+    generates 3 distinct angles per call, each told not to repeat the
+    theses already proposed earlier in the same batch.
+
+    `stated_intent` / `max_duration_sec`, when given, come from the
+    planning conversation (`posthouse/story_conversation.py`) and are
+    passed straight through: the intent redirects the trend research and
+    governs fragment selection, and the duration is a real enforced cap
+    (see `generate_story_angle`).
+
+    A no-op (not an error) when there's no manifest/audience_goal yet, or
+    no transcripts at all yet (nothing real to build from either way)."""
+    project_dir = project.dir()
+
+    def emit_with_job(ev):
+        ev.setdefault("job_id", job_id)
+        emit(ev)
+
+    audience_goal, tagged_by_source = load_project_material(project, emit_with_job)
+    if not audience_goal or not tagged_by_source:
         return
 
     source_offset_lookup = build_source_offset_lookup(project)
@@ -1696,7 +1885,7 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
     N_ANGLES = 3  # Ryan, 2026-09-04: "It should also provide 3 ideas each time"
     try:
         emit({"type": "log", "level": "info", "message": "Researching live trends (real web search + real video watching)..."})
-        research = research_trends(audience_goal)
+        research = research_trends(audience_goal, stated_intent=stated_intent)
         if research.get("cached"):
             emit({"type": "log", "level": "info",
                   "message": "Reused research from the last 72 hours for this exact audience/"
@@ -1723,6 +1912,7 @@ def run_generate_story_angle(project, job_id: str, emit) -> None:
                     angle, angle_research = generate_story_angle(
                         audience_goal, tagged_by_source, research=research,
                         source_offset_lookup=source_offset_lookup, avoid_theses=avoid_theses,
+                        stated_intent=stated_intent, max_duration_sec=max_duration_sec,
                     )
                     break
                 except Exception as e:
