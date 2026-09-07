@@ -570,87 +570,79 @@ def _compute_pool_leftovers(
     used_ranges: List[TopicRange],
     phrases_by_source: Optional[Dict[str, List[dict]]],
     source_offset_lookup: Optional[Dict[str, float]],
-    section_bounds: Optional[Dict[str, tuple]] = None,
+    allowed_spans: Optional[Dict[str, List[tuple]]] = None,
 ) -> List[TopicRange]:
-    """The unused-footage side: what's left over around the cut.
+    """The unused-footage side: what's left over inside the topical section.
 
     Deterministically derived from the tight cut, not nominated by the
-    model — see the call site for why. For every source file the cut
-    actually drew from, take the span the cut covers (plus
-    POOL_NEIGHBORHOOD_BUFFER_SEC either side, bounded by the real
-    material that exists), subtract the used ranges, and keep the gaps
-    worth a clip. Gaps snap to transcript phrase boundaries so the
-    leftovers are usable dialogue rather than clipped mid-sentence.
+    model. `allowed_spans` is the set of on-topic fragment spans (per
+    source file, combined coordinates) that leftovers may come from —
+    see the call site. Everything outside them is excluded outright.
 
-    Everything here is in COMBINED-timeline coordinates, matching
-    `used_ranges`, since that's what the exporter resolves against.
+    2026-09-07, Ryan: "What do shirt colors and fishing licenses have to
+    do with wallpaper". They had nothing to do with it — they simply sat
+    next to the wallpaper material in time, and this function was
+    carving leftovers out of a raw TIME WINDOW around the cut, so a
+    +/-60s buffer swept in whatever happened to be adjacent. Every one of
+    those fragments was already labelled off_topic by the flagging stage;
+    the label just wasn't being consulted. Bounding by fragment instead
+    of by clock is the fix.
     """
     phrases_by_source = phrases_by_source or {}
     offsets = source_offset_lookup or {}
+    allowed_spans = allowed_spans or {}
 
     by_file: Dict[str, List[TopicRange]] = {}
     for r in used_ranges:
         by_file.setdefault(r.source_file, []).append(r)
 
     out: List[TopicRange] = []
-    for source_file, rs in by_file.items():
-        rs = sorted(rs, key=lambda r: r.source_start_sec)
+    for source_file, spans in allowed_spans.items():
+        used = sorted(by_file.get(source_file, []), key=lambda r: r.source_start_sec)
         offset = offsets.get(source_file, 0.0)
         stem = Path(str(source_file)).stem
         phrases = phrases_by_source.get(stem) or []
-
-        # Real extent of this file's transcript, in combined coordinates —
-        # never propose leftover footage past where material actually is.
         if phrases:
             file_start = min(p["start"] for p in phrases) + offset
             file_end = max(p["end"] for p in phrases) + offset
         else:
-            file_start, file_end = rs[0].source_start_sec, rs[-1].source_end_sec
+            file_start, file_end = float("-inf"), float("inf")
 
-        # Anchor to the topical section this file's material came from,
-        # not merely to where the cut's own clips happen to sit.
-        sect = (section_bounds or {}).get(source_file)
-        if sect:
-            anchor_start, anchor_end = sect
-        else:
-            anchor_start, anchor_end = rs[0].source_start_sec, rs[-1].source_end_sec
-        region_start = max(file_start, anchor_start - POOL_SECTION_BUFFER_SEC)
-        region_end = min(file_end, anchor_end + POOL_SECTION_BUFFER_SEC)
-
-        # Walk the region, collecting whatever the cut didn't use.
-        gaps: List[tuple] = []
-        cursor = region_start
-        for r in rs:
-            if r.source_start_sec > cursor:
-                gaps.append((cursor, min(r.source_start_sec, region_end)))
-            cursor = max(cursor, r.source_end_sec)
-        if cursor < region_end:
-            gaps.append((cursor, region_end))
-
-        for gap_start, gap_end in gaps:
-            # Raw gap bounds on purpose — no phrase snapping here. These are
-            # LEFTOVERS, not a cut: the pauses and room tone either side of a
-            # line are part of what makes them usable for B-roll and dialogue
-            # patching. Snapping inward to speech also shrank short gaps below
-            # the keep threshold and silently dropped clips Ryan's own
-            # reference edit keeps (its 3.2s and 2.0s leftovers).
-            s, e = gap_start, gap_end
-            if e - s < MIN_POOL_GAP_SEC:
+        for span_start, span_end in sorted(spans):
+            span_start = max(span_start, file_start)
+            span_end = min(span_end, file_end)
+            if span_end - span_start < MIN_POOL_GAP_SEC:
                 continue
-            out.append(TopicRange(
-                source_file=source_file,
-                source_start_sec=s,
-                source_end_sec=e,
-                topic_label="unused nearby",
-                summary="Footage around the selected material, left out of the "
-                        "tight cut — may be usable for dialogue or B-roll.",
-            ))
+            # Subtract the cut's own selections from this on-topic span.
+            cursor = span_start
+            gaps: List[tuple] = []
+            for r in used:
+                if r.source_end_sec <= span_start or r.source_start_sec >= span_end:
+                    continue
+                if r.source_start_sec > cursor:
+                    gaps.append((cursor, min(r.source_start_sec, span_end)))
+                cursor = max(cursor, r.source_end_sec)
+            if cursor < span_end:
+                gaps.append((cursor, span_end))
 
-    # No proportional budget. 2026-09-07: an earlier 3x-then-8x cap was
-    # trimming "furthest from the cut" material and silently dropped
-    # footage Ryan had used in his own edit. The region is already bounded
-    # by the topical section, which is the real constraint — capping on
-    # top of that just loses material with no principle behind which.
+            for gap_start, gap_end in gaps:
+                # Raw gap bounds on purpose — no phrase snapping. These are
+                # LEFTOVERS, not a cut: the pauses and room tone either side
+                # of a line are part of what makes them usable for B-roll and
+                # dialogue patching, and snapping inward to speech dropped
+                # short leftovers Ryan's own reference edit keeps.
+                if gap_end - gap_start < MIN_POOL_GAP_SEC:
+                    continue
+                out.append(TopicRange(
+                    source_file=source_file,
+                    source_start_sec=gap_start,
+                    source_end_sec=gap_end,
+                    topic_label="unused nearby",
+                    summary="On-topic footage around the selected material, left "
+                            "out of the tight cut — may be usable for dialogue "
+                            "or B-roll.",
+                ))
+
     out.sort(key=lambda r: (str(r.source_file), r.source_start_sec))
     return out
 
@@ -1966,23 +1958,40 @@ def generate_story_angle(
     # exactly a gap between two used selections (or the tail past the last
     # one), all in the same source file. Computing it removes the model's
     # ability to drag in unrelated footage at all.
-    # The topical section per file: the full bounds of every fragment the
-    # cut actually drew from, in combined coordinates. This is what makes
-    # the leftovers "the wallpaper section" rather than "whatever happens
-    # to be near the clips I picked".
-    section_bounds: Dict[str, tuple] = {}
-    for idx in claimed_spans:
-        frag = candidates[idx].fragment
-        off = (source_offset_lookup or {}).get(frag.source_file, 0.0)
-        lo, hi = frag.source_start_sec + off, frag.source_end_sec + off
-        cur = section_bounds.get(frag.source_file)
-        section_bounds[frag.source_file] = (
-            min(cur[0], lo) if cur else lo,
-            max(cur[1], hi) if cur else hi,
-        )
+    # Which spans leftovers may be drawn from: the fragments the cut
+    # actually used, plus a directly adjacent fragment ONLY when it is
+    # itself a "strong" fit. That keeps genuinely continuous on-topic
+    # material (the bathroom-scope talk that follows the wallpaper
+    # demonstration) while excluding what merely sits nearby in time —
+    # shirt colours, snakes, fishing licences, all already flagged
+    # off_topic and all previously swept in by a clock-based buffer.
+    frags_by_file: Dict[str, List[tuple]] = {}
+    for i, cand in enumerate(candidates):
+        cf = cand.fragment
+        frags_by_file.setdefault(cf.source_file, []).append(
+            (cf.source_start_sec, cf.source_end_sec, cand.fit, i))
+    for v in frags_by_file.values():
+        v.sort()
+
+    allowed_spans: Dict[str, List[tuple]] = {}
+    used_idx = set(claimed_spans)
+    for source_file, frags in frags_by_file.items():
+        off = (source_offset_lookup or {}).get(source_file, 0.0)
+        chosen: List[tuple] = []
+        for pos, (fs, fe, fit, i) in enumerate(frags):
+            if i not in used_idx:
+                continue
+            chosen.append((fs + off, fe + off))
+            for nb in (pos - 1, pos + 1):
+                if 0 <= nb < len(frags):
+                    nfs, nfe, nfit, nidx = frags[nb]
+                    if nfit == "strong" and nidx not in used_idx:
+                        chosen.append((nfs + off, nfe + off))
+        if chosen:
+            allowed_spans[source_file] = chosen
 
     pool_ranges = _compute_pool_leftovers(
-        ranges, phrases_by_source, source_offset_lookup, section_bounds)
+        ranges, phrases_by_source, source_offset_lookup, allowed_spans)
 
     thesis = str(data.get("narrative_thesis", "")).strip()
     qna = data.get("editorial_qna", {}) or {}
