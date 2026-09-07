@@ -913,6 +913,20 @@ class FCPXMLWriter:
             ci.appendChild(self._text_elem("masterclipid", master_id))
 
         ci.appendChild(self._build_file_ref(source_path, is_audio=is_audio, is_image=is_image))
+
+        # 2026-09-07: audio clipitems need <sourcetrack> naming which channel
+        # of the source file they represent — without it Premiere has no
+        # mapping from the clipitem to actual audio and the track reads as
+        # having nothing attached. Ryan's own reference export carries it on
+        # every audio clipitem (mediatype audio, trackindex 1). The synced-lav
+        # path in bin_builders.py always wrote it; this native camera-audio
+        # path never did.
+        if is_audio:
+            st = self.doc.createElement("sourcetrack")
+            st.appendChild(self._text_elem("mediatype", "audio"))
+            st.appendChild(self._text_elem("trackindex", "1"))
+            ci.appendChild(st)
+
         return ci
 
     def _build_file_ref(

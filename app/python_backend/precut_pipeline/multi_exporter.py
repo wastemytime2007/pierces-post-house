@@ -1112,7 +1112,19 @@ def export_multi_timeline(
         # Drop 4.23: when sync audio is coming, mute A1 camera audio so
         # only the lav/boom tracks are heard. Editor can re-enable in one
         # click if they want camera audio as a fallback.
-        writer.mute_camera_audio = req.audio_sync_state is not None
+        #
+        # 2026-09-07 (Ryan: "It has no source audio attached."): this used
+        # to mute camera audio whenever audio_sync_state merely EXISTED,
+        # regardless of whether any lav actually covered these clips. It
+        # only worked by luck while the attach threshold was permissive.
+        # Once placement required a real confident match
+        # (SCORE_TIMELINE_ATTACH), most clips got no lav track — and the
+        # camera audio was still muted, so the cut exported silent. Mute
+        # only when a lav genuinely covers something in THIS cut.
+        writer.mute_camera_audio = (
+            req.audio_sync_state is not None
+            and _cut_has_synced_audio(req.cutlist, req.audio_sync_state)
+        )
 
         override = overlay_override.get(req.cutlist.overlay_style)
         if override is not None:
@@ -2010,6 +2022,25 @@ def _append_clean_mic_track(
     _append_text(doc, track, "enabled", "TRUE")
     _append_text(doc, track, "locked", "FALSE")
     audio.appendChild(track)
+
+
+def _cut_has_synced_audio(cutlist, audio_sync_state) -> bool:
+    """Whether any A-roll phrase in this cut actually gets a synced audio
+    track. Used to decide whether muting the camera audio is safe — if
+    nothing covers the cut, muting it leaves a silent sequence."""
+    from precut_pipeline.audio_sync import find_covering_audio_for_phrase
+
+    for phrase in getattr(cutlist, "aroll_track", []) or []:
+        try:
+            covering = find_covering_audio_for_phrase(
+                phrase.source_file, phrase.source_start, phrase.source_end,
+                audio_sync_state,
+            )
+        except Exception:
+            continue
+        if covering:
+            return True
+    return False
 
 
 def _append_synced_audio_tracks(

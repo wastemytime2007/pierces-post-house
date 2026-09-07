@@ -570,6 +570,7 @@ def _compute_pool_leftovers(
     used_ranges: List[TopicRange],
     phrases_by_source: Optional[Dict[str, List[dict]]],
     source_offset_lookup: Optional[Dict[str, float]],
+    section_bounds: Optional[Dict[str, tuple]] = None,
 ) -> List[TopicRange]:
     """The unused-footage side: what's left over around the cut.
 
@@ -606,8 +607,15 @@ def _compute_pool_leftovers(
         else:
             file_start, file_end = rs[0].source_start_sec, rs[-1].source_end_sec
 
-        region_start = max(file_start, rs[0].source_start_sec - POOL_NEIGHBORHOOD_LEAD_SEC)
-        region_end = min(file_end, rs[-1].source_end_sec + POOL_NEIGHBORHOOD_TAIL_SEC)
+        # Anchor to the topical section this file's material came from,
+        # not merely to where the cut's own clips happen to sit.
+        sect = (section_bounds or {}).get(source_file)
+        if sect:
+            anchor_start, anchor_end = sect
+        else:
+            anchor_start, anchor_end = rs[0].source_start_sec, rs[-1].source_end_sec
+        region_start = max(file_start, anchor_start - POOL_SECTION_BUFFER_SEC)
+        region_end = min(file_end, anchor_end + POOL_SECTION_BUFFER_SEC)
 
         # Walk the region, collecting whatever the cut didn't use.
         gaps: List[tuple] = []
@@ -638,29 +646,11 @@ def _compute_pool_leftovers(
                         "tight cut — may be usable for dialogue or B-roll.",
             ))
 
-    # Enforce the global budget: keep what's CLOSEST to the cut, since
-    # that's the material actually usable for patching this piece.
-    cut_total = sum(r.source_end_sec - r.source_start_sec for r in used_ranges)
-    budget = cut_total * POOL_MAX_TOTAL_MULTIPLE
-    if budget > 0 and sum(r.source_end_sec - r.source_start_sec for r in out) > budget:
-        def distance_from_cut(r):
-            same_file = [u for u in used_ranges if u.source_file == r.source_file]
-            if not same_file:
-                return float("inf")
-            return min(
-                min(abs(r.source_start_sec - u.source_end_sec),
-                    abs(u.source_start_sec - r.source_end_sec))
-                for u in same_file
-            )
-        kept, running = [], 0.0
-        for r in sorted(out, key=distance_from_cut):
-            d = r.source_end_sec - r.source_start_sec
-            if running + d > budget:
-                continue
-            kept.append(r)
-            running += d
-        out = kept
-
+    # No proportional budget. 2026-09-07: an earlier 3x-then-8x cap was
+    # trimming "furthest from the cut" material and silently dropped
+    # footage Ryan had used in his own edit. The region is already bounded
+    # by the topical section, which is the real constraint — capping on
+    # top of that just loses material with no principle behind which.
     out.sort(key=lambda r: (str(r.source_file), r.source_start_sec))
     return out
 
@@ -1126,8 +1116,18 @@ DURATION_BUFFER_SEC = 15.0
 # before its first used clip but runs ~59s past the last one — the useful
 # surrounding material is what comes after the section, not the lead-in
 # chatter before it.
-POOL_NEIGHBORHOOD_LEAD_SEC = 0.0
-POOL_NEIGHBORHOOD_TAIL_SEC = 60.0
+# 2026-09-07, second correction. These were briefly 0s lead / 60s tail,
+# inferred from Ryan's reference edit having no leftover footage before
+# its first used clip. That inference was wrong: his lead-in isn't in his
+# leftovers because it's in his EDIT. With a 0s lead, anything earlier
+# than our cut's first clip fell outside the pool entirely and vanished
+# from the export — "its still missing a bunch of the items i chose to
+# land in my edit. It doesnt even have them in the extra footage on the
+# right side." The region is now anchored to the topical FRAGMENTS the
+# cut drew from (the "wallpaper section"), expanded by this buffer, so
+# the whole section stays available regardless of where inside it the
+# cut happens to start.
+POOL_SECTION_BUFFER_SEC = 60.0
 
 # Hard ceiling on the leftover side, as a multiple of the tight cut.
 # Ryan, 2026-09-07, on a 245s pool beside a 44s cut: "90 seconds is way
@@ -1135,7 +1135,10 @@ POOL_NEIGHBORHOOD_TAIL_SEC = 60.0
 # cut with 158s of leftovers (2.4x). A per-file 60s tail is fine for one
 # file but silently doubles when a cut spans two, so the budget is global
 # and proportional: material furthest from the cut is dropped first.
-POOL_MAX_TOTAL_MULTIPLE = 3.0
+# Generous backstop only. The region is bounded by the topical section
+# now, so this exists to catch pathological cases, not to shape normal
+# output — trimming here is what dropped material Ryan wanted.
+POOL_MAX_TOTAL_MULTIPLE = 8.0
 
 # Leftover gaps shorter than this aren't worth a clip on the timeline.
 # Ryan's reference silently drops its 1.6s and 0.8s gaps and keeps
@@ -1963,8 +1966,23 @@ def generate_story_angle(
     # exactly a gap between two used selections (or the tail past the last
     # one), all in the same source file. Computing it removes the model's
     # ability to drag in unrelated footage at all.
+    # The topical section per file: the full bounds of every fragment the
+    # cut actually drew from, in combined coordinates. This is what makes
+    # the leftovers "the wallpaper section" rather than "whatever happens
+    # to be near the clips I picked".
+    section_bounds: Dict[str, tuple] = {}
+    for idx in claimed_spans:
+        frag = candidates[idx].fragment
+        off = (source_offset_lookup or {}).get(frag.source_file, 0.0)
+        lo, hi = frag.source_start_sec + off, frag.source_end_sec + off
+        cur = section_bounds.get(frag.source_file)
+        section_bounds[frag.source_file] = (
+            min(cur[0], lo) if cur else lo,
+            max(cur[1], hi) if cur else hi,
+        )
+
     pool_ranges = _compute_pool_leftovers(
-        ranges, phrases_by_source, source_offset_lookup)
+        ranges, phrases_by_source, source_offset_lookup, section_bounds)
 
     thesis = str(data.get("narrative_thesis", "")).strip()
     qna = data.get("editorial_qna", {}) or {}
