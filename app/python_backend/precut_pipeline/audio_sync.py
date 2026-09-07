@@ -55,6 +55,69 @@ SCORE_MAYBE = 5.0
 # silently committed to the cut.
 SCORE_TIMELINE_ATTACH = 18.0
 
+# Tolerance for the corroboration invariant below, in seconds.
+CORROBORATION_TOLERANCE_SEC = 3.0
+
+
+def _camera_clock_start(path: str) -> Optional[float]:
+    """Absolute recording start of a camera file, in seconds, read from a
+    14-digit YYYYMMDDHHMMSS stamp in its filename (DJI/Osmo and most
+    action cams write one). Returns None when there's no such stamp —
+    callers then simply skip corroboration rather than guessing."""
+    import re as _re
+    from datetime import datetime as _dt
+    m = _re.search(r"(\d{8})(\d{6})", Path(path).name)
+    if not m:
+        return None
+    try:
+        return _dt.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S").timestamp()
+    except ValueError:
+        return None
+
+
+def offset_is_corroborated(pair, state) -> bool:
+    """Whether a mid-scoring pair's offset is independently confirmed.
+
+    2026-09-07. Raw score alone is the wrong discriminator for whether a
+    lav belongs on the timeline, and both settings of it were wrong:
+    SCORE_USE=10 let false matches through (Ryan: "multiple audio sources
+    showing up that dont belong"), and raising the bar to 18 then removed
+    the one lav that genuinely covered his cut (Ryan: "Still no audio
+    synced. Just cam audio").
+
+    There is a real invariant available instead. One continuous audio
+    recording has ONE absolute start time, so for every camera file it
+    truly matches, `camera_clock_start + offset_sec` must come out the
+    same. Measured on this project's own saved pairs, Bob 1 gives
+    35600.1 / 35599.8 / 35600.2 / 35600.0 across files 0002/0003/0004/
+    0005 — agreement within 0.4s, anchored by an unambiguous 30.39 match
+    — while its false matches (0001, 0007-0016) miss by ~1000s. Scores
+    of 12.63 and 13.62 in that chain are genuine, and no score threshold
+    can tell them apart from a coincidence; the invariant can.
+
+    A pair is corroborated when its implied recording start agrees with
+    that of another pair from the SAME audio file that cleared
+    SCORE_TIMELINE_ATTACH on its own.
+    """
+    own_cam = _camera_clock_start(pair.aroll_file)
+    if own_cam is None:
+        return False
+    implied = own_cam + pair.offset_sec
+
+    for other in state.pairs:
+        if other is pair:
+            continue
+        if other.audio_file != pair.audio_file:
+            continue
+        if other.score < SCORE_TIMELINE_ATTACH:
+            continue
+        other_cam = _camera_clock_start(other.aroll_file)
+        if other_cam is None:
+            continue
+        if abs((other_cam + other.offset_sec) - implied) <= CORROBORATION_TOLERANCE_SEC:
+            return True
+    return False
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -529,7 +592,11 @@ def find_covering_audio_for_phrase(
     for p in state.pairs:
         if p.aroll_file != aroll_original_path:
             continue
-        if p.score < SCORE_TIMELINE_ATTACH:
+        # Confident on its own, or independently corroborated by the
+        # recording-start invariant (see offset_is_corroborated).
+        if p.score < SCORE_TIMELINE_ATTACH and not (
+            p.score >= SCORE_USE and offset_is_corroborated(p, state)
+        ):
             continue
 
         # Audio file's coverage in A-roll timeline: starts at offset_sec,
