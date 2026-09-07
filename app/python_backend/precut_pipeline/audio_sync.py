@@ -34,6 +34,27 @@ from typing import Optional
 SCORE_USE = 10.0
 SCORE_MAYBE = 5.0
 
+# Separate, stricter bar for actually PLACING audio on the exported
+# timeline (2026-09-07). Ryan, on a real export: "theres still multiple
+# audio sources showing up on the timeline that dont belong."
+#
+# Checked against that project's own saved pairs: the camera file his cut
+# used (DJI_..._0005_D) had THREE lav files attached at once — Bob 1
+# (13.62), Mitch 1 (13.76) and Bob 2 (18.77) — with mutually
+# irreconcilable offsets (-992s, +1476s, +858s). SCORE_USE=10 is a
+# reasonable floor for "worth showing the editor in the sync matrix",
+# but it sits inside the gap between this module's own documented
+# false-match band (3-7) and its true-match range (18-38), so marginal
+# matches were landing on the timeline as if confirmed.
+#
+# 18.0 is that documented true-match floor, not a number picked to make
+# one export look right. Genuine multi-mic setups are unaffected: on the
+# same project the real matches score 30.4-35.9 and still attach. This
+# gates placement only — the sync matrix and rescue logic keep using
+# SCORE_USE, so nothing is hidden from the editor, it just isn't
+# silently committed to the cut.
+SCORE_TIMELINE_ATTACH = 18.0
+
 
 # ---------------------------------------------------------------------------
 # Data model
@@ -508,7 +529,7 @@ def find_covering_audio_for_phrase(
     for p in state.pairs:
         if p.aroll_file != aroll_original_path:
             continue
-        if p.score < SCORE_USE:
+        if p.score < SCORE_TIMELINE_ATTACH:
             continue
 
         # Audio file's coverage in A-roll timeline: starts at offset_sec,

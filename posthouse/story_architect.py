@@ -381,26 +381,32 @@ below when one's genuinely relevant (e.g., a real how-to format's pacing) over i
 essential to THIS topic (see the toad-style example above) — but it still has to be about the \
 same topic, not just thematically supportive of a broader idea.
 
-**Phase 3 — everything else goes in `pool_indices`, including real material about OTHER topics.** \
-This is the raw selects Ryan pulls from on the other side of the timeline while tightening the \
-main cut. Unlike the tight cut, the pool is NOT restricted to one topic — put every other \
-genuinely on-topic-for-the-audience-goal fragment here, including the other rooms/subjects that \
-didn't make the cut (the ADA cabinet, the track lighting, the bathroom hypothetical, etc. — all \
-real, all usable, just not part of THIS piece's one throughline). Be inclusive here: if a \
-fragment is genuinely usable for this audience goal, include it in the pool even if it repeats or \
-tangents from the main cut. Leave out only genuinely off-topic material (nothing to do with the \
-subject at all) — that goes in neither list.
+**Phase 3 — there is no pool for you to fill in.** The other side of the timeline (the raw \
+selects Ryan tightens against) is assembled automatically from the footage immediately \
+surrounding your selections — the gaps you cut around, in the same source material. You do not \
+nominate it and must not try to: listing every fragment that's "usable for the audience goal" \
+produced 38 minutes of unrelated footage across six camera files next to a 45-second wallpaper \
+cut. Your entire job is the tight cut. Select tightly; the leftovers take care of themselves.
 
 Hard rules:
 - You may ONLY select from the fragments given to you, by their [index]. Never invent a time \
 range, a quote, or a moment that isn't in the list — every selection must trace to a real, \
 already-extracted fragment.
-- Each fragment index may appear AT MOST ONCE in `sequence` — never reuse the same index for two \
-different roles (e.g. once as "hook" and again as "payoff"). If a moment genuinely serves two \
-purposes, pick ONE role for it rather than placing the same real clip on the timeline twice.
+- **The same fragment index MAY appear several times in `sequence`, as long as each entry is a \
+different, non-overlapping sub-range of it.** This is how a fine cut gets built: one 167-second \
+fragment can legitimately become eight separate short clips, and normally should. What's \
+forbidden is placing the SAME moment twice — two entries whose start_sec/end_sec overlap, or a \
+repeated index with no sub-range given. Overlapping selections are rejected automatically.
 - `sequence` must be about ONE topic, no exceptions. If you're tempted to include a fragment \
 because it's a good moment "from the same footage" rather than because it's genuinely part of the \
-one topic's own start-to-finish arc, it belongs in `pool_indices`, not `sequence`.
+one topic's own start-to-finish arc, leave it out — don't stretch the cut to hold it.
+- **Cut like an editor: many short, deliberate clips.** A real 45-second tutorial cut is roughly \
+8-14 clips, most of them 2-6 seconds, not two big slabs. Take the exact sentence that does the \
+job and leave the throat-clearing either side of it. You may also REORDER: the sequence does not \
+have to run in source order if a later line is the better opener.
+- **You do not choose the unused footage.** There is no pool field to fill in. Everything you \
+don't select is gathered automatically from the material immediately around your selections. Your \
+only job is the tight cut — so select tightly and trust the leftovers to be handled.
 - **You are cutting, not just picking. CUT INSIDE long fragments.** A fragment is a topic span, \
 not a shot — a 167-second explanation is not a 167-second clip you must take whole. Any fragment \
 long enough to matter has its real transcript phrases listed underneath it with exact timestamps. \
@@ -408,8 +414,8 @@ Choose the contiguous span of those phrases that actually earns its place and gi
 `start_sec`/`end_sec` on that sequence entry. Use the phrase boundaries shown; don't invent \
 times, and don't cut mid-sentence. Omit start_sec/end_sec only when you genuinely want the whole \
 fragment. A long fragment is never a reason to declare a short target impossible — find the good \
-30 seconds inside it. The material you cut away is not lost: it stays available in \
-`pool_indices`, which is exactly what the pool is for.
+30 seconds inside it. The material you cut away is not lost — the footage around your \
+selections is gathered automatically onto the other side of the timeline.
 - Most real interviews have more usable material than fits in one story — be honest about what \
 you left out and why, in `omitted_reasoning`.
 - Live trend research (given below) informs framing/tone only — never overrides what the \
@@ -448,10 +454,9 @@ building something shaped nothing like it is a failure, not a stylistic choice.
 First, pick the ONE concrete, narrow topic (per Phase 1) this footage can carry start to finish, \
 and in `narrative_thesis` name why THIS topic is worth telling — not a broad theme, not the \
 generic audience goal restated. Then produce TWO separate lists: `sequence` — the tight, \
-single-topic cut (by index, role hook/build/payoff, in order), every fragment genuinely about \
-that one topic — and `pool_indices` — every other genuinely on-topic-for-the-audience-goal \
-fragment, INCLUDING real material about other topics/rooms that didn't make this piece. Do not \
-restrict yourself to "strong"-fit fragments for either list — a small, individually-odd moment \
+single-topic cut (by index, role hook/build/payoff, with start_sec/end_sec where you're cutting \
+inside a fragment), every selection genuinely about that one topic. There is no second list to \
+produce. Do not restrict yourself to "strong"-fit fragments — a small, individually-odd moment \
 that genuinely serves the chosen topic belongs in the sequence even if its isolated fit score was \
 lower, and the pool should be generous with on-topic material regardless of topic.
 
@@ -482,7 +487,6 @@ Return this exact JSON shape, in a fenced ```json block:
     {{"index": 3, "role": "build"}},
     {{"index": 7, "role": "payoff", "start_sec": 402.0, "end_sec": 418.5}}
   ],
-  "pool_indices": [1, 2, 4, 5, 6, 8, 9],
   "omitted_reasoning": "1-2 sentences on what's genuinely off-topic and left out of both the sequence and the pool, and why"
 }}"""
 
@@ -511,7 +515,8 @@ def _format_planning_context(stated_intent: str, max_duration_sec: float) -> str
             f"selected fragments after you answer, and a cut that overruns it is rejected. "
             f"Select fewer, shorter, better fragments — do not select everything good and "
             f"hope the length works out. Material that's genuinely on-topic but doesn't fit "
-            f"in the time belongs in `pool_indices`, which has no length limit."
+            f"in the time is simply left out — it stays available on the other side of the "
+            f"timeline automatically."
         )
     return "".join(parts) + "\n"
 
@@ -551,6 +556,82 @@ def _collect_candidate_fragments(
 # summary and outer timecodes, so it had no way to select the good 45
 # seconds within it. It is really 39 phrases averaging 3.4s each.
 SUBCLIP_PHRASE_DETAIL_THRESHOLD_SEC = 30.0
+
+
+def _compute_pool_leftovers(
+    used_ranges: List[TopicRange],
+    phrases_by_source: Optional[Dict[str, List[dict]]],
+    source_offset_lookup: Optional[Dict[str, float]],
+) -> List[TopicRange]:
+    """The unused-footage side: what's left over around the cut.
+
+    Deterministically derived from the tight cut, not nominated by the
+    model — see the call site for why. For every source file the cut
+    actually drew from, take the span the cut covers (plus
+    POOL_NEIGHBORHOOD_BUFFER_SEC either side, bounded by the real
+    material that exists), subtract the used ranges, and keep the gaps
+    worth a clip. Gaps snap to transcript phrase boundaries so the
+    leftovers are usable dialogue rather than clipped mid-sentence.
+
+    Everything here is in COMBINED-timeline coordinates, matching
+    `used_ranges`, since that's what the exporter resolves against.
+    """
+    phrases_by_source = phrases_by_source or {}
+    offsets = source_offset_lookup or {}
+
+    by_file: Dict[str, List[TopicRange]] = {}
+    for r in used_ranges:
+        by_file.setdefault(r.source_file, []).append(r)
+
+    out: List[TopicRange] = []
+    for source_file, rs in by_file.items():
+        rs = sorted(rs, key=lambda r: r.source_start_sec)
+        offset = offsets.get(source_file, 0.0)
+        stem = Path(str(source_file)).stem
+        phrases = phrases_by_source.get(stem) or []
+
+        # Real extent of this file's transcript, in combined coordinates —
+        # never propose leftover footage past where material actually is.
+        if phrases:
+            file_start = min(p["start"] for p in phrases) + offset
+            file_end = max(p["end"] for p in phrases) + offset
+        else:
+            file_start, file_end = rs[0].source_start_sec, rs[-1].source_end_sec
+
+        region_start = max(file_start, rs[0].source_start_sec - POOL_NEIGHBORHOOD_LEAD_SEC)
+        region_end = min(file_end, rs[-1].source_end_sec + POOL_NEIGHBORHOOD_TAIL_SEC)
+
+        # Walk the region, collecting whatever the cut didn't use.
+        gaps: List[tuple] = []
+        cursor = region_start
+        for r in rs:
+            if r.source_start_sec > cursor:
+                gaps.append((cursor, min(r.source_start_sec, region_end)))
+            cursor = max(cursor, r.source_end_sec)
+        if cursor < region_end:
+            gaps.append((cursor, region_end))
+
+        for gap_start, gap_end in gaps:
+            # Raw gap bounds on purpose — no phrase snapping here. These are
+            # LEFTOVERS, not a cut: the pauses and room tone either side of a
+            # line are part of what makes them usable for B-roll and dialogue
+            # patching. Snapping inward to speech also shrank short gaps below
+            # the keep threshold and silently dropped clips Ryan's own
+            # reference edit keeps (its 3.2s and 2.0s leftovers).
+            s, e = gap_start, gap_end
+            if e - s < MIN_POOL_GAP_SEC:
+                continue
+            out.append(TopicRange(
+                source_file=source_file,
+                source_start_sec=s,
+                source_end_sec=e,
+                topic_label="unused nearby",
+                summary="Footage around the selected material, left out of the "
+                        "tight cut — may be usable for dialogue or B-roll.",
+            ))
+
+    out.sort(key=lambda r: (str(r.source_file), r.source_start_sec))
+    return out
 
 
 def _snap_to_phrase_bounds(
@@ -976,6 +1057,29 @@ RESEARCH_CACHE_MAX_AGE_SEC = 72 * 3600  # Ryan, 2026-09-04: don't re-research
 # the failure this exists for (a "Reel" that came out 12:44 against a
 # ~60s intent is 12x over, not 25% over).
 DURATION_OVERRUN_TOLERANCE = 1.25
+
+# Ryan, 2026-09-07: "lets allow a 15 second buffer on each side if needed so
+# if i say 45 second edit, it can do 30-1 min-ish". An absolute ±15s window,
+# not a ratio — a ratio is wrong at both ends of the scale (1.25x gives a 45s
+# target only 11s of room, and would give a 10-minute target 2.5 minutes).
+DURATION_BUFFER_SEC = 15.0
+
+# How far either side of the used material to look when gathering the
+# leftover footage for the pool. Derived from Ryan's own reference edit
+# (Removing Wallpaper Tutorial.xml, 2026-09-07): its unused-footage side
+# runs to ~59s past the last used clip, all within the same source file
+# as the cut. The pool is the surrounding neighbourhood, not the project.
+# Tail only, deliberately. Ryan's reference edit has NO leftover footage
+# before its first used clip but runs ~59s past the last one — the useful
+# surrounding material is what comes after the section, not the lead-in
+# chatter before it.
+POOL_NEIGHBORHOOD_LEAD_SEC = 0.0
+POOL_NEIGHBORHOOD_TAIL_SEC = 60.0
+
+# Leftover gaps shorter than this aren't worth a clip on the timeline.
+# Ryan's reference silently drops its 1.6s and 0.8s gaps and keeps
+# everything from 2.1s up.
+MIN_POOL_GAP_SEC = 2.0
 
 
 def _research_cache_key_text(audience_goal: str, stated_intent: str = "") -> str:
@@ -1659,7 +1763,15 @@ def generate_story_angle(
     data = _extract_json(text)
 
     ranges: List[TopicRange] = []
-    seen_indices = set()
+    # Spans already claimed, per fragment index, as (start, end) in LOCAL
+    # source time. 2026-09-07: the rule used to be "each index at most
+    # once", which capped a cut at one clip per fragment and is why a
+    # 45-second edit came out as 2 coarse chunks where Ryan's own
+    # reference edit makes ELEVEN cuts (eight of them from inside a
+    # single 167s fragment). What actually needs preventing is the same
+    # MOMENT twice — the real duplicate-frame bug of 2026-09-04 — so the
+    # constraint is now non-overlap, which still blocks that exactly.
+    claimed_spans: Dict[int, List[tuple]] = {}
     for entry in data.get("sequence", []):
         try:
             idx = int(entry.get("index"))
@@ -1667,16 +1779,6 @@ def generate_story_angle(
             continue
         if not (0 <= idx < len(candidates)):
             continue
-        if idx in seen_indices:
-            # Real bug, confirmed 2026-09-04 on a real export Ryan caught
-            # via Premiere's Duplicate Frame markers: the model picked the
-            # SAME fragment index twice (once as "hook", once as "payoff"),
-            # producing the identical clip placed on the timeline twice —
-            # and, downstream, the same audio-sync match placed twice too.
-            # Never trust the prompt's "don't repeat" instruction alone for
-            # a hard constraint; enforce it here.
-            continue
-        seen_indices.add(idx)
         tf = candidates[idx]
         f = tf.fragment
         role = str(entry.get("role", ""))
@@ -1711,6 +1813,16 @@ def generate_story_angle(
                         s, e, (phrases_by_source or {}).get(stem) or [])
                     if snapped:
                         start_local, end_local = snapped
+
+        # Reject a moment already claimed. This is what the old
+        # "index at most once" rule was really protecting against, and it
+        # catches it precisely: an entry with no sub-range repeats the
+        # whole fragment (always an overlap), and two sub-ranges that
+        # genuinely don't touch are both allowed through.
+        prior = claimed_spans.setdefault(idx, [])
+        if any(start_local < pe and end_local > ps for ps, pe in prior):
+            continue
+        prior.append((start_local, end_local))
 
         ranges.append(TopicRange(
             source_file=f.source_file,
@@ -1751,10 +1863,12 @@ def generate_story_angle(
     # which is exactly the claim under suspicion.
     if max_duration_sec and max_duration_sec > 0:
         actual_sec = sum(r.source_end_sec - r.source_start_sec for r in ranges)
-        if actual_sec > max_duration_sec * DURATION_OVERRUN_TOLERANCE:
+        ceiling = max_duration_sec + DURATION_BUFFER_SEC
+        if actual_sec > ceiling:
             err = StoryPlannerError(
                 f"Tight cut runs {actual_sec:.0f}s but the agreed target is "
-                f"{max_duration_sec:.0f}s — it selected too much material for the "
+                f"{max_duration_sec:.0f}s (+{DURATION_BUFFER_SEC:.0f}s buffer = "
+                f"{ceiling:.0f}s allowed) — it selected too much material for the "
                 f"format it was asked to build. Retry with fewer/shorter fragments."
             )
             over_by = actual_sec / max_duration_sec
@@ -1771,30 +1885,25 @@ def generate_story_angle(
             )
             raise err
 
-    # 2026-09-04: the "pool" — everything else genuinely relevant to the
-    # same topic, deliberately left OUT of the tight sequence (see module
-    # docstring / Ryan's real editing workflow). Same dedup + offset
-    # handling as the main sequence; never overlaps it (seen_indices is
-    # shared).
-    pool_ranges: List[TopicRange] = []
-    for raw_idx in data.get("pool_indices", []):
-        try:
-            idx = int(raw_idx)
-        except (TypeError, ValueError):
-            continue
-        if not (0 <= idx < len(candidates)) or idx in seen_indices:
-            continue
-        seen_indices.add(idx)
-        tf = candidates[idx]
-        f = tf.fragment
-        offset = (source_offset_lookup or {}).get(f.source_file, 0.0)
-        pool_ranges.append(TopicRange(
-            source_file=f.source_file,
-            source_start_sec=f.source_start_sec + offset,
-            source_end_sec=f.source_end_sec + offset,
-            topic_label=f.topic_label,
-            summary=f.summary,
-        ))
+    # The pool is COMPUTED, not chosen by the model (2026-09-07).
+    #
+    # Ryan: "theres 40 minutes on the right that 90% has nothing to do with
+    # wallpaper... the right is the footage that was around the wallpaper
+    # section that was not used but may have useability for dialogue or
+    # b-roll." Letting the model nominate `pool_indices` produced 37.6
+    # minutes across 6 different source files for a 45-second wallpaper
+    # cut — it treated "relevant to the audience goal" as the bar, which
+    # is the entire project.
+    #
+    # His own reference edit shows the real rule, and it's mechanical: the
+    # unused side is the COMPLEMENT of the used ranges within the
+    # neighbourhood of the cut. Verified against every clip in
+    # "Removing Wallpaper Tutorial.xml" — each of its 8 unused clips is
+    # exactly a gap between two used selections (or the tail past the last
+    # one), all in the same source file. Computing it removes the model's
+    # ability to drag in unrelated footage at all.
+    pool_ranges = _compute_pool_leftovers(
+        ranges, phrases_by_source, source_offset_lookup)
 
     thesis = str(data.get("narrative_thesis", "")).strip()
     qna = data.get("editorial_qna", {}) or {}
