@@ -404,6 +404,14 @@ one topic's own start-to-finish arc, leave it out — don't stretch the cut to h
 8-14 clips, most of them 2-6 seconds, not two big slabs. Take the exact sentence that does the \
 job and leave the throat-clearing either side of it. You may also REORDER: the sequence does not \
 have to run in source order if a later line is the better opener.
+- **Spend your length on the payoff, not the setup.** The shape that works: fast short clips \
+(1-4s) to establish the situation visually, then let the two or three clips carrying the actual \
+explanation run long (8-18s) so the substance can breathe. Never give your longest clip to \
+filler, reaction noise, or a line that states nothing — if a clip is the longest in the cut it \
+must be the one doing the most work.
+- **Prefer to stay in ONE source file when a single file can carry the piece.** Cutting between \
+cameras mid-explanation costs continuity, and it also widens the leftover footage gathered around \
+the cut. Reach into a second file only when it holds something the first genuinely lacks.
 - **You do not choose the unused footage.** There is no pool field to fill in. Everything you \
 don't select is gathered automatically from the material immediately around your selections. Your \
 only job is the tight cut — so select tightly and trust the leftovers to be handled.
@@ -630,6 +638,29 @@ def _compute_pool_leftovers(
                         "tight cut — may be usable for dialogue or B-roll.",
             ))
 
+    # Enforce the global budget: keep what's CLOSEST to the cut, since
+    # that's the material actually usable for patching this piece.
+    cut_total = sum(r.source_end_sec - r.source_start_sec for r in used_ranges)
+    budget = cut_total * POOL_MAX_TOTAL_MULTIPLE
+    if budget > 0 and sum(r.source_end_sec - r.source_start_sec for r in out) > budget:
+        def distance_from_cut(r):
+            same_file = [u for u in used_ranges if u.source_file == r.source_file]
+            if not same_file:
+                return float("inf")
+            return min(
+                min(abs(r.source_start_sec - u.source_end_sec),
+                    abs(u.source_start_sec - r.source_end_sec))
+                for u in same_file
+            )
+        kept, running = [], 0.0
+        for r in sorted(out, key=distance_from_cut):
+            d = r.source_end_sec - r.source_start_sec
+            if running + d > budget:
+                continue
+            kept.append(r)
+            running += d
+        out = kept
+
     out.sort(key=lambda r: (str(r.source_file), r.source_start_sec))
     return out
 
@@ -637,14 +668,36 @@ def _compute_pool_leftovers(
 def _snap_to_phrase_bounds(
     start_sec: float, end_sec: float, phrases: List[dict]
 ) -> Optional[tuple]:
-    """Snap a requested sub-clip to the real transcript phrases it covers,
-    so a cut always lands on a phrase boundary instead of mid-sentence.
+    """Snap a requested cut to real WORD boundaries, so it lands on speech
+    edges without cutting mid-word.
 
-    Returns (start, end) covering every phrase that overlaps the request,
-    or None when there's no phrase data to snap to (caller then keeps the
-    whole fragment rather than trusting a raw model number)."""
+    2026-09-07: this used to snap out to whole PHRASE boundaries, which
+    quietly made fine cutting impossible. Whisper phrases here run up to
+    11+ seconds (one is "But it reacts to what you start. Oh, okay." at
+    11.2s, most of it silence while the tool is being demonstrated), so
+    expanding to the phrase meant any selection touching it became 11.2s
+    — and that clip kept turning up as the longest in a 45-second edit.
+    Ryan's own reference edit takes just 2.2s of that same phrase, i.e.
+    he cut inside it. Word timestamps are already on disk for every
+    phrase, so honour them and only fall back to phrase edges when a
+    phrase has no word data.
+
+    Returns (start, end), or None when there's nothing to snap to.
+    """
     if not phrases:
         return None
+
+    words: List[dict] = []
+    for p in phrases:
+        for w in (p.get("words") or []):
+            if w.get("start") is not None and w.get("end") is not None:
+                words.append(w)
+
+    if words:
+        inside = [w for w in words if w["end"] > start_sec and w["start"] < end_sec]
+        if inside:
+            return (min(w["start"] for w in inside), max(w["end"] for w in inside))
+
     overlapping = [
         p for p in phrases
         if p.get("start") is not None and p.get("end") is not None
@@ -1075,6 +1128,14 @@ DURATION_BUFFER_SEC = 15.0
 # chatter before it.
 POOL_NEIGHBORHOOD_LEAD_SEC = 0.0
 POOL_NEIGHBORHOOD_TAIL_SEC = 60.0
+
+# Hard ceiling on the leftover side, as a multiple of the tight cut.
+# Ryan, 2026-09-07, on a 245s pool beside a 44s cut: "90 seconds is way
+# beyond the 15 second cushion rule set." His own reference pairs a 65s
+# cut with 158s of leftovers (2.4x). A per-file 60s tail is fine for one
+# file but silently doubles when a cut spans two, so the budget is global
+# and proportional: material furthest from the cut is dropped first.
+POOL_MAX_TOTAL_MULTIPLE = 3.0
 
 # Leftover gaps shorter than this aren't worth a clip on the timeline.
 # Ryan's reference silently drops its 1.6s and 0.8s gaps and keeps
@@ -2269,7 +2330,11 @@ def run_generate_story_angle(
         except Exception:
             continue
         phrases = [
-            {"start": ph.get("start"), "end": ph.get("end"), "text": ph.get("text", "")}
+            {"start": ph.get("start"), "end": ph.get("end"), "text": ph.get("text", ""),
+             # Word timings are what make sub-phrase cutting possible —
+             # see _snap_to_phrase_bounds. Dropping them here silently
+             # forced every cut out to full phrase boundaries.
+             "words": ph.get("words") or []}
             for ph in (payload.get("phrases") or [])
             if ph.get("start") is not None and ph.get("end") is not None
         ]
