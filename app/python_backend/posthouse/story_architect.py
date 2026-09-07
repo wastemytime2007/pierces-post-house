@@ -401,6 +401,15 @@ purposes, pick ONE role for it rather than placing the same real clip on the tim
 - `sequence` must be about ONE topic, no exceptions. If you're tempted to include a fragment \
 because it's a good moment "from the same footage" rather than because it's genuinely part of the \
 one topic's own start-to-finish arc, it belongs in `pool_indices`, not `sequence`.
+- **You are cutting, not just picking. CUT INSIDE long fragments.** A fragment is a topic span, \
+not a shot — a 167-second explanation is not a 167-second clip you must take whole. Any fragment \
+long enough to matter has its real transcript phrases listed underneath it with exact timestamps. \
+Choose the contiguous span of those phrases that actually earns its place and give it as \
+`start_sec`/`end_sec` on that sequence entry. Use the phrase boundaries shown; don't invent \
+times, and don't cut mid-sentence. Omit start_sec/end_sec only when you genuinely want the whole \
+fragment. A long fragment is never a reason to declare a short target impossible — find the good \
+30 seconds inside it. The material you cut away is not lost: it stays available in \
+`pool_indices`, which is exactly what the pool is for.
 - Most real interviews have more usable material than fits in one story — be honest about what \
 you left out and why, in `omitted_reasoning`.
 - Live trend research (given below) informs framing/tone only — never overrides what the \
@@ -469,9 +478,9 @@ Return this exact JSON shape, in a fenced ```json block:
   "target_audience": "who this is for, restated from the audience goal",
   "call_to_action": "same specific CTA as editorial_qna.cta",
   "sequence": [
-    {{"index": 0, "role": "hook"}},
+    {{"index": 0, "role": "hook", "start_sec": 152.8, "end_sec": 176.3}},
     {{"index": 3, "role": "build"}},
-    {{"index": 7, "role": "payoff"}}
+    {{"index": 7, "role": "payoff", "start_sec": 402.0, "end_sec": 418.5}}
   ],
   "pool_indices": [1, 2, 4, 5, 6, 8, 9],
   "omitted_reasoning": "1-2 sentences on what's genuinely off-topic and left out of both the sequence and the pool, and why"
@@ -531,17 +540,88 @@ def _collect_candidate_fragments(
     return all_tagged
 
 
-def _format_candidates_for_llm(candidates: List[TaggedFragment]) -> str:
+# A fragment longer than this gets its individual transcript phrases
+# listed, so the model can cut INSIDE it instead of being forced to take
+# it whole. 2026-09-07, Ryan: "Isnt that the whole point of the creative
+# AI? It cuts a 45 sec reel on the left of the seq that it thinks makes
+# the most sense and then it leaves the extra footage that is relevant on
+# the right of the seq?" — correct, and the reason a 45s target used to
+# be declared impossible: the only fragment demonstrating wallpaper
+# removal is a continuous 167s take, and the model only ever saw its
+# summary and outer timecodes, so it had no way to select the good 45
+# seconds within it. It is really 39 phrases averaging 3.4s each.
+SUBCLIP_PHRASE_DETAIL_THRESHOLD_SEC = 30.0
+
+
+def _snap_to_phrase_bounds(
+    start_sec: float, end_sec: float, phrases: List[dict]
+) -> Optional[tuple]:
+    """Snap a requested sub-clip to the real transcript phrases it covers,
+    so a cut always lands on a phrase boundary instead of mid-sentence.
+
+    Returns (start, end) covering every phrase that overlaps the request,
+    or None when there's no phrase data to snap to (caller then keeps the
+    whole fragment rather than trusting a raw model number)."""
+    if not phrases:
+        return None
+    overlapping = [
+        p for p in phrases
+        if p.get("start") is not None and p.get("end") is not None
+        and p["end"] > start_sec and p["start"] < end_sec
+    ]
+    if not overlapping:
+        return None
+    return (
+        min(p["start"] for p in overlapping),
+        max(p["end"] for p in overlapping),
+    )
+
+
+def _format_candidates_for_llm(
+    candidates: List[TaggedFragment],
+    phrases_by_source: Optional[Dict[str, List[dict]]] = None,
+) -> str:
+    """Fragment list for the sequencing prompt.
+
+    Any fragment longer than SUBCLIP_PHRASE_DETAIL_THRESHOLD_SEC also
+    gets its real transcript phrases listed with exact timestamps, so the
+    model can name precise in/out points within it (see the `sequence`
+    schema's optional start_sec/end_sec). Short fragments are already
+    usable whole and don't need the extra prompt weight."""
+    phrases_by_source = phrases_by_source or {}
     lines = []
     for i, tf in enumerate(candidates):
         f = tf.fragment
         category = f" category={tf.category}" if tf.category else ""
         reasoning = f" — AE's reasoning: {tf.reasoning}" if tf.reasoning else ""
+        dur = f.source_end_sec - f.source_start_sec
         lines.append(
             f'[{i}] fit={tf.fit}{category} file="{f.source_file}" '
-            f'{f.source_start_sec:.1f}s-{f.source_end_sec:.1f}s '
+            f'{f.source_start_sec:.1f}s-{f.source_end_sec:.1f}s ({dur:.0f}s long) '
             f'"{f.topic_label}": {f.summary}{reasoning}'
         )
+
+        if dur <= SUBCLIP_PHRASE_DETAIL_THRESHOLD_SEC:
+            continue
+        stem = Path(str(f.source_file)).stem
+        phrases = phrases_by_source.get(stem) or []
+        inside = [
+            p for p in phrases
+            if p.get("start") is not None
+            and p["start"] >= f.source_start_sec - 0.01
+            and p["end"] <= f.source_end_sec + 0.01
+        ]
+        if not inside:
+            continue
+        lines.append(
+            f"      ^ {dur:.0f}s is too long to use whole for a short piece. "
+            f"Its real phrases — pick a contiguous span of these and give its "
+            f"start_sec/end_sec:"
+        )
+        for p in inside:
+            lines.append(
+                f'        {p["start"]:.1f}-{p["end"]:.1f}s  "{str(p.get("text","")).strip()}"'
+            )
     return "\n".join(lines)
 
 
@@ -1434,6 +1514,7 @@ def generate_story_angle(
     stated_intent: str = "",
     max_duration_sec: float = 0.0,
     retry_note: str = "",
+    phrases_by_source: Optional[Dict[str, List[dict]]] = None,
 ) -> tuple:
     """Build one real StoryAngle from a project's exhaustively-extracted,
     audience-scored fragments plus live trend research.
@@ -1538,7 +1619,7 @@ def generate_story_angle(
     client = build_anthropic_client(api_key=api_key)
     user_prompt = ARCHITECT_PROMPT_TEMPLATE.format(
         audience_goal=audience_goal.strip(),
-        fragments=_format_candidates_for_llm(candidates),
+        fragments=_format_candidates_for_llm(candidates, phrases_by_source),
         trend_research=_format_research_for_llm(research),
         planning_context=planning_context,
     ) + avoid_clause + retry_clause
@@ -1606,10 +1687,35 @@ def generate_story_angle(
         # source file purely from where start/end fall in the COMBINED
         # timeline, so local time alone would silently pick the wrong file.
         offset = (source_offset_lookup or {}).get(f.source_file, 0.0)
+
+        # Sub-clip within the fragment, when the model named one (2026-09-07).
+        # This is the creative editor actually cutting: a long topic span
+        # gets narrowed to the part that earns its place, and the rest
+        # stays available via the pool. Clamped to the fragment's real
+        # bounds and snapped to real phrase boundaries so a hallucinated
+        # or sloppy number can never widen a selection beyond the material
+        # it was drawn from, or cut mid-word.
+        start_local, end_local = f.source_start_sec, f.source_end_sec
+        sub_start, sub_end = entry.get("start_sec"), entry.get("end_sec")
+        if sub_start is not None and sub_end is not None:
+            try:
+                s, e = float(sub_start), float(sub_end)
+            except (TypeError, ValueError):
+                s = e = None
+            if s is not None and e is not None and e - s >= 1.0:
+                s = max(s, f.source_start_sec)
+                e = min(e, f.source_end_sec)
+                if e - s >= 1.0:
+                    stem = Path(str(f.source_file)).stem
+                    snapped = _snap_to_phrase_bounds(
+                        s, e, (phrases_by_source or {}).get(stem) or [])
+                    if snapped:
+                        start_local, end_local = snapped
+
         ranges.append(TopicRange(
             source_file=f.source_file,
-            source_start_sec=f.source_start_sec + offset,
-            source_end_sec=f.source_end_sec + offset,
+            source_start_sec=start_local + offset,
+            source_end_sec=end_local + offset,
             topic_label=role or f.topic_label,
             summary=f.summary,
         ))
@@ -2043,6 +2149,24 @@ def run_generate_story_angle(
 
     source_offset_lookup = build_source_offset_lookup(project)
 
+    # Real transcript phrases per source, so the sequencer can cut INSIDE a
+    # long fragment rather than being forced to take it whole (2026-09-07).
+    # Read straight off the transcripts already on disk — no API cost.
+    phrases_by_source: Dict[str, List[dict]] = {}
+    for tp in sorted(p for p in project.transcripts_dir().glob("*.json")
+                     if not p.name.startswith(".")):
+        try:
+            payload = json.loads(tp.read_text())
+        except Exception:
+            continue
+        phrases = [
+            {"start": ph.get("start"), "end": ph.get("end"), "text": ph.get("text", "")}
+            for ph in (payload.get("phrases") or [])
+            if ph.get("start") is not None and ph.get("end") is not None
+        ]
+        if phrases:
+            phrases_by_source[tp.stem] = phrases
+
     emit({"type": "producer_started", "job_id": job_id, "mode": "story_architect"})
 
     N_ANGLES = 3  # Ryan, 2026-09-04: "It should also provide 3 ideas each time"
@@ -2093,7 +2217,7 @@ def run_generate_story_angle(
                         audience_goal, tagged_by_source, research=research,
                         source_offset_lookup=source_offset_lookup, avoid_theses=avoid_theses,
                         stated_intent=stated_intent, max_duration_sec=max_duration_sec,
-                        retry_note=retry_note,
+                        retry_note=retry_note, phrases_by_source=phrases_by_source,
                     )
                     break
                 except Exception as e:
