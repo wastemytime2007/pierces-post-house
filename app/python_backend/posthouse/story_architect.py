@@ -1433,6 +1433,7 @@ def generate_story_angle(
     avoid_theses: Optional[List[str]] = None,
     stated_intent: str = "",
     max_duration_sec: float = 0.0,
+    retry_note: str = "",
 ) -> tuple:
     """Build one real StoryAngle from a project's exhaustively-extracted,
     audience-scored fragments plus live trend research.
@@ -1498,13 +1499,41 @@ def generate_story_angle(
     avoid_clause = ""
     if avoid_theses:
         titles = "\n".join(f"- {t}" for t in avoid_theses)
-        avoid_clause = (
-            "\n\nThis is one of several angles being generated from the same material. "
-            f"Do NOT repeat these already-proposed theses — find a genuinely different real "
-            f"angle in the footage instead:\n{titles}"
-        )
+        if (stated_intent or "").strip():
+            # 2026-09-07: THE bug behind Ryan's "the ideas generated have
+            # nothing to do with what we discussed." When an intent has
+            # been agreed in a planning conversation, telling later arcs
+            # to find "a genuinely different angle" actively drives them
+            # OFF the agreed plan — confirmed real: a session that agreed
+            # on a wallpaper-removal how-to produced arc 2 about a kitchen
+            # ceiling and arc 3 about pulling carpet. With an agreed
+            # intent, "different" must mean a different EXECUTION of that
+            # same piece, never a different subject.
+            avoid_clause = (
+                "\n\nThis is one of several versions being generated of the SAME agreed "
+                "piece described above. Every version must still be that piece — same "
+                "subject, same intent. Vary the execution instead: a different opening "
+                "beat, a different fragment carrying the hook, a different order or "
+                "emphasis. Do NOT reuse these already-proposed framings, and do NOT "
+                "drift to a different subject to achieve variety:\n" + titles
+            )
+        else:
+            avoid_clause = (
+                "\n\nThis is one of several angles being generated from the same material. "
+                f"Do NOT repeat these already-proposed theses — find a genuinely different real "
+                f"angle in the footage instead:\n{titles}"
+            )
 
     planning_context = _format_planning_context(stated_intent, max_duration_sec)
+
+    # 2026-09-07: a bare retry of an overrun/degraded response with the
+    # IDENTICAL prompt tends to reproduce the same failure — confirmed
+    # real on the wallpaper project (three arcs in a row came back at
+    # 222s/81s/222s against a 45s target, then the whole generation was
+    # abandoned with nothing saved). retry_note carries the concrete
+    # reason the previous attempt failed so the second attempt has
+    # something to actually correct, instead of guessing blind twice.
+    retry_clause = f"\n\n{retry_note.strip()}" if retry_note and retry_note.strip() else ""
 
     client = build_anthropic_client(api_key=api_key)
     user_prompt = ARCHITECT_PROMPT_TEMPLATE.format(
@@ -1512,7 +1541,7 @@ def generate_story_angle(
         fragments=_format_candidates_for_llm(candidates),
         trend_research=_format_research_for_llm(research),
         planning_context=planning_context,
-    ) + avoid_clause
+    ) + avoid_clause + retry_clause
     try:
         response = client.messages.create(
             model=model,
@@ -1595,10 +1624,17 @@ def generate_story_angle(
         # clip — this is more likely a sign of a degraded/truncated
         # response than an intentional creative choice. Fail loud rather
         # than persist an idea that isn't a real arc.
-        raise StoryPlannerError(
+        err = StoryPlannerError(
             f"Claude's response produced only {len(ranges)} range(s) for the "
             "tight cut — too few to be a real arc. Likely a degraded response; retry."
         )
+        err.retry_note = (
+            "Your previous attempt returned only a single fragment for the whole "
+            "tight cut, which isn't a real hook/build/payoff arc. Build a genuine "
+            "multi-beat sequence this time, even if the format is short — a real "
+            "arc needs at least an open and a payoff as separate fragments."
+        )
+        raise err
 
     # 2026-09-04: the length the caller asked for is a REAL constraint, not
     # a suggestion the model reports back and nobody checks. Ryan caught a
@@ -1610,11 +1646,24 @@ def generate_story_angle(
     if max_duration_sec and max_duration_sec > 0:
         actual_sec = sum(r.source_end_sec - r.source_start_sec for r in ranges)
         if actual_sec > max_duration_sec * DURATION_OVERRUN_TOLERANCE:
-            raise StoryPlannerError(
+            err = StoryPlannerError(
                 f"Tight cut runs {actual_sec:.0f}s but the agreed target is "
                 f"{max_duration_sec:.0f}s — it selected too much material for the "
                 f"format it was asked to build. Retry with fewer/shorter fragments."
             )
+            over_by = actual_sec / max_duration_sec
+            err.retry_note = (
+                f"Your previous attempt selected {actual_sec:.0f}s of material — "
+                f"{over_by:.1f}x over the {max_duration_sec:.0f}s target. That is not a "
+                f"trim-a-little problem, it needs fewer beats: pick ONE moment per role "
+                f"(one hook, one core demonstration, one payoff — not several options for "
+                f"each), and prefer the single tightest fragment for each over a longer or "
+                f"more complete one. If a beat the editor asked for (e.g. a specific "
+                f"warning or caveat) genuinely doesn't exist as a short, usable fragment in "
+                f"the footage, drop it and say so honestly in narrative_thesis rather than "
+                f"including a long fragment to cover it."
+            )
+            raise err
 
     # 2026-09-04: the "pool" — everything else genuinely relevant to the
     # same topic, deliberately left OUT of the tight sequence (see module
@@ -2037,16 +2086,25 @@ def run_generate_story_angle(
             # take the whole click down with it).
             angle = angle_research = None
             last_error = None
+            retry_note = ""
             for attempt in range(2):
                 try:
                     angle, angle_research = generate_story_angle(
                         audience_goal, tagged_by_source, research=research,
                         source_offset_lookup=source_offset_lookup, avoid_theses=avoid_theses,
                         stated_intent=stated_intent, max_duration_sec=max_duration_sec,
+                        retry_note=retry_note,
                     )
                     break
                 except Exception as e:
                     last_error = e
+                    # Carry the SPECIFIC failure reason into the next attempt
+                    # rather than blindly repeating the identical prompt — a
+                    # bare retry reliably reproduced the same overrun on real
+                    # footage (confirmed 2026-09-07: three arcs in a row came
+                    # back at 222s/81s/222s against a 45s target and nothing
+                    # got saved).
+                    retry_note = getattr(e, "retry_note", "")
                     emit({"type": "log", "level": "warn",
                           "message": f"Arc {i + 1}/{N_ANGLES} attempt {attempt + 1} failed: {e}"})
             if angle is None:

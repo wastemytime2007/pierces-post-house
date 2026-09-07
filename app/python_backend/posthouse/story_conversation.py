@@ -88,6 +88,14 @@ that, and say what that means for what you'd cut.
 - **Be honest about what the footage can't do.** If they've asked for something the material \
 genuinely doesn't support, say so directly and say what it CAN support instead. Never quietly \
 substitute an easier piece.
+- **Check the target length against the ACTUAL fragments you're building around, not a genre \
+average.** The footage list shows each fragment's real duration. The generator selects WHOLE \
+fragments — it cannot trim inside one — so if the fragment carrying your core beat already runs \
+longer than the target (e.g. a continuous 167-second explanation for a proposed 45-second Reel), \
+that target is not achievable with this fragment, no matter how tightly it's cut around. Say so \
+plainly and either propose a realistic length for what's actually there, or point to a shorter \
+fragment that covers the same beat if one exists. Do not agree to a length the fragments can't \
+support and let the generator discover that after paying for it.
 - **Ask at most one real question per turn**, and only when the answer would actually change the \
 plan. If you have what you need, say so and stop asking.
 - Never claim a trend, sound, or format you weren't actually given in the research. If the \
@@ -233,9 +241,21 @@ def latest_session(project) -> Optional[PlanningSession]:
 
 def _build_footage_digest(tagged_by_source) -> str:
     """A compact, real read of what's in the footage: every fragment's own
-    topic label, grouped by source file. Deliberately NOT the full
-    fragment text — the planner needs to know what's here to talk about
-    it; the generator gets the complete set when it actually builds."""
+    topic label and DURATION, grouped by source file. Deliberately NOT the
+    full fragment text — the planner needs to know what's here to talk
+    about it; the generator gets the complete set when it actually
+    builds.
+
+    Duration is not decoration here. 2026-09-07, real failure on the
+    wallpaper project: the planner agreed to a 45-second Reel built
+    around "Wallpaper steaming process explained" without ever being told
+    that fragment is a continuous 167-SECOND chunk — this system selects
+    whole extracted fragments, it does not sub-clip within one, so that
+    target was structurally impossible from the moment it was agreed to.
+    Three story-arc attempts then failed the (correct) duration check and
+    NOTHING was generated. Showing duration up front lets the planner
+    catch this during the conversation, when it's cheap to fix, instead
+    of after paying for generation three times."""
     lines: List[str] = []
     total = 0
     for stem, tagged in sorted(tagged_by_source.items()):
@@ -247,7 +267,8 @@ def _build_footage_digest(tagged_by_source) -> str:
             f = tf.fragment
             mins = int(f.source_start_sec // 60)
             secs = int(f.source_start_sec % 60)
-            lines.append(f"  [{mins:d}:{secs:02d}] {f.topic_label}")
+            dur = f.source_end_sec - f.source_start_sec
+            lines.append(f"  [{mins:d}:{secs:02d}, {dur:.0f}s long] {f.topic_label}")
             total += 1
     return "\n".join(lines)
 
@@ -262,26 +283,52 @@ def _format_transcript(turns: List[ConversationTurn]) -> str:
 
 def _planner_call(user_prompt: str, model: str, api_key: Optional[str]) -> dict:
     """One planning turn. Returns the parsed {message, resolved_intent,
-    target_duration_sec} dict, or raises — never invents a turn."""
+    target_duration_sec} dict, or raises — never invents a turn.
+
+    One self-correcting retry if the reply comes back as plain prose
+    instead of the required JSON envelope. Confirmed real, 2026-09-07:
+    against the FULL real prompt (full footage digest + full research),
+    the CLI route occasionally answers in good, on-topic prose and just
+    drops the JSON fence — the reasoning itself was sound (it correctly
+    caught a 45s target being impossible against a 167s fragment), only
+    the required structure was missing. A short, sharp reminder appended
+    to the SAME prompt reliably restores it, and is far cheaper than
+    treating a format slip as an unrecoverable planning failure."""
     client = build_anthropic_client(api_key=api_key)
-    resp = client.messages.create(
-        model=model,
-        max_tokens=2000,
-        temperature=0.6,
-        system=PLANNER_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    if getattr(resp, "stop_reason", None) == "max_tokens":
-        raise PlanningError(
-            "The planner's reply was cut off mid-response (hit the token limit) — "
-            "not showing a truncated plan as if it were complete."
+
+    def _call(prompt: str):
+        resp = client.messages.create(
+            model=model,
+            max_tokens=2000,
+            temperature=0.6,
+            system=PLANNER_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
         )
-    text = "".join(
-        b.text for b in resp.content if getattr(b, "type", None) == "text"
-    ).strip()
-    if not text:
-        raise PlanningError("Empty response from the planner.")
-    data = _extract_json(text)
+        if getattr(resp, "stop_reason", None) == "max_tokens":
+            raise PlanningError(
+                "The planner's reply was cut off mid-response (hit the token limit) — "
+                "not showing a truncated plan as if it were complete."
+            )
+        text = "".join(
+            b.text for b in resp.content if getattr(b, "type", None) == "text"
+        ).strip()
+        if not text:
+            raise PlanningError("Empty response from the planner.")
+        return text
+
+    text = _call(user_prompt)
+    try:
+        data = _extract_json(text)
+    except Exception:
+        retry_prompt = (
+            f"{user_prompt}\n\nYour previous reply was plain prose with no JSON — reproduced "
+            f"here so you don't lose the reasoning in it, but it doesn't fit the required "
+            f"envelope:\n\n{text[:1500]}\n\nReturn that same reasoning as ONLY the fenced JSON "
+            f"block the format requires — no prose before or after the fence."
+        )
+        text = _call(retry_prompt)
+        data = _extract_json(text)  # let this one raise for real if it still fails
+
     message = str(data.get("message", "")).strip()
     if not message:
         raise PlanningError("The planner returned no message text.")

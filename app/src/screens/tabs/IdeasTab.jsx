@@ -100,6 +100,17 @@ export default function IdeasTab({
     setShowExportModal(true);
   }, [onMarkAutoIncludeNudgeSeen]);
 
+  // 2026-09-07: surfaces a failed generation instead of it vanishing
+  // silently. Real bug this fixes: when every attempt to build a story
+  // arc fails (e.g. the footage can't fit the agreed length), the busy
+  // spinner just disappeared and the ideas grid kept showing whatever
+  // was already there — old ideas from BEFORE a planning conversation,
+  // with nothing to tell the user that generation failed rather than
+  // matched the plan. Ryan hit exactly this: "The ideas generated have
+  // nothing to do with what we discussed" — nothing had actually been
+  // generated; the old list was silently mistaken for a fresh result.
+  const [generationError, setGenerationError] = useState(null);
+
   // Track when a producer job is running so buttons can disable
   useEffect(() => {
     const busy = Object.values(jobs).some(
@@ -115,6 +126,11 @@ export default function IdeasTab({
     );
     const producerRunning = producerJobs.some(([, j]) => j.status === "running");
     setProducerBusy(producerRunning);
+
+    const failed = producerJobs.find(([, j]) => j.status === "failed");
+    if (failed) {
+      setGenerationError(failed[1].error || "Generation failed — no ideas were produced.");
+    }
 
     // When producerBusy transitions from true → false, clear activeRun
     // so the GeneratingPanel hides. We can't simply derive this from
@@ -167,6 +183,7 @@ export default function IdeasTab({
   // the other.
   const handleGenerateStoryArchitect = useCallback(async () => {
     setActiveRun({ mode: "story_architect", expected: 1, ideasAtStart: ideas.length });
+    setGenerationError(null);
     try {
       await sendCommand({
         type: "story_architect_generate",
@@ -393,6 +410,19 @@ export default function IdeasTab({
         </div>
       </div>
 
+      {generationError && (
+        <div className="generation-error-banner">
+          <div className="generation-error-text">
+            <strong>Generation failed — no new ideas were produced.</strong>{" "}
+            The list below is unchanged from before this run.
+            <div className="generation-error-detail">{generationError}</div>
+          </div>
+          <button className="btn btn-ghost" onClick={() => setGenerationError(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {showBriefForm && (
         <BriefForm
           onClose={() => setShowBriefForm(false)}
@@ -502,6 +532,7 @@ export default function IdeasTab({
           error={planError}
           busy={producerBusy}
           onClose={() => setShowPlanPanel(false)}
+          onBeforeGenerate={() => setGenerationError(null)}
         />
       )}
 
@@ -1228,7 +1259,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
  *    the planner researches the project's audience goal and opens by
  *    asking what you're after.
  */
-function StoryPlanningPanel({ session, error, busy, onClose }) {
+function StoryPlanningPanel({ session, error, busy, onClose, onBeforeGenerate }) {
   const [intent, setIntent] = useState("");
   const [reply, setReply] = useState("");
 
@@ -1263,6 +1294,11 @@ function StoryPlanningPanel({ session, error, busy, onClose }) {
   };
 
   const handleGenerate = async () => {
+    // 2026-09-07: this closes the panel right after firing, so if
+    // generation later fails (e.g. the footage can't fit the agreed
+    // length), the failure has to surface in the main Ideas grid — this
+    // panel won't be open to show it. See generationError in IdeasTab.
+    onBeforeGenerate?.();
     try {
       await sendCommand({
         type: "story_plan_generate",

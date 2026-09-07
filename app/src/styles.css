@@ -2185,6 +2185,33 @@ kbd {
   padding: 8px 10px;
 }
 
+/* Generation-failed banner (2026-09-07) — a failed producer job used to
+   just vanish, leaving whatever ideas were already in the grid looking
+   like a fresh result. This makes the failure impossible to miss. */
+.generation-error-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin: 0 0 14px;
+}
+
+.generation-error-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-0);
+}
+
+.generation-error-detail {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--fg-1);
+}
+
 .idea-card-phrases-list {
   list-style: none;
   padding: 0;
