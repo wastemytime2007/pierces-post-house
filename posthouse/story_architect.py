@@ -1023,25 +1023,42 @@ def _watch_video(url: str, client, model: str, audience_goal: str) -> Optional[d
         else:
             audio_note = "No audio credit metadata available for this video."
 
-        content = [{"type": "text", "text": VIDEO_WATCH_PROMPT.format(
+        watch_prompt = VIDEO_WATCH_PROMPT.format(
             url=url, audience_goal=audience_goal, total_cuts=total_cuts,
             duration=duration, cuts_per_sec=cuts_per_sec, avg_shot_len=avg_shot_len,
-            sample_note=sample_note, audio_note=audio_note)}]
-        for fp in frames:
-            content.append({
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": base64.standard_b64encode(fp.read_bytes()).decode(),
-                },
-            })
-        try:
-            resp = client.messages.create(model=model, max_tokens=600,
-                                           messages=[{"role": "user", "content": content}])
-        except Exception:
-            return None
-        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+            sample_note=sample_note, audio_note=audio_note)
+
+        # 2026-09-08: everything above this point — download, ffmpeg cut
+        # detection, the real measured cuts-per-second, frame extraction at
+        # real cut points — was always free. Only the vision call was
+        # billed, and it was the reason video research got disabled as a
+        # cost measure. The CLI can read the same frames off disk for
+        # nothing (posthouse/video_probe.describe_frames), so in CLI mode
+        # that is what happens: same frames, same prompt, no API call.
+        from posthouse.cli_llm_client import cli_mode_enabled
+        if cli_mode_enabled():
+            try:
+                from posthouse.video_probe import describe_frames
+                text = describe_frames(frames, watch_prompt)
+            except Exception:
+                return None
+        else:
+            content = [{"type": "text", "text": watch_prompt}]
+            for fp in frames:
+                content.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": base64.standard_b64encode(fp.read_bytes()).decode(),
+                    },
+                })
+            try:
+                resp = client.messages.create(model=model, max_tokens=600,
+                                               messages=[{"role": "user", "content": content}])
+            except Exception:
+                return None
+            text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
         if not text:
             return None
         try:

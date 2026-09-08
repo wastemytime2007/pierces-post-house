@@ -164,6 +164,65 @@ def probe_segment(
     return data
 
 
+def describe_frames(
+    frame_paths: list, prompt: str, timeout_sec: int = VIDEO_PROBE_TIMEOUT_SEC
+) -> str:
+    """Have the CLI actually LOOK at frame images already on disk.
+
+    This is the free replacement for posting base64 image blocks to the
+    API. `story_architect._watch_video` does the genuinely valuable work
+    for free already — yt-dlp download, ffmpeg cut detection, real
+    measured cuts-per-second, frame extraction at real cut points — and
+    only the vision call was billed. So only that is swapped: the same
+    frames, the same prompt, read off disk by a subprocess instead of
+    uploaded.
+
+    Returns the reply text (callers parse their own JSON out of it).
+    Raises `VideoProbeError` rather than returning something plausible.
+    """
+    paths = [Path(p) for p in frame_paths]
+    missing = [p for p in paths if not p.exists()]
+    if not paths or missing:
+        raise VideoProbeError(
+            f"{len(missing)} of {len(paths)} frame file(s) missing; refusing to "
+            "describe frames that aren't there."
+        )
+
+    exe = shutil.which("claude")
+    if not exe:
+        raise VideoProbeError("The `claude` CLI isn't on PATH.")
+
+    listing = "\n".join(f"  {p}" for p in paths)
+    full = (
+        f"{prompt}\n\n"
+        f"Read each of these {len(paths)} real frame images, in this order, and "
+        f"base your answer ONLY on what they actually show:\n{listing}\n\n"
+        f"You must actually read every one of them before answering."
+    )
+
+    child_env = {
+        k: v for k, v in os.environ.items()
+        if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+                     "ANTHROPIC_WORKSPACE_ID")
+    }
+    try:
+        proc = subprocess.run(
+            [exe, "-p", "--allowedTools", "Read"],
+            input=full, capture_output=True, text=True,
+            timeout=timeout_sec, env=child_env,
+        )
+    except subprocess.TimeoutExpired:
+        raise VideoProbeError(f"Frame description timed out after {timeout_sec}s.")
+    if proc.returncode != 0:
+        raise VideoProbeError(
+            f"claude CLI exited {proc.returncode}: {(proc.stderr or '').strip()[:300]}"
+        )
+    out = (proc.stdout or "").strip()
+    if not out:
+        raise VideoProbeError("Frame description returned no output.")
+    return out
+
+
 def is_on_camera_demonstration(
     video_path: str | Path, start_sec: float, end_sec: float
 ) -> dict:

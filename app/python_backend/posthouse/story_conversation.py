@@ -89,13 +89,12 @@ that, and say what that means for what you'd cut.
 genuinely doesn't support, say so directly and say what it CAN support instead. Never quietly \
 substitute an easier piece.
 - **Check the target length against the ACTUAL fragments you're building around, not a genre \
-average.** The footage list shows each fragment's real duration. The generator selects WHOLE \
-fragments — it cannot trim inside one — so if the fragment carrying your core beat already runs \
-longer than the target (e.g. a continuous 167-second explanation for a proposed 45-second Reel), \
-that target is not achievable with this fragment, no matter how tightly it's cut around. Say so \
-plainly and either propose a realistic length for what's actually there, or point to a shorter \
-fragment that covers the same beat if one exists. Do not agree to a length the fragments can't \
-support and let the generator discover that after paying for it.
+average.** The footage list shows each fragment's real duration. The generator CAN cut inside a \
+fragment (down to word boundaries), so a long fragment is not a blocker on its own — a 167-second \
+explanation can legitimately yield the tight 30 seconds that earn their place. What you should \
+check is whether the material has enough distinct BEATS for the piece you're proposing: if the \
+whole topic is one continuous take of a single action, a multi-beat arc will feel thin no matter \
+how it's trimmed. Say so plainly, and propose a length honest to what's actually there.
 - **Ask at most one real question per turn**, and only when the answer would actually change the \
 plan. If you have what you need, say so and stop asking.
 - Never claim a trend, sound, or format you weren't actually given in the research. If the \
@@ -123,7 +122,7 @@ What is actually in their footage — real fragments already extracted from the 
 <footage>
 {footage_digest}
 </footage>
-
+{visual_block}
 Live trend/format research for this audience:
 
 <research>
@@ -144,7 +143,7 @@ PLANNER_REPLY_TEMPLATE = """Continuing the same planning conversation.
 <footage>
 {footage_digest}
 </footage>
-
+{visual_block}
 <research>
 {research}
 </research>
@@ -185,6 +184,9 @@ class PlanningSession:
     resolved_intent: str = ""        # where the conversation has landed (planner-maintained)
     target_duration_sec: float = 0.0
     footage_digest: str = ""
+    # What was actually seen on screen, if a visual check ran (2026-09-08).
+    # None means nobody looked — never treat that as "nothing there".
+    visual_check: Optional[dict] = None
     research: dict = field(default_factory=dict)
     turns: List[ConversationTurn] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
@@ -237,6 +239,96 @@ def latest_session(project) -> Optional[PlanningSession]:
         return PlanningSession.from_dict(json.loads(newest.read_text()))
     except Exception:
         return None
+
+
+def _probe_anchor_fragment(tagged_by_source, emit, job_id) -> Optional[dict]:
+    """Look at what is actually ON SCREEN in the fragment a piece would
+    most likely be built around, before the plan commits to it.
+
+    2026-09-08. The planning conversation used to be blind to the picture:
+    it read transcripts only, so it had to ask Ryan by hand *"is someone
+    demonstrating with the steamer, or explaining the process verbally?"*
+    — the very thing that decides whether a piece can be show-don't-tell
+    or is a talking head with B-roll gaps. It also meant plans could
+    commit to beats the footage doesn't actually show, which is only
+    discovered after paying for generation.
+
+    One probe per session, on the single longest `strong` fragment, via
+    the free CLI route (`posthouse.video_probe`). Costs minutes, not
+    money. Returns None — never a guess — if there's nothing suitable to
+    probe or the probe fails; the conversation then proceeds exactly as
+    before, and says so.
+    """
+    candidates = [
+        tf for tagged in tagged_by_source.values() for tf in tagged
+        if getattr(tf, "fit", "") == "strong"
+    ]
+    if not candidates:
+        return None
+    anchor = max(
+        candidates,
+        key=lambda tf: tf.fragment.source_end_sec - tf.fragment.source_start_sec,
+    )
+    frag = anchor.fragment
+    if not Path(str(frag.source_file)).exists():
+        emit({"type": "log", "level": "info", "job_id": job_id,
+              "message": f"Skipping the visual check — {Path(str(frag.source_file)).name} "
+                         f"isn't reachable (drive not mounted?)."})
+        return None
+
+    emit({"type": "log", "level": "info", "job_id": job_id,
+          "message": f"Looking at what's actually on screen in \"{frag.topic_label}\" "
+                     f"({frag.source_end_sec - frag.source_start_sec:.0f}s) before "
+                     f"planning around it. This reads real frames and takes a few "
+                     f"minutes, but costs nothing."})
+    try:
+        from posthouse.video_probe import is_on_camera_demonstration
+        # Probe the first ~40s of the fragment: enough to see whether the
+        # work is shown, without sampling a 3-minute span frame by frame.
+        start = frag.source_start_sec
+        end = min(frag.source_end_sec, start + 40.0)
+        result = is_on_camera_demonstration(str(frag.source_file), start, end)
+    except Exception as e:
+        emit({"type": "log", "level": "warn", "job_id": job_id,
+              "message": f"Visual check failed, planning from transcripts only: {e}"})
+        return None
+
+    if not result.get("confident") or not result.get("frames_viewed"):
+        emit({"type": "log", "level": "warn", "job_id": job_id,
+              "message": "Visual check couldn't actually view frames — planning from "
+                         "transcripts only rather than trusting an assumption."})
+        return None
+
+    result["topic_label"] = frag.topic_label
+    emit({"type": "log", "level": "info", "job_id": job_id,
+          "message": f"Saw it ({result['frames_viewed']} real frames): "
+                     f"{str(result.get('answer',''))[:160]}"})
+    return result
+
+
+def _format_visual_block(probe: Optional[dict]) -> str:
+    """The visual truth, handed to the planner as fact — or an explicit
+    statement that nobody looked, so it can never be assumed."""
+    if not probe:
+        return (
+            "\nNO VISUAL CHECK WAS DONE this run — you are working from transcripts "
+            "only. You genuinely do not know what is on screen. Do not assert that "
+            "anything is demonstrated, shown, or visible; if that distinction matters "
+            "to the plan, ask the editor.\n"
+        )
+    return (
+        f"\nWHAT IS ACTUALLY ON SCREEN — real frames were viewed for the fragment a "
+        f"piece would most likely be built around (\"{probe.get('topic_label','')}\"), "
+        f"so this is observation, not inference:\n"
+        f"<visual_check frames_viewed=\"{probe.get('frames_viewed')}\">\n"
+        f"{probe.get('answer','')}\n\n"
+        f"Visible in frame: {probe.get('what_is_visible','')}\n"
+        f"</visual_check>\n\n"
+        f"Use this. If it says the work IS demonstrated on camera, you may plan a "
+        f"show-don't-tell piece and say why. If it says the work is NOT shown, do not "
+        f"propose a demonstration piece — say plainly what the footage can carry "
+        f"instead.\n"
+    )
 
 
 def _build_footage_digest(tagged_by_source) -> str:
@@ -386,6 +478,11 @@ def start_planning_session(
                 f"<stated_intent>\n{stated_intent}\n</stated_intent>\n"
             )
 
+        # Look at the picture before planning around it (2026-09-08).
+        # Free via the CLI, costs a few minutes, and answers the question
+        # this conversation previously had to put to Ryan by hand.
+        visual_check = _probe_anchor_fragment(tagged_by_source, emit, job_id)
+
         emit({"type": "log", "level": "info", "job_id": job_id,
               "message": "Working out a game plan from the footage and the research..."})
         result = _planner_call(
@@ -393,6 +490,7 @@ def start_planning_session(
                 audience_goal=audience_goal.strip(),
                 intent_block=intent_block,
                 footage_digest=footage_digest,
+                visual_block=_format_visual_block(visual_check),
                 research=_format_research_for_llm(research),
             ),
             model, api_key,
@@ -408,6 +506,7 @@ def start_planning_session(
         resolved_intent=result["resolved_intent"],
         target_duration_sec=result["target_duration_sec"],
         footage_digest=footage_digest,
+        visual_check=visual_check,
         research=research,
     )
     if stated_intent:
@@ -438,6 +537,7 @@ def continue_planning_session(
             PLANNER_REPLY_TEMPLATE.format(
                 audience_goal=session.audience_goal.strip(),
                 footage_digest=session.footage_digest,
+                visual_block=_format_visual_block(session.visual_check),
                 research=_format_research_for_llm(session.research),
                 transcript=_format_transcript(session.turns[:-1]),
                 user_message=user_message,
