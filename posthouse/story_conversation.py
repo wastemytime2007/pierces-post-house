@@ -312,7 +312,8 @@ def _pick_anchor_fragment(tagged_by_source, stated_intent: str):
 
 
 def _probe_anchor_fragment(tagged_by_source, emit, job_id,
-                           stated_intent: str = "") -> Optional[dict]:
+                           stated_intent: str = "",
+                           project_dir=None) -> Optional[dict]:
     """Look at what is actually ON SCREEN in the fragment this piece would
     be built around, before the plan commits to it.
 
@@ -356,7 +357,8 @@ def _probe_anchor_fragment(tagged_by_source, emit, job_id,
         span = frag.source_end_sec - frag.source_start_sec
         start = frag.source_start_sec + (span * 0.35 if span > 60 else 0.0)
         end = min(frag.source_end_sec, start + 40.0)
-        result = is_on_camera_demonstration(str(frag.source_file), start, end)
+        result = is_on_camera_demonstration(
+            str(frag.source_file), start, end, project_dir=project_dir)
     except Exception as e:
         emit({"type": "log", "level": "warn", "job_id": job_id,
               "message": f"Visual check failed, planning from transcripts only: {e}"})
@@ -371,7 +373,9 @@ def _probe_anchor_fragment(tagged_by_source, emit, job_id,
     result["topic_label"] = frag.topic_label
     result["probed_span_sec"] = [start, end]
     emit({"type": "log", "level": "info", "job_id": job_id,
-          "message": f"Saw it ({result['frames_viewed']} real frames): "
+          "message": ("Reusing the visual note from an earlier look "
+                      if result.get("from_cache") else "")
+                     + f"Saw it ({result['frames_viewed']} real frames): "
                      f"{str(result.get('answer',''))[:160]}"})
     return result
 
@@ -568,7 +572,8 @@ def start_planning_session(
         # Free via the CLI, costs a few minutes, and answers the question
         # this conversation previously had to put to Ryan by hand.
         visual_check = _probe_anchor_fragment(
-            tagged_by_source, emit, job_id, stated_intent=stated_intent)
+            tagged_by_source, emit, job_id, stated_intent=stated_intent,
+            project_dir=project.dir())
 
         emit({"type": "log", "level": "info", "job_id": job_id,
               "message": "Working out a game plan from the footage and the research..."})

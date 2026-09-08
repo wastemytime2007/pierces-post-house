@@ -512,9 +512,17 @@ def _format_planning_context(stated_intent: str, max_duration_sec: float) -> str
     if intent:
         parts.append(
             f"<stated_intent>\n{intent}\n</stated_intent>\n\n"
-            "Build THIS. If the footage genuinely can't support it, say so plainly in "
-            "`narrative_thesis` rather than quietly building a different piece that happens "
-            "to be easier to assemble from the material."
+            "Build THIS, strictly. 2026-09-08, Ryan: \"if I'm really specific about "
+            "knowing what we shot that day and wanting a specific type of video based on "
+            "the content that we shot then it needs to follow that information pretty "
+            "strictly.\" So the stated subject is not a theme to riff on — it is the "
+            "subject. Every fragment in `sequence` must be about it. A moment that is "
+            "merely from the same shoot, or interesting, or adjacent (a different room, a "
+            "different trade, a good aside) does NOT belong in the cut no matter how "
+            "strong it is on its own; it stays out and remains available in the unused "
+            "footage. If the footage genuinely can't support the stated piece, say so "
+            "plainly in `narrative_thesis` rather than quietly building a different piece "
+            "that happens to be easier to assemble from the material."
         )
     if max_duration_sec and max_duration_sec > 0:
         parts.append(
@@ -1115,6 +1123,23 @@ DURATION_OVERRUN_TOLERANCE = 1.25
 # not a ratio — a ratio is wrong at both ends of the scale (1.25x gives a 45s
 # target only 11s of room, and would give a 10-minute target 2.5 minutes).
 DURATION_BUFFER_SEC = 15.0
+
+# What a cut should run when NOBODY has stated a target — i.e. the plain
+# "Generate ideas" button, with no planning conversation behind it.
+#
+# 2026-09-08, Ryan: "we also need to be realistic that nobody's gonna
+# watch 13 minutes worth of us talking about that so we still need to
+# create on the left side ideally like a 30 second to a minute and a half
+# at most of what it thinks the best story is there."
+#
+# Until now the undirected path passed NO target at all, so the duration
+# check never ran and there was nothing stopping a 12:44 "idea". A real
+# default is the fix: 60s target, so the enforced ceiling lands at 75s
+# (target + DURATION_BUFFER_SEC) — inside his "a minute and a half at
+# most", and a genuine Reel length rather than a survey of the whole
+# shoot. A planning conversation still overrides this with whatever
+# length was actually agreed.
+DEFAULT_REEL_TARGET_SEC = 60.0
 
 # How far either side of the used material to look when gathering the
 # leftover footage for the pool. Derived from Ryan's own reference edit
@@ -2352,6 +2377,17 @@ def run_generate_story_angle(
     A no-op (not an error) when there's no manifest/audience_goal yet, or
     no transcripts at all yet (nothing real to build from either way)."""
     project_dir = project.dir()
+
+    # No agreed target means the plain "Generate ideas" button. Give it a
+    # real Reel length rather than leaving the cut unbounded — see
+    # DEFAULT_REEL_TARGET_SEC.
+    if not max_duration_sec or max_duration_sec <= 0:
+        max_duration_sec = DEFAULT_REEL_TARGET_SEC
+        emit({"type": "log", "level": "info", "job_id": job_id,
+              "message": f"No agreed length for this run, so building to a real Reel "
+                         f"length: ~{DEFAULT_REEL_TARGET_SEC:.0f}s "
+                         f"(hard ceiling {DEFAULT_REEL_TARGET_SEC + DURATION_BUFFER_SEC:.0f}s). "
+                         f"Use Plan with AI if you want a different length."})
 
     def emit_with_job(ev):
         ev.setdefault("job_id", job_id)

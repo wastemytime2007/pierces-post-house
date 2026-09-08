@@ -73,6 +73,26 @@ DEFAULT_WINDOW_SEC = 600.0
 DEFAULT_OVERLAP_SEC = 120.0
 MIN_FRAGMENT_SEC = 3.0
 
+# Upper bound on how much one fragment may span. 2026-09-08, Ryan, looking
+# at a 381-second fragment labelled "Track lighting and 80s design
+# trends": "13 minutes is probably unlikely that we talked about track
+# lighting for 30 minutes. I don't think that was the case so it needs to
+# be a little more specific more like the wallpaper when we did."
+#
+# He's right, and the rule below was the cause: it told the reader to use
+# SOFT topic boundaries and keep related asides inside one fragment, with
+# a MINIMUM length and no maximum at all. On this project that produced
+# 11 fragments over 120s and two over 340s. A six-minute "topic" is not a
+# topic — it's a stretch of tape — and it degrades everything downstream:
+# the planner sees one mushy blob instead of the three or four real beats
+# inside it, and the visual probe has no specific span to look at.
+#
+# 120s is deliberately generous: the wallpaper steaming walkthrough that
+# Ryan holds up as the right granularity is 167s of genuinely one
+# continuous demonstration, so this is a "split it if you reasonably can"
+# bound rather than a hard truncation.
+MAX_FRAGMENT_SEC = 120.0
+
 EXHAUSTIVE_SYSTEM_PROMPT = """You are a meticulous transcript reader helping an editor who needs to know EVERYTHING usable in an interview, not a curated highlight reel. Your job is completeness, not selection. Every distinct topic, anecdote, aside, or moment that could inform a story belongs in your output — including material that seems minor, repetitive, or only tangentially related to anything else. The editor decides what's useful; you decide nothing except what exists and where it lives.
 
 Return ONLY valid JSON. No preamble, no markdown fences."""
@@ -92,6 +112,7 @@ Rules:
 1. A fragment is defined by source_start_sec and source_end_sec (absolute seconds into the source file, using the phrase start/end times shown above).
 2. Use SOFT topic boundaries within one fragment — if a thought drifts into a related aside and loops back, that's still one fragment. Only start a new fragment when the speaker clearly moves to a distinct topic.
 3. Every fragment must cover AT LEAST {min_fragment_sec:.0f} seconds.
+3b. **Aim to keep fragments under {max_fragment_sec:.0f} seconds, and NEVER let one run long just because the speaker never fully changed subject.** If a stretch is longer than that, it almost always contains several distinct beats — a setup, a demonstration, a result, a tangent — and each of those is its own fragment with its own SPECIFIC label. "Track lighting and 80s design trends" covering six minutes is a failure: that span really contains the fixture being pointed at, the trend explanation, the replacement decision, and an aside about ceiling height, and an editor needs those separately. A genuinely continuous single action (one uninterrupted demonstration of one task) may exceed the bound — say so in the summary when it does.
 4. Fragments should not overlap each other.
 5. Silence, filler, or pure logistics ("let me check the mic") don't need their own fragment, but when in doubt about whether something is a real moment, INCLUDE it — this task is measured by what you miss, not by how tight your list is.
 6. Cover the FULL window from {window_start:.1f}s to {window_end:.1f}s — if there are gaps in your fragment list, that means you skipped material, which is exactly the failure this task exists to prevent.
@@ -103,7 +124,7 @@ Return JSON in this exact shape:
     {{
       "source_start_sec": 120.4,
       "source_end_sec": 187.8,
-      "topic_label": "short 2-5 word label",
+      "topic_label": "short 2-6 word label naming the SPECIFIC thing discussed, not a category. 'Steaming wallpaper off plaster' not 'Renovation talk'; 'Check under carpet before cutting' not 'Carpet discussion'.",
       "summary": "1 sentence describing what's actually said in this fragment"
     }}
   ]
@@ -214,6 +235,7 @@ def _extract_window_fragments(
         window_start=window_start,
         window_end=window_end,
         min_fragment_sec=MIN_FRAGMENT_SEC,
+        max_fragment_sec=MAX_FRAGMENT_SEC,
     )
     response_text = _call_claude(EXHAUSTIVE_SYSTEM_PROMPT, user_prompt, model, api_key)
     data = _extract_json(response_text)

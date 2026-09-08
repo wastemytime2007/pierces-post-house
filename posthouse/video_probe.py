@@ -164,6 +164,55 @@ def probe_segment(
     return data
 
 
+def _cache_path(project_dir, video_path, start_sec: float, end_sec: float) -> Path:
+    import hashlib
+    key = f"{Path(str(video_path)).name}|{start_sec:.1f}|{end_sec:.1f}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
+    d = Path(project_dir) / "visual_notes"
+    d.mkdir(parents=True, exist_ok=True)
+    return d / f"{digest}.json"
+
+
+def probe_segment_cached(
+    project_dir,
+    video_path: str | Path,
+    start_sec: float,
+    end_sec: float,
+    question: str,
+    **kwargs,
+) -> dict:
+    """`probe_segment` with a per-project cache on disk.
+
+    A probe costs minutes of wall clock, which is fine once and
+    unacceptable every time an idea is generated or a plan is revisited.
+    Ryan, 2026-09-08, on what ideas should be built from: *"based off of
+    the content that it knows is there both auditorial and visual"* — that
+    only works if looking is cheap after the first look. Frames don't
+    change, so the observation is safe to keep.
+
+    Cache misses fall through to a real probe. A failed probe is NOT
+    cached: a transient failure (drive unmounted, timeout) must not be
+    remembered as "there's nothing there".
+    """
+    path = _cache_path(project_dir, video_path, start_sec, end_sec)
+    if path.exists():
+        try:
+            cached = json.loads(path.read_text())
+            cached["from_cache"] = True
+            return cached
+        except Exception:
+            pass  # unreadable cache is just a miss
+
+    result = probe_segment(video_path, start_sec, end_sec, question, **kwargs)
+    if result.get("confident") and result.get("frames_viewed"):
+        try:
+            path.write_text(json.dumps(result, indent=2))
+        except Exception:
+            pass  # caching is an optimisation, never a hard failure
+    result["from_cache"] = False
+    return result
+
+
 def describe_frames(
     frame_paths: list, prompt: str, timeout_sec: int = VIDEO_PROBE_TIMEOUT_SEC
 ) -> str:
@@ -224,7 +273,8 @@ def describe_frames(
 
 
 def is_on_camera_demonstration(
-    video_path: str | Path, start_sec: float, end_sec: float
+    video_path: str | Path, start_sec: float, end_sec: float,
+    project_dir=None,
 ) -> dict:
     """The specific question the planning conversation had to ask Ryan by
     hand: is this span a real on-camera demonstration, or someone talking
@@ -233,9 +283,12 @@ def is_on_camera_demonstration(
     It decides whether a piece can be built show-don't-tell, so it is
     worth a real probe rather than an assumption drawn from a transcript.
     """
-    return probe_segment(
-        video_path, start_sec, end_sec,
+    question = (
         "Is a person demonstrating the work ON CAMERA here (hands/tools "
         "visible, doing the thing), or are they only talking about it while "
-        "the work isn't shown? Name any tool that is actually visible.",
+        "the work isn't shown? Name any tool that is actually visible."
     )
+    if project_dir is not None:
+        return probe_segment_cached(
+            project_dir, video_path, start_sec, end_sec, question)
+    return probe_segment(video_path, start_sec, end_sec, question)
