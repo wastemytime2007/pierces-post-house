@@ -781,3 +781,74 @@ def test_undirected_generation_still_offers_options():
     )
     src = inspect.getsource(run_generate_story_angle)
     assert "else 3" in src, "the undirected default is no longer 3"
+
+
+# --------------------------------------------------------------------------
+# 13. An audio file with no strong pair is still usable
+# --------------------------------------------------------------------------
+
+# Real pairs for DJI_01_20260526_061716.WAV on the Arthur project. Its best
+# score is 16.19 — just under SCORE_TIMELINE_ATTACH — so the anchor-only
+# corroboration rule discarded the whole file, including the camera carrying
+# the entire how-to sequence. Three of its pairs agree on the implied
+# recorder start within 1.3s; the other two are off by thousands.
+ARTHUR_061716 = [
+    # (camera stem, score, offset_sec, genuine?)
+    ("DJI_20260526095730_0005_D.MP4", 16.19, -1753.3, True),
+    ("DJI_20260526092824_0003_D.MP4", 6.91, -7.6, True),
+    ("DJI_20260526095322_0004_D.MP4", 4.53, -1504.3, True),
+    ("DJI_20260526092527_0002_D.MP4", 8.37, -1426.4, False),
+    ("DJI_20260526085734_0001_D.MP4", 3.59, -1380.2, False),
+]
+
+
+def test_mutual_agreement_rescues_an_audio_file_with_no_strong_anchor():
+    """Property 13: agreement among mid-scoring pairs is itself evidence.
+
+    Ryan, 2026-09-08: "The generated plan didnt sync audio on any of the
+    builds it did. And the all footage is missing 50% of the the source
+    audio that should easily sync."
+
+    Cause: corroboration only accepted agreement with a pair that had
+    already cleared SCORE_TIMELINE_ATTACH (18). This audio file peaked at
+    16.19, so the ENTIRE file was thrown out — including the 24.9-minute
+    camera file carrying the whole lock/how-to sequence the cut was built
+    from. Three independent pairs from it implied the same recorder start
+    within 1.3 seconds. Three false correlations don't agree by chance.
+    """
+    from precut_pipeline.audio_sync import (
+        SCORE_TIMELINE_ATTACH, offset_is_corroborated,
+    )
+
+    pairs = [_Pair(cam, sc, off, audio_file="061716.WAV")
+             for cam, sc, off, _ in ARTHUR_061716]
+    state = _State(pairs)
+    assert all(p.score < SCORE_TIMELINE_ATTACH for p in pairs), (
+        "fixture no longer represents the no-strong-anchor case"
+    )
+
+    for pair, (cam, sc, _off, genuine) in zip(pairs, ARTHUR_061716):
+        got = offset_is_corroborated(pair, state)
+        assert got == genuine, (
+            f"{cam} (score {sc}) should {'attach' if genuine else 'NOT attach'} "
+            "— mutual-agreement corroboration is not behaving"
+        )
+
+
+def test_mutual_agreement_needs_a_real_cluster_not_a_pair():
+    """Two agreeing pairs alone must NOT corroborate.
+
+    The strength of this rule is that several independent measurements
+    coincide. Dropping the bar to two would let a single coincidence
+    plus its own reflection through, which is how false lav tracks got
+    onto the timeline in the first place.
+    """
+    from precut_pipeline.audio_sync import (
+        MUTUAL_CORROBORATION_MIN, offset_is_corroborated,
+    )
+    assert MUTUAL_CORROBORATION_MIN >= 3
+
+    # Two pairs agreeing, nothing else.
+    a = _Pair("DJI_20260526095730_0005_D.MP4", 9.0, 0.0, audio_file="x.WAV")
+    b = _Pair("DJI_20260526095322_0004_D.MP4", 8.0, -408.0, audio_file="x.WAV")
+    assert not offset_is_corroborated(a, _State([a, b]))

@@ -58,6 +58,32 @@ SCORE_TIMELINE_ATTACH = 18.0
 # Tolerance for the corroboration invariant below, in seconds.
 CORROBORATION_TOLERANCE_SEC = 3.0
 
+# How many mutually-agreeing pairs from the SAME audio file count as
+# corroboration on their own, with no strong anchor present.
+#
+# 2026-09-08, Ryan on the Arthur project: "The generated plan didnt sync
+# audio on any of the builds it did. And the all footage is missing 50%
+# of the the source audio that should easily sync."
+#
+# Real hole in the rule below: it only accepted agreement with a pair
+# that had already cleared SCORE_TIMELINE_ATTACH (18) on its own. On that
+# shoot, DJI_01_20260526_061716.WAV peaked at 16.19 — just under — so the
+# ENTIRE audio file was discarded, including camera 20260526092824, the
+# 24.9-minute file carrying the whole lock/how-to sequence the cut was
+# built from. Yet its pairs implied recorder starts of 1779812896.7 /
+# 1779812896.4 / 1779812897.7 — three independent measurements agreeing
+# within 1.3 SECONDS. Three false correlations do not land on the same
+# implied start by chance; that agreement is stronger evidence than any
+# single score. The pairs that disagreed were off by thousands of
+# seconds and are still correctly rejected.
+MUTUAL_CORROBORATION_MIN = 3
+
+# Floor for a pair to be eligible at all, even inside an agreeing
+# cluster. Deliberately low: the invariant agreement is the evidence
+# here, and score is only a weak proxy for it. This exists to keep pure
+# noise out, not to re-litigate the threshold.
+MUTUAL_CORROBORATION_SCORE_FLOOR = 3.0
+
 
 def _camera_clock_start(path: str) -> Optional[float]:
     """Absolute recording start of a camera file, in seconds, read from a
@@ -104,18 +130,36 @@ def offset_is_corroborated(pair, state) -> bool:
         return False
     implied = own_cam + pair.offset_sec
 
+    # Every pair from this same audio file whose implied recorder start
+    # agrees with this one. Built once, then used two ways below.
+    agreeing = []
     for other in state.pairs:
-        if other is pair:
-            continue
         if other.audio_file != pair.audio_file:
-            continue
-        if other.score < SCORE_TIMELINE_ATTACH:
             continue
         other_cam = _camera_clock_start(other.aroll_file)
         if other_cam is None:
             continue
         if abs((other_cam + other.offset_sec) - implied) <= CORROBORATION_TOLERANCE_SEC:
+            agreeing.append(other)
+
+    # (a) Agrees with a pair confident enough to stand on its own.
+    for other in agreeing:
+        if other is not pair and other.score >= SCORE_TIMELINE_ATTACH:
             return True
+
+    # (b) Or enough pairs agree with EACH OTHER to be conclusive without
+    # any single strong one — see MUTUAL_CORROBORATION_MIN. This is the
+    # case that was being thrown away: an audio file that never quite
+    # cleared 18 anywhere, but whose true matches all point at the same
+    # recorder start.
+    if pair.score >= MUTUAL_CORROBORATION_SCORE_FLOOR:
+        eligible = [
+            o for o in agreeing
+            if o.score >= MUTUAL_CORROBORATION_SCORE_FLOOR
+        ]
+        if len(eligible) >= MUTUAL_CORROBORATION_MIN:
+            return True
+
     return False
 
 
