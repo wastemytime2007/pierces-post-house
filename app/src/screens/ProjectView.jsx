@@ -55,6 +55,17 @@ export default function ProjectView({
   // just the live view of it.
   const [planSession, setPlanSession] = useState(null);
   const [planError, setPlanError] = useState("");
+  // 2026-09-08: the latest backend progress line for a planning turn.
+  // Ryan: "It looks like it is working but just didnt respond or give any
+  // kind of notification in the app to show that the button press went
+  // through." Exactly right — the job started fine, but `story_plan_started`
+  // wasn't handled here so the job never showed as running, and the
+  // backend's own progress messages (researching / looking at real frames)
+  // were emitted and then dropped on the floor, because NOTHING in the
+  // frontend consumed `log` events at all. A planning turn takes minutes
+  // (real research plus a real look at frames), so silence for that long
+  // reads as a dead button.
+  const [planProgress, setPlanProgress] = useState("");
 
   // Subscribe to pipeline/producer events
   useEffect(() => {
@@ -210,13 +221,38 @@ export default function ProjectView({
       // ideas get generated. A turn is one discrete job, so each reply
       // arrives as its own story_plan_turn carrying the whole updated
       // session (small, and simpler than patching turns client-side).
-      else if (ev.type === "story_plan_turn") {
+      else if (ev.type === "story_plan_started") {
+        // Register it as a real running job so producerBusy flips true and
+        // the panel shows its spinner / disables its buttons.
+        setJobs((prev) => ({
+          ...prev,
+          [ev.job_id]: { kind: "producer", mode: "story_plan",
+                         status: "running", started_at: Date.now() },
+        }));
+        setPlanProgress("Starting…");
+        setPlanError("");
+      } else if (ev.type === "story_plan_turn") {
         setPlanSession(ev.session || null);
         setPlanError("");
+        setPlanProgress("");
+        setJobs((prev) => prev[ev.job_id]
+          ? { ...prev, [ev.job_id]: { ...prev[ev.job_id], status: "done" } }
+          : prev);
       } else if (ev.type === "story_plan_latest") {
         if (ev.session) setPlanSession(ev.session);
       } else if (ev.type === "story_plan_error") {
         setPlanError(ev.message || "Planning failed.");
+        setPlanProgress("");
+        setJobs((prev) => prev[ev.job_id]
+          ? { ...prev, [ev.job_id]: { ...prev[ev.job_id], status: "failed",
+                                      error: ev.message } }
+          : prev);
+      } else if (ev.type === "log" && ev.message) {
+        // The backend narrates the slow steps ("Researching trends and
+        // formats…", "Looking at what's actually on screen in X (167s)…
+        // this reads real frames and takes a few minutes"). Surfacing the
+        // latest line is the difference between "working" and "broken".
+        setPlanProgress(String(ev.message));
       }
     });
   }, [subscribe]);
@@ -299,6 +335,7 @@ export default function ProjectView({
               researchByIdea={researchByIdea}
               planSession={planSession}
               planError={planError}
+              planProgress={planProgress}
               jobs={jobs}
               transcriptCount={transcriptCount}
               settings={settings}

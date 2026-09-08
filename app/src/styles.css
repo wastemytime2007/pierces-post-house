@@ -2176,6 +2176,25 @@ kbd {
   color: var(--fg-2);
 }
 
+/* Live progress for a planning turn (2026-09-08). A turn does real
+   research and reads real video frames, so it can run for minutes —
+   without this the panel looked like a dead button. */
+.plan-progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--bg-2);
+  border: 1px solid var(--bg-4);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+}
+
+.plan-progress-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
 .plan-error {
   font-size: 12.5px;
   line-height: 1.5;

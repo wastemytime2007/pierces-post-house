@@ -26,7 +26,7 @@ import AutoIncludeNudge from "../../components/AutoIncludeNudge.jsx";
  * for now (opens ExportModal as usual).
  */
 export default function IdeasTab({
-  project, ideas, researchByIdea, planSession, planError,
+  project, ideas, researchByIdea, planSession, planError, planProgress,
   jobs, transcriptCount, settings, onOpenApiKeyHelp,
   shouldShowAutoIncludeNudge, onMarkAutoIncludeNudgeSeen, onOpenAutoIncludeModal,
   // Drop 4.47.3: live rule count for the ExportModal "Apply default
@@ -531,6 +531,7 @@ export default function IdeasTab({
           session={planSession}
           error={planError}
           busy={producerBusy}
+          progress={planProgress}
           onClose={() => setShowPlanPanel(false)}
           onBeforeGenerate={() => setGenerationError(null)}
         />
@@ -1259,7 +1260,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
  *    the planner researches the project's audience goal and opens by
  *    asking what you're after.
  */
-function StoryPlanningPanel({ session, error, busy, onClose, onBeforeGenerate }) {
+function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeGenerate }) {
   const [intent, setIntent] = useState("");
   const [reply, setReply] = useState("");
 
@@ -1364,12 +1365,6 @@ function StoryPlanningPanel({ session, error, busy, onClose, onBeforeGenerate })
                     <div className="plan-turn-text">{t.text}</div>
                   </div>
                 ))}
-                {busy && (
-                  <div className="plan-turn plan-turn-assistant plan-turn-pending">
-                    <span className="btn-spinner" aria-hidden="true" />
-                    Thinking it through…
-                  </div>
-                )}
               </div>
 
               {(session.resolved_intent || session.target_duration_sec > 0) && (
@@ -1399,6 +1394,15 @@ function StoryPlanningPanel({ session, error, busy, onClose, onBeforeGenerate })
                 disabled={busy}
               />
             </>
+          )}
+
+          {(busy || progress) && (
+            <div className="plan-progress">
+              <span className="btn-spinner" aria-hidden="true" />
+              <span className="plan-progress-text">
+                {progress || "Working…"}
+              </span>
+            </div>
           )}
 
           {error && <div className="plan-error">{error}</div>}
