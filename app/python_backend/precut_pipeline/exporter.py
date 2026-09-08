@@ -644,6 +644,19 @@ class FCPXMLWriter:
             timeline_out_sec=phrase.timeline_end,
         )
 
+        # 2026-09-08: clip label colour, so usability reads off the clip
+        # itself instead of a marker painted across it. Ryan: "The problem
+        # with markers is they cover the visual waveform on the timeline
+        # and they dont allow for the editor to use their own label
+        # colors because the marker covers the whole clip." FCP7 carries
+        # this as <labels><label2>NAME</label2></labels>, and Premiere
+        # reads it — leaving it off means the clip keeps whatever default
+        # the editor has, and they can always re-label by hand.
+        if getattr(phrase, "label_color", ""):
+            labels = self.doc.createElement("labels")
+            labels.appendChild(self._text_elem("label2", phrase.label_color))
+            ci.appendChild(labels)
+
         # Drop 4.12: fit filter now uses THIS clip's actual source file
         # dimensions (probed via ffprobe), not a project-wide default.
         # This fixes the "auto-scale to 355%" bug where the writer was

@@ -598,3 +598,85 @@ def test_undirected_generation_has_a_real_reel_length():
     assert ceiling <= 90.0, (
         f"enforced ceiling is {ceiling}s — past 'a minute and a half at most'"
     )
+
+
+# --------------------------------------------------------------------------
+# 10. Usability reads off the clip, not off a marker painted over it
+# --------------------------------------------------------------------------
+
+def test_fit_maps_to_premiere_label_colors_not_markers():
+    """Property 10: every fit has a Premiere label colour.
+
+    2026-09-08, Ryan, with before/after screenshots: "The problem with
+    markers is they cover the visual waveform on the timeline and they
+    dont allow for the editor to use their own label colors because the
+    marker covers the whole clip." Both complaints were real and neither
+    is fixable while keeping markers — a range marker paints over the
+    clip it describes, and Premiere draws it above the waveform.
+
+    A label applies to a WHOLE clipitem, which is why the reference
+    sequence is split at fragment boundaries (see
+    exporter._label_segments_for_file). The names must stay inside
+    Premiere's own default set so the editor can still re-label by hand,
+    which was the point.
+    """
+    import sys
+    sys.path.insert(0, str(REFERENCE_EDIT.parent.parent.parent / "app" / "python_backend"))
+    from exporter import FIT_LABEL_COLORS
+    from posthouse.audience_relevance import VALID_FITS
+
+    # Premiere's default 16 labels.
+    PREMIERE_LABELS = {
+        "Violet", "Iris", "Caribbean", "Lavender", "Cerulean", "Forest",
+        "Rose", "Mango", "Purple", "Blue", "Teal", "Magenta", "Tan",
+        "Green", "Brown", "Yellow",
+    }
+    for fit in VALID_FITS:
+        assert fit in FIT_LABEL_COLORS, f"no label colour mapped for fit {fit!r}"
+        assert FIT_LABEL_COLORS[fit] in PREMIERE_LABELS, (
+            f"fit {fit!r} maps to {FIT_LABEL_COLORS[fit]!r}, which is not one of "
+            "Premiere's default labels — the editor wouldn't be able to re-label it"
+        )
+    # Distinct colours, or the timeline says nothing at a glance.
+    used = [FIT_LABEL_COLORS[f] for f in VALID_FITS]
+    assert len(set(used)) == len(used), f"fits share a label colour: {used}"
+
+
+def test_label_segments_cover_the_file_with_no_slivers():
+    """Segments must lay end-to-end and never produce sub-2s clips.
+
+    Both halves matter. Gaps or overlaps would shift everything after
+    them out of sync with the source. And a first pass produced 135
+    clips, many of them 0.5s, from the 1-3 second dead air between
+    fragments — choppier on the timeline than the single long clip it
+    replaced, which is the opposite of what Ryan asked for.
+    """
+    import sys
+    sys.path.insert(0, str(REFERENCE_EDIT.parent.parent.parent / "app" / "python_backend"))
+    from exporter import MIN_LABEL_SEGMENT_SEC, _label_segments_for_file
+
+    class _Frag:
+        def __init__(self, a, b):
+            self.source_start_sec, self.source_end_sec = a, b
+
+    class _Tagged:
+        def __init__(self, a, b, fit):
+            self.fragment, self.fit = _Frag(a, b), fit
+
+    # Fragments with awkward sub-2s dead air between them.
+    tagged = [
+        _Tagged(0.5, 55.0, "possible"),
+        _Tagged(55.4, 106.0, "strong"),      # 0.4s gap
+        _Tagged(107.0, 145.0, "off_topic"),  # 1.0s gap
+    ]
+    duration = 146.0
+
+    from exporter import _segments_from_tagged
+    segs = _segments_from_tagged(tagged, duration)
+
+    assert segs, "no segments produced from real fragments"
+    assert segs[0][0] == 0.0 and segs[-1][1] == duration, "file not fully covered"
+    for (s0, e0, _), (s1, _, _) in zip(segs, segs[1:]):
+        assert e0 == s1, f"gap/overlap between {e0} and {s1}"
+    for s0, e0, _ in segs:
+        assert e0 - s0 >= MIN_LABEL_SEGMENT_SEC, f"sliver clip {e0 - s0:.2f}s"

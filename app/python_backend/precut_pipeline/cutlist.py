@@ -25,6 +25,17 @@ class ARollPhrase:
     timeline_start: float
     timeline_end: float
     text: str
+    # 2026-09-08: Premiere clip label colour, as an FCP7 <label2> name
+    # (e.g. "Forest", "Mango", "Rose"). Empty = leave unlabelled so the
+    # editor's own default applies.
+    #
+    # Ryan asked for usability to be shown as CLIP LABEL COLOURS instead
+    # of markers: "The problem with markers is they cover the visual
+    # waveform on the timeline and they dont allow for the editor to use
+    # their own label colors because the marker covers the whole clip."
+    # A label applies to a whole clipitem, so the reference sequence is
+    # split at fragment boundaries to carry one per fragment.
+    label_color: str = ""
 
     @property
     def duration(self) -> float:

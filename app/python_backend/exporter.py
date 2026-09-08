@@ -806,6 +806,104 @@ def _cutlist_from_deliverable_no_broll(deliverable, transcript):
 
 
 
+# Premiere's own label names, as FCP7 <label2> values. Mapped from the
+# transcript-flagging fit so the timeline reads at a glance: green is
+# usable, amber is maybe, rose is not. Chosen from Premiere's default 16
+# so the editor can still re-label by hand — that was the whole point of
+# moving off markers.
+# Unflagged stretches shorter than this are absorbed into the segment
+# before them rather than becoming their own clip. Without this, the
+# 1-3 second dead air between fragments produced sub-second slivers —
+# a first pass over the wallpaper project made 135 clips, many of them
+# 0.5s, which is choppier on the timeline than the single long clip it
+# replaced. Ryan's target look is clean clips he can read at a glance.
+MIN_LABEL_SEGMENT_SEC = 2.0
+
+FIT_LABEL_COLORS = {
+    "strong": "Forest",
+    "possible": "Mango",
+    "off_topic": "Rose",
+}
+
+
+def _label_segments_for_file(file_path, duration, project, emit):
+    """Split one A-roll file into (start, end, label_color) segments.
+
+    Fragment spans get their fit's label colour; the stretches between
+    them get no label, so the editor's own default applies and full
+    coverage of the file is kept. Returns a single unlabelled segment
+    covering the whole file when there's nothing to label — no flags for
+    it, or the flags can't be read.
+    """
+    whole = [(0.0, duration, "")]
+    flags_path = project.dir() / "flags" / f"{Path(file_path).stem}.json"
+    if not flags_path.exists():
+        return whole
+    try:
+        from posthouse.audience_relevance import load_tagged_fragments
+        tagged = load_tagged_fragments(flags_path)
+    except Exception as e:
+        emit({"type": "log", "level": "warn",
+              "message": f"Couldn't read flags for {Path(file_path).name}, "
+                         f"leaving it unlabelled: {e}"})
+        return whole
+
+    segments = _segments_from_tagged(tagged, duration)
+    return segments or whole
+
+
+def _segments_from_tagged(tagged, duration):
+    """Pure part of the split: TaggedFragments -> label segments.
+
+    Separate from the file/IO wrapper so it can be unit tested directly
+    (safety_net/tests/test_reel_contract.py). Returns [] when there's
+    nothing labelable.
+    """
+    spans = []
+    for tf in tagged:
+        f = tf.fragment
+        start = max(0.0, min(float(f.source_start_sec), duration))
+        end = max(0.0, min(float(f.source_end_sec), duration))
+        if end - start <= 0:
+            continue
+        spans.append((start, end, FIT_LABEL_COLORS.get(tf.fit, "")))
+    if not spans:
+        return []
+
+    # Sort and drop overlaps — a later fragment starting inside an
+    # earlier one would otherwise produce clips that don't lay end to
+    # end, which shifts everything after it out of sync with the source.
+    spans.sort()
+    segments = []
+    cursor = 0.0
+    for start, end, color in spans:
+        if end <= cursor:
+            continue
+        start = max(start, cursor)
+        if start > cursor:
+            gap = start - cursor
+            if gap >= MIN_LABEL_SEGMENT_SEC:
+                segments.append((cursor, start, ""))   # real unflagged stretch
+            elif segments:
+                # Too short to be its own clip — hand it to the previous
+                # segment so the file still lays down end to end without
+                # a sliver.
+                ps, _, pc = segments[-1]
+                segments[-1] = (ps, start, pc)
+            else:
+                start = cursor  # leading sliver: fold into the first span
+        segments.append((start, end, color))
+        cursor = end
+    if cursor < duration:
+        tail = duration - cursor
+        if tail >= MIN_LABEL_SEGMENT_SEC or not segments:
+            segments.append((cursor, duration, ""))
+        else:
+            ps, _, pc = segments[-1]
+            segments[-1] = (ps, duration, pc)
+    return segments
+
+
 def _build_all_aroll_sequences(
     project,
     audio_sync_state,
@@ -895,17 +993,36 @@ def _build_all_aroll_sequences(
         # phrase_id in 2_000_000+ range marks full-file reference phrases
         # (distinct from Whisper phrase IDs and story-topic range IDs).
         # Use running index so phrases sharing source_file don't collide.
-        phrase_id = 2_000_000 + len(all_phrases)
-        all_phrases.append(ARollPhrase(
-            phrase_id=phrase_id,
-            source_file=file_path,
-            source_start=0.0,
-            source_end=duration,
-            timeline_start=timeline_cursor,
-            timeline_end=timeline_cursor + duration,
-            text=f"All A-roll: {display_name}",
-        ))
-        timeline_cursor += duration
+        # 2026-09-08: split this file at its fragment boundaries so each
+        # piece is its own clipitem and can carry a LABEL COLOUR for how
+        # usable it is. Ryan asked for exactly this instead of markers:
+        # "The problem with markers is they cover the visual waveform on
+        # the timeline and they dont allow for the editor to use their own
+        # label colors because the marker covers the whole clip." A label
+        # applies to a whole clipitem, so one clip per file could never
+        # carry per-fragment colour — hence the split.
+        #
+        # Coverage is preserved exactly: the gaps between fragments become
+        # their own unlabelled clips, so the file still lays down
+        # end-to-end with nothing missing. With no flags for this file it
+        # stays a single clip, as before.
+        for seg_start, seg_end, seg_label in _label_segments_for_file(
+            file_path, duration, project, emit
+        ):
+            seg_dur = seg_end - seg_start
+            if seg_dur <= 0:
+                continue
+            all_phrases.append(ARollPhrase(
+                phrase_id=2_000_000 + len(all_phrases),
+                source_file=file_path,
+                source_start=seg_start,
+                source_end=seg_end,
+                timeline_start=timeline_cursor,
+                timeline_end=timeline_cursor + seg_dur,
+                text=f"All A-roll: {display_name}",
+                label_color=seg_label,
+            ))
+            timeline_cursor += seg_dur
 
     if not all_phrases:
         return []
@@ -916,25 +1033,17 @@ def _build_all_aroll_sequences(
         combined_h = src_h or 1080
         combined_fps = 30.0
 
-    # 2026-09-03: attach transcript-flagging markers, if
-    # pipeline.py's _run_transcript_flagging stage produced any for
-    # these phrases' source files. Missing/unreadable flag files are a
-    # silent no-op — flagging is opt-in on the project having an
-    # audience_goal set, so most projects simply won't have any yet.
+    # 2026-09-08: NO transcript-flagging markers here any more. Usability
+    # is carried by the clip LABEL COLOUR instead (see
+    # _label_segments_for_file above). Ryan, with before/after
+    # screenshots: "The problem with markers is they cover the visual
+    # waveform on the timeline and they dont allow for the editor to use
+    # their own label colors because the marker covers the whole clip."
+    # Both complaints were real and neither is fixable while keeping the
+    # markers — a range marker paints over the clip it describes, and
+    # Premiere draws it above the waveform. The fit text isn't lost: it
+    # stays in the flags files and in the idea's own research/brief.
     flag_markers = []
-    try:
-        from posthouse.transcript_markers import build_flag_markers_for_phrase
-        from posthouse.audience_relevance import load_tagged_fragments
-        flags_dir = project.dir() / "flags"
-        for phrase in all_phrases:
-            flags_path = flags_dir / f"{Path(phrase.source_file).stem}.json"
-            if not flags_path.exists():
-                continue
-            tagged = load_tagged_fragments(flags_path)
-            flag_markers.extend(build_flag_markers_for_phrase(tagged, phrase))
-    except Exception as e:
-        emit({"type": "log", "level": "warn",
-              "message": f"Couldn't attach transcript-flagging markers: {e}"})
 
     cutlist = CutList(
         deliverable_concept="All Synced A-Roll",
