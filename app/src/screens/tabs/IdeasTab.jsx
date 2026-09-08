@@ -1263,6 +1263,15 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
 function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeGenerate }) {
   const [intent, setIntent] = useState("");
   const [reply, setReply] = useState("");
+  // Second click required before generating — see the footer comment.
+  const [confirmGenerate, setConfirmGenerate] = useState(false);
+
+  // Never leave "Yes, generate" armed across a turn. Without this, arming
+  // it and then sending a reply would leave a one-click generate sitting
+  // under the cursor after the assistant answers — the same accident in a
+  // slower form.
+  const turnCount = session?.turns?.length ?? 0;
+  useEffect(() => { setConfirmGenerate(false); }, [turnCount, busy]);
 
   const started = !!session;
 
@@ -1409,23 +1418,49 @@ function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeG
         </div>
 
         <div className="modal-actions">
-          {!started ? (
+          {started && confirmGenerate ? (
+            <>
+              <div className="plan-confirm-text">
+                Generate now? This closes the conversation and builds 3 ideas
+                to the plan above.
+              </div>
+              <button className="btn" onClick={() => setConfirmGenerate(false)}>
+                Keep talking
+              </button>
+              <button className="btn btn-primary" onClick={handleGenerate} disabled={busy}>
+                Yes, generate
+              </button>
+            </>
+          ) : !started ? (
             <button className="btn btn-primary" onClick={handleStart} disabled={busy}>
               {busy ? (<><span className="btn-spinner" aria-hidden="true" />Researching…</>)
                     : "Start planning"}
             </button>
           ) : (
             <>
-              <button className="btn" onClick={handleReply} disabled={busy || !reply.trim()}>
-                Send
-              </button>
+              {/* 2026-09-08, Ryan: "I accidentally clicked 'generate from
+                  this plan' because that button is bright and right next to
+                  the send button with the chat in the planning section."
+                  The emphasis was backwards — Send is the frequent, safe,
+                  reversible action in a conversation, and Generate is the
+                  expensive committing one that also closes the panel. So
+                  Send is primary now, Generate is de-emphasised, pushed to
+                  the opposite side, and takes a deliberate second click. */}
               <button
-                className="btn btn-primary"
-                onClick={handleGenerate}
+                className="btn btn-ghost plan-generate"
+                onClick={() => setConfirmGenerate(true)}
                 disabled={busy}
                 title="Builds 3 real ideas to the plan above, with the agreed intent and length enforced"
               >
                 Generate ideas from this plan
+              </button>
+              <div className="plan-actions-spacer" />
+              <button
+                className="btn btn-primary"
+                onClick={handleReply}
+                disabled={busy || !reply.trim()}
+              >
+                Send
               </button>
             </>
           )}

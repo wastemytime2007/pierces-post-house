@@ -2179,6 +2179,29 @@ kbd {
 /* Live progress for a planning turn (2026-09-08). A turn does real
    research and reads real video frames, so it can run for minutes —
    without this the panel looked like a dead button. */
+/* Planning footer: keep the expensive action away from the frequent one
+   (2026-09-08 — Generate was bright and adjacent to Send, and got clicked
+   by accident). */
+.plan-actions-spacer {
+  flex: 1;
+}
+
+.plan-generate {
+  font-size: 12.5px;
+  opacity: 0.75;
+}
+
+.plan-generate:hover {
+  opacity: 1;
+}
+
+.plan-confirm-text {
+  flex: 1;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
 .plan-progress {
   display: flex;
   align-items: center;
