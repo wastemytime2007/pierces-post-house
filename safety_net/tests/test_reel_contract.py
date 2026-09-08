@@ -680,3 +680,61 @@ def test_label_segments_cover_the_file_with_no_slivers():
         assert e0 == s1, f"gap/overlap between {e0} and {s1}"
     for s0, e0, _ in segs:
         assert e0 - s0 >= MIN_LABEL_SEGMENT_SEC, f"sliver clip {e0 - s0:.2f}s"
+
+
+# --------------------------------------------------------------------------
+# 11. Research cache: what is saved must be findable
+# --------------------------------------------------------------------------
+
+def test_research_cache_roundtrips_for_every_key_component(tmp_path, monkeypatch):
+    """A saved research pass must be loadable under the same inputs.
+
+    This exact save/load key mismatch has now bitten twice: once when
+    stated_intent was introduced, and again on 2026-09-08 when
+    project_type was added to the LOAD key and to the key-text builder
+    but not to the SAVE call. The second time meant a typed project
+    (how_to) could NEVER hit cache and re-ran a full ~6-minute research
+    pass on every single planning turn — silent, expensive, and invisible
+    because a cache miss looks identical to a first run.
+
+    Every component of the key is exercised here so a third recurrence
+    fails loudly instead of just costing time.
+    """
+    import posthouse.story_architect as sa
+
+    monkeypatch.setattr(sa, "app_support_dir", lambda: tmp_path)
+    payload = {"text_findings": [{"finding": "x", "source": "https://e.com"}]}
+
+    cases = [
+        ("goal only", {}),
+        ("with intent", {"stated_intent": "quick how-to on locks"}),
+        ("with type", {"project_type": "how_to"}),
+        ("with both", {"stated_intent": "quick how-to on locks",
+                       "project_type": "how_to"}),
+    ]
+    for label, kwargs in cases:
+        sa._save_research_cache("Establish SoldFast as an expert.", payload, **kwargs)
+        got = sa._load_cached_research("Establish SoldFast as an expert.", **kwargs)
+        assert got is not None, (
+            f"{label}: saved research was not findable again — the save key and "
+            "the load key disagree"
+        )
+        assert got["text_findings"] == payload["text_findings"]
+
+
+def test_research_cache_keys_differ_per_project_type():
+    """A how_to run must not be served a generic sweep from cache.
+
+    project_type steers the search prompts, so two runs differing only by
+    type are genuinely different research and must not collide.
+    """
+    from posthouse.story_architect import _research_cache_key_text
+
+    goal = "Establish SoldFast as an expert."
+    generic = _research_cache_key_text(goal)
+    how_to = _research_cache_key_text(goal, project_type="how_to")
+    renovation = _research_cache_key_text(goal, project_type="renovation")
+    assert len({generic, how_to, renovation}) == 3, (
+        "project_type is not distinguishing cache keys, so a how-to run could be "
+        f"served a different format's research: {generic!r} / {how_to!r}"
+    )

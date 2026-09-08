@@ -1306,13 +1306,27 @@ def _load_cached_research(audience_goal: str, stated_intent: str = "",
     return payload.get("research")
 
 
-def _save_research_cache(audience_goal: str, research: dict, stated_intent: str = "") -> None:
-    path = _research_cache_path(audience_goal, stated_intent)
+def _save_research_cache(audience_goal: str, research: dict, stated_intent: str = "",
+                         project_type: str = "") -> None:
+    """Persist a research pass under the SAME key the loader will look up.
+
+    2026-09-08: project_type was added to the load key and to
+    _research_cache_key_text, but not here — so a typed project (e.g.
+    how_to) saved under a key without the type and loaded under a key
+    with it, meaning the cache could NEVER hit and every planning run
+    re-did a full ~6-minute research pass. Exactly the save/load key
+    mismatch that bit this function once before when stated_intent was
+    introduced; the lesson is that every component of the key belongs in
+    both halves, so they're derived from one shared function here.
+    """
+    path = _research_cache_path(audience_goal, stated_intent, project_type)
     try:
         path.write_text(json.dumps({
             "audience_goal": audience_goal.strip(),
             "stated_intent": (stated_intent or "").strip(),
-            "cache_key_text": _research_cache_key_text(audience_goal, stated_intent),
+            "project_type": (project_type or "").strip().lower(),
+            "cache_key_text": _research_cache_key_text(
+                audience_goal, stated_intent, project_type),
             "cached_at": time.time(),
             "research": research,
         }, indent=2))
@@ -1767,7 +1781,7 @@ def research_trends(
 
     result["cached"] = False
     result["stated_intent"] = (stated_intent or "").strip()
-    _save_research_cache(raw_audience_goal, result, stated_intent)
+    _save_research_cache(raw_audience_goal, result, stated_intent, project_type)
     return result
 
 
