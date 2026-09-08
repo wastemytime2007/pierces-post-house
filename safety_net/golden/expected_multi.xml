@@ -130,6 +130,10 @@
 												<out>75</out>
 												<masterclipid>masterclip-6</masterclipid>
 												<file id="file-6"/>
+												<sourcetrack>
+													<mediatype>audio</mediatype>
+													<trackindex>1</trackindex>
+												</sourcetrack>
 											</clipitem>
 											<enabled>TRUE</enabled>
 											<locked>FALSE</locked>
@@ -264,6 +268,10 @@ kitchen, cabinets, island, stove</comment>
 												<out>105</out>
 												<masterclipid>masterclip-6</masterclipid>
 												<file id="file-6"/>
+												<sourcetrack>
+													<mediatype>audio</mediatype>
+													<trackindex>1</trackindex>
+												</sourcetrack>
 											</clipitem>
 											<enabled>TRUE</enabled>
 											<locked>FALSE</locked>

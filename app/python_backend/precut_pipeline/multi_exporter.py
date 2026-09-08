@@ -2326,6 +2326,17 @@ def _append_synced_clipitem(
 
         clipitem.appendChild(file_el)
 
+    # 2026-09-07: synced lav clipitems need <sourcetrack> too. Caught by
+    # safety_net/verify_export.py on its very first run against a real
+    # export — the camera-audio path had just been fixed and this one was
+    # still missing it, so 22 of 44 audio clips had no mapping to a source
+    # channel. Same requirement, same fix; Ryan's reference export carries
+    # it on every audio clipitem.
+    st = doc.createElement("sourcetrack")
+    _append_text(doc, st, "mediatype", "audio")
+    _append_text(doc, st, "trackindex", "1")
+    clipitem.appendChild(st)
+
     track.appendChild(clipitem)
 
 

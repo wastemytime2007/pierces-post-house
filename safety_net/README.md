@@ -29,6 +29,40 @@ turns a `CutList` into the one FCP7 XML Premiere imports. Specifically:
    would tell you *something* changed, not *which expensive lesson* got
    un-learned.
 
+4. **Reel contract** (`test_reel_contract.py`) — the properties a
+   generated cut and its export must hold, one assertion per real failure
+   Ryan hit on real footage (2026-09-04/07). Ground truth is his own
+   hand-cut reference edit (`Removing Wallpaper Tutorial.xml`) and that
+   project's saved `audio_sync.pairs`. Hermetic: no API key, no media, no
+   ML venv. Guards the logic — leftovers as the complement of the cut,
+   off_topic material never reaching the timeline, word-level (not
+   phrase-level) cutting, several non-overlapping clips from one
+   fragment, the absolute +/-15s duration window, and lav selection by
+   the recording-start invariant rather than raw score.
+
+## Verifying a real export
+
+`tests/test_reel_contract.py` guards the logic; `verify_export.py`
+guards an **actual exported XML** — the artifact that goes into Premiere.
+Run it on anything before opening it:
+
+```bash
+python3 safety_net/verify_export.py ~/Desktop/MyExport.xml \
+    --idea "~/Library/Application Support/Post House/projects/<name>/plans/idea_XXX.json" \
+    --target-sec 45
+```
+
+Checks: audio actually enabled (a cut once exported silent), every audio
+clipitem carrying `<sourcetrack>`, the cut/pool zone gap, cut granularity
+(clips per minute — an "edit" that was really two slabs), cut length
+inside the +/-15s window, leftovers not duplicating the cut, and
+leftovers confined to the source files the cut drew from (the check that
+would have caught 37.6 minutes across six camera files).
+
+Exit code 0 = all applicable checks passed. It earned its place on its
+first run, catching 22 lav clipitems with no `<sourcetrack>` in an export
+that otherwise looked correct.
+
 ## How to run
 
 ```bash
