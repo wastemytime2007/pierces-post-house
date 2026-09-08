@@ -507,3 +507,94 @@ def test_corroboration_skipped_when_filename_has_no_timestamp():
     pair = _Pair("interview_take_one.mov", 12.0, 10.0)
     anchor = _Pair("interview_take_two.mov", 30.0, 10.0)
     assert not offset_is_corroborated(pair, _State([pair, anchor]))
+
+# --------------------------------------------------------------------------
+# 9. Fragments are topics, not stretches of tape
+# --------------------------------------------------------------------------
+
+def test_distinct_adjacent_topics_are_not_merged_into_a_monster():
+    """Property 9: the merge step must respect the fragment length bound.
+
+    2026-09-08, Ryan on a 381s fragment labelled "Track lighting and 80s
+    design trends": "13 minutes is probably unlikely that we talked about
+    track lighting for 30 minutes... it needs to be a little more
+    specific more like the wallpaper when we did."
+
+    Capping extraction alone did NOT fix it. `_merge_fragments` joins
+    anything separated by <=1s and had no length ceiling, so a run of
+    correctly-split adjacent fragments got stitched straight back
+    together — a real re-extraction produced a 723-SECOND fragment out of
+    a dozen properly-labelled ones, worse than the blob the cap was added
+    to prevent. A six-minute "topic" isn't a topic; it hides the real
+    beats inside it from the planner and gives the visual probe no
+    specific span to look at.
+    """
+    from precut_pipeline.story_planner import TopicRange
+    from posthouse.transcript_coverage import MAX_FRAGMENT_SEC, _merge_fragments
+
+    # Eight distinct 90s topics, each abutting the next within 1s.
+    runs = [
+        TopicRange(
+            source_file="x.MP4",
+            source_start_sec=i * 90.5,
+            source_end_sec=i * 90.5 + 90,
+            topic_label=f"topic {i}",
+            summary=f"distinct thing {i}",
+        )
+        for i in range(8)
+    ]
+    merged = _merge_fragments(runs)
+    over = [
+        r for r in merged
+        if r.source_end_sec - r.source_start_sec > MAX_FRAGMENT_SEC
+    ]
+    assert not over, (
+        "distinct adjacent topics were chained past the "
+        f"{MAX_FRAGMENT_SEC:.0f}s bound: "
+        f"{[(r.topic_label, r.source_end_sec - r.source_start_sec) for r in over]}"
+    )
+    assert len(merged) == 8
+
+
+def test_one_moment_described_twice_is_still_deduped():
+    """The length bound must not break the merge step's actual job.
+
+    Two windows independently describing the SAME moment is a duplicate,
+    not two topics, and must collapse to one fragment keeping the fuller
+    summary — however long that moment is. Only adjacent-but-DISTINCT
+    joins are bounded.
+    """
+    from precut_pipeline.story_planner import TopicRange
+    from posthouse.transcript_coverage import _merge_fragments
+
+    dup = [
+        TopicRange(source_file="y.MP4", source_start_sec=0, source_end_sec=300,
+                   topic_label="a", summary="short"),
+        TopicRange(source_file="y.MP4", source_start_sec=5, source_end_sec=305,
+                   topic_label="a", summary="a much longer description"),
+    ]
+    merged = _merge_fragments(dup)
+    assert len(merged) == 1, "a duplicate description was not deduped"
+    assert merged[0].summary == "a much longer description"
+
+
+def test_undirected_generation_has_a_real_reel_length():
+    """Property 7b: the plain "Generate ideas" button is bounded too.
+
+    Ryan: "nobody's gonna watch 13 minutes worth of us talking about
+    that so we still need to create on the left side ideally like a 30
+    second to a minute and a half at most." The undirected path used to
+    pass no target at all, so the duration check never ran and nothing
+    stopped a 12:44 idea.
+    """
+    from posthouse.story_architect import (
+        DEFAULT_REEL_TARGET_SEC, DURATION_BUFFER_SEC,
+    )
+    ceiling = DEFAULT_REEL_TARGET_SEC + DURATION_BUFFER_SEC
+    assert 30.0 <= DEFAULT_REEL_TARGET_SEC <= 90.0, (
+        f"default target {DEFAULT_REEL_TARGET_SEC}s is outside the 30-90s window "
+        "Ryan asked for"
+    )
+    assert ceiling <= 90.0, (
+        f"enforced ceiling is {ceiling}s — past 'a minute and a half at most'"
+    )

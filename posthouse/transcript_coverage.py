@@ -346,6 +346,24 @@ def _merge_fragments(fragments: List[TopicRange]) -> List[TopicRange]:
             new_start = current.source_start_sec
             new_end = max(current.source_end_sec, nxt.source_end_sec)
 
+            # 2026-09-08: don't chain distinct topics into a monster.
+            # This loop merges anything separated by <=1s with no length
+            # ceiling, so a run of correctly-split adjacent fragments got
+            # stitched straight back together — one real case produced a
+            # 723-SECOND fragment ("Cleaning vs one painted window") out
+            # of a dozen properly-labelled ones, which is worse than the
+            # 381s blob the extraction cap was added to prevent.
+            #
+            # A same-moment overlap is a DUPLICATE description of one
+            # thing and must still be deduped regardless of length. An
+            # adjacent-but-distinct join is a topic merge, and that is
+            # what needs the bound: past MAX_FRAGMENT_SEC, keep them
+            # separate and let the editor see two real beats.
+            if not same_moment and (new_end - new_start) > MAX_FRAGMENT_SEC:
+                merged.append(current)
+                current = nxt
+                continue
+
             if same_moment:
                 # Same real moment, described independently twice — keep
                 # whichever description is more detailed, don't concatenate.
