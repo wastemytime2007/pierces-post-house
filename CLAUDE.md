@@ -117,7 +117,19 @@ is cheaper than every session paying for every document up front.
    this supersession doesn't itself unpark it; that needs its own
    explicit decision from Ryan.
 
-9. **Never hand Ryan an export you haven't verified.** Run
+9. **`posthouse/` exists twice — sync it, or the app runs old code.**
+   `posthouse/` at the repo root is where you edit;
+   `app/python_backend/posthouse/` is what the running backend imports and
+   what Tauri bundles (`resources` globs `../python_backend/**/*.py`, so
+   it can't be a symlink). After ANY change under `posthouse/`, run
+   `./safety_net/sync_posthouse.sh` — it resolves the repo root from its
+   own path, so it works from any directory, and verifies the result.
+   On 2026-09-08 these drifted by four days because an `rsync` ran with
+   relative paths from the wrong cwd: a fix under test was not the code
+   executing, and a broken build briefly looked fixed.
+   `safety_net/tests/test_posthouse_sync.py` fails loudly if they diverge.
+
+10. **Never hand Ryan an export you haven't verified.** Run
    `python3 safety_net/verify_export.py <xml> --idea <idea.json>
    --target-sec <n>` first. Eight separate defects in the cut/pool/audio
    path were found only by Ryan opening an export and telling us what was
@@ -134,7 +146,7 @@ is cheaper than every session paying for every document up front.
    `test_fixtures_still_match_the_reference_edit` re-derives the numbers
    from it on every run.
 
-10. **Build-phase cost mode is currently ON — check before debugging
+11. **Build-phase cost mode is currently ON — check before debugging
     "why is nothing calling the API".** `research_seed` and `llm_via_cli`
     in `~/Library/Application Support/Post House/settings.json` route
     research to a seed file and all LLM calls through the local `claude`
