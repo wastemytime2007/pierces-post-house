@@ -374,10 +374,11 @@ def _probe_anchor_fragment(tagged_by_source, emit, job_id,
     result["topic_label"] = frag.topic_label
     result["probed_span_sec"] = [start, end]
     emit({"type": "log", "level": "info", "job_id": job_id,
-          "message": ("Reusing the visual note from an earlier look "
-                      if result.get("from_cache") else "")
-                     + f"Saw it ({result['frames_viewed']} real frames): "
-                     f"{str(result.get('answer',''))[:160]}"})
+          "message": (
+              f"Saw it — {result['frames_viewed']} real frames"
+              + (", reused from an earlier look" if result.get("from_cache") else "")
+              + f": {str(result.get('answer','')).strip()[:160]}"
+          )})
     return result
 
 

@@ -125,6 +125,14 @@ def offset_is_corroborated(pair, state) -> bool:
     that of another pair from the SAME audio file that cleared
     SCORE_TIMELINE_ATTACH on its own.
     """
+    # A correlation this weak carries no usable offset, whatever it
+    # happens to agree with — applied to BOTH branches below so there is
+    # exactly one floor in the system rather than a second, different one
+    # at the call site (which is the bug this once was; see
+    # find_covering_audio_for_phrase).
+    if pair.score < MUTUAL_CORROBORATION_SCORE_FLOOR:
+        return False
+
     own_cam = _camera_clock_start(pair.aroll_file)
     if own_cam is None:
         return False
@@ -638,9 +646,19 @@ def find_covering_audio_for_phrase(
             continue
         # Confident on its own, or independently corroborated by the
         # recording-start invariant (see offset_is_corroborated).
-        if p.score < SCORE_TIMELINE_ATTACH and not (
-            p.score >= SCORE_USE and offset_is_corroborated(p, state)
-        ):
+        #
+        # 2026-09-08: this used to additionally require score >= SCORE_USE
+        # (10) BEFORE it would even consider corroboration — so a pair at
+        # 6.91 that three independent measurements agreed with was thrown
+        # out here, after offset_is_corroborated had already been taught to
+        # accept it. Ryan's cut came out with camera audio only because of
+        # this, and my own verification missed it: I tested
+        # "score >= 18 or corroborated" in a scratch script rather than
+        # calling this function, so I proved a predicate I had written
+        # instead of the gate that actually runs. offset_is_corroborated
+        # owns the floor now (MUTUAL_CORROBORATION_SCORE_FLOOR); there is
+        # no second one here to disagree with it.
+        if p.score < SCORE_TIMELINE_ATTACH and not offset_is_corroborated(p, state):
             continue
 
         # Audio file's coverage in A-roll timeline: starts at offset_sec,
