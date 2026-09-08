@@ -852,3 +852,32 @@ def test_mutual_agreement_needs_a_real_cluster_not_a_pair():
     a = _Pair("DJI_20260526095730_0005_D.MP4", 9.0, 0.0, audio_file="x.WAV")
     b = _Pair("DJI_20260526095322_0004_D.MP4", 8.0, -408.0, audio_file="x.WAV")
     assert not offset_is_corroborated(a, _State([a, b]))
+
+
+def test_pool_never_contains_duplicate_clips(ref_phrases):
+    """Property 14: no leftover clip may repeat another.
+
+    2026-09-08, Ryan: "extra footage has instances of duplicate footage."
+    Cause: when two used fragments sat either side of the SAME strong
+    neighbour, that neighbour was added to the allowed spans once per
+    used fragment, so the gap-walk ran over the identical span twice and
+    emitted the identical clip twice (2425.9-2449.6 appeared twice on his
+    real export). POOL-NO-OVERLAP only compared pool against CUT, so a
+    pool-vs-pool duplicate passed every check.
+    """
+    used = [_Range(s, e) for s, e in REF_CUT]
+    # The same span handed in twice — exactly what the old allowed-span
+    # construction did for a shared neighbour.
+    allowed = {REF_FILE: [
+        FRAG_WALLPAPER, FRAG_BATHROOM_SCOPE, FRAG_BATHROOM_SCOPE,
+    ]}
+
+    got = _compute_pool_leftovers(used, {REF_STEM: ref_phrases}, {}, allowed)
+    spans = sorted((r.source_start_sec, r.source_end_sec) for r in got)
+    dups = [
+        (a1, b1, a2, b2)
+        for i, (a1, b1) in enumerate(spans)
+        for (a2, b2) in spans[i + 1:]
+        if a1 < b2 and b1 > a2
+    ]
+    assert not dups, f"duplicated leftover clips: {dups}"

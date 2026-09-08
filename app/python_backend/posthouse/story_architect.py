@@ -418,6 +418,23 @@ filler, reaction noise, or a line that states nothing — if a clip is the longe
 must be the one doing the most work. Measured from Ryan's own finished Reel on this footage: \
 ~2.2s per cut through the hook, ~4.6s while the expertise is actually being explained, tight \
 again to close. Three gears, not one.
+- **The FIRST clip must orient the viewer — they have to know what they're watching.** 2026-09-08,
+Ryan on a real cut: "No clear beginning to the video letting the user know what theyre watching."
+He is right, and it is not a graphics problem you can defer to the editor: a viewer who lands on a
+mid-thought line has no idea what the piece is. The opening beat must establish the SUBJECT and
+the TASK — "as you come into a place that you're taking over, you go inside, replace the locks" is
+an opener; "and more times than not we will give an early heads up about past tenants" is not,
+because it presumes a context the viewer doesn't have. A hook is still welcome, but it must be
+intelligible cold, and the subject has to be established in the first clip or the one immediately
+after it. If the footage contains a line that names the job outright, that line is almost always
+your opener.
+- **The payoff must be a CONSEQUENCE, not just the last tip.** A cut that runs
+tip-tip-tip-tip has no story in it, however good the tips are. What makes a how-to land is stakes:
+name what goes wrong if you skip the step. Ryan's own reference piece ends on "if you don't get
+this glue off, when you go to paint it's going to look all kinds of funky" — the price of not
+doing it. Look for the line that states the cost, and put it last. If the footage has no such
+line, say so in `narrative_thesis` rather than promoting an arbitrary final tip into the payoff
+slot.
 - **The opener may come from the END of the material.** In his finished piece the hook is a \
 fragment of the final scene, and the piece returns to that same scene to close — the smell line \
 that opens it and the bottle joke that ends it are one continuous moment, cut apart and placed at \
@@ -593,6 +610,21 @@ def _collect_candidate_fragments(
 SUBCLIP_PHRASE_DETAIL_THRESHOLD_SEC = 30.0
 
 
+def _merge_spans(spans: List[tuple]) -> List[tuple]:
+    """Collapse a list of (start, end) into non-overlapping spans.
+
+    Duplicates and partial overlaps both produce duplicate pool clips
+    downstream — see the call site.
+    """
+    out: List[tuple] = []
+    for start, end in sorted(spans):
+        if out and start <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], end))
+        else:
+            out.append((start, end))
+    return out
+
+
 def _compute_pool_leftovers(
     used_ranges: List[TopicRange],
     phrases_by_source: Optional[Dict[str, List[dict]]],
@@ -671,7 +703,30 @@ def _compute_pool_leftovers(
                 ))
 
     out.sort(key=lambda r: (str(r.source_file), r.source_start_sec))
-    return out
+
+    # Final guard: one clip per (file, span). A duplicate here becomes a
+    # duplicate clip on the editor's timeline, which is exactly what Ryan
+    # hit, so this is enforced at the output regardless of what the
+    # allowed-span construction hands in.
+    deduped: List[TopicRange] = []
+    for r in out:
+        if deduped:
+            prev = deduped[-1]
+            same_file = str(prev.source_file) == str(r.source_file)
+            if same_file and r.source_start_sec < prev.source_end_sec:
+                # Overlap or exact repeat — extend the previous clip
+                # instead of laying a second one over the same footage.
+                if r.source_end_sec > prev.source_end_sec:
+                    deduped[-1] = TopicRange(
+                        source_file=prev.source_file,
+                        source_start_sec=prev.source_start_sec,
+                        source_end_sec=r.source_end_sec,
+                        topic_label=prev.topic_label,
+                        summary=prev.summary,
+                    )
+                continue
+        deduped.append(r)
+    return deduped
 
 
 def _snap_to_phrase_bounds(
@@ -2196,7 +2251,16 @@ def generate_story_angle(
                     if nfit == "strong" and nidx not in used_idx:
                         chosen.append((nfs + off, nfe + off))
         if chosen:
-            allowed_spans[source_file] = chosen
+            # Merge before use. 2026-09-08, Ryan: "extra footage has
+            # instances of duplicate footage." Real cause: when two used
+            # fragments sit either side of the SAME strong neighbour, that
+            # neighbour was appended once per used fragment, so the gap-walk
+            # in _compute_pool_leftovers ran over the identical span twice
+            # and emitted the identical leftover clip twice (confirmed:
+            # 2425.9-2449.6 appeared twice in the pool). Overlapping spans
+            # would produce partial duplicates for the same reason, so this
+            # merges rather than just de-duplicating exact matches.
+            allowed_spans[source_file] = _merge_spans(chosen)
 
     pool_ranges = _compute_pool_leftovers(
         ranges, phrases_by_source, source_offset_lookup, allowed_spans)

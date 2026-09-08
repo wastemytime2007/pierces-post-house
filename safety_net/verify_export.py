@@ -19,6 +19,7 @@ Every check here is something that shipped broken at least once:
   CUT-GRANULARITY   A 45s edit came out as 2 coarse slabs, not an edit.
   POOL-ON-TOPIC     Leftovers held shirt colours and fishing licences.
   POOL-NO-OVERLAP   Leftovers duplicated footage already in the cut.
+  POOL-NO-DUPLICATES Two identical leftover clips landed on the timeline.
   ZONE-GAP          The two zones ran together with no separation.
 
 Usage:
@@ -219,6 +220,29 @@ def check_idea(idea_path: Path, target_sec: float | None, rep: Report) -> None:
         "leftovers never duplicate the cut"
         if not overlaps
         else f"{len(overlaps)} leftover/cut overlap(s) — duplicate footage",
+    )
+
+    # Duplicate footage WITHIN the pool. 2026-09-08, Ryan: "extra footage
+    # has instances of duplicate footage." POOL-NO-OVERLAP only compared
+    # pool against cut, so two identical leftover clips passed every check
+    # and landed on his timeline twice.
+    pool_sorted = sorted(
+        (r["source_file"], r["source_start_sec"], r["source_end_sec"]) for r in pool
+    )
+    self_overlaps = [
+        (f1, a1, b1, a2, b2)
+        for i, (f1, a1, b1) in enumerate(pool_sorted)
+        for (f2, a2, b2) in pool_sorted[i + 1:]
+        if f1 == f2 and a1 < b2 and b1 > a2
+    ]
+    rep.check(
+        "POOL-NO-DUPLICATES",
+        not self_overlaps,
+        "no leftover clip repeats another"
+        if not self_overlaps
+        else f"{len(self_overlaps)} duplicated/overlapping leftover clip(s), e.g. "
+        f"{self_overlaps[0][1]:.1f}-{self_overlaps[0][2]:.1f} vs "
+        f"{self_overlaps[0][3]:.1f}-{self_overlaps[0][4]:.1f}",
     )
 
     # The pool must stay in the files the cut drew from. This is the check
