@@ -241,34 +241,101 @@ def latest_session(project) -> Optional[PlanningSession]:
         return None
 
 
-def _probe_anchor_fragment(tagged_by_source, emit, job_id) -> Optional[dict]:
-    """Look at what is actually ON SCREEN in the fragment a piece would
-    most likely be built around, before the plan commits to it.
+_STOPWORDS = {
+    "a", "an", "and", "the", "of", "to", "for", "in", "on", "that", "this",
+    "with", "is", "it", "we", "us", "our", "you", "your", "make", "makes",
+    "looks", "look", "like", "quick", "engaging", "fun", "watch", "type",
+    "content", "video", "piece", "about", "how", "some", "into", "out",
+}
 
-    2026-09-08. The planning conversation used to be blind to the picture:
-    it read transcripts only, so it had to ask Ryan by hand *"is someone
-    demonstrating with the steamer, or explaining the process verbally?"*
-    — the very thing that decides whether a piece can be show-don't-tell
-    or is a talking head with B-roll gaps. It also meant plans could
-    commit to beats the footage doesn't actually show, which is only
-    discovered after paying for generation.
 
-    One probe per session, on the single longest `strong` fragment, via
-    the free CLI route (`posthouse.video_probe`). Costs minutes, not
-    money. Returns None — never a guess — if there's nothing suitable to
-    probe or the probe fails; the conversation then proceeds exactly as
-    before, and says so.
+def _keywords(text: str) -> set:
+    import re as _re
+    return {
+        w for w in _re.findall(r"[a-z]{3,}", (text or "").lower())
+        if w not in _STOPWORDS
+    }
+
+
+def _pick_anchor_fragment(tagged_by_source, stated_intent: str):
+    """The fragment worth spending a visual probe on.
+
+    2026-09-08, real bug this fixes. This used to pick the LONGEST
+    `strong` fragment, full stop. On the wallpaper project that selected
+    "Track lighting and 80s design trends" (381s, 13 minutes into a
+    different part of the shoot) while the editor had asked for a
+    wallpaper how-to. The planner was then handed frames of a man walking
+    an empty house with his hands in his pockets and concluded — clearly,
+    confidently, and WRONGLY — that the wallpaper footage contains no
+    demonstration, talking the plan out of the piece Ryan actually wanted.
+    A direct probe of the real wallpaper span (263-285s) shows the steamer
+    plate and a green-handled putty knife in frame the whole time.
+
+    A confident wrong observation is worse than no observation, so the
+    anchor must be chosen by RELEVANCE to what the editor asked for, with
+    duration only as a tie-break.
     """
-    candidates = [
+    strong = [
         tf for tagged in tagged_by_source.values() for tf in tagged
         if getattr(tf, "fit", "") == "strong"
     ]
-    if not candidates:
+    if not strong:
         return None
-    anchor = max(
-        candidates,
-        key=lambda tf: tf.fragment.source_end_sec - tf.fragment.source_start_sec,
-    )
+
+    wanted = _keywords(stated_intent)
+    if not wanted:
+        # No stated intent — longest strong fragment is the best guess
+        # available, and the scope warning in the visual block keeps the
+        # planner from over-reading it.
+        return max(strong, key=lambda tf: tf.fragment.source_end_sec - tf.fragment.source_start_sec)
+
+    def relevance(tf):
+        # The topic LABEL is what the fragment is about; the summary
+        # mentions plenty of things in passing. Weighting them equally
+        # tied "Wallpaper steaming process explained" with four unrelated
+        # fragments whose summaries merely said the word "wallpaper", and
+        # the duration tie-break then picked a 345s fragment about a
+        # mysterious item found in every house. Label matches dominate.
+        frag = tf.fragment
+        label_hits = len(wanted & _keywords(frag.topic_label))
+        summary_hits = len(wanted & _keywords(frag.summary))
+        return label_hits * 3 + summary_hits
+
+    scored = [(relevance(tf), tf) for tf in strong]
+    best_score = max(sc for sc, _ in scored)
+    if best_score == 0:
+        # Nothing on-topic to look at. Probing an unrelated fragment is
+        # exactly the failure above, so decline rather than mislead.
+        return None
+    tied = [tf for sc, tf in scored if sc == best_score]
+    return max(tied, key=lambda tf: tf.fragment.source_end_sec - tf.fragment.source_start_sec)
+
+
+def _probe_anchor_fragment(tagged_by_source, emit, job_id,
+                           stated_intent: str = "") -> Optional[dict]:
+    """Look at what is actually ON SCREEN in the fragment this piece would
+    be built around, before the plan commits to it.
+
+    The planning conversation used to be blind to the picture: it read
+    transcripts only, so it had to ask Ryan by hand *"is someone
+    demonstrating with the steamer, or explaining the process verbally?"*
+    — the very thing that decides whether a piece can be show-don't-tell
+    or is a talking head with B-roll gaps.
+
+    One probe per session, on the fragment most relevant to the stated
+    intent (see `_pick_anchor_fragment`), via the free CLI route. Costs
+    minutes, not money. Returns None — never a guess — when there's
+    nothing on-topic to look at or the probe fails; the conversation then
+    proceeds on transcripts alone and is told so explicitly.
+    """
+    anchor = _pick_anchor_fragment(tagged_by_source, stated_intent)
+    if anchor is None:
+        emit({"type": "log", "level": "info", "job_id": job_id,
+              "message": "No strong fragment clearly matching what you asked for, so "
+                         "skipping the visual check rather than looking at unrelated "
+                         "footage and drawing the wrong conclusion."})
+        return None
+
     frag = anchor.fragment
     if not Path(str(frag.source_file)).exists():
         emit({"type": "log", "level": "info", "job_id": job_id,
@@ -283,9 +350,11 @@ def _probe_anchor_fragment(tagged_by_source, emit, job_id) -> Optional[dict]:
                      f"minutes, but costs nothing."})
     try:
         from posthouse.video_probe import is_on_camera_demonstration
-        # Probe the first ~40s of the fragment: enough to see whether the
-        # work is shown, without sampling a 3-minute span frame by frame.
-        start = frag.source_start_sec
+        # Probe a window INSIDE the fragment rather than its first
+        # seconds: a long explanation often opens on preamble before the
+        # work starts, and the opening frames alone would misrepresent it.
+        span = frag.source_end_sec - frag.source_start_sec
+        start = frag.source_start_sec + (span * 0.35 if span > 60 else 0.0)
         end = min(frag.source_end_sec, start + 40.0)
         result = is_on_camera_demonstration(str(frag.source_file), start, end)
     except Exception as e:
@@ -300,6 +369,7 @@ def _probe_anchor_fragment(tagged_by_source, emit, job_id) -> Optional[dict]:
         return None
 
     result["topic_label"] = frag.topic_label
+    result["probed_span_sec"] = [start, end]
     emit({"type": "log", "level": "info", "job_id": job_id,
           "message": f"Saw it ({result['frames_viewed']} real frames): "
                      f"{str(result.get('answer',''))[:160]}"})
@@ -307,27 +377,43 @@ def _probe_anchor_fragment(tagged_by_source, emit, job_id) -> Optional[dict]:
 
 
 def _format_visual_block(probe: Optional[dict]) -> str:
-    """The visual truth, handed to the planner as fact — or an explicit
-    statement that nobody looked, so it can never be assumed."""
+    """The visual truth, handed to the planner as fact — scoped hard to the
+    one span that was actually viewed, or an explicit statement that
+    nobody looked.
+
+    The scope warning is not boilerplate. On 2026-09-08 the planner was
+    given frames from one fragment and generalised them into a confident
+    claim about a different fragment entirely ("nobody is working... no
+    steamer, no scraper"), which was false and changed the plan. Naming
+    the span and forbidding extrapolation is part of the fix.
+    """
     if not probe:
         return (
             "\nNO VISUAL CHECK WAS DONE this run — you are working from transcripts "
-            "only. You genuinely do not know what is on screen. Do not assert that "
-            "anything is demonstrated, shown, or visible; if that distinction matters "
-            "to the plan, ask the editor.\n"
+            "only. You genuinely do not know what is on screen anywhere in this "
+            "footage. Do not assert that anything is or isn't demonstrated, shown, or "
+            "visible; if that distinction matters to the plan, ask the editor.\n"
         )
+    span = probe.get("probed_span_sec") or []
+    span_txt = f"{span[0]:.0f}s-{span[1]:.0f}s" if len(span) == 2 else "an unrecorded span"
     return (
-        f"\nWHAT IS ACTUALLY ON SCREEN — real frames were viewed for the fragment a "
-        f"piece would most likely be built around (\"{probe.get('topic_label','')}\"), "
-        f"so this is observation, not inference:\n"
-        f"<visual_check frames_viewed=\"{probe.get('frames_viewed')}\">\n"
+        f"\nWHAT IS ACTUALLY ON SCREEN — real frames were viewed, so this is "
+        f"observation rather than inference. **It covers ONE span only:** "
+        f"\"{probe.get('topic_label','')}\", {span_txt}.\n"
+        f"<visual_check frames_viewed=\"{probe.get('frames_viewed')}\" "
+        f"span=\"{span_txt}\" fragment=\"{probe.get('topic_label','')}\">\n"
         f"{probe.get('answer','')}\n\n"
         f"Visible in frame: {probe.get('what_is_visible','')}\n"
         f"</visual_check>\n\n"
-        f"Use this. If it says the work IS demonstrated on camera, you may plan a "
-        f"show-don't-tell piece and say why. If it says the work is NOT shown, do not "
-        f"propose a demonstration piece — say plainly what the footage can carry "
-        f"instead.\n"
+        f"Rules for using this:\n"
+        f"- It tells you about THAT span and nothing else. Do NOT extrapolate it to "
+        f"other fragments, other clips, or the footage as a whole. If it says no work "
+        f"is shown there, that does not mean no work is shown anywhere.\n"
+        f"- If it says the work IS demonstrated on camera, you may plan a "
+        f"show-don't-tell piece and cite this as why.\n"
+        f"- If it says the work is NOT shown in that span, say only that — and if the "
+        f"plan depends on a demonstration existing elsewhere, ask the editor rather "
+        f"than concluding the footage can't support it.\n"
     )
 
 
@@ -481,7 +567,8 @@ def start_planning_session(
         # Look at the picture before planning around it (2026-09-08).
         # Free via the CLI, costs a few minutes, and answers the question
         # this conversation previously had to put to Ryan by hand.
-        visual_check = _probe_anchor_fragment(tagged_by_source, emit, job_id)
+        visual_check = _probe_anchor_fragment(
+            tagged_by_source, emit, job_id, stated_intent=stated_intent)
 
         emit({"type": "log", "level": "info", "job_id": job_id,
               "message": "Working out a game plan from the footage and the research..."})
