@@ -254,7 +254,11 @@ marketing strategy or audience targeting relevant to this audience/content goal:
 I need actual individual video URLs (youtube.com/watch?v=... or youtu.be/...) for real \
 educational/strategy content — a marketing expert or creator teaching audience targeting, \
 content strategy, or platform algorithm behavior. Not a Short, not a channel page, not \
-fabricated. Just search; you don't need to summarize results in your final text."""
+fabricated.
+
+After searching, return ONLY this JSON in a fenced ```json block — no prose before or after: \
+{{"urls": ["https://...", "https://..."]}}. Empty list if you genuinely found none — never \
+fabricate one to fill the list."""
 
 STRATEGY_TRANSCRIPT_PROMPT = """This is the real transcript of a video found via a search for \
 social-media/audience-targeting strategy content, relevant to this audience/content goal:
@@ -290,8 +294,11 @@ in the niche implied by this audience goal:
 
 I need actual video permalink URLs (e.g. tiktok.com/@user/video/1234567890, \
 instagram.com/reel/abc123, youtube.com/shorts/xyz) that could actually be opened and watched — \
-not discover/hashtag/category pages, and never fabricated. Just search; you don't need to \
-summarize results in your final text."""
+not discover/hashtag/category pages, and never fabricated.
+
+After searching, return ONLY this JSON in a fenced ```json block — no prose before or after: \
+{{"urls": ["https://...", "https://..."]}}. Empty list if you genuinely found none — never \
+fabricate one to fill the list."""
 
 VIDEO_WATCH_PROMPT = """These frame pairs are sampled from a real, currently-circulating video \
 found via a search meant to target this audience/content goal's niche — but web search over \
@@ -759,6 +766,50 @@ def _format_candidates_for_llm(
                 f'        {p["start"]:.1f}-{p["end"]:.1f}s  "{str(p.get("text","")).strip()}"'
             )
     return "\n".join(lines)
+
+
+def _urls_from_response(resp) -> List[str]:
+    """Real video/candidate URLs from a search response, whichever shape
+    it came back in.
+
+    2026-09-08, real bug caught by Ryan on the how_to project's first
+    planning run: this code only ever read Anthropic's native
+    `web_search_tool_result` content blocks. The CLI route
+    (posthouse/cli_llm_client) has no such block — it returns plain text,
+    because the CLI's own web search tool doesn't expose Anthropic's
+    server-side tool-result structure. So in CLI mode `candidate_urls`
+    was ALWAYS empty, regardless of what the search actually found —
+    confirmed the search itself works fine (real permalinks came back
+    from a direct CLI test) and this was a pure parsing gap, not a
+    "search over TikTok is unreliable" limitation as the old unverified
+    note claimed. Both search prompts now also ask for a JSON
+    {"urls": [...]} list in the text reply, so this checks structured
+    blocks FIRST (live API path, unchanged) and falls back to parsing
+    that JSON out of the text (CLI path) rather than assuming one or
+    the other.
+    """
+    urls: List[str] = []
+    for block in getattr(resp, "content", []) or []:
+        if getattr(block, "type", None) == "web_search_tool_result":
+            items = block.content if isinstance(block.content, list) else []
+            for item in items:
+                url = getattr(item, "url", None)
+                if url:
+                    urls.append(url)
+    if urls:
+        return urls
+
+    text = "".join(
+        b.text for b in getattr(resp, "content", []) or []
+        if getattr(b, "type", None) == "text"
+    ).strip()
+    if not text:
+        return []
+    try:
+        data = _extract_json(text)
+    except Exception:
+        return []
+    return [u for u in (data.get("urls") or []) if isinstance(u, str)]
 
 
 def _looks_like_video_permalink(url: str) -> bool:
@@ -1611,22 +1662,17 @@ def research_trends(
             messages=[{"role": "user", "content": VIDEO_PERMALINK_SEARCH_PROMPT.format(
                 audience_goal=audience_goal, trend_names_clause=trend_names_clause)}],
         )
-        for block in resp2.content:
-            if getattr(block, "type", None) == "web_search_tool_result":
-                items = block.content if isinstance(block.content, list) else []
-                for item in items:
-                    url = getattr(item, "url", None)
-                    if url and _looks_like_video_permalink(url):
-                        candidate_urls.append(url)
+        for url in _urls_from_response(resp2):
+            if _looks_like_video_permalink(url):
+                candidate_urls.append(url)
     except Exception as e:
         result["unverified"].append(f"Video permalink search failed: {e}")
 
     if not candidate_urls:
         result["unverified"].append(
-            "No individual, watchable trending-video permalinks found via search "
-            "(search mostly surfaces TikTok/Instagram category pages, not permalinks — "
-            "a confirmed real limitation, not a bug). Trend signal is text-sourced only "
-            "this run, not video-verified."
+            "No individual, watchable trending-video permalinks found via search this run "
+            "— search over TikTok/Instagram genuinely can surface category pages instead of "
+            "a real permalink. Trend signal is text-sourced only this run, not video-verified."
         )
 
     seen = set()
@@ -1685,13 +1731,9 @@ def research_trends(
             messages=[{"role": "user", "content": MARKETING_VIDEO_SEARCH_PROMPT.format(
                 audience_goal=audience_goal)}],
         )
-        for block in resp_mkt_vid.content:
-            if getattr(block, "type", None) == "web_search_tool_result":
-                items = block.content if isinstance(block.content, list) else []
-                for item in items:
-                    url = getattr(item, "url", None)
-                    if url and _looks_like_youtube_video(url):
-                        strategy_video_urls.append(url)
+        for url in _urls_from_response(resp_mkt_vid):
+            if _looks_like_youtube_video(url):
+                strategy_video_urls.append(url)
     except Exception as e:
         result["unverified"].append(f"Strategy-video search failed: {e}")
 
@@ -2548,7 +2590,8 @@ def run_generate_story_angle(
         # already-paid-for research instead.
         if research is None:
             emit({"type": "log", "level": "info", "message": "Researching live trends (real web search + real video watching)..."})
-            research = research_trends(audience_goal, stated_intent=stated_intent)
+            research = research_trends(audience_goal, stated_intent=stated_intent,
+                                       project_type=load_project_type(project))
         else:
             emit({"type": "log", "level": "info",
                   "message": "Reusing the research from your planning conversation — "

@@ -51,6 +51,7 @@ from posthouse.story_architect import (
     _extract_json,
     _format_research_for_llm,
     load_project_material,
+    load_project_type,
     research_trends,
     run_generate_story_angle,
 )
@@ -545,6 +546,13 @@ def start_planning_session(
         return  # load_project_material already emitted a real reason
 
     stated_intent = (stated_intent or "").strip()
+    # 2026-09-08, real bug caught by Ryan on the very first how_to run: this
+    # call never passed project_type, so the how-to research brief (tutorial
+    # conventions, save/rewatch signal, the measured house-standard numbers
+    # from WALLPAPER_REEL_ANATOMY.md) never actually reached the search
+    # prompts for a planning-conversation run — only the direct-generate
+    # path had it wired. Read it the same way run_generate_story_angle does.
+    project_type = load_project_type(project)
     try:
         if stated_intent:
             emit({"type": "log", "level": "info", "job_id": job_id,
@@ -554,7 +562,7 @@ def start_planning_session(
             emit({"type": "log", "level": "info", "job_id": job_id,
                   "message": "Researching live trends for this project's audience goal..."})
         research = research_trends(audience_goal, model=model, api_key=api_key,
-                                   stated_intent=stated_intent)
+                                   stated_intent=stated_intent, project_type=project_type)
         if research.get("cached"):
             emit({"type": "log", "level": "info", "job_id": job_id,
                   "message": "Reused research from the last 72 hours — no new search "
