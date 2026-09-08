@@ -23,24 +23,14 @@ transcript_coverage, and PreCut's own story_planner/planner) switch over
 with no edits of their own.
 
 Real limits, stated rather than hidden:
-  * IMAGES STILL DON'T WORK. Video-watching sends real sampled frames as
-    vision content blocks — this route can't pass those through `-p` and
-    raises instead of silently dropping them. This is not (only) a
-    protocol limitation: the video-analysis tools available in an
-    interactive Claude Code session are scoped to that session and are
-    NOT reachable from a bare `claude -p` subprocess (confirmed
-    2026-09-08 — a subprocess asked to list its own tools has no video
-    tool at all). Making video-watching free would need either a
-    globally-enabled video-analysis tool for every CLI invocation, or
-    paying the API for vision as before. Until one of those happens, a
-    "video finding" with no video actually looked at would be a
-    fabricated observation, so it stays refused.
-  * Web search DOES work, for free. 2026-09-08, Ryan: "Nothing should be
-    turned off now since everything we're running is through cli instead
-    of api. It was only off to save api tokens." Correct: the `web_search`
-    tool block is translated to `--allowedTools WebSearch`, which uses
-    the CLI's own real search — verified to return real, current, sourced
-    results with no API call. Any OTHER server-side tool still raises.
+  * TEXT ONLY. Image/vision blocks (the video-watching path) can't be
+    passed through `-p` this way and raise instead of silently dropping
+    the frames — a "video finding" with no video actually looked at
+    would be a fabricated observation.
+  * Server-side tools (the `web_search` tool block) aren't forwarded.
+    The CLI has its own search, but it is not the same contract, so a
+    call that depends on the tool result raises rather than quietly
+    returning an unsourced answer.
   * `max_tokens` / `temperature` are not honoured — the CLI decides.
     `stop_reason` is reported as "end_turn"; truncation checks that rely
     on it can't fire, which is noted at the one call site that checks.
@@ -111,30 +101,13 @@ class _Messages:
 
     def create(self, *, messages, system=None, model=None, tools=None,
                max_tokens=None, temperature=None, **_ignored) -> _Response:
-        # 2026-09-08, Ryan: "Nothing should be turned off now since
-        # everything we're running is through cli instead of api. It was
-        # only off to save api tokens." Correct — web_search is real,
-        # billed API usage the Anthropic SDK route pays for, but the
-        # Claude Code CLI has its OWN web search tool that this route can
-        # reach for free via `--allowedTools WebSearch`. Verified
-        # 2026-09-08: a bare `claude -p --allowedTools WebSearch` performs
-        # a real search and returns a real, current, sourced result — no
-        # API call involved.
-        #
-        # Any OTHER server-side tool still raises rather than silently
-        # answering unsourced.
-        allowed_cli_tools: List[str] = []
-        for t in (tools or []):
-            tname = t.get("name") if isinstance(t, dict) else getattr(t, "name", None)
-            if tname == "web_search":
-                allowed_cli_tools.append("WebSearch")
-            else:
-                raise CLIClientError(
-                    f"This request uses a server-side tool ({tname!r}) the CLI route "
-                    "doesn't forward. Answering without it would produce an unsourced "
-                    "result. Turn POSTHOUSE_LLM_VIA_CLI off for a live run of this "
-                    "specific call."
-                )
+        if tools:
+            raise CLIClientError(
+                "This request uses server-side tools (e.g. web_search). The CLI "
+                "route doesn't forward them, and answering without the tool would "
+                "produce unsourced findings. Use seeded research (POSTHOUSE_RESEARCH_SEED) "
+                "for research, or turn POSTHOUSE_LLM_VIA_CLI off for a live run."
+            )
 
         prompt_parts = [_flatten_content(m.get("content")) for m in messages
                         if m.get("role") == "user"]
@@ -151,8 +124,6 @@ class _Messages:
         cmd = [exe, "-p"]
         if system:
             cmd += ["--system-prompt", system]
-        if allowed_cli_tools:
-            cmd += ["--allowedTools", ",".join(allowed_cli_tools)]
         # Deliberately NOT passing the caller's API model id: the CLI
         # takes its own model names, and a mismatched id would fail in a
         # confusing way. Let the CLI use its configured default.

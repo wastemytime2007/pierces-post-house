@@ -106,6 +106,12 @@ def apply_settings_to_env() -> dict:
     # survives however the app gets launched. Env still wins, so a
     # deliberate POSTHOUSE_RESEARCH_SEED=0 can force live research for
     # one run without editing settings.
+    # 2026-09-08: seeded research is no longer the build-phase default.
+    # Ryan: "Nothing should be turned off now since everything we're
+    # running is through cli instead of api. It was only off to save api
+    # tokens." Web search now runs through the CLI for free (see
+    # posthouse/cli_llm_client.py), so research is LIVE and real by
+    # default. The seed path stays as an explicit opt-in for offline work.
     if not os.environ.get("POSTHOUSE_RESEARCH_SEED"):
         if settings.get("research_seed"):
             os.environ["POSTHOUSE_RESEARCH_SEED"] = "1"

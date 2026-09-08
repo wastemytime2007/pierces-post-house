@@ -69,13 +69,23 @@ because this session violated them once each.
   back on with API calls but for the building side of things its getting
   way too expensive."* Two switches are live in
   `~/Library/Application Support/Post House/settings.json`:
-  - `"research_seed": true` — `research_trends()` returns a seed file
-    (`research_cache/seed.json`) and makes ZERO API calls: no web
-    searches, no video downloads, no transcript reads. The seed was
-    gathered out-of-band by a Claude Code session's own web search (10
-    hook/length findings, 7 contractor-marketing findings, 4 named
-    trending sounds) and its `unverified` list states plainly that no
-    videos were watched and no listen links were found.
+  - `"research_seed": false` **as of 2026-09-08** — research is LIVE and
+    real again. Ryan: *"Nothing should be turned off now since everything
+    we're running is through cli instead of api. It was only off to save
+    api tokens."* Correct: `web_search` is translated to the CLI's own
+    `--allowedTools WebSearch`, so real, current, sourced web research
+    now costs nothing. Verified with an invalid API key set: 12 real text
+    findings with real source URLs. The seed path (`research_cache/seed.json`)
+    remains as an explicit opt-in for offline work, and still fails loud
+    if switched on with no seed present.
+    **Still genuinely unavailable for free: video watching.** It sends real
+    sampled frames as vision blocks, and the video-analysis tools in an
+    interactive Claude Code session are NOT reachable from a bare
+    `claude -p` subprocess (confirmed 2026-09-08 — a subprocess listing
+    its own tools has no video tool). So trend findings are text-sourced
+    and say so in `unverified` rather than claiming to be video-verified.
+    Making video free would need a globally-enabled video tool for CLI
+    invocations; the only alternative is paying the API for vision.
   - `"llm_via_cli": true` — every LLM call routes through the local
     `claude` CLI (`posthouse/cli_llm_client.py`) instead of the Anthropic
     API, billing to the Claude Code plan. All 7 call sites switch at once
