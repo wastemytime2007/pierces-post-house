@@ -125,14 +125,14 @@ is cheaper than every session paying for every document up front.
    sequence, a "45-second Reel" that ran 12:44, and 37 minutes of
    unrelated footage. His own instruction: *"I can't carry you through 15
    exports and manually do it myself every time."* The ground truth for
-   what a correct export looks like is his own hand-cut reference edit.
-   **The original file is no longer on disk** (it lived at
-   `~/Desktop/Removing Wallpaper Tutorial.xml` on 2026-09-07); its exact
-   clip timings survive as fixtures in
-   `safety_net/tests/test_reel_contract.py` (`REF_CUT`, `REF_LEFTOVERS`,
-   and the `FRAG_*` bounds). Use those, not a re-derivation, and ask Ryan
-   for a fresh reference before inventing any new rule about cut or pool
-   shape.
+   what a correct export looks like is his own hand-cut reference edit,
+   kept in-repo at
+   `safety_net/fixtures/reference_edits/removing_wallpaper_tutorial.xml`
+   (11 clips / 65s left, 8 clips / 158s right, one camera file). Read it
+   before inventing any new rule about cut or pool shape — every existing
+   rule was derived from it, and
+   `test_fixtures_still_match_the_reference_edit` re-derives the numbers
+   from it on every run.
 
 10. **Build-phase cost mode is currently ON — check before debugging
     "why is nothing calling the API".** `research_seed` and `llm_via_cli`

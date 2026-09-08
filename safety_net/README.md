@@ -32,8 +32,11 @@ turns a `CutList` into the one FCP7 XML Premiere imports. Specifically:
 4. **Reel contract** (`test_reel_contract.py`) — the properties a
    generated cut and its export must hold, one assertion per real failure
    Ryan hit on real footage (2026-09-04/07). Ground truth is his own
-   hand-cut reference edit (`Removing Wallpaper Tutorial.xml`) and that
-   project's saved `audio_sync.pairs`. Hermetic: no API key, no media, no
+   hand-cut reference edit, kept in-repo at
+   `fixtures/reference_edits/removing_wallpaper_tutorial.xml`, plus that
+   project's saved `audio_sync.pairs`. The reference edit is the target
+   every rule was derived from, and one test re-derives the fixture
+   numbers from it on every run so they can't drift. Hermetic: no API key, no media, no
    ML venv. Guards the logic — leftovers as the complement of the cut,
    off_topic material never reaching the timeline, word-level (not
    phrase-level) cutting, several non-overlapping clips from one

@@ -371,16 +371,19 @@ because this session violated them once each.
   saying what was wrong, and a new agent needs the reasoning, not just
   the outcome.
 
-  **The ground truth was a real file Ryan cut by hand and supplied as
-  the target after the app produced nonsense: `Removing Wallpaper
-  Tutorial.xml`. It is NO LONGER on disk** (checked 2026-09-07, end of
-  session — only our own export remains on the Desktop), so its exact
-  clip timings are preserved as fixtures in
+  **The ground truth is a real file Ryan cut by hand and supplied as the
+  target after the app produced nonsense, now kept IN-REPO at his
+  direction** (2026-09-08: *"Go ahead and place a copy where you need it
+  so i dont have to keep a copy on my desktop"*):
+  `safety_net/fixtures/reference_edits/removing_wallpaper_tutorial.xml`.
+  Its numbers are also written out as fixtures in
   `safety_net/tests/test_reel_contract.py` — `REF_CUT` (his 11
-  selections), `REF_LEFTOVERS` (his 8 unused clips) and the `FRAG_*`
-  bounds. Those fixtures are now the only surviving copy of the target;
-  treat them accordingly and ask Ryan for a fresh reference rather than
-  re-deriving one. Reverse-engineering it clip by clip is
+  selections), `REF_LEFTOVERS` (his 8 unused clips), the `FRAG_*` bounds
+  — and `test_fixtures_still_match_the_reference_edit` re-derives them
+  from the file on every run, so the two can never drift and swapping in
+  a different reference edit fails loudly instead of quietly changing
+  what "correct" means. Verified on import: 11 left clips and 8 right
+  clips matching the fixtures to within one frame. Reverse-engineering it clip by clip is
   what produced every rule below. Its shape: 11 clips / 65s on the left,
   all from ONE camera file, most 2-6s, reordered (a later line as the
   opener); 8 clips / 158s on the right, each exactly a GAP between two

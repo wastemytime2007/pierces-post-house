@@ -10,9 +10,13 @@ every time. So lets try to lock this in."*
 Nothing here needs an API key, media, or the ML venv. The ground truth is
 embedded as fixtures taken from two real artifacts:
 
-  * `Removing Wallpaper Tutorial.xml` — the reference edit Ryan cut by
-    hand and supplied as the target. Its 11 selections and 8 leftover
-    clips are the numbers in REF_CUT / REF_LEFTOVERS.
+  * `fixtures/reference_edits/removing_wallpaper_tutorial.xml` — the
+    reference edit Ryan cut by hand and supplied as the target, now kept
+    in-repo at his direction ("place a copy where you need it so i dont
+    have to keep a copy on my desktop"). Its 11 selections and 8 leftover
+    clips are the numbers in REF_CUT / REF_LEFTOVERS, and
+    `test_fixtures_still_match_the_reference_edit` re-derives them from
+    the file on every run so the two can never drift apart.
   * That project's own saved `audio_sync.pairs` — the Bob 1 chain in
     BOB1_PAIRS, whose weak-but-genuine scores are what broke every
     score-threshold approach.
@@ -43,6 +47,9 @@ The eight properties, and the failure each one locks out:
 """
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
 import pytest
 
 from posthouse.story_architect import (
@@ -56,6 +63,17 @@ from posthouse.story_architect import (
 # --------------------------------------------------------------------------
 # Ground truth from Ryan's hand-cut reference edit
 # --------------------------------------------------------------------------
+
+# Ryan's own hand-cut edit, kept in-repo so this contract always has its
+# target available. Everything below is derived from it.
+REFERENCE_EDIT = (
+    Path(__file__).resolve().parent.parent
+    / "fixtures" / "reference_edits" / "removing_wallpaper_tutorial.xml"
+)
+
+# Timeline position (seconds) separating his tight cut from his unused
+# footage. His cut ends at 64.9s and the leftovers start at 229.2s.
+REFERENCE_ZONE_SPLIT_SEC = 100.0
 
 REF_FILE = "DJI_20260505100952_0005_D.MP4"
 REF_STEM = "DJI_20260505100952_0005_D"
@@ -123,6 +141,87 @@ def ref_phrases():
     """One phrase per second across the whole reference region, so gap
     boundaries in the tests aren't limited by phrase granularity."""
     return _phrases([(t, t + 1.0) for t in range(80, 400)], words_per=2)
+
+
+# --------------------------------------------------------------------------
+# 0. The fixtures are the reference edit, not a remembered version of it
+# --------------------------------------------------------------------------
+
+def _reference_zones():
+    """(left, right) source spans read straight out of Ryan's edit."""
+    seq = next(ET.parse(REFERENCE_EDIT).getroot().iter("sequence"))
+    timebase = float(seq.findtext("rate/timebase"))
+    track = seq.find("media/video/track")
+    clips = [
+        (
+            int(c.findtext("start")) / timebase,
+            int(c.findtext("in")) / timebase,
+            int(c.findtext("out")) / timebase,
+        )
+        for c in track.findall("clipitem")
+    ]
+    left = sorted(
+        (i, o) for tl, i, o in clips if tl < REFERENCE_ZONE_SPLIT_SEC
+    )
+    right = sorted(
+        (i, o) for tl, i, o in clips if tl >= REFERENCE_ZONE_SPLIT_SEC
+    )
+    return left, right
+
+
+def test_fixtures_still_match_the_reference_edit():
+    """The hardcoded numbers below must equal what's actually in his file.
+
+    Without this, REF_CUT / REF_LEFTOVERS are just a claim about a file
+    nobody re-reads — and for a day they WERE only a claim, because the
+    original had been cleared off his Desktop. Re-deriving them here
+    means the fixtures can never silently drift from the target, and that
+    swapping in a different reference edit fails loudly instead of
+    quietly changing what "correct" means.
+    """
+    assert REFERENCE_EDIT.exists(), (
+        f"Ryan's reference edit is missing from the repo: {REFERENCE_EDIT}. "
+        "It is the ground truth for every rule in this file — ask him for a "
+        "fresh copy rather than re-deriving one."
+    )
+    left, right = _reference_zones()
+
+    # The fixtures are written to 0.1s; the file is frame-accurate at
+    # 1/60s. Max legitimate difference is therefore one rounding
+    # half-step (0.05s), plus a hair for float representation.
+    TOL = 0.06
+    def _agree(actual, fixture, label):
+        assert len(actual) == len(fixture), (
+            f"{label}: reference edit has {len(actual)} clips, fixture has "
+            f"{len(fixture)} — {actual}"
+        )
+        for (a_in, a_out), (f_in, f_out) in zip(actual, sorted(fixture)):
+            assert abs(a_in - f_in) <= TOL and abs(a_out - f_out) <= TOL, (
+                f"{label}: reference clip {a_in:.3f}-{a_out:.3f} no longer "
+                f"matches fixture {f_in:.1f}-{f_out:.1f}"
+            )
+
+    _agree(left, REF_CUT, "REF_CUT")
+    _agree(right, REF_LEFTOVERS, "REF_LEFTOVERS")
+
+
+def test_reference_edit_shape_is_what_we_build_to():
+    """Guards the headline numbers the whole contract is aimed at: a real
+    edit is many short clips from ONE source, and the unused side is a
+    similar order of magnitude, not 40 minutes."""
+    left, right = _reference_zones()
+    left_dur = sum(e - s for s, e in left)
+    right_dur = sum(e - s for s, e in right)
+
+    assert len(left) == 11 and len(right) == 8
+    assert 60 <= left_dur <= 70, f"reference cut is {left_dur:.0f}s"
+    # Most clips are short — this is the property that made "2 coarse
+    # slabs" obviously wrong.
+    assert sum(1 for s, e in left if e - s <= 6.0) >= 7
+    # The unused side stays the same order of magnitude as the cut.
+    assert right_dur / left_dur <= 3.0, (
+        f"reference leftovers are {right_dur / left_dur:.1f}x the cut"
+    )
 
 
 # --------------------------------------------------------------------------
