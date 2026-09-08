@@ -118,6 +118,10 @@
 												<out>105</out>
 												<masterclipid>masterclip-1</masterclipid>
 												<file id="file-1"/>
+												<sourcetrack>
+													<mediatype>audio</mediatype>
+													<trackindex>1</trackindex>
+												</sourcetrack>
 											</clipitem>
 											<clipitem id="s1-clipitem-5">
 												<name>AROLL_01.MOV</name>
@@ -133,6 +137,10 @@
 												<out>75</out>
 												<masterclipid>masterclip-2</masterclipid>
 												<file id="file-2"/>
+												<sourcetrack>
+													<mediatype>audio</mediatype>
+													<trackindex>1</trackindex>
+												</sourcetrack>
 											</clipitem>
 											<clipitem id="s1-clipitem-6">
 												<name>shaky.mp4</name>
@@ -148,6 +156,10 @@
 												<out>120</out>
 												<masterclipid>masterclip-3</masterclipid>
 												<file id="file-3"/>
+												<sourcetrack>
+													<mediatype>audio</mediatype>
+													<trackindex>1</trackindex>
+												</sourcetrack>
 											</clipitem>
 											<enabled>TRUE</enabled>
 											<locked>FALSE</locked>

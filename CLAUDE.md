@@ -36,6 +36,8 @@ prevent.
 | `docs/ARCHITECTURE.md` | Before touching PreCut integration or the three doors. |
 | `precut-capabilities` skill | **Before writing any new code for any role.** Confirms whether PreCut already does it. Skipping this produced a real, costly duplicate build (2026-09-02) — see the skill's own header. |
 | `docs/contracts/*.md` | When producing or consuming that artifact (manifest, culls). |
+| `safety_net/tests/test_reel_contract.py` | **Before changing anything in the cut / pool / export path.** 13 hermetic tests encoding, one per real failure, why each rule exists. Cheaper to read than to rediscover. |
+| `safety_net/verify_export.py` | **Before handing Ryan any exported XML.** One command, 9 checks. |
 | `docs/design/PHASE4_CULL_DESIGN.md` | Phase 4 cull work only. Currently parked — see STATUS. |
 | `docs/STATUS.md` § Done | To check whether something was already tried, and what the evidence was. |
 
@@ -114,6 +116,33 @@ is cheaper than every session paying for every document up front.
    detector approaches failed on real footage, see `docs/STATUS.md`) —
    this supersession doesn't itself unpark it; that needs its own
    explicit decision from Ryan.
+
+9. **Never hand Ryan an export you haven't verified.** Run
+   `python3 safety_net/verify_export.py <xml> --idea <idea.json>
+   --target-sec <n>` first. Eight separate defects in the cut/pool/audio
+   path were found only by Ryan opening an export and telling us what was
+   wrong (see `docs/STATUS.md`, 2026-09-07) — including a silent
+   sequence, a "45-second Reel" that ran 12:44, and 37 minutes of
+   unrelated footage. His own instruction: *"I can't carry you through 15
+   exports and manually do it myself every time."* The ground truth for
+   what a correct export looks like is his own hand-cut reference edit.
+   **The original file is no longer on disk** (it lived at
+   `~/Desktop/Removing Wallpaper Tutorial.xml` on 2026-09-07); its exact
+   clip timings survive as fixtures in
+   `safety_net/tests/test_reel_contract.py` (`REF_CUT`, `REF_LEFTOVERS`,
+   and the `FRAG_*` bounds). Use those, not a re-derivation, and ask Ryan
+   for a fresh reference before inventing any new rule about cut or pool
+   shape.
+
+10. **Build-phase cost mode is currently ON — check before debugging
+    "why is nothing calling the API".** `research_seed` and `llm_via_cli`
+    in `~/Library/Application Support/Post House/settings.json` route
+    research to a seed file and all LLM calls through the local `claude`
+    CLI, for zero API spend. Full explanation and how to switch back:
+    `docs/STATUS.md` § In progress. Do not "fix" this by turning it off
+    without asking — and do not disable a *capability* to solve a
+    *billing* bug (that mistake is logged in `ROADMAP.md`'s Decision Log,
+    2026-09-07).
 
 ## Where things run
 

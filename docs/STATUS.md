@@ -62,66 +62,41 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-04 — Plan-before-you-build: the conversation now happens
-  BEFORE generation, and research/intent are real constraints on the
-  cut. Built and verified on real material; awaiting Ryan's own review
-  in the app.** Ryan's diagnosis: *"it feels like the app is doing the
-  tasks to check them off but not learning anything to apply to its
-  planning... The steps exist to inform the next step not to just check
-  off and move on."* **Confirmed in code, not assumed** — two lines in
-  `posthouse/story_architect.py` were the whole problem, in plain text:
-  the sequencing prompt said trend research was *"use to inform
-  framing/tone only"*, and `target_duration_sec` was documented as
-  *"not enforced"*. Real consequence, measured: the "Reading the House"
-  tight cut ran **765s (12:44)** while its own brief cited Instagram
-  Reel formats — a 17x overrun nothing checked. What changed:
-  - **New `posthouse/story_conversation.py`** — a real back-and-forth
-    held before anything is generated. `start_planning_session` reads
-    the real footage + runs research and comes back with a game plan
-    and NO generated ideas; `continue_planning_session` is the reply
-    turn; `generate_from_planning_session` is the expensive step, run
-    only on an explicit button press (never by parsing "go" out of a
-    reply — no fragile readiness classification). Turns are discrete
-    jobs over a persisted session file, reusing the existing
-    command/emit architecture; no new IPC primitive was needed.
-  - **Intent now redirects research**: `research_trends(...,
-    stated_intent=)` folds the editor's own stated goal into every
-    search prompt, and the 72h cache key now includes it (a targeted
-    run must never be served the generic sweep, or vice versa — old
-    pre-intent cache entries still validate for generic runs so the
-    upgrade doesn't throw away paid-for research).
-  - **Research is now a constraint, not decoration**: the "framing/tone
-    only" line is gone, replaced with an instruction that format
-    findings govern fragment selection, count, order and length; and
-    `max_duration_sec` is a REAL check measured against the actually-
-    selected ranges (not the model's self-reported number, which is the
-    claim under suspicion), failing loud like the existing
-    `stop_reason`/`len(ranges) < 2` checks.
-  - **`load_project_material` extracted** from `run_generate_story_angle`
-    so the conversation sees the same real material the generator will,
-    with no second copy to drift.
-  - **UI**: "Plan with AI" is now the primary Ideas-tab button
-    (`StoryPlanningPanel` in `IdeasTab.jsx`), with an optional up-front
-    intent box, a rendered turn list, a reply box, a live "what will get
-    built if you generate now" summary, and an explicit "Generate ideas
-    from this plan" button. Direct generate remains as an escape hatch.
-  **Verified on the real "How to remove wallpaper" project** with Ryan's
-  own example intent ("a quick how-to on removing wallpaper that makes
-  us look like the experts... quick and engaging, fun to watch"):
-  (1) research genuinely redirected — 15 findings on how-to/Reels
-  format specifics (15-30s TikTok, 30-60s Reels, hook in 3s, high save
-  rates on home-improvement how-tos) instead of the generic sweep that
-  previously returned "Potential-Maxxing"/"#RocktheBlock"; (2) the
-  opening turn was a legible plan produced with zero ideas generated,
-  and was honestly negative where the footage is thin ("no clean
-  before-and-after visual sequence I can see... no moment where someone
-  demonstrates the full strip-and-glue-removal process"); (3) a real
-  reply moved the plan — target 30s → 45s and the glue-removal warning
-  restructured as the credibility payoff, then it correctly stopped
-  asking questions; (4) the duration check, run against the real 765s
-  cut, rejects it (17x over a 45s target) while passing a reasonable
-  52s cut. **Not Done** — Ryan reviewing this in the app and on real
-  output is what makes it Done.
+- **2026-09-07 — Build-phase cost mode is ON. A new agent must read this
+  before wondering why nothing hits the API.** Ryan, mid-build: *"Can we
+  have you run the research for the testing phase? Once we have the whole
+  app up and running how we want, we can switch its full functionality
+  back on with API calls but for the building side of things its getting
+  way too expensive."* Two switches are live in
+  `~/Library/Application Support/Post House/settings.json`:
+  - `"research_seed": true` — `research_trends()` returns a seed file
+    (`research_cache/seed.json`) and makes ZERO API calls: no web
+    searches, no video downloads, no transcript reads. The seed was
+    gathered out-of-band by a Claude Code session's own web search (10
+    hook/length findings, 7 contractor-marketing findings, 4 named
+    trending sounds) and its `unverified` list states plainly that no
+    videos were watched and no listen links were found.
+  - `"llm_via_cli": true` — every LLM call routes through the local
+    `claude` CLI (`posthouse/cli_llm_client.py`) instead of the Anthropic
+    API, billing to the Claude Code plan. All 7 call sites switch at once
+    because they share `build_anthropic_client()`. TEXT ONLY: image/vision
+    blocks (video watching) and server-side tools (web_search) raise
+    rather than silently degrading. It also strips `ANTHROPIC_API_KEY`
+    from the child environment — with the key visible the CLI refuses to
+    use the Claude Code login, which is the whole point of the route.
+  **To go back to live/paid operation:** set both to `false`. Env
+  overrides (`POSTHOUSE_RESEARCH_SEED=0`, `POSTHOUSE_LLM_VIA_CLI=0`) work
+  for a single run. Everything below in § Done from 2026-09-07 was
+  verified with a deliberately INVALID `ANTHROPIC_API_KEY` set, which is
+  what proves no credits were spent.
+
+- **2026-09-07 — Open question for Ryan, not a blocker.** The tight cut
+  currently draws from TWO camera files (the smell-line hook lives in
+  `0002_D`, the demonstration in `0005_D`) where his reference edit stays
+  in one. The prompt now prefers a single file but doesn't force it.
+  Whether cutting between cameras mid-explanation is acceptable is a
+  taste call and his to make (rule 6).
+
 - **2026-09-04 — Full audit pass, per Ryan: "fix all of the issues you
   can before I have to generate again" (regenerating costs real money;
   he doesn't want to pay for a fresh "Generate ideas" run per bug).**
@@ -387,6 +362,157 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-07 — **The Reel contract: an intentional edit on the left, the
+  on-topic leftovers on the right, with real synced audio — CONFIRMED BY
+  RYAN on a real Premiere export.** His sign-off: *"There we go... This
+  is what we need."* This entry is long on purpose: eight distinct bugs
+  were found here, each one only by Ryan doing an export round-trip and
+  saying what was wrong, and a new agent needs the reasoning, not just
+  the outcome.
+
+  **The ground truth was a real file Ryan cut by hand and supplied as
+  the target after the app produced nonsense: `Removing Wallpaper
+  Tutorial.xml`. It is NO LONGER on disk** (checked 2026-09-07, end of
+  session — only our own export remains on the Desktop), so its exact
+  clip timings are preserved as fixtures in
+  `safety_net/tests/test_reel_contract.py` — `REF_CUT` (his 11
+  selections), `REF_LEFTOVERS` (his 8 unused clips) and the `FRAG_*`
+  bounds. Those fixtures are now the only surviving copy of the target;
+  treat them accordingly and ask Ryan for a fresh reference rather than
+  re-deriving one. Reverse-engineering it clip by clip is
+  what produced every rule below. Its shape: 11 clips / 65s on the left,
+  all from ONE camera file, most 2-6s, reordered (a later line as the
+  opener); 8 clips / 158s on the right, each exactly a GAP between two
+  left-side selections plus a ~59s tail; 2 audio tracks, the clip's own.
+
+  What was wrong and what it is now:
+  1. **Ideas ignored the agreed plan.** Generating 3 angles told each one
+     to "find a genuinely different real angle" — right for undirected
+     generation, exactly wrong once a planning conversation has fixed the
+     intent. A session that agreed a wallpaper how-to produced arc 2 about
+     a kitchen ceiling and arc 3 about pulling carpet. With a stated
+     intent, "different" now means a different EXECUTION of the same
+     piece.
+  2. **Generation had silently produced nothing.** All 3 arcs failed the
+     duration check, 0 ideas saved, and the Ideas grid kept showing
+     pre-conversation ideas from an earlier undirected run — which is
+     what Ryan was looking at when he said they had nothing to do with
+     the conversation. He was literally right. A failed generation now
+     shows a banner instead of the spinner vanishing.
+  3. **A 45s target was impossible and nobody knew.** The only fragment
+     demonstrating removal is a continuous 167s take, and the footage
+     digest showed start timecodes but no durations, so the planner
+     agreed to 45s in good faith. Durations are now in the digest and the
+     planner is told to check the target against the fragments carrying
+     the beats. It then caught this itself and proposed 80s.
+  4. **The generator could not cut inside a fragment.** A fragment is a
+     topic span, not a shot: that 167s take is 39 phrases averaging 3.4s.
+     The model only ever saw a summary and outer timecodes. Fragments over
+     30s now have their real phrases listed, and `sequence` entries take
+     optional `start_sec`/`end_sec`.
+  5. **"Each fragment index may appear AT MOST ONCE"** structurally capped
+     a cut at one clip per fragment — that, not the footage, is why a 45s
+     edit came out as 2 coarse slabs. His reference makes 8 cuts inside a
+     single fragment. The constraint is now non-overlap, which still
+     prevents the real duplicate-frame bug of 2026-09-04.
+  6. **Cuts snapped out to whole PHRASE boundaries.** Phrases run to
+     11.2s here (one is mostly silence while the steamer is demonstrated),
+     so any selection touching it became 11.2s and kept landing as the
+     LONGEST clip in a 45-second edit. Word timestamps were already on
+     disk and were being discarded when building prompt data. Cutting is
+     now word-level.
+  7. **The leftovers side was wrong twice, in opposite directions.**
+     First 37.6 minutes across 6 camera files (the model nominated
+     `pool_indices` and read the bar as "relevant to the audience goal",
+     which is the whole project). Then, after two clock-based fixes, it
+     was dropping footage Ryan had used in his own edit. Both causes were
+     the same mistake — bounding by the clock. Leftovers are now COMPUTED
+     as the complement of the cut within the on-topic FRAGMENTS it drew
+     from, plus a directly adjacent fragment only when that fragment is
+     itself a "strong" fit. `pool_indices` is gone from the schema.
+     Off_topic material (shirt colours, snakes, fishing licences,
+     California cost of living — every one already labelled off_topic by
+     the flagging stage) can no longer reach the timeline at all.
+  8. **Audio, also wrong in both directions.** Raw score is not the right
+     discriminator. `SCORE_USE`=10 let false lavs on ("multiple audio
+     sources... that dont belong"); raising it to 18 removed the only lav
+     that covered the cut ("Still no audio synced. Just cam audio"). The
+     real discriminator is an invariant: a continuous recording has ONE
+     absolute start, so `camera_clock_start + offset_sec` must agree
+     across every file it truly matches. Bob 1 gives 35600.1 / 35599.8 /
+     35600.2 / 35600.0 on files 0002/0003/0004/0005 — within 0.4s,
+     anchored by an unambiguous 30.39 match — while its false matches miss
+     by ~1000s. So a pair attaches when it clears 18 alone, OR clears 10
+     AND is corroborated. The genuine 12.63/13.62 pairs attach; the
+     coincidental 13.76 Mitch 1 does not. Separately, camera audio was
+     being muted whenever sync state merely EXISTED, which is why a cut
+     exported silent once no lav attached; it now mutes only when a lav
+     genuinely covers that cut. And audio clipitems were missing
+     `<sourcetrack>` on BOTH the camera path and the synced path, so
+     Premiere had no mapping to a source channel.
+
+  **Evidence.** Final verified export of "The Bottle That Cleared the
+  Shed": 10 clips / 45s left, 45s gap, 229s of on-topic leftovers across
+  only the 2 files the cut uses, A1 camera audio (muted, one click to
+  restore) + A2 Bob 1 lav across all clips, all 9 `verify_export.py`
+  checks passing. Commits `064b138`, `0a59ef5`, `038805e`, `c5a7a0b`,
+  `6f524cb`, `5e9877e`, `4852b25`.
+
+  **Guarded so it can't regress silently** (Ryan: *"I can't carry you
+  through 15 exports and manually do it myself every time"*):
+  `safety_net/tests/test_reel_contract.py` — 13 hermetic tests, one per
+  failure above, with his reference edit's numbers embedded as fixtures;
+  and `safety_net/verify_export.py` — checks a real exported XML (audio
+  enabled, `<sourcetrack>` present, zone gap, cut granularity, cut
+  length, pool not overlapping the cut, pool confined to the cut's own
+  source files). The verifier caught a real bug on its first run: 22
+  synced-lav clipitems with no `<sourcetrack>`, in an export that
+  otherwise looked correct. Run it on anything before opening it:
+  `python3 safety_net/verify_export.py <xml> --idea <idea.json>
+  --target-sec 45`.
+
+  **Correction worth keeping.** I criticised a generated cut for garbled,
+  mid-thought clip text — then read Ryan's reference edit's own dialogue
+  and found it reads just as rough; he even uses the exact clip I called
+  filler. The Whisper transcript is a poor proxy for noisy job-site
+  audio, and the edit is judged on screen. Transcript-based coherence is
+  NOT a valid quality signal on this footage and shouldn't be treated as
+  one.
+
+- 2026-09-07 — **Project Manager intake no longer blanks on reopen, and
+  re-organising no longer deletes the audience goal.** Ryan: *"every
+  single time you open the project all that's gone again so you have to
+  re-input it... it feels like there was no purpose in filling all that
+  out in the first place."* The data was never lost — `organize_project`
+  persists client, project_type, shoot_dates and audience_goal to
+  `manifest.json` correctly (verified against the real wallpaper
+  project). The break was purely on the read side: the manifest only ever
+  reached the UI as the RESULT of running Organize, and
+  `Project.to_wire_dict()` carries none of those fields, so PMTab had
+  nothing to rehydrate from and every field initialised to "". Added a
+  `get_manifest` command; PMTab restores client, project type and the
+  audience profile (matched back by description text) and only fills
+  fields the user hasn't typed into. **Also fixed a real data-loss bug
+  found on the way:** the submit sent `audience_goal:
+  selectedProfile?.description || undefined`, and `build_manifest` only
+  writes the field when truthy — so re-running Organize with the
+  (always-blank) dropdown silently DELETED the project's audience goal,
+  which research, planning and story generation all depend on. Commit
+  `e341d3d`.
+
+- 2026-09-07 — **The superseded "not comedic" rule is out of the
+  Brand/Authority audience profile.** Ryan caught the planner talking
+  itself out of a good hook on the grounds that it would be comedy. It
+  was obeying its instructions exactly: the profile still read
+  "Heart-driven, not comedic", a rule already superseded 2026-09-04 in
+  the `soldfast-brand-voice` skill and in the Contractor Recruiting
+  profile, which this one never got. Propagated to `settings.py`, the
+  live `settings.json`, both project manifests, and the in-flight
+  planning session's goal snapshot. The 29 historical flag files that
+  embed the old text are deliberately left alone — they record what was
+  actually used when those fragments were scored. Commit `6caac30`.
+
 
 - 2026-09-04 — **The tight cut was mechanically correct but editorially
   bad — it surveyed five rooms instead of committing to one topic.**
@@ -1492,6 +1618,22 @@ and UI assignment is deliberately deferred until skills work. Rule 7
 (prove on one real unit before broadening) and the sign-off bar (Ryan on
 real material, not passing tests) still apply **per skill** — this list
 tracks that per-skill state, not a single "current task."
+
+**Immediately next, 2026-09-07.** The Reel contract is signed off on
+ONE unit (the wallpaper project, one idea, one export). Per rule 7,
+broadening is its own approved step:
+
+1. **Prove the contract on a second, different project** — ideally one
+   that is NOT a single-camera tutorial, since every rule here was
+   derived from one. Multi-speaker interview footage is the obvious
+   stress case: the single-source preference, the adjacent-strong pool
+   rule, and the lav corroboration invariant have each only been
+   exercised on this one shoot.
+2. **Decide the two-camera question** (STATUS § In progress) — whether a
+   tight cut may cross camera files mid-explanation. Ryan's call.
+3. **Only then** consider turning build-phase cost mode off, so live
+   research and real video watching are back in play for a real
+   deliverable.
 
 Status, from `ROADMAP.md` §3's Role → skill map:
 

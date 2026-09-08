@@ -2087,3 +2087,107 @@ with Ryan touching only the intake and the checkpoints.
   the old single-zone behavior when `pool_ranges` is empty (e.g. for
   PreCut's own `generate_angles` ideas), so it's safe to call
   unconditionally.
+
+- **2026-09-07 — The unused-footage side is COMPUTED, never nominated by
+  the model.** Settled after two rounds of wrong answers in opposite
+  directions. Letting the model fill `pool_indices` produced 37.6 minutes
+  across six camera files next to a 45-second wallpaper cut: asked for
+  "everything relevant to the audience goal", it correctly returned
+  approximately the whole project. `pool_indices` is removed from the
+  output schema. The pool is now the complement of the tight cut within
+  the on-topic FRAGMENTS the cut drew from, plus a directly adjacent
+  fragment only when that fragment is itself a `strong` fit. Derived from
+  Ryan's own hand-cut reference edit (`Removing Wallpaper Tutorial.xml`),
+  where every one of its 8 unused clips is exactly a gap between two of
+  its 11 selections, plus a tail — reproduced to within a fraction of a
+  second by `_compute_pool_leftovers`. **Do not reintroduce a clock-based
+  buffer here.** Both failures came from bounding by time rather than by
+  fragment: too wide swept in material already labelled `off_topic`
+  (shirt colours, snakes, fishing licences), and too narrow dropped
+  footage Ryan had used in his own edit. Fragment bounds are the unit.
+
+- **2026-09-07 — A fragment is a topic span, not a shot; cutting happens
+  at WORD level.** Two rules that between them made a real edit
+  impossible are retired. (a) "Each fragment index may appear AT MOST
+  ONCE in `sequence`" capped a cut at one clip per fragment, which is why
+  a 45s edit came out as two coarse slabs while Ryan's reference makes 8
+  separate cuts inside what this system calls one 167s fragment. The
+  constraint is now non-overlap of (index, start, end), which still
+  prevents the duplicate-frame bug of 2026-09-04 exactly. (b) Selections
+  snapped out to whole Whisper PHRASE boundaries; phrases here reach
+  11.2s (one is mostly silence while a tool is demonstrated), so any
+  selection touching it became 11.2s and kept landing as the longest clip
+  in a 45-second edit. Word timestamps were already on disk. Cuts now
+  snap to word edges, with phrase edges only as fallback. Corollary: a
+  long fragment is never grounds for declaring a short target
+  impossible — the correct response is to find the good 30 seconds inside
+  it.
+
+- **2026-09-07 — Cut length is an absolute +/-15s window, not a ratio.**
+  Ryan: "lets allow a 15 second buffer on each side if needed so if i say
+  45 second edit, it can do 30-1 min-ish". A proportional tolerance is
+  wrong at both ends of the scale (1.25x gave a 45s target only 11s of
+  room, and would give a 10-minute target 2.5 minutes). `DURATION_BUFFER_SEC
+  = 15.0`, checked against the real assembled ranges rather than the
+  model's self-reported `target_duration_sec`, which is the claim under
+  suspicion.
+
+- **2026-09-07 — Which lav goes on the timeline is decided by the
+  recording-start invariant, not by raw score.** Both settings of a score
+  threshold were wrong in production: `SCORE_USE`=10 put uncorroborated
+  false tracks on the timeline, and raising the bar to 18 removed the only
+  lav that actually covered the cut. A continuous audio recording has ONE
+  absolute start time, so for every camera file it truly matches,
+  `camera_clock_start + offset_sec` must agree. On the real project Bob 1
+  gives 35600.1 / 35599.8 / 35600.2 / 35600.0 across four camera files —
+  agreement within 0.4s, anchored by an unambiguous 30.39 match — while
+  its false matches miss by ~1000s. A pair attaches when it clears
+  `SCORE_TIMELINE_ATTACH` (18) on its own, or clears `SCORE_USE` (10) and
+  is corroborated by a strong pair from the same audio file. Camera clock
+  is read from the 14-digit filename stamp; with no parseable stamp,
+  corroboration is skipped rather than guessed. This gates PLACEMENT
+  only — the sync matrix still shows everything at `SCORE_USE`, so nothing
+  is hidden from the editor.
+
+- **2026-09-07 — Camera audio is muted only when a lav actually covers
+  the cut.** It used to be muted whenever `audio_sync_state` merely
+  existed, which worked by luck while the attach threshold was permissive
+  and produced a SILENT export the moment placement got stricter.
+  Related and non-negotiable: every audio clipitem must carry
+  `<sourcetrack>` (mediatype audio, trackindex). Without it Premiere has
+  no mapping from clipitem to source channel. This was missing on the
+  native camera-audio path AND on the synced-lav path; both now write it.
+
+- **2026-09-07 — Build-phase cost mode, and the two switches that
+  control it.** Ryan, during the build: "for the building side of things
+  its getting way too expensive." `"research_seed": true` serves research
+  from a seed file gathered out-of-band, with ZERO API calls, failing loud
+  if the seed is missing rather than presenting empty findings as a
+  result. `"llm_via_cli": true` routes every LLM call through the local
+  `claude` CLI so it bills to the Claude Code plan; all seven call sites
+  switch at once because they share `build_anthropic_client()`. That route
+  is TEXT ONLY and raises on image blocks or server-side tools rather than
+  silently degrading, and it strips `ANTHROPIC_API_KEY` from the child
+  environment because the CLI refuses the Claude Code login when a key is
+  visible. Both are temporary build-phase settings, not the product's
+  intended behaviour: set them `false` to return to live operation.
+  **Related supersession:** video watching and strategy-video transcript
+  reading were briefly defaulted OFF as a cost measure. That was reverted
+  the same day at Ryan's direction — "Why would we only research text when
+  we need to find video trends? I feel like you're turning things off that
+  we had for a reason." Real video analysis is a capability he asked for;
+  the cost problem was paying for it repeatedly (generation re-buying
+  research the planning conversation had already stored, and a cache key
+  that changed every conversation turn), and that is what got fixed.
+  Do not disable a capability to solve a billing bug.
+
+- **2026-09-07 — The Reel contract is guarded mechanically.** Ryan: "I
+  can't carry you through 15 exports and manually do it myself every
+  time. So lets try to lock this in." Every property above was found by
+  him doing a manual export round-trip. Two guards, and both are part of
+  the definition of done for any change to the cut/pool/export path:
+  `safety_net/tests/test_reel_contract.py` (13 hermetic tests — no API
+  key, no media, no ML venv — with his reference edit's real numbers as
+  fixtures) and `safety_net/verify_export.py` (checks a real exported
+  XML). The verifier caught a genuine bug on its first run. Run it before
+  handing Ryan any export.
