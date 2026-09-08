@@ -61,7 +61,7 @@ const SOURCE_ZONES = [
   { kind: "assets", label: "Assets", title: "Anything else that belongs to this project", description: "Drag folders or files here" },
 ];
 const CONTRACT_KIND = { aroll: "aroll", broll: "broll", audio: "source_audio", assets: "assets" };
-const PROJECT_TYPES = ["interview", "property_tour", "renovation", "event", "product", "other"];
+const PROJECT_TYPES = ["interview", "property_tour", "renovation", "how_to", "event", "product", "other"];
 
 export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdeas, audienceProfiles }) {
   const [rootDir, setRootDir] = useState("");

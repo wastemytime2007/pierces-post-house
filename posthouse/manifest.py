@@ -74,7 +74,14 @@ _PIN_FILE = _PACKAGE_DIR / "PRECUT_PIN"
 
 VALID_SOURCE_KINDS = {"aroll", "broll", "source_audio", "assets"}
 VALID_PROJECT_TYPES = {
-    "interview", "property_tour", "renovation", "event", "product", "other",
+    # "how_to" added 2026-09-08 at Ryan's request: "one project type that
+    # needs to be added so that the AI researcher knows what its looking
+    # for is how-to videos as we'll have a lot of those for the brand
+    # authority goal." See PROJECT_TYPE_RESEARCH_FOCUS in
+    # posthouse/story_architect.py for what each type makes the
+    # researcher actually look for — the enum on its own does nothing.
+    "interview", "property_tour", "renovation", "how_to", "event",
+    "product", "other",
 }
 VALID_PEOPLE_ROLES = {"subject", "agent", "host", "other"}
 VALID_DELIVERY_TARGET_STATUS = {"proposed", "confirmed"}

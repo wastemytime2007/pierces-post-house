@@ -39,6 +39,7 @@ prevent.
 | `safety_net/tests/test_reel_contract.py` | **Before changing anything in the cut / pool / export path.** 13 hermetic tests encoding, one per real failure, why each rule exists. Cheaper to read than to rediscover. |
 | `safety_net/verify_export.py` | **Before handing Ryan any exported XML.** One command, 9 checks. |
 | `docs/design/PHASE4_CULL_DESIGN.md` | Phase 4 cull work only. Currently parked — see STATUS. |
+| `docs/reference/WALLPAPER_REEL_ANATOMY.md` | **Before any judgement about pacing, length, graphics, or tone.** The measured anatomy of the finished Reel Ryan cut by hand from this footage — the target, with real numbers. Beats any remembered rule about what's on-brand. |
 | `docs/STATUS.md` § Done | To check whether something was already tried, and what the evidence was. |
 
 If a task turns out to need a document you skipped, load it then. That

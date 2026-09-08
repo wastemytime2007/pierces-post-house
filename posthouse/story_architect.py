@@ -408,7 +408,19 @@ have to run in source order if a later line is the better opener.
 (1-4s) to establish the situation visually, then let the two or three clips carrying the actual \
 explanation run long (8-18s) so the substance can breathe. Never give your longest clip to \
 filler, reaction noise, or a line that states nothing — if a clip is the longest in the cut it \
-must be the one doing the most work.
+must be the one doing the most work. Measured from Ryan's own finished Reel on this footage: \
+~2.2s per cut through the hook, ~4.6s while the expertise is actually being explained, tight \
+again to close. Three gears, not one.
+- **The opener may come from the END of the material.** In his finished piece the hook is a \
+fragment of the final scene, and the piece returns to that same scene to close — the smell line \
+that opens it and the bottle joke that ends it are one continuous moment, cut apart and placed at \
+either end. So when you look for a hook, consider the last thing said as well as the first, and \
+if the strongest open and the strongest close are the same scene, use both ends of it and let the \
+middle be the method. You already may reorder; this is the reorder that matters most.
+- **A character or comedy beat is a legitimate hook for an instructional piece, and it may be a \
+completely different scene from the method.** His opens on a physical gag before a single step is \
+shown. Do not reject a funny or human moment as off-topic just because the piece is a how-to — \
+what disqualifies a moment is being about a different SUBJECT, not being light.
 - **Prefer to stay in ONE source file when a single file can carry the piece.** Cutting between \
 cameras mid-explanation costs continuity, and it also widens the leftover footage gathered around \
 the cut. Reach into a second file only when it holds something the first genuinely lacks.
@@ -1180,7 +1192,8 @@ POOL_MAX_TOTAL_MULTIPLE = 8.0
 MIN_POOL_GAP_SEC = 2.0
 
 
-def _research_cache_key_text(audience_goal: str, stated_intent: str = "") -> str:
+def _research_cache_key_text(audience_goal: str, stated_intent: str = "",
+                             project_type: str = "") -> str:
     """The exact text the cache is keyed on. `stated_intent` MUST be part
     of it (2026-09-04): once a stated intent redirects the searches (see
     `research_trends`), targeted research for "how to remove wallpaper,
@@ -1191,10 +1204,16 @@ def _research_cache_key_text(audience_goal: str, stated_intent: str = "") -> str
     generic run to whatever intent happened to be researched first."""
     goal = audience_goal.strip()
     intent = (stated_intent or "").strip()
+    ptype = (project_type or "").strip().lower()
+    # project_type steers the searches, so it must be part of the key or a
+    # how-to run would be served a generic renovation sweep from cache.
+    if ptype:
+        goal = f"{goal}\n<<TYPE>>\n{ptype}"
     return f"{goal}\n<<INTENT>>\n{intent}" if intent else goal
 
 
-def _research_cache_path(audience_goal: str, stated_intent: str = "") -> Path:
+def _research_cache_path(audience_goal: str, stated_intent: str = "",
+                         project_type: str = "") -> Path:
     """Shared across ALL projects, not per-project — the same audience/goal
     profile (e.g. "Contractor Recruiting") gets reused across shoots, and
     the whole point of caching is not paying for the same research twice.
@@ -1204,13 +1223,14 @@ def _research_cache_path(audience_goal: str, stated_intent: str = "") -> Path:
     from. A stated intent, when present, is part of that key."""
     cache_dir = app_support_dir() / "research_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    key_text = _research_cache_key_text(audience_goal, stated_intent)
+    key_text = _research_cache_key_text(audience_goal, stated_intent, project_type)
     key = hashlib.sha256(key_text.encode("utf-8")).hexdigest()[:24]
     return cache_dir / f"{key}.json"
 
 
-def _load_cached_research(audience_goal: str, stated_intent: str = "") -> Optional[dict]:
-    path = _research_cache_path(audience_goal, stated_intent)
+def _load_cached_research(audience_goal: str, stated_intent: str = "",
+                          project_type: str = "") -> Optional[dict]:
+    path = _research_cache_path(audience_goal, stated_intent, project_type)
     if not path.exists():
         return None
     try:
@@ -1230,7 +1250,7 @@ def _load_cached_research(audience_goal: str, stated_intent: str = "") -> Option
             return None
         if payload.get("audience_goal") != audience_goal.strip():
             return None
-    elif stored_key != _research_cache_key_text(audience_goal, stated_intent):
+    elif stored_key != _research_cache_key_text(audience_goal, stated_intent, project_type):
         return None  # hash collision or stale key reuse — never trust a mismatch
     return payload.get("research")
 
@@ -1249,7 +1269,92 @@ def _save_research_cache(audience_goal: str, research: dict, stated_intent: str 
         pass  # caching is a cost optimization, never allowed to break a real run
 
 
-def _augment_goal_with_intent(audience_goal: str, stated_intent: str) -> str:
+# What each project type makes the researcher actually look for.
+#
+# 2026-09-08, Ryan: "one project type that needs to be added so that the
+# AI researcher knows what its looking for is how-to videos as we'll have
+# a lot of those for the brand authority goal."
+#
+# The important half of that sentence is "knows what its looking for".
+# `project_type` was captured at Project Manager intake and written to
+# manifest.json from the start, and then never read by the researcher,
+# the planner, or the generator — so adding an enum value alone would
+# have changed nothing. These briefs are what make the type mean
+# something: they steer the search away from generic niche trends and
+# toward the conventions of the format actually being shot.
+PROJECT_TYPE_RESEARCH_FOCUS = {
+    "how_to": (
+        "This is a HOW-TO / tutorial shoot. Research the conventions of "
+        "instructional short-form specifically: how the problem gets stated "
+        "before the method, whether the tool is named or just shown, how many "
+        "steps a piece of this length can carry, where the common-mistake or "
+        "warning beat lands, and whether the payoff is the finished result or "
+        "the moment the technique visibly works. Prioritise findings about "
+        "SAVE and rewatch behaviour over view counts — a how-to earns its "
+        "reach by being saved and sent, not by stopping a scroll once.\n\n"
+        "For reference, these are MEASURED facts from Ryan's own finished "
+        "how-to Reel on this exact subject (see "
+        "docs/reference/WALLPAPER_REEL_ANATOMY.md) — treat them as the house "
+        "standard and look for research that agrees or genuinely disagrees "
+        "with them, rather than restating them: it runs 67s, not 45s; it "
+        "carries four method beats plus a joke; its cut rate varies by role "
+        "(~2.2s in the hook, ~4.6s while the expertise is actually being "
+        "explained, tight again to close); its hook is a comedy beat from a "
+        "DIFFERENT scene than the method, and the piece loops back to that "
+        "same scene to end; and it runs no CTA card at all."
+    ),
+    "interview": (
+        "This is an INTERVIEW shoot. Research how talking-head and sit-down "
+        "content holds attention in short form: how a quote is framed before "
+        "it lands, how captions carry a spoken point for muted viewers, and "
+        "how much context a clip needs before the line pays off."
+    ),
+    "property_tour": (
+        "This is a PROPERTY TOUR. Research how walkthrough and space-reveal "
+        "content is structured: what order rooms are shown in, how the reveal "
+        "beat is set up, and how a tour keeps momentum without narration "
+        "carrying every second."
+    ),
+    "renovation": (
+        "This is a RENOVATION shoot. Research before/after and "
+        "work-in-progress conventions: where the before is established, how "
+        "much process earns its place versus the reveal, and how transformation "
+        "is paced so the payoff still surprises."
+    ),
+    "event": (
+        "This is an EVENT shoot. Research how event coverage is cut for "
+        "short form: how atmosphere is established quickly, and how a single "
+        "human moment is pulled out of a crowd to carry the piece."
+    ),
+    "product": (
+        "This is a PRODUCT shoot. Research how product-focused short form "
+        "works: how a benefit is demonstrated rather than claimed, and where "
+        "the product first appears relative to the problem it solves."
+    ),
+}
+
+
+def _project_type_focus(project_type: str) -> str:
+    """The research brief for a project type, or empty when there isn't
+    one (including "other", deliberately — an invented brief would steer
+    the search on a guess)."""
+    return PROJECT_TYPE_RESEARCH_FOCUS.get((project_type or "").strip().lower(), "")
+
+
+def load_project_type(project) -> str:
+    """The project_type recorded at Project Manager intake, or "" if the
+    manifest is missing or unreadable. Never raises — a missing type just
+    means no format brief, not a broken run."""
+    try:
+        from posthouse.manifest import load_manifest
+        manifest = load_manifest(project.dir() / "manifest.json")
+        return str((manifest.get("project") or {}).get("project_type") or "")
+    except Exception:
+        return ""
+
+
+def _augment_goal_with_intent(audience_goal: str, stated_intent: str,
+                              project_type: str = "") -> str:
     """Fold a stated intent INTO the goal block every research prompt
     already interpolates, so one addition redirects every search
     (trends, named trends, example videos, marketing strategy, strategy
@@ -1262,6 +1367,9 @@ def _augment_goal_with_intent(audience_goal: str, stated_intent: str) -> str:
     the broad project-level audience profile, so they come back with a
     generic niche sweep that can't inform a specific piece."""
     goal = audience_goal.strip()
+    focus = _project_type_focus(project_type)
+    if focus:
+        goal = f"{goal}\n\n{focus}"
     intent = (stated_intent or "").strip()
     if not intent:
         return goal
@@ -1332,6 +1440,7 @@ def research_trends(
     api_key: Optional[str] = None,
     force_refresh: bool = False,
     stated_intent: str = "",
+    project_type: str = "",
 ) -> dict:
     """Live trend research. Cached per exact audience_goal text (plus
     stated_intent, when given) for up to 72 hours (Ryan, 2026-09-04: "if
@@ -1381,7 +1490,7 @@ def research_trends(
         return seed
 
     if not force_refresh:
-        cached = _load_cached_research(audience_goal, stated_intent)
+        cached = _load_cached_research(audience_goal, stated_intent, project_type)
         if cached is not None:
             cached["cached"] = True
             return cached
@@ -1393,7 +1502,8 @@ def research_trends(
     raw_audience_goal = audience_goal
     # Every prompt below interpolates this as {audience_goal}; when an
     # intent was stated it carries the redirect (see helper above).
-    audience_goal = _augment_goal_with_intent(audience_goal, stated_intent)
+    audience_goal = _augment_goal_with_intent(
+        audience_goal, stated_intent, project_type)
 
     client = build_anthropic_client(api_key=api_key)
     result: dict = {
