@@ -738,3 +738,46 @@ def test_research_cache_keys_differ_per_project_type():
         "project_type is not distinguishing cache keys, so a how-to run could be "
         f"served a different format's research: {generic!r} / {how_to!r}"
     )
+
+
+# --------------------------------------------------------------------------
+# 12. An agreed plan produces ONE cut, not three
+# --------------------------------------------------------------------------
+
+def test_planning_generate_asks_for_a_single_angle():
+    """Property 12: generating from a conversation builds one idea.
+
+    Ryan, 2026-09-08: "if i work with the chat to give it feedback and
+    approve the direction, it is a waste to have it generate three ideas
+    from that. So lets just have one idea/pitch."
+
+    Three is right for an UNDIRECTED run — he hasn't said what he wants,
+    so options are the point. It's wrong once a direction is settled,
+    and not just wasteful: the avoid_theses machinery forces each extra
+    angle to differ from the plan that was just agreed, so angles 2 and 3
+    are actively pushed off-brief. (That is the same mechanism that
+    produced a kitchen-ceiling and a carpet idea from an agreed wallpaper
+    plan on 2026-09-07.)
+    """
+    import inspect
+    from posthouse import story_conversation as sc
+
+    src = inspect.getsource(sc.generate_from_planning_session)
+    assert "n_angles=1" in src, (
+        "generating from a planning session no longer requests a single "
+        "angle — an agreed plan would fan out into competing variations again"
+    )
+
+
+def test_undirected_generation_still_offers_options():
+    """The default stays 3, so the plain button remains a pitch."""
+    import inspect
+    from posthouse.story_architect import run_generate_story_angle
+
+    sig = inspect.signature(run_generate_story_angle)
+    assert sig.parameters["n_angles"].default is None, (
+        "n_angles should default to None so the function's own default (3) "
+        "applies for undirected runs"
+    )
+    src = inspect.getsource(run_generate_story_angle)
+    assert "else 3" in src, "the undirected default is no longer 3"

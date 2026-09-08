@@ -2516,6 +2516,7 @@ def run_generate_story_angle(
     stated_intent: str = "",
     max_duration_sec: float = 0.0,
     research: Optional[dict] = None,
+    n_angles: Optional[int] = None,
 ) -> None:
     """Backend-job wrapper: load a project's real audience goal and every
     real transcript fragment available — flagged (audience-scored) or
@@ -2589,7 +2590,19 @@ def run_generate_story_angle(
 
     emit({"type": "producer_started", "job_id": job_id, "mode": "story_architect"})
 
-    N_ANGLES = 3  # Ryan, 2026-09-04: "It should also provide 3 ideas each time"
+    # 3 by default — Ryan, 2026-09-04: "It should also provide 3 ideas each
+    # time" — because an UNDIRECTED run is a pitch: he hasn't said what he
+    # wants, so options are the point.
+    #
+    # But 1 when the caller asks for 1, which is what generating from a
+    # planning conversation does. Ryan, 2026-09-08: "if i work with the chat
+    # to give it feedback and approve the direction, it is a waste to have it
+    # generate three ideas from that. So lets just have one idea/pitch."
+    # Right — once a direction is agreed, the avoid_theses machinery is
+    # actively working against it, forcing each extra angle to differ from a
+    # plan that was just settled. Three variations of a decided piece is
+    # variation for its own sake.
+    N_ANGLES = n_angles if n_angles and n_angles > 0 else 3
     try:
         # Real cost bug, 2026-09-04 (Ryan: "it is BURNING through my api
         # credits... It's used $3 already and hasnt spit out one idea").
@@ -2675,7 +2688,8 @@ def run_generate_story_angle(
 
         if succeeded == 0:
             emit({"type": "producer_error", "job_id": job_id,
-                  "message": "All 3 attempts to build a story arc failed — see the log above for why."})
+                  "message": (f"All {N_ANGLES} attempt(s) to build a story arc failed — "
+                              f"see the log above for why.")})
             return
     except Exception as e:
         emit({"type": "producer_error", "job_id": job_id, "message": str(e)})

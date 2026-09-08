@@ -1421,8 +1421,8 @@ function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeG
           {started && confirmGenerate ? (
             <>
               <div className="plan-confirm-text">
-                Generate now? This closes the conversation and builds 3 ideas
-                to the plan above.
+                Generate now? This closes the conversation and builds the
+                cut for the plan above.
               </div>
               <button className="btn" onClick={() => setConfirmGenerate(false)}>
                 Keep talking
@@ -1450,7 +1450,7 @@ function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeG
                 className="btn btn-ghost plan-generate"
                 onClick={() => setConfirmGenerate(true)}
                 disabled={busy}
-                title="Builds 3 real ideas to the plan above, with the agreed intent and length enforced"
+                title="Builds the one cut you've agreed on above, with the intent and length enforced"
               >
                 Generate ideas from this plan
               </button>

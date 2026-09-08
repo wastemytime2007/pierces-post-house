@@ -690,6 +690,9 @@ def generate_from_planning_session(project, job_id: str, emit, session_id: str) 
         project, job_id, emit,
         stated_intent=intent,
         max_duration_sec=session.target_duration_sec,
+        # ONE idea, not three. The direction is already agreed in the
+        # conversation above — see N_ANGLES in run_generate_story_angle.
+        n_angles=1,
         # Already paid for when this conversation opened — reuse it
         # rather than buying a second, near-identical research pass
         # (real cost bug, see run_generate_story_angle's comment).
