@@ -446,6 +446,19 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
             No profiles yet — add one via the "audiences &amp; goals" button in the titlebar.
           </span>
         )}
+        {/* 2026-09-11, Ryan: "I keep setting the audience and organizing to
+            save it and then i click generate ideas and it says theres no
+            audience. When i go back the audience defaulted back to not set."
+            The dropdown only ever showed the PENDING choice, never what is
+            actually saved on the manifest, so a selection that failed to
+            persist looked identical to one that worked. This line reports
+            the saved state, so the two are distinguishable without leaving
+            the tab. */}
+        <span className={savedAudienceGoal ? "form-hint" : "form-hint form-hint-warn"}>
+          {savedAudienceGoal
+            ? `Saved on this project: "${savedAudienceGoal.slice(0, 70)}${savedAudienceGoal.length > 70 ? "…" : ""}"`
+            : "Not saved on this project yet — pick one above, then click Organize."}
+        </span>
       </label>
 
       {notice && (

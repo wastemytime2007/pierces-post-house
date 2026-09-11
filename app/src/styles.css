@@ -2202,6 +2202,10 @@ kbd {
   color: var(--fg-1);
 }
 
+.form-hint-warn {
+  color: var(--warn);
+}
+
 .plan-progress {
   display: flex;
   align-items: center;
