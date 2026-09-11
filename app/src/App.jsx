@@ -281,6 +281,28 @@ export default function App() {
     });
   }, [subscribe]);
 
+  // Audience profiles are otherwise fetched ONLY from the `backend_ready`
+  // case, which the backend emits once at startup. If the webview finishes
+  // subscribing after that fires — a plain startup race, and guaranteed on
+  // any HMR reload, since the backend never re-announces itself — the fetch
+  // never happens and `audienceProfiles` stays [] for the life of the
+  // session.
+  //
+  // 2026-09-11, Ryan: "I keep setting the audience and organizing to save it
+  // and then i click generate ideas and it says theres no audience." With an
+  // empty profile list the Project tab's dropdown has nothing but "None
+  // selected", so the selection cannot be made to stick, handleOrganize
+  // finds no matching profile, and organize_project is sent with no
+  // audience_goal — which is exactly what his manifest shows. Ask again on
+  // mount, and once more shortly after, so a missed announcement is not
+  // permanent.
+  useEffect(() => {
+    const ask = () => sendCommand({ type: "get_audience_profiles" }).catch(() => {});
+    ask();
+    const t = setTimeout(ask, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   // Drop 4.44: run the setup check on mount BEFORE pinging the backend.
   // If deps are missing and the user hasn't explicitly finished setup,
   // we render the SetupScreen and hold off on starting the Python
