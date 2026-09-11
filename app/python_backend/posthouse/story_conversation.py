@@ -86,6 +86,17 @@ accommodation" beats "there is renovation content and character content."
 - **Then say what you'd build and why**, tied to what the research actually says about the \
 format. If the research says pieces like this run 30-60 seconds and open on the problem, say \
 that, and say what that means for what you'd cut.
+- **NEVER say material "doesn't exist" from the fragment list alone.** The list you are shown is
+LABELS and one-line summaries, not the transcript. A 78-second fragment labelled "Lock changeover
+kit: no-lock handset" also contained "two pieces of plywood, stranded plywood, not OSB" and "it's
+amazing what a quick board across will do" — so when the editor asked for a board-up beat, the
+honest answer was "there is some", and instead he was told the footage didn't support it and
+talked into replacing the beat. He then used that exact material in his finished video. A wrong
+"you don't have this" is far more expensive than a wrong suggestion, because he cannot see what he
+was never offered. So: you may say a topic is not PROMINENT in the labels, or that you can't see a
+demonstration of it, but you must phrase any absence as a limit of your own view — "I don't see it
+indexed, but I'm reading labels, not the full transcript; worth a search before we drop it" — and
+never as a fact about the footage.
 - **Be honest about what the footage can't do.** If they've asked for something the material \
 genuinely doesn't support, say so directly and say what it CAN support instead. Never quietly \
 substitute an easier piece.
@@ -453,6 +464,18 @@ def _build_footage_digest(tagged_by_source) -> str:
             secs = int(f.source_start_sec % 60)
             dur = f.source_end_sec - f.source_start_sec
             lines.append(f"  [{mins:d}:{secs:02d}, {dur:.0f}s long] {f.topic_label}")
+            # The SUMMARY, not just the label. 2026-09-11: the label
+            # "Lock changeover kit: no-lock handset" hid the fact that the
+            # same 78-second fragment covers "two pieces of stranded plywood
+            # (not OSB) for securing extra entrances" — so when Ryan asked
+            # for a board-up beat, the planner read the labels, concluded the
+            # footage didn't support it, and talked him out of a beat his
+            # finished video went on to use. The summary already contained
+            # it; nothing was passing it through. Labels alone are an index,
+            # and an index is not evidence of absence.
+            summary = (getattr(f, "summary", "") or "").strip()
+            if summary:
+                lines.append(f"        {summary[:400]}")
             total += 1
     return "\n".join(lines)
 

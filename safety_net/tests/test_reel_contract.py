@@ -881,3 +881,71 @@ def test_pool_never_contains_duplicate_clips(ref_phrases):
         if a1 < b2 and b1 > a2
     ]
     assert not dups, f"duplicated leftover clips: {dups}"
+
+
+# --------------------------------------------------------------------------
+# 15. The planner must be able to SEE what it reasons about
+# --------------------------------------------------------------------------
+
+def test_footage_digest_includes_summaries_not_just_labels():
+    """Property 15: the digest carries fragment summaries.
+
+    2026-09-11, found by comparing Ryan's finished video against what the
+    app told him. He asked for a board-up beat. The planner answered that
+    the footage didn't support it and talked him into replacing that beat
+    — then his finished video opened with exactly that material:
+
+        _0001_D 266.4s "Also in the box, I have two pieces of plywood,
+                        stranded plywood, not OSB."
+
+    It sat inside a 78-second fragment labelled "Lock changeover kit:
+    no-lock handset". The fragment's own SUMMARY named the plywood; the
+    digest passed only labels, so the planner reasoned from an index and
+    then asserted absence as fact. A wrong "you don't have this" is the
+    most expensive error the app can make, because the editor cannot see
+    what he was never offered.
+    """
+    from posthouse.story_conversation import _build_footage_digest
+
+    class _F:
+        def __init__(self, label, summary):
+            self.source_start_sec, self.source_end_sec = 208.0, 287.0
+            self.topic_label, self.summary = label, summary
+
+    class _T:
+        def __init__(self, frag):
+            self.fragment, self.fit = frag, "strong"
+
+    frag = _F(
+        "Lock changeover kit: no-lock handset",
+        "Opening his changeover kit, he shows a Schlage handset with no lock. "
+        "The kit also holds two pieces of stranded plywood (not OSB) for "
+        "securing extra entrances, plus a hammer and cat's paw.",
+    )
+    digest = _build_footage_digest({"DJI_0001_D": [_T(frag)]})
+
+    assert "Lock changeover kit" in digest, "label missing from digest"
+    assert "plywood" in digest.lower(), (
+        "fragment summaries are not in the digest — the planner can only see "
+        "labels again, which is how it concluded board-up footage didn't exist"
+    )
+
+
+def test_planner_is_forbidden_from_asserting_absence():
+    """The prompt must forbid claiming material doesn't exist.
+
+    The digest fix above widens what the planner can see, but it still
+    sees summaries rather than the transcript, so it can still be wrong
+    about absence. The rule is that absence must be stated as a limit of
+    its own view, never as a fact about the footage.
+    """
+    from posthouse.story_conversation import PLANNER_SYSTEM_PROMPT
+
+    low = PLANNER_SYSTEM_PROMPT.lower()
+    assert "doesn't exist" in low or "does not exist" in low, (
+        "the planner prompt no longer addresses claims of absence"
+    )
+    assert "labels" in low, (
+        "the prompt should tell the planner it is reading labels/summaries, "
+        "not the full transcript"
+    )

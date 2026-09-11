@@ -2488,8 +2488,26 @@ def load_project_material(project, emit) -> tuple:
     project_dir = project.dir()
     manifest_path = project_dir / "manifest.json"
     if not manifest_path.exists():
+        # 2026-09-11, Ryan: "when i click generate ideas it says i need to
+        # click organize first but i already have." The old message assumed
+        # the user simply hadn't run it, so it was useless to someone who
+        # believes they did — and Organize's own failure path is a transient
+        # toast that is easy to miss. Say what is actually on disk, so the
+        # difference between "never ran" and "ran and failed" is visible.
+        transcripts = [
+            p for p in project.transcripts_dir().glob("*.json")
+            if not p.name.startswith(".")
+        ] if project.transcripts_dir().exists() else []
+        detail = (
+            f" This project already has {len(transcripts)} transcript(s), so the "
+            f"pipeline has run — Organize is what writes manifest.json, and it "
+            f"either was never completed or failed. Re-run Organize on the "
+            f"Project tab and watch for an error under the button."
+            if transcripts else
+            " Nothing has been processed for this project yet."
+        )
         emit({"type": "producer_error",
-              "message": "No manifest.json for this project yet — run Organize first."})
+              "message": f"No manifest.json at {manifest_path}.{detail}"})
         return None, None
 
     try:

@@ -194,7 +194,14 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
           run_audio_sync: f.hasAroll && f.hasAudio,
           run_transcript_flagging: f.hasAroll,
         });
-      } else if (submitting && ev.type === "error") {
+      } else if (ev.type === "error") {
+        // NOT gated on `submitting` (2026-09-11). An error arriving after
+        // submitting had already been reset was dropped entirely, leaving
+        // the tab looking like Organize succeeded. Ryan hit the downstream
+        // symptom — "it says i need to click organize first but i already
+        // have" — with no manifest on disk and nothing on screen saying
+        // why. A toast is not enough for a failure that silently blocks
+        // every later step.
         setError(ev.message); setResult(null); setSubmitting(false);
       }
     });
