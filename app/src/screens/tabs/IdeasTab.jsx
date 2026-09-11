@@ -450,7 +450,8 @@ export default function IdeasTab({
           // with two obvious next steps. Otherwise, the standard "click
           // Generate" message. `settings` may be undefined briefly at
           // startup — in that case default to the standard message.
-          (settings && settings.active_source === "none") ? (
+          (settings && settings.active_source === "none"
+            && !settings.llm_via_cli) ? (
             <div className="ideas-nokey-empty">
               <div className="ideas-nokey-title">
                 No API key — you can&rsquo;t generate ideas yet

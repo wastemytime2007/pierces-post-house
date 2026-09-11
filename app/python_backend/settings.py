@@ -198,6 +198,12 @@ def get_api_key_summary() -> dict:
 
     return {
         "active_source": active,
+        # 2026-09-11: the UI used active_source == "none" alone to decide
+        # that generation was impossible, and showed "No API key — you
+        # can't generate ideas yet" while CLI routing was on and calls
+        # were in fact free and working. Whether an LLM call can be made
+        # is a question about the ROUTE, not about the key.
+        "llm_via_cli": bool(settings.get("llm_via_cli")),
         "has_env": bool(env_key),
         "has_settings": bool(settings_key),
         "key_suffix": key[-4:] if len(key) >= 4 else "",

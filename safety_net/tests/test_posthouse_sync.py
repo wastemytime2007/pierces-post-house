@@ -89,3 +89,48 @@ def test_app_copy_contents_match():
         f"imports — the app is running DIFFERENT code than the source you're "
         f"editing: {differing} — {FIX_HINT}"
     )
+
+
+# ---------------------------------------------------------------------------
+# CLI routing must not be defeated by a caller's own API-key guard.
+#
+# 2026-09-11: every fragment extraction failed with "No Anthropic API key"
+# after Ryan cleared his key, even though llm_via_cli was on and calls were
+# free and working. `transcript_coverage._call_claude` raised on a missing
+# key BEFORE reaching build_anthropic_client(), which is the one place that
+# decides how a call is routed. Whether a call can be made is a question
+# about the route, not about the key.
+
+def test_no_call_site_preempts_the_client_factory_with_a_key_guard():
+    """No posthouse module may refuse to run for a missing key without
+    also checking cli_mode_enabled()."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2] / "posthouse"
+    offenders = []
+    for py in root.glob("*.py"):
+        if py.name == "cli_llm_client.py":
+            continue
+        src = py.read_text()
+        for m in re.finditer(r"No Anthropic API key", src):
+            # Look at the 400 chars before the message for a CLI check.
+            window = src[max(0, m.start() - 400):m.start()]
+            if "cli_mode_enabled" not in window:
+                offenders.append(f"{py.name}:{src[:m.start()].count(chr(10)) + 1}")
+    assert not offenders, (
+        "these raise on a missing API key without checking CLI mode, so they "
+        f"break every call while llm_via_cli is on: {offenders}"
+    )
+
+
+def test_settings_payload_tells_the_ui_about_cli_routing():
+    """The UI decides whether to say 'you can't generate ideas' from this
+    payload; if llm_via_cli isn't in it, it will say so while CLI calls work."""
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[2]
+           / "app" / "python_backend" / "settings.py").read_text()
+    assert '"llm_via_cli"' in src, (
+        "get_api_key_summary() must expose llm_via_cli — without it the UI "
+        "gates generation on the key alone"
+    )

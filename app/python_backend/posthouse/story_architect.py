@@ -2564,6 +2564,7 @@ def load_project_material(project, emit) -> tuple:
     from posthouse.transcript_coverage import extract_exhaustive_fragments
     from precut_pipeline.transcriber import Transcript
 
+    extraction_failures: List[str] = []
     unflagged = [tp for tp in transcript_files if tp.stem not in flagged_stems]
     for i, tp in enumerate(unflagged):
         emit({"type": "log", "level": "info",
@@ -2573,8 +2574,17 @@ def load_project_material(project, emit) -> tuple:
             transcript = Transcript.load(tp)
             fragments, coverage = extract_exhaustive_fragments(transcript)
         except Exception as e:
+            # Keep the reason. 2026-09-11: when extraction failed for every
+            # transcript the user saw only "No fragments available at all
+            # (flagged or freshly extracted)", which says what is missing
+            # but nothing about why — and the real reason was only ever a
+            # `log` warn that scrolled past. The same extraction succeeded
+            # when run directly (37 fragments, 97% coverage), so the cause
+            # was environmental and the message actively hid it.
+            reason = f"{type(e).__name__}: {e}"
+            extraction_failures.append(f"{tp.stem}: {reason[:200]}")
             emit({"type": "log", "level": "warn",
-                  "message": f"Raw extraction failed for {tp.stem}: {e}"})
+                  "message": f"Raw extraction failed for {tp.stem}: {reason}"})
             continue
         tagged_by_source[tp.stem] = [
             TaggedFragment(fragment=f, fit="possible", reasoning=(
@@ -2585,9 +2595,22 @@ def load_project_material(project, emit) -> tuple:
         ]
 
     if not tagged_by_source:
+        if extraction_failures:
+            detail = (
+                " Fragment extraction was attempted and FAILED for "
+                f"{len(extraction_failures)} transcript(s):\n  - "
+                + "\n  - ".join(extraction_failures)
+            )
+        elif not transcript_files:
+            detail = " There are no transcripts in this project yet."
+        else:
+            detail = (
+                f" {len(transcript_files)} transcript(s) exist and extraction "
+                "reported no failures, so they produced no usable fragments — "
+                "check that they actually contain speech."
+            )
         emit({"type": "producer_error",
-              "message": "No fragments available at all (flagged or freshly extracted) — "
-                         "nothing real to build a story arc from."})
+              "message": "No fragments available to build from." + detail})
         return None, None
 
     return audience_goal, tagged_by_source

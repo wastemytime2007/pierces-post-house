@@ -367,6 +367,7 @@ export default function App() {
       setShowWelcome(true);
     } else if (
       settings.active_source === "none" &&
+      !settings.llm_via_cli &&
       !settings.api_key_help_auto_shown
     ) {
       // User already saw welcome (maybe in a prior session) but has
@@ -499,15 +500,23 @@ export default function App() {
     await sendCommand({ type: "set_auto_include_rules", rules });
   }, []);
 
+  // An LLM call is possible when there's a key OR when calls are routed
+  // through the local `claude` CLI (build phase). Anything that gates on
+  // "can this app think?" must ask this, not the key alone.
+  const canCallLLM = !!settings
+    && (settings.active_source !== "none" || settings.llm_via_cli);
+
   const apiKeyBadgeText = settings
     ? settings.active_source === "settings"
       ? `key …${settings.key_suffix} (saved)`
       : settings.active_source === "env"
       ? `key …${settings.key_suffix} (env)`
+      : settings.llm_via_cli
+      ? "via claude CLI"
       : "no API key"
     : "";
 
-  const apiKeyBadgeClass = settings && settings.active_source !== "none"
+  const apiKeyBadgeClass = canCallLLM
     ? "api-key-badge ok"
     : "api-key-badge missing";
 

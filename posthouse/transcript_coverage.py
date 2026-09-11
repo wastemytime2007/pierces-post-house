@@ -199,10 +199,23 @@ def _split_into_windows(
 
 
 def _call_claude(system: str, user: str, model: str, api_key: Optional[str]) -> str:
+    # Imported here, not at module scope, to match every other call site:
+    # posthouse may not be on the path in a donor-only context.
+    from posthouse.cli_llm_client import cli_mode_enabled
+
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-    if not key:
+    # 2026-09-11: this guard used to run unconditionally, and it is the
+    # reason every fragment extraction failed with "No Anthropic API key"
+    # after Ryan cleared his key — even though build_anthropic_client()
+    # routes to the local CLI (billing to the Claude Code plan, not API
+    # credits) when POSTHOUSE_LLM_VIA_CLI is on. The factory is the one
+    # place that decides how a call is made; a caller must not pre-empt
+    # it with its own assumption that a key is required.
+    if not key and not cli_mode_enabled():
         raise StoryPlannerError(
-            "No Anthropic API key. Set ANTHROPIC_API_KEY env var or pass api_key."
+            "No Anthropic API key, and CLI mode is off. Set ANTHROPIC_API_KEY, "
+            "or set POSTHOUSE_LLM_VIA_CLI=1 to route calls through the "
+            "local `claude` CLI."
         )
     client = build_anthropic_client(api_key=key)
     try:
