@@ -536,6 +536,31 @@ def organize_project(
             new_id = M.add_source(manifest, **spec)
             added_source_ids.append(new_id)
         manifest.setdefault("project", {})["shoot_dates"] = shoot_dates
+        # 2026-09-11: apply the intake fields on RE-organize too.
+        #
+        # This branch runs whenever a manifest already exists, and it used to
+        # update shoot_dates/people/default_includes only — so audience_goal
+        # (and a changed client or project type) was silently discarded on
+        # every Organize after the first. Ryan hit this repeatedly: "I keep
+        # setting the audience and organizing to save it and then i click
+        # generate ideas and it says theres no audience... if i go back the
+        # dropdown returned to no goal set." Diagnostic logging proved the
+        # value reached the backend intact and the manifest written in the
+        # same second had no audience_goal at all.
+        #
+        # It looked unreproducible because a FIRST organize works fine — the
+        # branch above does pass it — so isolated tests against a fresh
+        # project always passed. Only the update path drops it, and that is
+        # the path every real edit takes.
+        #
+        # None means "not supplied this run", which must not wipe a saved
+        # value; a real string replaces it.
+        if audience_goal:
+            manifest["project"]["audience_goal"] = audience_goal
+        if client_name:
+            manifest["project"].setdefault("client", {})["name"] = client_name
+        if project_type:
+            manifest["project"]["project_type"] = project_type
         if people:
             existing_people = manifest["project"].setdefault("people", [])
             existing_ids = [p["id"] for p in existing_people]

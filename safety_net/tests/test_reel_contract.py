@@ -949,3 +949,67 @@ def test_planner_is_forbidden_from_asserting_absence():
         "the prompt should tell the planner it is reading labels/summaries, "
         "not the full transcript"
     )
+
+
+# --------------------------------------------------------------------------
+# 16. Re-organizing a project must save the intake fields
+# --------------------------------------------------------------------------
+
+def test_reorganize_persists_audience_goal(tmp_path):
+    """Property 16: Organize saves the audience goal every time, not just
+    on a project's first run.
+
+    2026-09-11, Ryan, three separate reports: "I keep setting the audience
+    and organizing to save it and then i click generate ideas and it says
+    theres no audience... if i go back the dropdown returned to no goal
+    set."
+
+    organize_project has two branches. The new-project branch passes
+    audience_goal to build_manifest. The update branch — taken whenever a
+    manifest already exists, i.e. every real edit — updated shoot_dates,
+    people and default_includes and silently discarded the goal.
+
+    It read as unreproducible for two days because every isolated test
+    creates a FRESH project and therefore only ever exercises the branch
+    that works. Diagnostic logging is what settled it: the value reached
+    the backend intact and the manifest written in the same second had no
+    audience_goal at all.
+    """
+    import sys
+    sys.path.insert(0, str(REFERENCE_EDIT.parent.parent.parent / "app" / "python_backend"))
+    from posthouse.projectmanager import organize_project
+    import json as _json
+
+    # resolve(): on macOS tmp_path is /var/... which is a symlink to
+    # /private/var/..., and organize_project validates the stored root_dir
+    # against the resolved path.
+    tmp_path = tmp_path.resolve()
+    media = tmp_path / "media"
+    media.mkdir()
+    clip = media / "A001.mov"
+    clip.write_bytes(b"")
+    srcs = [{"path": str(clip), "kind": "aroll"}]
+    root = tmp_path / "proj"
+    root.mkdir()
+
+    def run(goal=None):
+        r = organize_project(
+            root_dir=str(root), client_name="SoldFast", project_name="T",
+            project_type="interview", sources=srcs, audience_goal=goal,
+        )
+        return _json.loads(Path(r.manifest_path).read_text())["project"]
+
+    GOAL = "Intentional, story-driven long-form work."
+
+    run()  # first organize, no goal — the state Ryan was left in
+    after = run(GOAL)
+    assert after.get("audience_goal") == GOAL, (
+        "re-organizing did not save the audience goal — the update branch is "
+        "dropping intake fields again"
+    )
+
+    # Omitting the goal on a later organize must NOT wipe the saved one.
+    after2 = run()
+    assert after2.get("audience_goal") == GOAL, (
+        "a later organize without a goal wiped the saved value"
+    )
