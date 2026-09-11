@@ -93,12 +93,13 @@ def _seq_for_cut(root) -> ET.Element | None:
     return best
 
 
-def check_xml(path: Path, rep: Report) -> None:
+def check_xml(path: Path, rep: Report) -> dict:
+    """Returns what the XML actually contains, for cross-checking the plan."""
     root = ET.parse(path).getroot()
     seq = _seq_for_cut(root)
     if seq is None:
         rep.check("SEQUENCE-PRESENT", False, "no cut sequence found in the XML")
-        return
+        return {}
     rep.check("SEQUENCE-PRESENT", True, f'"{seq.findtext("name")}"')
 
     tb = float(seq.findtext("rate/timebase") or 60)
@@ -108,7 +109,7 @@ def check_xml(path: Path, rep: Report) -> None:
     clips = vt.findall("clipitem") if vt is not None else []
     if not clips:
         rep.check("CUT-GRANULARITY", False, "no video clipitems")
-        return
+        return {}
 
     spans = sorted(
         (int(c.findtext("start")), int(c.findtext("end"))) for c in clips
@@ -138,6 +139,75 @@ def check_xml(path: Path, rep: Report) -> None:
         f"({per_min:.0f}/min, need >={MIN_CLIPS_PER_MINUTE:.0f})",
     )
 
+    # ---- source-range sanity, read from the XML itself
+    #
+    # 2026-09-11, Ryan on a Mitch Interview export: "this isnt useable at
+    # all". Every check above passed it. The cut referenced ONE camera file
+    # while playing timecodes chosen from the OTHER file's transcript, so
+    # clips overlapped each other and the second camera was missing
+    # entirely. POOL-NO-OVERLAP and POOL-NO-DUPLICATES existed but only ran
+    # with --idea, and they compared the PLAN to itself — the plan was
+    # clean; the artifact was not. These read the exported XML directly.
+    def _src_spans(items):
+        out = []
+        for c in items:
+            out.append((
+                c.findtext("name") or "",
+                int(c.findtext("in") or 0) / tb,
+                int(c.findtext("out") or 0) / tb,
+            ))
+        return sorted(out)
+
+    def _self_overlaps(spans):
+        return [
+            (f, a1, b1, a2, b2)
+            for i, (f, a1, b1) in enumerate(spans)
+            for (g, a2, b2) in spans[i + 1:]
+            if f == g and a1 < b2 - 0.01 and b1 > a2 + 0.01
+        ]
+
+    by_start = sorted(clips, key=lambda c: int(c.findtext("start")))
+    left_clips = by_start[:gap_idx] if gap_idx is not None else by_start
+    pool_clips = by_start[gap_idx:] if gap_idx is not None else []
+
+    cut_spans = _src_spans(left_clips)
+    cut_ov = _self_overlaps(cut_spans)
+    rep.check(
+        "XML-CUT-NO-OVERLAP",
+        not cut_ov,
+        "no clip in the cut repeats another's source"
+        if not cut_ov
+        else f"{len(cut_ov)} overlapping source range(s) in the cut, e.g. "
+        f"{cut_ov[0][0][:28]} {cut_ov[0][1]:.1f}-{cut_ov[0][2]:.1f} vs "
+        f"{cut_ov[0][3]:.1f}-{cut_ov[0][4]:.1f}",
+    )
+
+    if pool_clips:
+        pool_spans = _src_spans(pool_clips)
+        pool_ov = _self_overlaps(pool_spans)
+        rep.check(
+            "XML-POOL-NO-DUPLICATES",
+            not pool_ov,
+            "no leftover repeats another"
+            if not pool_ov
+            else f"{len(pool_ov)} overlapping leftover range(s), e.g. "
+            f"{pool_ov[0][0][:28]} {pool_ov[0][1]:.1f}-{pool_ov[0][2]:.1f} vs "
+            f"{pool_ov[0][3]:.1f}-{pool_ov[0][4]:.1f}",
+        )
+        cross = [
+            (f, a1, b1, a2, b2)
+            for (f, a1, b1) in pool_spans
+            for (g, a2, b2) in cut_spans
+            if f == g and a1 < b2 - 0.01 and b1 > a2 + 0.01
+        ]
+        rep.check(
+            "XML-POOL-NOT-IN-CUT",
+            not cross,
+            "leftovers never duplicate the cut"
+            if not cross
+            else f"{len(cross)} leftover range(s) already used in the cut",
+        )
+
     # ---- audio
     audio_clips = [
         ci
@@ -148,7 +218,7 @@ def check_xml(path: Path, rep: Report) -> None:
     if not audio_clips:
         rep.check("AUDIO-ENABLED", False, "no audio clipitems at all")
         rep.check("AUDIO-SOURCETRACK", False, "no audio clipitems at all")
-        return
+        return {"cut_spans": cut_spans}
 
     any_enabled = any(
         (ci.findtext("enabled") or "TRUE").upper() == "TRUE" for ci in audio_clips
@@ -178,6 +248,7 @@ def check_xml(path: Path, rep: Report) -> None:
         "LAV-TRACKS",
         f"{len(lav)} synced source(s): {', '.join(lav)}" if lav else "camera audio only",
     )
+    return {"cut_spans": cut_spans}
 
 
 def check_idea(idea_path: Path, target_sec: float | None, rep: Report) -> None:
@@ -261,6 +332,37 @@ def check_idea(idea_path: Path, target_sec: float | None, rep: Report) -> None:
     )
 
 
+def check_export_matches_plan(facts: dict, idea_path: Path, rep: Report) -> None:
+    """The artifact must contain the files the plan chose.
+
+    2026-09-11: the plan named two camera files; the export contained one,
+    playing the second file's timecodes against the first one's footage.
+    Every plan-only check passed, because the plan was fine. This compares
+    the two, which is the only way that class of defect is visible.
+    """
+    if not facts.get("cut_spans"):
+        rep.skip("EXPORT-MATCHES-PLAN", "no cut spans read from the XML")
+        return
+    data = json.loads(idea_path.read_text()).get("data", {})
+    cut = data.get("source_ranges") or []
+    if not cut:
+        rep.skip("EXPORT-MATCHES-PLAN", "idea has no source_ranges")
+        return
+
+    planned = {Path(r["source_file"]).stem for r in cut}
+    exported = {Path(name).stem for name, _, _ in facts["cut_spans"]}
+    missing = planned - exported
+    rep.check(
+        "EXPORT-MATCHES-PLAN",
+        not missing,
+        f"all {len(planned)} planned source file(s) present in the cut"
+        if not missing
+        else f"{len(missing)} file(s) the plan uses are absent from the export: "
+        + ", ".join(sorted(missing))
+        + " — the cut is playing the wrong footage",
+    )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("xml", type=Path)
@@ -274,9 +376,10 @@ def main() -> int:
 
     rep = Report()
     print(f"\nVerifying {args.xml.name}\n")
-    check_xml(args.xml, rep)
+    facts = check_xml(args.xml, rep)
     if args.idea:
         if args.idea.exists():
+            check_export_matches_plan(facts, args.idea, rep)
             check_idea(args.idea, args.target_sec, rep)
         else:
             rep.check("IDEA-FILE", False, f"not found: {args.idea}")

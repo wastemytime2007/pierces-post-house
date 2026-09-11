@@ -185,6 +185,48 @@ def assemble_cut_from_angle(
         fallback = (source_to_original or {}).get(transcript.source_path, transcript.source_path)
         return fallback, 0.0
 
+    # ---- Per-file ranges -> combined timeline -------------------------------
+    # 2026-09-11, Ryan on a Mitch Interview export: "this isnt useable at all".
+    #
+    # Everything below this point assumes a range's times are COMBINED-timeline
+    # seconds. That is true of PreCut's own story_planner, which stamps every
+    # range with the one combined transcript's source_path. It is NOT true of
+    # posthouse.story_architect, which reads each transcript separately and
+    # emits ranges carrying an explicit per-file `source_file` with times in
+    # THAT file's own clock. Those ranges were resolved by their raw number, so
+    # A005's 596.8s landed inside A004 — the export referenced one camera file
+    # while playing timecodes chosen from the other's transcript, the second
+    # camera vanished entirely, and clips overlapped each other because two
+    # files' independent clocks were laid on one axis.
+    #
+    # Rather than special-case the rest of this function, normalise such a
+    # range to combined time up front; resolve_real_source, phrase snapping and
+    # the file clamp below then all do the right thing with no further change.
+    from pathlib import Path as _Path
+
+    stem_to_span: dict[str, tuple[float, float]] = {}
+    for src, span_start, span_end in file_spans:
+        stem_to_span[_Path(src).stem] = (span_start, span_end)
+
+    def to_combined(r) -> tuple[float, float]:
+        """Return this range's (start, end) in combined-timeline seconds."""
+        raw_start = max(0.0, r.source_start_sec)
+        raw_end = r.source_end_sec
+        stem = _Path(r.source_file).stem if r.source_file else ""
+        span = stem_to_span.get(stem)
+        if span is None:
+            return raw_start, raw_end
+        span_start, span_end = span
+        if span_start <= raw_start < span_end:
+            # Already combined time, and self-consistent with its own file.
+            return raw_start, raw_end
+        if raw_start < span_end - span_start:
+            # Per-file time: inside this file's own duration, but outside the
+            # window the same file occupies on the combined timeline.
+            return raw_start + span_start, raw_end + span_start
+        # Neither reading fits: leave it alone rather than invent a position.
+        return raw_start, raw_end
+
     aroll_track: list[ARollPhrase] = []
     timeline_cursor = 0.0
 
@@ -194,8 +236,7 @@ def assemble_cut_from_angle(
     next_range_id = 1_000_000  # far above any real phrase ID
 
     for r in ranges:
-        combined_start = max(0.0, r.source_start_sec)
-        combined_end = r.source_end_sec
+        combined_start, combined_end = to_combined(r)
 
         # Snap to phrase boundaries so we don't cut off mid-word. If any
         # Whisper phrases fall inside the range, widen the range slightly

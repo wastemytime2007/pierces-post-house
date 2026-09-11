@@ -1013,3 +1013,96 @@ def test_reorganize_persists_audience_goal(tmp_path):
     assert after2.get("audience_goal") == GOAL, (
         "a later organize without a goal wiped the saved value"
     )
+
+
+# ---------------------------------------------------------------------------
+# Per-file ranges must resolve to their own file.
+#
+# 2026-09-11, Ryan on a Mitch Interview export: "this isnt useable at all".
+# PreCut's story_planner stamps every range with the one combined transcript's
+# path and works in combined-timeline seconds. posthouse.story_architect reads
+# each transcript separately and emits ranges carrying an explicit per-file
+# source_file with times on THAT file's own clock. The assembler assumed the
+# former for both, so A005's 596.8s resolved to combined-time 596.8s — which
+# lands inside A004. The export referenced one camera while playing the other
+# camera's timecodes, the second camera vanished, and clips overlapped because
+# two independent clocks were laid on one axis.
+
+def test_per_file_ranges_resolve_to_their_own_file():
+    from precut_pipeline.story_assembler import assemble_cut_from_angle
+    from precut_pipeline.cutlist import StoryAngle, CreativeBrief, TopicRange
+    from precut_pipeline.transcriber import Transcript, Phrase
+
+    # Two files on one combined timeline: A is 0-100s, B is 100-200s.
+    phrases = [
+        Phrase(id=i, start=float(i * 10), end=float(i * 10 + 9),
+               text=f"phrase {i}", words=[])
+        for i in range(20)
+    ]
+    combined = Transcript(source_path="/proxies/A.mp4", language="en",
+                          duration=200.0, phrases=phrases)
+    offsets = {"/proxies/A.mp4": 0.0, "/proxies/B.mp4": 100.0}
+    to_original = {"/proxies/A.mp4": "/orig/A.mov", "/proxies/B.mp4": "/orig/B.mov"}
+
+    angle = StoryAngle(
+        angle_id="t", brief=CreativeBrief(
+            title="t", hook="", why_it_works="", tone="", target_duration_sec=30.0),
+        source_ranges=[
+            # B's OWN clock: 20-30s into B, i.e. 120-130 combined.
+            TopicRange(source_file="/proxies/B.mp4",
+                       source_start_sec=20.0, source_end_sec=30.0),
+            TopicRange(source_file="/proxies/A.mp4",
+                       source_start_sec=10.0, source_end_sec=20.0),
+        ],
+    )
+    cl = assemble_cut_from_angle(
+        angle=angle, transcript=combined, db=None,
+        source_offset_map=offsets, source_to_original=to_original)
+
+    used = {p.source_file for p in cl.aroll_track}
+    assert used == {"/orig/A.mov", "/orig/B.mov"}, (
+        f"both files must appear in the cut, got {used} — a range's explicit "
+        "source_file was ignored and its times read as combined-timeline"
+    )
+    b = [p for p in cl.aroll_track if p.source_file == "/orig/B.mov"][0]
+    assert 15.0 <= b.source_start <= 25.0, (
+        f"B's range should sit near 20s in B's OWN clock, got {b.source_start:.1f}"
+    )
+
+
+def test_combined_timeline_ranges_still_resolve_as_before():
+    """PreCut's own planner emits combined-time ranges stamped with the
+    combined transcript's path. Honouring an explicit per-file source_file
+    must not change how those are read."""
+    from precut_pipeline.story_assembler import assemble_cut_from_angle
+    from precut_pipeline.cutlist import StoryAngle, CreativeBrief, TopicRange
+    from precut_pipeline.transcriber import Transcript, Phrase
+
+    phrases = [
+        Phrase(id=i, start=float(i * 10), end=float(i * 10 + 9),
+               text=f"phrase {i}", words=[])
+        for i in range(20)
+    ]
+    combined = Transcript(source_path="/proxies/A.mp4", language="en",
+                          duration=200.0, phrases=phrases)
+    offsets = {"/proxies/A.mp4": 0.0, "/proxies/B.mp4": 100.0}
+    to_original = {"/proxies/A.mp4": "/orig/A.mov", "/proxies/B.mp4": "/orig/B.mov"}
+
+    angle = StoryAngle(
+        angle_id="t", brief=CreativeBrief(
+            title="t", hook="", why_it_works="", tone="", target_duration_sec=30.0),
+        # Combined time 120-130, stamped with the combined transcript's path.
+        source_ranges=[TopicRange(source_file="/proxies/A.mp4",
+                                  source_start_sec=120.0, source_end_sec=130.0)],
+    )
+    cl = assemble_cut_from_angle(
+        angle=angle, transcript=combined, db=None,
+        source_offset_map=offsets, source_to_original=to_original)
+
+    p = cl.aroll_track[0]
+    assert p.source_file == "/orig/B.mov", (
+        f"combined time 120s falls in B's span, got {p.source_file}"
+    )
+    assert 15.0 <= p.source_start <= 25.0, (
+        f"120s combined is 20s into B, got {p.source_start:.1f}"
+    )
