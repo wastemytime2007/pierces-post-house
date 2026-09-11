@@ -46,6 +46,7 @@ def assemble_cut_from_angle(
     source_to_original: Optional[dict] = None,
     aspect_key: Optional[str] = None,
     platform_key: Optional[str] = None,
+    preserve_order: Optional[bool] = None,
 ) -> CutList:
     """Build a CutList for one StoryAngle.
 
@@ -71,6 +72,10 @@ def assemble_cut_from_angle(
             falls back to A-roll native dims.
         platform_key: Drop 4.4 — platform overlay key (e.g. "platform_tiktok").
             Determines which overlay PNG lands on V3. When unset, no overlay.
+        preserve_order: keep the planner's own range order instead of sorting
+            source-chronologically. None (default) decides per angle: ranges
+            carrying an explicit per-file source_file come from a planner that
+            SEQUENCED them, so their order is the edit. See the sort below.
     """
     # ----- Resolve sequence dims + overlay (Drop 4.4: two-field model) -----
     # The new model: aspect_key → sequence dimensions; platform_key → overlay PNG.
@@ -151,10 +156,6 @@ def assemble_cut_from_angle(
         )
 
     # ----- Build the A-roll track: one ARollPhrase per RANGE -----
-    # Stable order: sort by source_file then source_start_sec. We don't
-    # trust planner ordering to be editorially correct, but we do preserve
-    # source-chronological order within a single file.
-    ranges.sort(key=lambda r: (r.source_file, r.source_start_sec))
 
     # Drop 4.2: build a list of (transcript_source, combined_start, combined_end)
     # tuples so we can map any combined-timeline time to the real source file
@@ -226,6 +227,29 @@ def assemble_cut_from_angle(
             return raw_start + span_start, raw_end + span_start
         # Neither reading fits: leave it alone rather than invent a position.
         return raw_start, raw_end
+
+    # ----- Clip order -------------------------------------------------------
+    # 2026-09-11, Ryan on a cut the planner pitched: "theres no story here.
+    # Its pieces of different stories that no one has context to."
+    #
+    # The planner HAD built an arc — dad is a workaholic, here is what I
+    # built, I am becoming him, here is the guilt, here is the day I set
+    # aside. This line threw it away and re-sorted by source timecode, so the
+    # delivered cut opened on "I'm Mitch, I work on the tech side", spent its
+    # fifth through eleventh clips on the emotional payoff, and then ran
+    # fourteen straight clips of business before ending. Every clip was one
+    # the planner chose; none of them were where it put them.
+    #
+    # Sorting is right for PreCut's own story_planner, which returns 2-4 big
+    # continuous ranges stamped with one combined transcript path and does not
+    # sequence them. It is wrong for a planner that returns 27 ordered beats.
+    # So the default decides per angle rather than applying one rule to both:
+    # an explicit per-file source_file means the ranges were sequenced, and
+    # their order IS the edit.
+    # Default stays PreCut's historical behaviour so nothing that relied on
+    # it changes; posthouse.story_architect opts in explicitly, per zone.
+    if not preserve_order:
+        ranges.sort(key=lambda r: (r.source_file, r.source_start_sec))
 
     aroll_track: list[ARollPhrase] = []
     timeline_cursor = 0.0

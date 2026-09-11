@@ -2371,7 +2371,14 @@ def assemble_two_zone_cutlist(angle: "StoryAngle", transcript, db=None, **assemb
     output, which never sets pool_ranges."""
     assemble_cut_from_angle = _story_assembler.assemble_cut_from_angle
 
-    left = assemble_cut_from_angle(angle=angle, transcript=transcript, db=db, **assemble_kwargs)
+    # 2026-09-11: the cut's clip order IS the edit — these ranges are a
+    # sequenced arc, not a bag of timecodes, and PreCut's assembler would
+    # otherwise re-sort them chronologically and dissolve the story (Ryan:
+    # "theres no story here. Its pieces of different stories that no one has
+    # context to."). The pool is the opposite: it's a bin an editor scrubs,
+    # so source-chronological order is the useful one there.
+    left = assemble_cut_from_angle(angle=angle, transcript=transcript, db=db,
+                                   preserve_order=True, **assemble_kwargs)
     if not angle.pool_ranges:
         return left
 
@@ -2382,7 +2389,8 @@ def assemble_two_zone_cutlist(angle: "StoryAngle", transcript, db=None, **assemb
         selected_platform_key=angle.selected_platform_key,
         selected_aspect_key=angle.selected_aspect_key,
     )
-    right = assemble_cut_from_angle(angle=pool_angle, transcript=transcript, db=db, **assemble_kwargs)
+    right = assemble_cut_from_angle(angle=pool_angle, transcript=transcript, db=db,
+                                    preserve_order=False, **assemble_kwargs)
     if not right.aroll_track:
         return left
 

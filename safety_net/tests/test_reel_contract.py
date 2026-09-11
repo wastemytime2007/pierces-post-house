@@ -1106,3 +1106,66 @@ def test_combined_timeline_ranges_still_resolve_as_before():
     assert 15.0 <= p.source_start <= 25.0, (
         f"120s combined is 20s into B, got {p.source_start:.1f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# The planner's clip order IS the edit.
+#
+# 2026-09-11, Ryan on a cut the app pitched as a solid plan: "theres no story
+# here. Its pieces of different stories that no one has context to." The
+# planner had in fact built an arc across 27 beats. story_assembler re-sorted
+# them by (source_file, source_start_sec) — right for PreCut's own planner,
+# which returns a few unsequenced continuous ranges, and fatal for a sequenced
+# one. The delivered cut opened on "I'm Mitch, I work on the tech side" and
+# buried the emotional payoff mid-reel.
+
+def test_story_architect_cut_keeps_the_planners_clip_order():
+    from posthouse.story_architect import assemble_two_zone_cutlist
+    from precut_pipeline.cutlist import StoryAngle, CreativeBrief, TopicRange
+    from precut_pipeline.transcriber import Transcript, Phrase
+
+    phrases = [
+        Phrase(id=i, start=float(i * 10), end=float(i * 10 + 9),
+               text=f"beat {i}.", words=[])
+        for i in range(20)
+    ]
+    combined = Transcript(source_path="/proxies/A.mp4", language="en",
+                          duration=200.0, phrases=phrases)
+    offsets = {"/proxies/A.mp4": 0.0, "/proxies/B.mp4": 100.0}
+    to_original = {"/proxies/A.mp4": "/orig/A.mov", "/proxies/B.mp4": "/orig/B.mov"}
+
+    # Deliberately NOT chronological, and deliberately crossing files — the
+    # shape a real arc takes when it opens late in the interview and pays off
+    # with something said early.
+    planned = [
+        ("/proxies/B.mp4", 50.0, 59.0),
+        ("/proxies/A.mp4", 10.0, 19.0),
+        ("/proxies/B.mp4", 10.0, 19.0),
+        ("/proxies/A.mp4", 70.0, 79.0),
+    ]
+    angle = StoryAngle(
+        angle_id="t", brief=CreativeBrief(
+            title="t", hook="", why_it_works="", tone="", target_duration_sec=40.0),
+        source_ranges=[
+            TopicRange(source_file=f, source_start_sec=a, source_end_sec=b)
+            for f, a, b in planned
+        ],
+    )
+    cl = assemble_two_zone_cutlist(
+        angle=angle, transcript=combined, db=None,
+        source_offset_map=offsets, source_to_original=to_original)
+
+    got = [
+        (p.source_file, round(p.source_start, 1))
+        for p in sorted(cl.aroll_track, key=lambda p: p.timeline_start)
+    ]
+    want = [
+        ("/orig/B.mov", 50.0), ("/orig/A.mov", 10.0),
+        ("/orig/B.mov", 10.0), ("/orig/A.mov", 70.0),
+    ]
+    assert len(got) == len(want), f"expected {len(want)} clips, got {len(got)}"
+    for i, ((gf, gs), (wf, ws)) in enumerate(zip(got, want)):
+        assert gf == wf and abs(gs - ws) < 3.0, (
+            f"clip {i + 1}: planner ordered {wf} @ {ws}, got {gf} @ {gs} — "
+            "the cut was re-sorted and the arc is gone"
+        )
