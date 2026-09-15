@@ -29,6 +29,17 @@ graphics, sound and structure the XML can't express.
 | Black frames / dips | **none** |
 | Motion profile | "moderate visual complexity, low motion" — static mid-detail shots |
 
+**It trims 2.5:1 from source (added 2026-09-13).** Measured against the
+transcripts of the same shoot: 2:46 of Bob actually talking about
+wallpaper became 1:06 on screen. That ratio is the only real
+source-to-finished number this project has, and it answers a question
+length rules can't — *how much speech does a topic need before it can
+carry a given runtime.* Roughly: 2:30+ of on-topic speech supports a full
+60-75s Reel; under ~1:10 the topic is a 30-second short however good it
+is. Derived from one piece, so use it as a band, and remember that dense
+speech trims less than rambling speech. Worked application over a real
+53-hour corpus: `docs/reference/RUNNELLS_CONTENT_INVENTORY.md`.
+
 **67 seconds is the single most useful number here.** It sits inside the
 30-90s window Ryan later stated as the rule, and well past the 45s the
 app had been aiming at. Do not treat 45s as the default target for a

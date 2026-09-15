@@ -62,6 +62,48 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-10 — OPEN, and it changes what "correct output" means. Ryan
+  reframed the deliverable and this has NOT yet been implemented.** On
+  supplying `The Day You Take the Keys_Organized.xml` he wrote: *"This
+  isnt a finished edit. This is for you to see how i would have liked
+  this to have looked when it was grouped and exported for me. This is
+  what i would like to have to start from."* The left zone is therefore
+  **organized selects he will edit from**, not a finished cut — his
+  organized left side ran 4:19 against a 4:26 finished piece, roughly
+  1:1, where the app is built to hit a 45-75s Reel target. The current
+  duration ceiling would REJECT the correct answer for this mode.
+  He also noted his own initial read can be wrong: *"based on the amount
+  of content that needed to be used, i switched gears and decided to make
+  this a quick 5 min Youtube tutorial"* — so FORMAT (Reel vs tutorial)
+  may need to be a planner proposal driven by material volume, not an
+  input. Three questions were put to him and are **still unanswered**:
+  (a) is left-side ordering intended edit order or topic grouping,
+  (b) is the 4:19 / 8:17 split a proportion or a quality bar,
+  (c) should duration enforcement be off in this mode.
+  Do not start building against this until he answers — but do not
+  "fix" a cut that exceeds the Reel ceiling before checking whether this
+  is the mode it's in. Two refuted hypotheses, recorded so they aren't
+  retried: "depth not breadth" and a "~3s median clip" rule. Ryan:
+  *"No median is really fair to set as it strictly depends on content
+  itself."*
+
+- **2026-09-11 — Two taste calls open on the Mitch Interview cut, raised
+  with Ryan, unanswered.** (a) Whether the Ballpoint logo story (plan
+  clips 13-16, the turtle / "bad version of word art") earns its minute
+  inside a piece about becoming your father, or is a tangent. (b) Whether
+  the planner should be required to open with an identification/setup
+  beat — "I'm Mitch Galuzy, I work on the tech side" currently lands
+  fifth, which is the most likely source of his "no one has context"
+  reaction even after the ordering fix. Rule 6: his call, not ours.
+
+- **2026-09-11 — `CUT-GRANULARITY` may be wrong for long-form.** The
+  floor is 6 clips/min, derived entirely from his 65s wallpaper Reel. A
+  237s tutorial-shaped cut failed it at 5/min. That may be the threshold
+  being wrong for long-form rather than the cut being bad. Flagged to
+  Ryan rather than quietly relaxed — moving a number to make a check go
+  green is exactly how the safety net stops meaning anything.
+
+
 - **2026-09-07 — Build-phase cost mode is ON. A new agent must read this
   before wondering why nothing hits the API.** Ryan, mid-build: *"Can we
   have you run the research for the testing phase? Once we have the whole
@@ -372,6 +414,89 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-11 — **Three real bugs in the cut/export path, each found by
+  Ryan on a real artifact, each fixed and verified on real project data.**
+  Commits `426f2a6`, `1432b81`, `c689f93`. Safety net after all three:
+  410 passed. A future agent should read these as one story: the app
+  produced confident, plausible-looking output that was wrong in a way
+  only opening the file could reveal.
+
+  **(a) Fragment extraction demanded an API key that no longer exists.**
+  Ryan cleared his key — correct, since `llm_via_cli` routes everything
+  through the local CLI — and every "Generate ideas" run then failed with
+  *"No fragments available at all (flagged or freshly extracted)."*
+  `transcript_coverage._call_claude` raised on a missing key BEFORE
+  reaching `build_anthropic_client()`, which already returns the
+  CLI-backed client in CLI mode. My own standalone reproduction PASSED
+  because my shell had a key in its environment while the app's did not —
+  which is why this looked "environmental" for a full round of guessing.
+  Fixed: the guard checks `cli_mode_enabled()`; the generic error now
+  reports the per-file extraction failures instead of swallowing them
+  into a `warn`; and `get_api_key_summary()` exposes `llm_via_cli` so the
+  three UI gates (the "No API key — you can't generate ideas yet" empty
+  state, the header badge, the onboarding nag) stop claiming generation
+  is impossible while free calls work. Badge now reads "via claude CLI".
+  **Verified on real material with no key in the environment:**
+  `A005_A001_0614Z9_001_1_Proxy` → 49 fragments, 2169s of 2277s covered
+  (95%), 169s, zero API spend.
+
+  **(b) The export played one camera's footage at the other camera's
+  timecodes.** Ryan: *"this isnt useable at all."* Full reasoning in
+  `ROADMAP.md` Decision Log, 2026-09-11 (per-file vs combined-timeline
+  range semantics). Symptoms that should be recognised if this recurs:
+  a source file present in the plan and absent from the XML, overlapping
+  clips inside the cut, and leftovers duplicating cut footage — all three
+  at once, because they share one cause. **Verified on the real plan:**
+  the cut now uses A005 ×25 + A004 ×2, matching the plan exactly, with
+  zero overlapping clips; before, 27 clips all from A004 with 10 overlaps.
+
+  **(c) The assembler re-sorted the planner's arc into topic soup.**
+  Ryan: *"theres no story here. Its pieces of different stories that no
+  one has context to."* Decision Log, 2026-09-11 (planner order is the
+  edit). **Worth recording because the diagnosis nearly went wrong:** the
+  complaint sounds like a planner-quality problem, and the planner was
+  fine — it had built a real arc across 27 beats. Checking the plan
+  against the artifact before changing any prompt is what found it.
+  **Verified:** 27 cut clips delivered in planner order, 235.2s, with the
+  648.9s pool behind the gap.
+
+  **Also checked and NOT a defect:** the mid-sentence truncations
+  throughout the transcript Ryan read off that export. Only 1 of 27
+  planned clips ends mid-sentence; the rest were bug (b) producing
+  arbitrary cut points in footage the planner never chose. The .txt came
+  from the pre-fix export, so most of its words were never selected by
+  anything. Do not "fix" sentence-boundary snapping on this evidence.
+
+- 2026-09-11 — **`verify_export.py` now checks the artifact, not just the
+  plan.** Its overlap checks previously ran only with `--idea` and
+  compared the plan against itself, so it passed the broken export above
+  with a single unrelated failure. Four checks added that read the XML
+  directly: `XML-CUT-NO-OVERLAP`, `XML-POOL-NO-DUPLICATES`,
+  `XML-POOL-NOT-IN-CUT`, and `EXPORT-MATCHES-PLAN` (compares the source
+  files the plan chose against the files the export contains — the only
+  check that can see the wrong-camera defect). Evidence: the same bad
+  export now fails 5 checks and names the cause in plain language.
+
+- 2026-09-13 — **Runnells content inventory: 53 hours read, grouped into
+  deliverable videos with measured runtimes.** Ryan asked for three lists
+  (short how-to Reels like the Bob wallpaper piece, 3-5 min long-form
+  like the Mitch eviction piece, and adjacent categories). Delivered as
+  https://claude.ai/code/artifact/0db631eb-6b48-4f3e-a580-3112f09c343d.
+  Findings that must not be rediscovered from scratch are written up in
+  `docs/reference/RUNNELLS_CONTENT_INVENTORY.md`: the existing WhisperX
+  transcripts are **23% hallucinated loop artifact** (51 of 270 clips
+  >30% corrupt) which defeats naive density scanning; the footage is
+  observational rather than instructional so regex finds the days but
+  never the moments; per-day clean-speech totals; and the measured
+  **2.5:1 trim ratio** from Ryan's own finished Reel, which is now also
+  recorded in `docs/reference/WALLPAPER_REEL_ANATOMY.md`.
+  Two rounds of correction from Ryan are the reusable lesson: first
+  *"a lot of them are the same how-to topic just a different moment"*
+  (group by finished deliverable, not by moment), then *"attach what you
+  think the runtime on each would be"* — which reclassified most of the
+  list, because "enough beats" and "enough footage" are different
+  questions and only the second one changes the plan.
 
 - 2026-09-07 — **The Reel contract: an intentional edit on the left, the
   on-topic leftovers on the right, with real synced audio — CONFIRMED BY
@@ -1632,21 +1757,38 @@ and UI assignment is deliberately deferred until skills work. Rule 7
 real material, not passing tests) still apply **per skill** — this list
 tracks that per-skill state, not a single "current task."
 
-**Immediately next, 2026-09-07.** The Reel contract is signed off on
-ONE unit (the wallpaper project, one idea, one export). Per rule 7,
-broadening is its own approved step:
+**Immediately next, updated 2026-09-15.** Step 1 below has now
+happened, and it did what rule 7 exists to make happen: broadening to a
+second, multi-camera project (Mitch Interview) immediately exposed three
+real bugs the single-camera wallpaper project could never have shown —
+see § Done, 2026-09-11. That is a success of the rule, not a setback.
 
-1. **Prove the contract on a second, different project** — ideally one
-   that is NOT a single-camera tutorial, since every rule here was
-   derived from one. Multi-speaker interview footage is the obvious
-   stress case: the single-source preference, the adjacent-strong pool
-   rule, and the lav corroboration invariant have each only been
-   exercised on this one shoot.
-2. **Decide the two-camera question** (STATUS § In progress) — whether a
-   tight cut may cross camera files mid-explanation. Ryan's call.
-3. **Only then** consider turning build-phase cost mode off, so live
+1. ~~Prove the contract on a second, different project~~ — **done, and
+   it broke three things.** Multi-camera interview footage was the right
+   stress case: the wrong-camera bug (per-file vs combined timeline) was
+   structurally impossible to see on a single-file shoot.
+2. **WAITING ON RYAN — re-export "A Little Bit Further" from the Mitch
+   Interview project.** All three fixes are live and the app is running
+   on them. The plan on disk (`plans/idea_95c2fe2be7.json`) is good; it
+   does NOT need regenerating, only re-exporting. Five ~58s Reel ideas
+   also sit in that project if a short one is wanted instead. Nothing
+   here is signed off until he opens an export and says so.
+3. **Answer the organized-selects reframing** (§ In progress, 2026-09-10)
+   before building anything that assumes a 45-75s target. This is the
+   biggest open question in the project right now: it changes what a
+   correct left zone IS.
+4. **Decide the two-camera question** (§ In progress) — whether a tight
+   cut may cross camera files mid-explanation. Note this has become more
+   than a taste call now that multi-camera projects are in scope.
+5. **Only then** consider turning build-phase cost mode off, so live
    research and real video watching are back in play for a real
    deliverable.
+
+**Content-side, not app-side:** transcribing `Bob intv_Recruitment`
+(20 GB, the one Runnells folder with no transcripts) is the highest-value
+remaining scan — it's a sit-down, which is the format most of the
+adjacent-category topics need and the job-site footage can't supply. See
+`docs/reference/RUNNELLS_CONTENT_INVENTORY.md` §4.
 
 Status, from `ROADMAP.md` §3's Role → skill map:
 
@@ -1658,7 +1800,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | AE: technical cull ("Cold Footage") | **PARKED** — 3 detector approaches failed on real footage; also confirmed 2026-09-03 that even a working detector couldn't safely deliver trimmed B-roll segments needing frame-rate interpretation under the current static-XML architecture (interpreting a clip *after* a trim is already placed on a timeline invalidates that trim — confirmed by Ryan directly in real Premiere). Needs its own explicit unpark decision on both fronts, not just the gate lift. |
 | AE: subject grouping (per-subject cold-footage sequences) | **Blocked on cull, by Ryan's explicit choice (2026-09-03)** — could have been rescoped to whole-clip bins (same safe untrimmed-master pattern as the shipped B-roll duplication feature) to unblock it now, but Ryan chose to keep it tied to cull output instead. Stays parked alongside cull. |
 | AE: transcript flagging (color-coded storyline ranges) | **Signed off by Ryan on real footage, end-to-end** (exhaustive extraction, PM audience-goal intake, relevance tagging, XML marker writing, `run_pipeline`/export wiring, and marker color — the last required moving color-setting from the FCP7 XML into the Premiere ExtendScript extension, since Premiere never honors `<marker><color>`). Ryan: "Ok that worked." See § Done, 2026-09-03. |
-| Creative Editor: story + assembly | **Selection + assembly built, wired into the app, and proven on a real benchmark** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Now exports a real two-zone timeline (tight cut + gap + selects pool) matching Ryan's actual editing workflow, not one undifferentiated sequence. Real multi-file export bug fixed, duplicate-range bug fixed, real listen links + standalone Brief file + full sourced brief embedded on-timeline + 72h research cache. Real gap flagged (not yet fixed) in PreCut's own audio-sync promotion — see ROADMAP Decision Log, 2026-09-04. **Not yet reviewed by Ryan on the new two-zone export.** See § Done, 2026-09-03/04. |
+| Creative Editor: story + assembly | **Selection + assembly built, wired into the app, and proven on a real benchmark** (`posthouse/story_architect.py` + `story_architect_generate`/`get_story_research` backend commands + IdeasTab UI). Now exports a real two-zone timeline (tight cut + gap + selects pool) matching Ryan's actual editing workflow, not one undifferentiated sequence. Real multi-file export bug fixed, duplicate-range bug fixed, real listen links + standalone Brief file + full sourced brief embedded on-timeline + 72h research cache. Real gap flagged (not yet fixed) in PreCut's own audio-sync promotion — see ROADMAP Decision Log, 2026-09-04. **Reviewed by Ryan repeatedly on real two-zone exports and NOT signed off (as of 2026-09-15).** His verdicts, in order: "This is complete nonsense" (wallpaper, 2026-09-07) → signed off after 8 bug fixes ("There we go... This is what we need") → "Still not a great cut... story isnt strong at all" (2026-09-08) → "So far, the insticts are way off" (2026-09-10) → "this isnt useable at all" and "theres no story here" (Mitch Interview, 2026-09-11, both traced to real bugs now fixed). A re-export on the fixed code is pending his review. Treat this skill as IN PROGRESS, not done. See § Done, 2026-09-11. |
 | Creative Editor: music (Artlist local-library match) | Not started — B− |
 | Creative Editor: SFX placement | Not started — B− |
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |

@@ -2191,3 +2191,78 @@ with Ryan touching only the intake and the checkpoints.
   fixtures) and `safety_net/verify_export.py` (checks a real exported
   XML). The verifier caught a genuine bug on its first run. Run it before
   handing Ryan any export.
+
+- **2026-09-11 — A range's `source_file` is authoritative, and per-file
+  times are not combined-timeline times.** Two planners feed the same
+  assembler and they mean different things by the same numbers. PreCut's
+  `story_planner` reads every transcript concatenated into one prompt, so
+  its ranges are in COMBINED-timeline seconds and all carry the one
+  combined transcript's path. `posthouse.story_architect` reads each
+  transcript separately, so its ranges carry an explicit per-file
+  `source_file` with times on THAT file's own clock.
+  `story_assembler.assemble_cut_from_angle` assumed the first for both and
+  resolved every range by its raw number, ignoring `source_file` entirely.
+  Real consequence on a real export (Ryan: *"this isnt useable at all"*):
+  A005's 596.8s resolved as combined-time 596.8s, which lands inside A004
+  — so every clip referenced one camera while playing timecodes chosen
+  from the other camera's transcript, the second camera vanished from the
+  export completely, and clips overlapped each other because two
+  independent clocks were laid on one axis. The fix normalises a per-file
+  range to combined time before resolution, detected by the one test that
+  can't be faked: a per-file reading is used only when the time falls
+  inside that file's own duration but OUTSIDE the window the same file
+  occupies on the combined timeline. PreCut's own combined-time ranges are
+  therefore read exactly as before, and a test asserts that.
+
+- **2026-09-11 — The planner's clip order IS the edit, for a planner that
+  sequences.** `story_assembler` sorted every range by `(source_file,
+  source_start_sec)` under the comment "we don't trust planner ordering to
+  be editorially correct." That is right for PreCut's own planner, which
+  returns 2-4 large continuous ranges in no deliberate order. It is fatal
+  for `story_architect`, which returns an ordered arc. On a real 27-beat
+  cut the planner had built dad-is-a-workaholic → who-I-am → I-built-
+  something-bigger → the-guilt → the-day-I-set-aside; the sort delivered
+  it opening on "I'm Mitch, I work on the tech side" with the emotional
+  payoff at clips 7-11 and fourteen straight clips of business before the
+  end. Ryan: *"theres no story here. Its pieces of different stories that
+  no one has context to."* Every clip was one the planner chose; not one
+  was where it put it. `assemble_cut_from_angle` now takes
+  `preserve_order`, defaulting to PreCut's historical behaviour, and
+  `assemble_two_zone_cutlist` opts in **per zone**: the cut keeps the
+  planner's order because that order is the edit; the pool stays
+  source-chronological because it is a bin an editor scrubs.
+
+- **2026-09-11 — No caller may pre-empt `build_anthropic_client()`.** It
+  is the single place that decides how an LLM call is routed, and it
+  already returns the CLI-backed client when `llm_via_cli` is on.
+  `transcript_coverage._call_claude` raised "No Anthropic API key" BEFORE
+  reaching it, so when Ryan cleared his key — correct, since everything
+  routes through the CLI — every fragment extraction failed and the user
+  saw only "No fragments available at all." Whether a call can be made is
+  a question about the ROUTE, not about the key. Two consequences are now
+  guarded by tests: no `posthouse` module may refuse on a missing key
+  without also checking `cli_mode_enabled()`, and `get_api_key_summary()`
+  must expose `llm_via_cli` so the UI stops telling the user it cannot
+  generate ideas while free calls are working.
+
+- **2026-09-11 — A verifier that only checks the plan is not a verifier.**
+  `verify_export.py`'s overlap checks ran only with `--idea` and compared
+  the plan against itself. The plan was clean; the artifact was broken; it
+  passed. Checks that matter must read the exported XML directly. Added:
+  `XML-CUT-NO-OVERLAP`, `XML-POOL-NO-DUPLICATES`, `XML-POOL-NOT-IN-CUT`,
+  and `EXPORT-MATCHES-PLAN`, which compares the source files the plan
+  chose against the files the export actually contains — the only check
+  that can see the wrong-camera class of defect. The bad export failed 5
+  checks after this change and 1 before it.
+
+- **2026-09-13 — The finished wallpaper Reel gives a measured trim ratio:
+  2.5:1.** It drew on 2:46 of on-topic speech and came out at 1:06
+  (66.0s, ffprobe). This is the first real source→finished number this
+  project has, and it is more useful than any remembered rule about Reel
+  length: it says how much speech a topic needs before it can carry a
+  given runtime. A full 60-75s Reel needs roughly 2:30+ of on-topic
+  speech; below about 1:10 the topic is a 30-second short no matter how
+  good it is. Derived from one piece, so treat it as a band, not a
+  target — and dense speech trims less than rambling speech. Recorded in
+  `docs/reference/WALLPAPER_REEL_ANATOMY.md`; applied in
+  `docs/reference/RUNNELLS_CONTENT_INVENTORY.md`.
