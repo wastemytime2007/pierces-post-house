@@ -62,29 +62,68 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-15 — Final-review diff tool built, hermetically tested, NOT
-  yet run on real data.** Ryan: "would it make sense to add a section to
-  upload the final edited videos for each project so that the app can
-  analyze the final product and see how its ideas were implemented, what
-  it may have missed, and learn how to do a better job in the future?"
-  Agreed scope (his "sure" to the cheap-version proposal): a project
-  convention (`finals/idea_<hash>_final.xml`) plus a diff report a human
-  reads — kept / dropped / pulled-from-pool / added-from-elsewhere against
-  the idea's own `source_ranges`/`pool_ranges`. Explicitly NOT built:
-  anything that feeds this back into planning automatically — that's a
-  separate, bigger, unapproved step per rule 7. `posthouse/final_review.py`
-  + `docs/reference/FINAL_REVIEW.md`; 8 tests in
-  `safety_net/tests/test_final_review.py`, full safety net 418 passed.
-  **Cannot go in § Done**: no real project has a finished edit sitting in
-  `finals/` yet. The wallpaper Reel and eviction video both predate the
-  app's own suggestions — they were hand-cut references, not something
-  edited from an exported idea, so there is nothing real to diff against
-  yet. Next real step is Ryan finishing an edit of an already-exported
-  idea (Mitch Interview "A Little Bit Further" is the obvious candidate,
-  once re-exported per the 2026-09-11 fixes) and dropping it into
-  `finals/` — rule 7's "prove on one real unit" applies here exactly as
-  it does everywhere else in this project.
+- **2026-09-15 — Final-review tool built (Ryan: "would it make sense to
+  add a section to upload the final edited videos for each project so
+  that the app can analyze the final product and see how its ideas were
+  implemented, what it may have missed, and learn how to do a better job
+  in the future?" — agreed cheap-version scope, no automatic feedback
+  into planning, per rule 7/rule 5) AND run on real data the same
+  session.** `posthouse/final_review.py` + `docs/reference/
+  FINAL_REVIEW.md`; 9 tests in `safety_net/tests/test_final_review.py`.
+  Ryan's proposal to close the gap fast: create/reuse a project for each
+  ALREADY-FINISHED video, get the app to generate an idea for the same
+  footage, and diff against the real final — rather than waiting for a
+  brand-new project to go end to end. Both projects turned out to
+  already exist, ingested, with ideas already generated (wallpaper: 44
+  ideas; Arthur/eviction: 1 idea) — no new setup needed.
 
+  **Wallpaper — real diff completed.** Best-matching idea picked by
+  measured overlap against the real export (not by title-guessing):
+  "Two Jobs, Not One" (idea_0ec79cd202), 25% raw overlap, the highest of
+  any Reel-length idea. Result: 1/4 proposed cut ranges kept, 3 dropped,
+  1 pulled from the pool, 19 real-footage ranges in the final that
+  neither zone ever surfaced (mostly one ~147s contiguous span of
+  `dji_20260505100952_0005_d` — verified to be many small adjacent
+  trims within one continuous conversation, not a single giant clip or
+  a parsing artifact). Read plainly: even the best-scoring generated
+  idea reproduced only a quarter of what Ryan actually used. Files in
+  `<project>/finals/` (Application Support, not git — same as
+  manifest/transcripts/plans).
+
+  **Two real bugs found and fixed while running it for the first time
+  on real data — exactly why rule 7 says prove on one real unit:**
+  1. `final_review.py` was reporting music, SFX, and title-card
+     graphics as "added from elsewhere" — Artlist loops, "censor bleep
+     sound effect," CopyPasta title PNGs, one bogus 12-HOUR duration on
+     a still-image template. An idea never proposes non-footage
+     content, so none of it was a real gap. Fixed: restrict to camera
+     video extensions (`.mp4`/`.mov`/etc.) before classification. Real
+     count on the wallpaper export: 60 "added" entries before the fix,
+     19 after — all real camera footage or a real stock video clip.
+  2. Both real exports contained nested Premiere sequences (title
+     cards, product-card overlays), which `parse_answer_key_xml`
+     correctly refuses to guess at rather than silently mismeasure.
+     Wallpaper had one, containing real footage — resolved by hand,
+     verified self-consistent, documented in
+     `finals/README.md`. Eviction had 19, ALL verified (by inspection)
+     to be graphics/titles with zero real camera footage inside — safe
+     to drop entirely, verified before dropping, not assumed.
+
+  **Arthur/eviction — blocked, not yet diffed.** After resolving the 19
+  nested sequences, parsing still fails: one real clipitem
+  (`DJI_20260526092824_0003_D.MP4`) is 0.1s / 6 frames outside its own
+  file's self-consistency check. This is a second, different, genuine
+  problem, not a retry of the first — per rule ("three failures means
+  the approach is wrong"), stopped rather than patching around a second
+  issue with more one-off surgery. Also separately flagged to Ryan: the
+  one existing Arthur idea targets 57s (a Reel) while the finished
+  eviction video is 4:26 (long-form) — a diff there would show heavy
+  "dropped" from format mismatch alone, not selection quality, and ties
+  to the still-open organized-selects question from 2026-09-10.
+
+  Code changes from this session: the camera-extension filter in
+  `posthouse/final_review.py` (real bug #1 above), a new regression
+  test proving it, full safety net 419 passed.
 
 - **2026-09-10 — OPEN, and it changes what "correct output" means. Ryan
   reframed the deliverable and this has NOT yet been implemented.** On

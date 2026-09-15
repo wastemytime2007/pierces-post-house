@@ -210,12 +210,34 @@ def load_idea_ranges(
     return title, target, _conv(cut_raw), _conv(pool_raw)
 
 
+# A real Premiere export's <media><video>/<media><audio> tracks legitimately
+# hold more than camera footage: music, SFX, title-card PNGs, stock loops, the
+# brand logo. An idea's source_ranges/pool_ranges only ever reference camera
+# footage, so none of that other material was ever "surfaceable" in the first
+# place — reporting it in the "added from elsewhere" bucket isn't a footage
+# gap, it's noise. Found 2026-09-15 on a real export: 60 "added" entries, the
+# large majority Artlist loops, "censor bleep sound effect," CopyPasta title
+# PNGs, and one 12-HOUR-long entry that was a still-image template's bogus
+# declared duration, not real content. Restricting to camera-plausible
+# extensions is the same filter PreCut itself implicitly relies on (aroll/
+# broll sources are always declared as video files, never stills or audio).
+CAMERA_VIDEO_EXTENSIONS = {
+    ".mp4", ".mov", ".m4v", ".mxf", ".avi", ".mts", ".m2ts",
+}
+
+
 def load_final_ranges_by_stem(final_xml_path: Path) -> dict[str, list[Interval]]:
     """Parse the final export and group its ranges by source-file stem,
-    merged into disjoint intervals per stem."""
+    merged into disjoint intervals per stem. Non-camera-footage clipitems
+    (music, SFX, graphics/stills — see CAMERA_VIDEO_EXTENSIONS above) are
+    dropped before grouping, not just before reporting, so they can never
+    silently inflate a stem's coverage either."""
     ranges = _bench.parse_answer_key_xml(final_xml_path)
     by_stem: dict[str, list[Interval]] = {}
     for r in ranges:
+        ext = Path(r.source_path).suffix.lower()
+        if ext not in CAMERA_VIDEO_EXTENSIONS:
+            continue
         by_stem.setdefault(_stem(r.source_path), []).append((r.in_sec, r.out_sec))
     return {stem: _bench._merge_intervals(ivs) for stem, ivs in by_stem.items()}
 

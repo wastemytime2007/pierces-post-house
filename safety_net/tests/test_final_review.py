@@ -242,3 +242,31 @@ def test_report_renders_without_error_and_names_every_bucket(tmp_path):
     for heading in ("Kept from the proposed cut", "Dropped from the proposed cut",
                     "Pulled from the pool", "Added from elsewhere"):
         assert heading in text
+
+
+def test_non_camera_assets_never_count_as_added_from_elsewhere(tmp_path):
+    """Music, SFX, and title-card graphics sit on real tracks in a real
+    export but were never something an idea could have proposed. Found
+    2026-09-15 on a real wallpaper export: 60 "added" entries, most of
+    them Artlist loops and CopyPasta title PNGs, one a 12-hour bogus
+    duration on a still-image template — noise, not a footage gap."""
+    idea = _idea_json(
+        tmp_path,
+        cut_ranges=[_range("A005_Proxy.mp4", 0.0, 10.0, "beat")],
+        pool_ranges=[],
+    )
+    final = _final_xml(tmp_path, [
+        ("A005_Proxy.mov", "", 0.0, 10.0),
+        ("760140_Loop_Artlist.mov", "", 0.0, 5.0),          # stock video loop -> still a real .mov, kept
+        ("CopyPasta_1788926934792.png", "", 0.0, 3.0),      # title-card still -> excluded
+        ("censor bleep sound effect.wav", "", 0.0, 1.0),    # SFX -> excluded
+        ("sf-main-re-light.png", "", 0.0, 2.0),             # brand logo still -> excluded
+    ])
+    review = diff_idea_against_final(idea, final)
+    stems_reported = {c.source_stem for c in review.extra_clips}
+    assert "copypasta_1788926934792" not in stems_reported
+    assert "censor bleep sound effect" not in stems_reported
+    assert "sf-main-re-light" not in stems_reported
+    # A real video asset (even stock) is still real footage-shaped content
+    # and is correctly reported, so the filter isn't blanket-hiding "added".
+    assert "760140_loop_artlist" in stems_reported
