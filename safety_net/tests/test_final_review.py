@@ -101,6 +101,21 @@ def _final_xml(tmp_path: Path, clips: list[tuple[str, str, float, float]]) -> Pa
     return p
 
 
+def _default_transcripts(tmp_path: Path) -> Path:
+    """Transcripts for the fixture stems, with durations chosen so each
+    test's times are unambiguously that file's own clock (each time is
+    inside its file's own duration and outside any other file's combined
+    window). Required since diff_idea_against_final refuses to guess
+    between combined-timeline and per-file coordinates."""
+    d = tmp_path / "transcripts"
+    d.mkdir(exist_ok=True)
+    for name in ("A004_Proxy", "A005_Proxy", "A005_A001_Proxy",
+                 "760140_Loop_Artlist", "B_Proxy"):
+        (d / f"{name}.json").write_text(json.dumps({"duration": 100000.0,
+                                                     "phrases": []}))
+    return d
+
+
 # ---------------------------------------------------------------------------
 
 def test_load_idea_ranges_reads_real_shape(tmp_path):
@@ -138,7 +153,7 @@ def test_stem_matches_across_proxy_to_original_extension_change(tmp_path):
     final = _final_xml(tmp_path, [
         ("A005_A001_Proxy.mov", "", 10.0, 20.0),
     ])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
     assert len(review.cut_kept) == 1
     assert review.cut_kept[0].topic_label == "hook"
     assert review.cut_kept[0].coverage_frac == pytest.approx(1.0)
@@ -155,7 +170,7 @@ def test_kept_requires_real_overlap_not_a_sliver(tmp_path):
     )
     # Final only grazes the very start: 0.3s of a 30s proposed range.
     final = _final_xml(tmp_path, [("A005_Proxy.mov", "", 0.0, 0.3)])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
     assert review.cut_dropped and review.cut_dropped[0].topic_label == "long range"
     assert not review.cut_kept
 
@@ -177,7 +192,7 @@ def test_full_classification_kept_dropped_pool_and_added(tmp_path):
         ("A005_Proxy.mov", "", 305.0, 315.0),   # inside the pool range -> pulled from pool
         ("A004_Proxy.mov", "", 50.0, 60.0),     # a stem never mentioned anywhere -> added
     ])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
 
     assert [v.topic_label for v in review.cut_kept] == ["kept-beat"]
     assert [v.topic_label for v in review.cut_dropped] == ["dropped-beat"]
@@ -203,7 +218,7 @@ def test_clip_extending_past_a_kept_range_is_reported_as_extra_not_lost(tmp_path
         pool_ranges=[],
     )
     final = _final_xml(tmp_path, [("A005_Proxy.mov", "", 100.0, 130.0)])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
     assert review.cut_kept and review.cut_kept[0].coverage_frac == pytest.approx(1.0)
     assert len(review.added_from_elsewhere) == 1
     add = review.added_from_elsewhere[0]
@@ -218,7 +233,7 @@ def test_duration_not_available_without_a_video(tmp_path):
         pool_ranges=[],
     )
     final = _final_xml(tmp_path, [("A005_Proxy.mov", "", 0.0, 10.0)])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
     assert review.final_duration_sec is None
     assert review.planned_cut_duration_sec == pytest.approx(10.0)
 
@@ -237,7 +252,7 @@ def test_report_renders_without_error_and_names_every_bucket(tmp_path):
         ("A005_Proxy.mov", "", 45.0, 48.0),
         ("A004_Proxy.mov", "", 0.0, 5.0),
     ])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
     text = render_report_markdown(review)
     for heading in ("Kept from the proposed cut", "Dropped from the proposed cut",
                     "Pulled from the pool", "Added from elsewhere"):
@@ -262,7 +277,7 @@ def test_non_camera_assets_never_count_as_added_from_elsewhere(tmp_path):
         ("censor bleep sound effect.wav", "", 0.0, 1.0),    # SFX -> excluded
         ("sf-main-re-light.png", "", 0.0, 2.0),             # brand logo still -> excluded
     ])
-    review = diff_idea_against_final(idea, final)
+    review = diff_idea_against_final(idea, final, transcripts_dir=_default_transcripts(tmp_path))
     stems_reported = {c.source_stem for c in review.extra_clips}
     assert "copypasta_1788926934792" not in stems_reported
     assert "censor bleep sound effect" not in stems_reported
@@ -270,3 +285,62 @@ def test_non_camera_assets_never_count_as_added_from_elsewhere(tmp_path):
     # A real video asset (even stock) is still real footage-shaped content
     # and is correctly reported, so the filter isn't blanket-hiding "added".
     assert "760140_loop_artlist" in stems_reported
+
+
+# ---------------------------------------------------------------------------
+# Combined-timeline vs per-file times. This is the half of the coordinate
+# problem that was missed on the first pass and silently produced a wrong,
+# plausible-looking diff on real data (2026-09-15).
+
+def _transcripts_dir(tmp_path: Path, durations: dict[str, float]) -> Path:
+    d = tmp_path / "transcripts"
+    d.mkdir()
+    for name, dur in durations.items():
+        (d / f"{name}.json").write_text(json.dumps({"duration": dur, "phrases": []}))
+    return d
+
+
+def test_combined_timeline_idea_times_are_converted_to_per_file(tmp_path):
+    """A range stamped 1500s on a file that is only 900s long is not
+    impossible data — it is a COMBINED-timeline time that must be shifted
+    back by that file's offset before it can match anything."""
+    from posthouse.final_review import build_offset_map, to_per_file
+    # A.json 0-900, B.json 900-1400 in filename order.
+    td = _transcripts_dir(tmp_path, {"A_Proxy": 900.0, "B_Proxy": 500.0})
+    offsets = build_offset_map(td)
+    assert offsets["a_proxy"] == (0.0, 900.0)
+    assert offsets["b_proxy"] == (900.0, 500.0)
+
+    # 1000s combined sits 100s into B.
+    assert to_per_file("b_proxy", 1000.0, 1010.0, offsets) == (100.0, 110.0)
+    # 100s on A is inside A's own combined window, so it is already correct.
+    assert to_per_file("a_proxy", 100.0, 110.0, offsets) == (100.0, 110.0)
+
+
+def test_diff_uses_converted_times_end_to_end(tmp_path):
+    """The whole point: an idea whose times are combined must still match a
+    final export whose timecodes are per-file."""
+    td = _transcripts_dir(tmp_path, {"A_Proxy": 900.0, "B_Proxy": 500.0})
+    idea = _idea_json(
+        tmp_path,
+        # 1000-1010 combined == 100-110 into B_Proxy
+        cut_ranges=[_range("/proxies/B_Proxy.mp4", 1000.0, 1010.0, "beat")],
+        pool_ranges=[],
+    )
+    final = _final_xml(tmp_path, [("B_Proxy.mov", "", 100.0, 110.0)])
+    review = diff_idea_against_final(idea, final, transcripts_dir=td)
+    assert len(review.cut_kept) == 1, "combined time was not converted before matching"
+    assert review.cut_kept[0].coverage_frac == pytest.approx(1.0)
+
+
+def test_refuses_to_diff_without_transcripts(tmp_path):
+    """Without the transcripts the conversion is impossible, and a diff that
+    silently compares two coordinate systems looks fine and is wrong."""
+    idea = _idea_json(
+        tmp_path,
+        cut_ranges=[_range("A_Proxy.mp4", 0.0, 10.0, "beat")],
+        pool_ranges=[],
+    )
+    final = _final_xml(tmp_path, [("A_Proxy.mov", "", 0.0, 10.0)])
+    with pytest.raises(FinalReviewError):
+        diff_idea_against_final(idea, final)  # deliberately no transcripts_dir

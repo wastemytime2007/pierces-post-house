@@ -77,18 +77,47 @@ because this session violated them once each.
   already exist, ingested, with ideas already generated (wallpaper: 44
   ideas; Arthur/eviction: 1 idea) — no new setup needed.
 
-  **Wallpaper — real diff completed.** Best-matching idea picked by
-  measured overlap against the real export (not by title-guessing):
-  "Two Jobs, Not One" (idea_0ec79cd202), 25% raw overlap, the highest of
-  any Reel-length idea. Result: 1/4 proposed cut ranges kept, 3 dropped,
-  1 pulled from the pool, 19 real-footage ranges in the final that
-  neither zone ever surfaced (mostly one ~147s contiguous span of
-  `dji_20260505100952_0005_d` — verified to be many small adjacent
-  trims within one continuous conversation, not a single giant clip or
-  a parsing artifact). Read plainly: even the best-scoring generated
-  idea reproduced only a quarter of what Ryan actually used. Files in
-  `<project>/finals/` (Application Support, not git — same as
-  manifest/transcripts/plans).
+  **A wrong result was reported to Ryan first, then corrected — the
+  correction is the important part of this entry.** The first wallpaper
+  diff reported "1 of 4 kept" and was WRONG: `final_review.py` compared
+  the idea's times against the export's times as if both were per-file,
+  but an idea's range TIMES are in COMBINED-timeline seconds (every
+  transcript concatenated in filename order — what the planner actually
+  read), while a Premiere export's are per-file. Two coordinate systems,
+  silently compared, producing a plausible wrong answer.
+
+  This is the SAME bug class as the wrong-camera export bug of
+  2026-09-11, and `final_review.py`'s own docstring claimed to have
+  solved it — but only the FILENAME half (proxy `.mp4` vs original
+  `.mov`). The TIME half was missed entirely. **A bounds check does not
+  catch it**: on the wallpaper project both readings were in bounds. It
+  was caught only because the Arthur idea happened to have ranges that
+  were out of bounds under the per-file reading, which prompted checking
+  the wallpaper one too. The definitive test — now recorded in the code
+  — is whether the transcript text at the resolved position matches the
+  range's own summary: the per-file reading landed on a story about a
+  lawnmower and snakes, the combined reading on the wallpaper glue the
+  summary described.
+
+  **Corrected wallpaper result** (idea_0ec79cd202 "Two Jobs, Not One",
+  the best-matching Reel-length idea by measured overlap): **3 of 4
+  proposed cut ranges kept**, 1 dropped (crew coordinating shirt colours
+  — correctly dropped), **11 pulled from the pool**. Materially better
+  than the wrong numbers first reported, and the pool side is doing real
+  work. Files in `<project>/finals/` (Application Support, not git —
+  same as manifest/transcripts/plans).
+
+  **Arthur/eviction — real diff completed, and the format-mismatch
+  question got a real answer.** Ryan approved generating a long-form
+  idea so there was something the right shape to compare against. Given
+  a stated intent describing the piece he actually made, the planning
+  conversation set its own target to **260s** (vs the 57s of the
+  undirected idea) against a real 266s finished video, and produced
+  idea_e85814b232 at 250.3s across 20 ranges. Result: **12 of 20 kept**,
+  8 dropped (7 of the 8 are the changeover-kit segment from `0001_d`,
+  which the final covers from a different camera file), **24 pulled from
+  the pool**, 46 added from elsewhere. Directed planning fixes the
+  format-targeting problem; it is not baked in.
 
   **Two real bugs found and fixed while running it for the first time
   on real data — exactly why rule 7 says prove on one real unit:**
@@ -109,17 +138,23 @@ because this session violated them once each.
      to be graphics/titles with zero real camera footage inside — safe
      to drop entirely, verified before dropping, not assumed.
 
-  **Arthur/eviction — blocked, not yet diffed.** After resolving the 19
-  nested sequences, parsing still fails: one real clipitem
-  (`DJI_20260526092824_0003_D.MP4`) is 0.1s / 6 frames outside its own
-  file's self-consistency check. This is a second, different, genuine
-  problem, not a retry of the first — per rule ("three failures means
-  the approach is wrong"), stopped rather than patching around a second
-  issue with more one-off surgery. Also separately flagged to Ryan: the
-  one existing Arthur idea targets 57s (a Reel) while the finished
-  eviction video is 4:26 (long-form) — a diff there would show heavy
-  "dropped" from format mismatch alone, not selection quality, and ties
-  to the still-open organized-selects question from 2026-09-10.
+  **The eviction export needed three preprocessing fixes**, each verified
+  before applying, in `<project>/finals/flatten_final.py` (kept next to
+  the files it processes): 10 graphics-only nested sequences dropped
+  (every one inspected first — zero real footage inside); 2 clipitems
+  whose `<out>` sat 6 frames past the file's own `<duration>` clamped
+  (a clip trimmed flush to the end of a 25-minute source — tolerance is
+  10 frames, anything larger still fails loudly); and non-camera
+  clipitems dropped rather than clamped, because some carry durations
+  that are NOT rounding artifacts and are not understood.
+
+  **A second self-inflicted bug, caught and fixed:** that preprocessing
+  initially dropped 453 real camera clipitems. FCP7 defines a `<file>`
+  once with its children and then REFERENCES it by bare `<file id=.../>`;
+  overwriting the real entry with one of those empty references lost the
+  name and duration, so real footage looked like an extension-less
+  asset. Caught because a clamp count went to zero when it shouldn't
+  have.
 
   Code changes from this session: the camera-extension filter in
   `posthouse/final_review.py` (real bug #1 above), a new regression

@@ -49,6 +49,20 @@ zero matches here — a clean parse with a wrong number, precisely the
 failure mode the ``footage-analysis`` skill warns about. This module
 matches by filename STEM instead (case-insensitive, extension stripped).
 
+**That is only half the problem, and the other half was missed on the
+first pass.** The FILENAME is per-file; the TIMES are not — they are in
+COMBINED-timeline seconds, every transcript concatenated in filename
+order, because that is what the planner read. Comparing those directly
+against a Premiere export's per-file source timecodes compares two
+different coordinate systems and produces a plausible, wrong answer: on
+the wallpaper project it reported "1 of 4 kept" from ranges that
+actually pointed at a story about a lawnmower and snakes rather than the
+wallpaper glue the range's own summary described. A bounds check does
+NOT catch this — both readings were in bounds for that project. The
+definitive test is whether the transcript text at the resolved position
+matches the range's own summary. See ``to_per_file`` below; the
+conversion mirrors ``story_assembler.to_combined()`` inverted.
+
 Why not sum clip durations for "final runtime"
 -------------------------------------------------
 Summing every clipitem's own (out - in) double-counts overlapping tracks,
@@ -173,13 +187,74 @@ def _subtract(base: list[Interval], remove: list[Interval]) -> list[Interval]:
                 break
         if cur < e:
             out.append((cur, e))
-    return [(s, e) for s, e in out if e > s]
+    # Drop degenerate slivers: floating-point subtraction leaves 0.0s and
+    # sub-frame fragments that are real numbers but not real footage, and
+    # they clutter the report with entries like "629.9-629.9s (0.0s)".
+    return [(s, e) for s, e in out if e - s > 0.05]
+
+
+# --- Combined-timeline vs per-file times -----------------------------------
+#
+# 2026-09-15, and this one nearly shipped as a wrong answer. An idea's ranges
+# carry a per-file `source_file` but their TIMES are in COMBINED-timeline
+# seconds — every transcript concatenated in filename order — because that is
+# what the planner read (Transcript.format_for_llm over the combined
+# transcript). `story_assembler.to_combined()` already encodes this on the
+# export side; this is the same conversion in reverse.
+#
+# This is the same bug class as the wrong-camera export bug of 2026-09-11,
+# and this module's docstring claimed to have solved it — but only the
+# FILENAME half (proxy .mp4 vs original .mov). The TIME half was missed, and
+# it silently produced a plausible-looking diff: on the wallpaper project it
+# reported "1 of 4 kept" from ranges that actually pointed at a story about a
+# lawnmower and snakes rather than the wallpaper glue the idea's own summary
+# described. It went undetected because both readings were IN BOUNDS for that
+# project's files — a bounds check alone does not catch it. The definitive
+# test is whether the transcript text at the resolved position matches the
+# range's own summary, which is what proved it.
+def build_offset_map(transcripts_dir: Path) -> dict[str, tuple[float, float]]:
+    """stem -> (combined_offset_sec, own_duration_sec), accumulated in the
+    same filename order as exporter._build_source_offset_map."""
+    offsets: dict[str, tuple[float, float]] = {}
+    cursor = 0.0
+    for p in sorted(Path(transcripts_dir).glob("*.json")):
+        try:
+            dur = float(json.loads(p.read_text()).get("duration") or 0.0)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            continue
+        offsets[_stem(p.name)] = (cursor, dur)
+        cursor += dur
+    return offsets
+
+
+def to_per_file(stem: str, start: float, end: float,
+                offsets: dict[str, tuple[float, float]]) -> tuple[float, float]:
+    """Convert a range's times to that file's own clock.
+
+    Mirrors story_assembler.to_combined()'s discriminator exactly, inverted:
+    a time inside the window this file occupies on the COMBINED timeline is
+    read as combined and shifted back; a time already inside the file's own
+    duration but outside that window is already per-file and left alone.
+    Neither fitting means the range is left untouched rather than moved to an
+    invented position.
+    """
+    span = offsets.get(stem)
+    if span is None:
+        return start, end
+    offset, duration = span
+    if offset <= start < offset + duration:
+        return start - offset, end - offset
+    if start < duration:
+        return start, end
+    return start, end
 
 
 def load_idea_ranges(
     idea_json_path: Path,
+    offsets: Optional[dict[str, tuple[float, float]]] = None,
 ) -> tuple[str, Optional[float], list[IdeaRange], list[IdeaRange]]:
-    """Returns (title, target_duration_sec, cut_ranges, pool_ranges)."""
+    """Returns (title, target_duration_sec, cut_ranges, pool_ranges), with
+    times converted to each file's own clock when `offsets` is supplied."""
     try:
         raw = json.loads(idea_json_path.read_text())
     except (OSError, json.JSONDecodeError) as e:
@@ -194,16 +269,19 @@ def load_idea_ranges(
         )
 
     def _conv(rs: list[dict]) -> list[IdeaRange]:
-        return [
-            IdeaRange(
-                source_stem=_stem(r["source_file"]),
-                start_sec=float(r["source_start_sec"]),
-                end_sec=float(r["source_end_sec"]),
+        out = []
+        for r in rs:
+            stem = _stem(r["source_file"])
+            start = float(r["source_start_sec"])
+            end = float(r["source_end_sec"])
+            if offsets:
+                start, end = to_per_file(stem, start, end, offsets)
+            out.append(IdeaRange(
+                source_stem=stem, start_sec=start, end_sec=end,
                 topic_label=r.get("topic_label") or "",
                 summary=r.get("summary") or "",
-            )
-            for r in rs
-        ]
+            ))
+        return out
 
     title = (data.get("brief") or {}).get("title") or raw.get("idea_id", "")
     target = (data.get("brief") or {}).get("target_duration_sec")
@@ -258,10 +336,29 @@ def diff_idea_against_final(
     idea_json_path: Path,
     final_xml_path: Path,
     final_video_path: Optional[Path] = None,
+    transcripts_dir: Optional[Path] = None,
 ) -> FinalReview:
+    """`transcripts_dir` is REQUIRED in practice: without it the idea's
+    combined-timeline times cannot be converted to each file's own clock, and
+    the diff silently compares two different coordinate systems (see the
+    module's combined-vs-per-file note). Pass it, or accept that every number
+    here is meaningless — so this raises instead of guessing."""
+    if transcripts_dir is None:
+        raise FinalReviewError(
+            "transcripts_dir is required: an idea's range times are in "
+            "COMBINED-timeline seconds and must be converted to each file's "
+            "own clock before they can be compared against a Premiere export. "
+            "Without the transcripts there is no way to do that, and the diff "
+            "would compare two different coordinate systems and look fine."
+        )
+    offsets = build_offset_map(Path(transcripts_dir))
+    if not offsets:
+        raise FinalReviewError(f"No transcripts found in {transcripts_dir}.")
+
     idea_data = json.loads(idea_json_path.read_text())
     idea_id = idea_data.get("idea_id", idea_json_path.stem)
-    title, target_duration, cut_ranges, pool_ranges = load_idea_ranges(idea_json_path)
+    title, target_duration, cut_ranges, pool_ranges = load_idea_ranges(
+        idea_json_path, offsets)
     final_by_stem = load_final_ranges_by_stem(final_xml_path)
 
     review = FinalReview(
@@ -377,10 +474,13 @@ def _main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("final_xml", type=Path)
     ap.add_argument("--video", type=Path, default=None,
                      help="the rendered final MP4, for a real runtime figure")
+    ap.add_argument("--transcripts", type=Path, required=True,
+                     help="the project's transcripts/ dir — required, see module docstring")
     ap.add_argument("--json-out", type=Path, default=None)
     args = ap.parse_args(argv)
 
-    review = diff_idea_against_final(args.idea_json, args.final_xml, args.video)
+    review = diff_idea_against_final(args.idea_json, args.final_xml, args.video,
+                                     transcripts_dir=args.transcripts)
     print(render_report_markdown(review))
     if args.json_out:
         from dataclasses import asdict
