@@ -41,6 +41,7 @@ prevent.
 | `docs/design/PHASE4_CULL_DESIGN.md` | Phase 4 cull work only. Currently parked — see STATUS. |
 | `docs/reference/WALLPAPER_REEL_ANATOMY.md` | **Before any judgement about pacing, length, graphics, or tone.** The measured anatomy of the finished Reel Ryan cut by hand from this footage — the target, with real numbers, including the 2.5:1 source-to-finished trim ratio. Beats any remembered rule about what's on-brand. |
 | `docs/reference/RUNNELLS_CONTENT_INVENTORY.md` | Before scanning the Runnells corpus for content, or planning any shoot's topic list. 53 hours read and grouped; carries the transcript-corruption warning (23% hallucinated) that defeats naive scanning, per-day speech totals, and the runtime model. |
+| `docs/reference/FINAL_REVIEW.md` | Before running, extending, or reasoning about the finished-edit-vs-idea diff tool (`posthouse/final_review.py`), or before deciding what "learning from finished edits" should mean next. Not yet run on real data — see its own Status section. |
 | `docs/STATUS.md` § Done | To check whether something was already tried, and what the evidence was. |
 
 If a task turns out to need a document you skipped, load it then. That

@@ -62,6 +62,30 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-15 — Final-review diff tool built, hermetically tested, NOT
+  yet run on real data.** Ryan: "would it make sense to add a section to
+  upload the final edited videos for each project so that the app can
+  analyze the final product and see how its ideas were implemented, what
+  it may have missed, and learn how to do a better job in the future?"
+  Agreed scope (his "sure" to the cheap-version proposal): a project
+  convention (`finals/idea_<hash>_final.xml`) plus a diff report a human
+  reads — kept / dropped / pulled-from-pool / added-from-elsewhere against
+  the idea's own `source_ranges`/`pool_ranges`. Explicitly NOT built:
+  anything that feeds this back into planning automatically — that's a
+  separate, bigger, unapproved step per rule 7. `posthouse/final_review.py`
+  + `docs/reference/FINAL_REVIEW.md`; 8 tests in
+  `safety_net/tests/test_final_review.py`, full safety net 418 passed.
+  **Cannot go in § Done**: no real project has a finished edit sitting in
+  `finals/` yet. The wallpaper Reel and eviction video both predate the
+  app's own suggestions — they were hand-cut references, not something
+  edited from an exported idea, so there is nothing real to diff against
+  yet. Next real step is Ryan finishing an edit of an already-exported
+  idea (Mitch Interview "A Little Bit Further" is the obvious candidate,
+  once re-exported per the 2026-09-11 fixes) and dropping it into
+  `finals/` — rule 7's "prove on one real unit" applies here exactly as
+  it does everywhere else in this project.
+
+
 - **2026-09-10 — OPEN, and it changes what "correct output" means. Ryan
   reframed the deliverable and this has NOT yet been implemented.** On
   supplying `The Day You Take the Keys_Organized.xml` he wrote: *"This
