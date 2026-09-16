@@ -46,7 +46,29 @@ Keywords:"""
 # Model sizes: tiny (39M), base (74M), small (244M), medium (769M), large (1.5GB)
 # "base" is the sweet spot for interview-style A-roll on a modern laptop.
 # "medium" if you have a GPU and want better accuracy on accents/noise.
-WHISPER_MODEL = "base"
+# 2026-09-16: was "base". Measured on the Runnells tiling day, same file,
+# same settings, temperature pinned so the two runs are actually comparable
+# (_0002_D @ 119-300s, the tub/level-line/brick-pattern instruction):
+#
+#   base   "I have some sunrobes on it"
+#   small  "I have found the center of the tub"
+#
+#   base   "using some white tile and on the subway tile you'll work better"
+#   small  "using the subway tile, on the subway style I do a brick pattern"
+#
+#   base   "if the drywalls don't tame it, I just take my glue and get it"
+#   small  "if the drywallers don't tape it, I just tape my glue"
+#
+# base does not merely garble the how-to vocabulary, it substitutes a
+# different plausible-sounding claim -- "white tile will work better" in
+# place of "I do a brick pattern". On a tutorial that is a wrong instruction
+# on screen, not a typo.
+#
+# Cost is 11.9x realtime instead of 31.7x: about 5 minutes instead of 2 for
+# a 60-minute shoot. Reconsider "medium" if jobsite noise keeps eating terms
+# ("at a level line off the tub" still comes back as "at a level I know the
+# tug"), but weigh it against CPU-only decode time on a Mac.
+WHISPER_MODEL = "small"
 # 2026-09-16: was None (auto-detect). Auto-detect is not a neutral default on
 # this footage -- it is the single biggest source of transcript corruption we
 # have measured. Whisper decides the language from the first 30 seconds, and
