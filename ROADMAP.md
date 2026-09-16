@@ -2266,3 +2266,21 @@ with Ryan touching only the intake and the checkpoints.
   target — and dense speech trims less than rambling speech. Recorded in
   `docs/reference/WALLPAPER_REEL_ANATOMY.md`; applied in
   `docs/reference/RUNNELLS_CONTENT_INVENTORY.md`.
+
+- **2026-09-16 — Necessity, not length, decides what belongs in the tight
+  cut.** Superseding the 2026-09-04 hard duration gate. Ryan: *"the
+  length limitation isnt as important as the story, we just need the app
+  to understand how to rank footage on the left side as necessary vs. the
+  right side being all related content."* The original gate used the
+  time budget itself as the selection test — "select fewer/shorter
+  fragments to fit the target" — which is backwards, and it silently
+  discarded a whole generated idea on a second overrun rather than
+  showing Ryan the real result. `ARCHITECT_SYSTEM_PROMPT` now states the
+  actual test: does the story break without this fragment? Length is
+  checked afterward as a `SANITY_OVERRUN_MULTIPLIER = 4.0` ceiling —
+  generous enough to let a necessity-driven story run genuinely long,
+  tight enough to still catch the original disaster (12:44 against a 45s
+  target, ~17x over) — and a moderate overrun is now kept and flagged via
+  `emit()`, not discarded. Controlled before/after on the same planning
+  session, same target, same footage: kept rate 60% -> 74%, dropped 8 ->
+  5, added-from-elsewhere 46 -> 39. See `docs/STATUS.md`, 2026-09-16.

@@ -448,9 +448,21 @@ what disqualifies a moment is being about a different SUBJECT, not being light.
 - **Prefer to stay in ONE source file when a single file can carry the piece.** Cutting between \
 cameras mid-explanation costs continuity, and it also widens the leftover footage gathered around \
 the cut. Reach into a second file only when it holds something the first genuinely lacks.
+- **The test for the cut is NECESSITY, not fit and not length.** 2026-09-16, Ryan, correcting an \
+approach that used the time budget to decide what belonged in the cut: "the length limitation \
+isnt as important as the story, we just need the app to understand how to rank footage on the \
+left side as necessary vs. the right side being all related content." For every fragment you are \
+weighing, ask ONE question: does the story break without this? If removing it would leave a gap \
+the viewer would notice — the step skipped, the reason unstated, the consequence missing — it is \
+necessary and belongs in the cut. If it's good, on-topic, and would fit fine but the story stands \
+without it, it belongs on the other side, not in the cut padded out to fill time. Do not use \
+"will this fit the target length" as the test for whether something belongs in the cut — that is \
+exactly backwards, and it is what pushed real necessary material (a warning, a consequence, an \
+establishing line) onto the leftover side in earlier real cuts, where Ryan had to go dig it back \
+out by hand. Select for necessity first; length is checked afterward, not decided by first.
 - **You do not choose the unused footage.** There is no pool field to fill in. Everything you \
 don't select is gathered automatically from the material immediately around your selections. Your \
-only job is the tight cut — so select tightly and trust the leftovers to be handled.
+only job is the tight cut — so select what's necessary and trust the leftovers to be handled.
 - **You are cutting, not just picking. CUT INSIDE long fragments.** A fragment is a topic span, \
 not a shot — a 167-second explanation is not a 167-second clip you must take whole. Any fragment \
 long enough to matter has its real transcript phrases listed underneath it with exact timestamps. \
@@ -523,7 +535,7 @@ Return this exact JSON shape, in a fenced ```json block:
     "cta": "What is the specific call to action, and why this one (not a generic 'follow us')?"
   }},
   "tone": "editorial tone guidance, e.g. 'quiet, unhurried, heart-led'",
-  "target_duration_sec": <number of seconds this cut should run. If a target length was given above, this MUST be within it — and the `sequence` you return must actually add up to roughly that, not overrun it. This is checked after you answer; a sequence whose real duration blows the target is rejected and regenerated.>,
+  "target_duration_sec": <the real number of seconds your `sequence` actually adds up to, reported honestly — this is checked against your real selections, not treated as a promise to keep. If a target was given above, get close to it by selecting only what's necessary, not by cutting something necessary just to hit the number.>,
   "target_audience": "who this is for, restated from the audience goal",
   "call_to_action": "same specific CTA as editorial_qna.cta",
   "sequence": [
@@ -562,13 +574,17 @@ def _format_planning_context(stated_intent: str, max_duration_sec: float) -> str
         )
     if max_duration_sec and max_duration_sec > 0:
         parts.append(
-            f"\n\nTARGET LENGTH: the tight cut (`sequence`) must run about "
-            f"{max_duration_sec:.0f} seconds or less. This is measured against your actual "
-            f"selected fragments after you answer, and a cut that overruns it is rejected. "
-            f"Select fewer, shorter, better fragments — do not select everything good and "
-            f"hope the length works out. Material that's genuinely on-topic but doesn't fit "
-            f"in the time is simply left out — it stays available on the other side of the "
-            f"timeline automatically."
+            f"\n\nTARGET LENGTH: aim for about {max_duration_sec:.0f} seconds. This is a "
+            f"GUIDE, not the reason to include or exclude anything — see the necessity rule "
+            f"above; that decides the cut, not this number. 2026-09-16, Ryan: \"the length "
+            f"limitation isnt as important as the story.\" Do not throw in extra material "
+            f"just because there's time left, and do not cut something the story actually "
+            f"needs just to hit this number — if the necessary beats genuinely run long, "
+            f"say so honestly and let it run long; a sequence that runs well past this "
+            f"target is checked afterward and flagged for review, not silently rejected. "
+            f"What IS still a real failure: selecting so much that the 'cut' stops being a "
+            f"cut at all — most of the available footage, with no discrimination happening. "
+            f"That is the one thing this number exists to catch."
         )
     return "".join(parts) + "\n"
 
@@ -1252,12 +1268,28 @@ DURATION_BUFFER_SEC = 15.0
 #
 # Until now the undirected path passed NO target at all, so the duration
 # check never ran and there was nothing stopping a 12:44 "idea". A real
-# default is the fix: 60s target, so the enforced ceiling lands at 75s
-# (target + DURATION_BUFFER_SEC) — inside his "a minute and a half at
-# most", and a genuine Reel length rather than a survey of the whole
+# default is the fix: 60s target as a GUIDE (see SANITY_OVERRUN_MULTIPLIER
+# below for the actual gate) — inside his "a minute and a half at most" as
+# the aim, and a genuine Reel length rather than a survey of the whole
 # shoot. A planning conversation still overrides this with whatever
 # length was actually agreed.
 DEFAULT_REEL_TARGET_SEC = 60.0
+
+# 2026-09-16, replacing a flat +15s reject gate. Ryan: "the length
+# limitation isnt as important as the story, we just need the app to
+# understand how to rank footage on the left side as necessary vs. the
+# right side being all related content." The old gate used the time
+# budget to decide what belonged in the cut — exactly backwards, and it
+# discarded a real, well-selected cut for running moderately long rather
+# than showing Ryan the actual result. This is a SANITY ceiling instead:
+# generous enough that a story which genuinely needs more room than the
+# target gets through, tight enough to still catch the real disaster it
+# exists for — a cut that cited Instagram Reel formats in its own brief
+# and ran 12:44 against a 45s target, 17x over, no discrimination
+# happening at all. 4x catches that with room to spare while giving a
+# necessity-driven selection real space to be honest about needing more
+# than a 60s default allows.
+SANITY_OVERRUN_MULTIPLIER = 4.0
 
 # How far either side of the used material to look when gathering the
 # leftover footage for the pool. Derived from Ryan's own reference edit
@@ -2173,34 +2205,47 @@ def generate_story_angle(
         )
         raise err
 
-    # 2026-09-04: the length the caller asked for is a REAL constraint, not
-    # a suggestion the model reports back and nobody checks. Ryan caught a
-    # cut that cited Instagram Reel formats in its own brief and ran 12:44
-    # — because `target_duration_sec` was documented in the prompt as "not
-    # enforced" and nothing downstream measured anything. Measured from the
-    # real selected ranges, not from the model's self-reported number,
-    # which is exactly the claim under suspicion.
+    # 2026-09-04: the length the caller asked for matters, but 2026-09-16
+    # corrected HOW it's checked. Ryan, on the original flat +15s buffer:
+    # "the length limitation isnt as important as the story, we just need
+    # the app to understand how to rank footage on the left side as
+    # necessary vs. the right side being all related content." The old gate
+    # rejected and discarded a real, well-selected cut for running
+    # moderately long — which is exactly backwards when the cause is a
+    # story that legitimately needs more time, not a failure to
+    # discriminate. It also gave Ryan nothing for that slot on the second
+    # failed attempt, rather than the real (if long) idea to judge himself
+    # per rule 6 (supervisor is Ryan).
+    #
+    # So this is now a SANITY ceiling, not a fit test: it still catches the
+    # real failure it was built for (a cut that cited Instagram Reel
+    # formats in its own brief and ran 12:44 against a 45s target — 17x
+    # over, no discrimination happening at all) without punishing a
+    # legitimately longer necessary story. A moderate overrun is not
+    # rejected here; it is measured and flagged by the caller
+    # (run_generate_story_angle), which has emit() and can show Ryan the
+    # real result instead of silently discarding it.
     if max_duration_sec and max_duration_sec > 0:
         actual_sec = sum(r.source_end_sec - r.source_start_sec for r in ranges)
-        ceiling = max_duration_sec + DURATION_BUFFER_SEC
+        ceiling = max_duration_sec * SANITY_OVERRUN_MULTIPLIER
         if actual_sec > ceiling:
             err = StoryPlannerError(
-                f"Tight cut runs {actual_sec:.0f}s but the agreed target is "
-                f"{max_duration_sec:.0f}s (+{DURATION_BUFFER_SEC:.0f}s buffer = "
-                f"{ceiling:.0f}s allowed) — it selected too much material for the "
-                f"format it was asked to build. Retry with fewer/shorter fragments."
+                f"Tight cut runs {actual_sec:.0f}s against a {max_duration_sec:.0f}s "
+                f"target — {actual_sec / max_duration_sec:.1f}x over, past the "
+                f"{SANITY_OVERRUN_MULTIPLIER:.0f}x sanity ceiling ({ceiling:.0f}s). This "
+                f"isn't 'ran a bit long for a good reason', it's most of the available "
+                f"footage with no real discrimination happening. Retry using necessity, "
+                f"not length, to decide what belongs in the cut."
             )
-            over_by = actual_sec / max_duration_sec
             err.retry_note = (
                 f"Your previous attempt selected {actual_sec:.0f}s of material — "
-                f"{over_by:.1f}x over the {max_duration_sec:.0f}s target. That is not a "
-                f"trim-a-little problem, it needs fewer beats: pick ONE moment per role "
-                f"(one hook, one core demonstration, one payoff — not several options for "
-                f"each), and prefer the single tightest fragment for each over a longer or "
-                f"more complete one. If a beat the editor asked for (e.g. a specific "
-                f"warning or caveat) genuinely doesn't exist as a short, usable fragment in "
-                f"the footage, drop it and say so honestly in narrative_thesis rather than "
-                f"including a long fragment to cover it."
+                f"{actual_sec / max_duration_sec:.1f}x the {max_duration_sec:.0f}s target, "
+                f"which is not 'the story needed more room', it's not discriminating at "
+                f"all. For each fragment, ask: does the story break without this? If not, "
+                f"it belongs on the other side, not in the cut. If a beat the editor asked "
+                f"for genuinely doesn't exist as a short, usable fragment in the footage, "
+                f"drop it and say so honestly in narrative_thesis rather than including a "
+                f"long fragment to cover it."
             )
             raise err
 
@@ -2664,10 +2709,11 @@ def run_generate_story_angle(
     if not max_duration_sec or max_duration_sec <= 0:
         max_duration_sec = DEFAULT_REEL_TARGET_SEC
         emit({"type": "log", "level": "info", "job_id": job_id,
-              "message": f"No agreed length for this run, so building to a real Reel "
-                         f"length: ~{DEFAULT_REEL_TARGET_SEC:.0f}s "
-                         f"(hard ceiling {DEFAULT_REEL_TARGET_SEC + DURATION_BUFFER_SEC:.0f}s). "
-                         f"Use Plan with AI if you want a different length."})
+              "message": f"No agreed length for this run, so aiming for a real Reel "
+                         f"length: ~{DEFAULT_REEL_TARGET_SEC:.0f}s. Necessity decides what "
+                         f"makes the cut, not this number — if the material genuinely needs "
+                         f"more room it will run longer and say so, rather than being cut "
+                         f"down to fit. Use Plan with AI if you want a different length."})
 
     def emit_with_job(ev):
         ev.setdefault("job_id", job_id)
@@ -2784,6 +2830,20 @@ def run_generate_story_angle(
                 continue
 
             avoid_theses.append(angle_research.get("narrative_thesis", angle.brief.title))
+
+            # 2026-09-16: a cut that overran the target used to be discarded
+            # entirely by generate_story_angle's own gate. Now it only
+            # rejects genuine runaway selection (SANITY_OVERRUN_MULTIPLIER);
+            # a moderate overrun reaches here as a real result, and Ryan
+            # should see it plainly rather than the app quietly deciding for
+            # him whether the extra length was warranted (rule 6).
+            actual_sec = sum(r.source_end_sec - r.source_start_sec for r in angle.source_ranges)
+            if max_duration_sec and actual_sec > max_duration_sec + DURATION_BUFFER_SEC:
+                emit({"type": "log", "level": "info", "job_id": job_id,
+                      "message": f"Arc {i + 1}/{N_ANGLES} ran {actual_sec:.0f}s against a "
+                                 f"{max_duration_sec:.0f}s target — selected on necessity, "
+                                 f"not trimmed to fit. Longer than asked; judge whether the "
+                                 f"extra material earns its place."})
 
             idea_path = save_story_angle_as_idea(project.plans_dir(), angle)
             research_path = save_story_research(project_dir, angle, angle_research)

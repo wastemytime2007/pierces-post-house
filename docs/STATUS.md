@@ -62,6 +62,57 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-16 — Necessity replaces length as the cut-selection test; a
+  controlled before/after shows it working.** Ryan corrected the
+  original design directly: *"the length limitation isnt as important as
+  the story, we just need the app to understand how to rank footage on
+  the left side as necessary vs. the right side being all related
+  content."* The app had been using the time budget itself as the
+  selection criterion — "select fewer/shorter fragments to fit" — which
+  is backwards and is exactly what pushed real necessary material onto
+  the pool side in the diffs run the day before, where Ryan then had to
+  dig it back out by hand.
+
+  Changed: `ARCHITECT_SYSTEM_PROMPT` now states the test explicitly —
+  does the story break without this fragment? That decides cut vs pool,
+  not fit-to-length. `_format_planning_context`'s TARGET LENGTH block is
+  now a guide the model aims for, not the reason to include or exclude
+  anything. The hard reject-and-discard gate in `generate_story_angle`
+  (target + a flat 15s buffer, silently dropping the whole idea on a
+  second failure) is replaced by `SANITY_OVERRUN_MULTIPLIER = 4.0` — a
+  proportional ceiling that still catches genuine runaway selection (the
+  original 12:44-vs-45s disaster this was built for, ~17x over) without
+  discarding a real, well-selected cut for running moderately long. A
+  moderate overrun is now kept and flagged via `emit()` in
+  `run_generate_story_angle` so Ryan sees the real result and judges it
+  himself (rule 6), rather than the app unilaterally deciding for him.
+
+  **Controlled comparison, same planning session, same target, same
+  footage, one variable changed** — this is the reliable evidence:
+  regenerated the Arthur/eviction idea from the identical session
+  (`plan_9c3e9176cc`, 260s target) under the new prompt only.
+
+  | | old prompt (idea_e85814b232) | new prompt (idea_fb4c61ca76) |
+  | --- | --- | --- |
+  | kept | 12/20 (60%) | **14/19 (74%)** |
+  | dropped | 8 | **5** |
+  | pulled from pool | 24 | 24 |
+  | added from elsewhere | 46 | **39** |
+
+  Every metric that matters moved the right direction with nothing else
+  changed. Files in `<project>/finals/` alongside the earlier diffs.
+
+  **Wallpaper regeneration was run too, but is NOT usable as evidence and
+  is not reported as a finding either way.** A fresh undirected
+  regeneration (idea_ea82d42a75) picked a different, more fragmented
+  pitch than the original (idea_0ec79cd202) — different specific clips,
+  finer-grained sub-selection of one continuous take — so a 3/10-kept
+  result there is confounded by LLM stochasticity choosing a different
+  story, not isolated to the prompt change. Recorded so a future session
+  doesn't mistake noise for a regression: the controlled eviction
+  comparison above is the real evidence.
+
+
 - **2026-09-15 — Final-review tool built (Ryan: "would it make sense to
   add a section to upload the final edited videos for each project so
   that the app can analyze the final product and see how its ideas were

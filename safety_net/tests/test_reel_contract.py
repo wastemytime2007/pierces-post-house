@@ -579,24 +579,56 @@ def test_one_moment_described_twice_is_still_deduped():
 
 
 def test_undirected_generation_has_a_real_reel_length():
-    """Property 7b: the plain "Generate ideas" button is bounded too.
+    """Property 7b: the plain "Generate ideas" button aims at a real length.
 
     Ryan: "nobody's gonna watch 13 minutes worth of us talking about
     that so we still need to create on the left side ideally like a 30
     second to a minute and a half at most." The undirected path used to
     pass no target at all, so the duration check never ran and nothing
     stopped a 12:44 idea.
+
+    2026-09-16: the actual reject gate is no longer target + a flat
+    buffer — see test_length_is_a_sanity_check_not_the_selection_criterion
+    below for why. DEFAULT_REEL_TARGET_SEC is now a GUIDE the model aims
+    for, not a hard ceiling; this test checks the guide is still a real
+    Reel length, not that a cut running long gets discarded.
     """
-    from posthouse.story_architect import (
-        DEFAULT_REEL_TARGET_SEC, DURATION_BUFFER_SEC,
-    )
-    ceiling = DEFAULT_REEL_TARGET_SEC + DURATION_BUFFER_SEC
+    from posthouse.story_architect import DEFAULT_REEL_TARGET_SEC
     assert 30.0 <= DEFAULT_REEL_TARGET_SEC <= 90.0, (
         f"default target {DEFAULT_REEL_TARGET_SEC}s is outside the 30-90s window "
         "Ryan asked for"
     )
-    assert ceiling <= 90.0, (
-        f"enforced ceiling is {ceiling}s — past 'a minute and a half at most'"
+
+
+def test_length_is_a_sanity_check_not_the_selection_criterion():
+    """2026-09-16, Ryan, correcting the original design: "the length
+    limitation isnt as important as the story, we just need the app to
+    understand how to rank footage on the left side as necessary vs. the
+    right side being all related content." The old gate (target + a flat
+    15s buffer) rejected and discarded a real, well-selected cut for
+    running moderately long — using the time budget to decide what
+    belonged in the cut, which is backwards. This checks the replacement:
+    a much more generous, proportional sanity ceiling that still catches
+    genuine runaway selection (the 12:44-vs-45s, 17x-over disaster this
+    was built for) without punishing a legitimately longer necessary
+    story, and it must not be so tight it approximates the old behavior.
+    """
+    from posthouse.story_architect import SANITY_OVERRUN_MULTIPLIER
+    # Must comfortably survive a necessity-driven story that runs a few
+    # times the undirected default without being flagged as a failure to
+    # discriminate (the real eviction test: told the piece was ~4.5min,
+    # the planner built to 260s against a 60s undirected default — a 4.3x
+    # ratio that must NOT be rejected as "not discriminating").
+    assert SANITY_OVERRUN_MULTIPLIER >= 4.0, (
+        f"{SANITY_OVERRUN_MULTIPLIER}x is too tight to let a real necessity-driven "
+        "long-form story through — it would reproduce the old 'length decides "
+        "the cut' failure under a different number"
+    )
+    # Must still catch the real disaster it exists for: 12:44 (764s) against
+    # a 45s target is ~17x over.
+    assert SANITY_OVERRUN_MULTIPLIER < 17.0, (
+        f"{SANITY_OVERRUN_MULTIPLIER}x would let the original 12:44-vs-45s disaster "
+        "through — this ceiling exists specifically to catch that"
     )
 
 
@@ -1169,3 +1201,28 @@ def test_story_architect_cut_keeps_the_planners_clip_order():
             f"clip {i + 1}: planner ordered {wf} @ {ws}, got {gf} @ {gs} — "
             "the cut was re-sorted and the arc is gone"
         )
+
+
+def test_prompt_states_necessity_as_the_cut_selection_test():
+    """2026-09-16: the criterion for what goes in the cut must be necessity
+    to the story, not fit-to-length. Checking the actual prompt text, not
+    just the constants — a threshold can be right while the instruction
+    that decides selection is still the old, backwards one."""
+    from posthouse.story_architect import ARCHITECT_SYSTEM_PROMPT
+    assert "NECESSITY" in ARCHITECT_SYSTEM_PROMPT
+    assert "does the story break without this" in ARCHITECT_SYSTEM_PROMPT
+    # The old instruction ("select tightly") must be reframed, not merely
+    # supplemented with the new rule alongside it.
+    assert "so select tightly and trust the leftovers" not in ARCHITECT_SYSTEM_PROMPT
+
+
+def test_target_length_prompt_is_a_guide_not_the_selection_test():
+    """_format_planning_context's TARGET LENGTH block must not instruct the
+    model to select fewer/shorter fragments to fit a number — that IS the
+    backwards behaviour Ryan corrected."""
+    from posthouse.story_architect import _format_planning_context
+    block = _format_planning_context("", 45.0)
+    assert "GUIDE" in block
+    assert "necessity rule above" in block
+    assert "Select fewer, shorter, better fragments" not in block
+    assert "is simply left out" not in block

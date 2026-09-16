@@ -707,8 +707,10 @@ def generate_from_planning_session(project, job_id: str, emit, session_id: str) 
     if session.target_duration_sec:
         emit({"type": "log", "level": "info", "job_id": job_id,
               "message": f"Target length for the tight cut: "
-                         f"~{session.target_duration_sec:.0f}s (enforced — a cut that "
-                         f"overruns it is rejected and retried)."})
+                         f"~{session.target_duration_sec:.0f}s. Necessity decides what's in "
+                         f"the cut, not this number — a moderate overrun is kept and "
+                         f"flagged, not discarded (see story_architect.SANITY_OVERRUN_"
+                         f"MULTIPLIER)."})
 
     run_generate_story_angle(
         project, job_id, emit,
