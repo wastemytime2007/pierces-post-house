@@ -641,6 +641,64 @@ def _merge_spans(spans: List[tuple]) -> List[tuple]:
     return out
 
 
+def build_allowed_pool_spans(
+    frags_by_file: Dict[str, List[tuple]],
+    used_idx: set,
+    source_offset_lookup: Optional[Dict[str, float]] = None,
+) -> Dict[str, List[tuple]]:
+    """Which spans the leftovers may be drawn from, per source file.
+
+    `frags_by_file` maps source_file -> [(start, end, fit, candidate_index)].
+    `used_idx` is the set of candidate indices the tight cut claimed.
+
+    2026-09-16 — the adjacency radius is GONE, and this is why.
+
+    The rule used to be "the used fragments, plus an immediately adjacent
+    fragment only when it is itself strong". Measured against Ryan's two
+    real finished edits, that discarded most of what he actually reached
+    for: of the footage he used that the cut itself didn't propose, ~136s
+    was blocked purely by the radius versus 7.5s by the fit rule — and
+    most of the radius-blocked material was already labelled "strong" by
+    the flagging stage. The app had found it, judged it strongly
+    on-topic, then threw it away for sitting more than one fragment away
+    from a clip the cut happened to use. Proximity to the cut was
+    standing in for relevance when a real relevance signal already
+    existed.
+
+    Ryan's own spec for this side is not positional: "the right of the
+    timeline was all of the footage that had to do with that topic that i
+    wasnt sure would make it into the cut" (2026-09-16). ALL of the
+    on-topic footage.
+
+    What still bounds it — and what actually fixed the
+    37.6-minutes-of-nonsense complaint in the first place — is unchanged:
+    off_topic and "possible" fragments are excluded outright (the shirt
+    colours and fishing licences were all already labelled off_topic; the
+    label just wasn't being consulted), and leftovers may only come from
+    source files the cut actually drew on. Measured effect on the two
+    real projects: capture of the material Ryan really used rose from 28%
+    to 89% (wallpaper) and 41% to 63% (eviction).
+    """
+    offsets = source_offset_lookup or {}
+    allowed: Dict[str, List[tuple]] = {}
+    for source_file, frags in frags_by_file.items():
+        off = offsets.get(source_file, 0.0)
+        if not any(i in used_idx for (_, _, _, i) in frags):
+            continue  # the cut never drew on this file
+        chosen: List[tuple] = [
+            (fs + off, fe + off)
+            for (fs, fe, fit, i) in frags
+            if i in used_idx or fit == "strong"
+        ]
+        if chosen:
+            # Merge before use. 2026-09-08, Ryan: "extra footage has
+            # instances of duplicate footage." Overlapping spans produce
+            # partial duplicates in the gap-walk, so merge rather than
+            # de-duplicating exact matches only.
+            allowed[source_file] = _merge_spans(chosen)
+    return allowed
+
+
 def _compute_pool_leftovers(
     used_ranges: List[TopicRange],
     phrases_by_source: Optional[Dict[str, List[dict]]],
@@ -2281,31 +2339,8 @@ def generate_story_angle(
     for v in frags_by_file.values():
         v.sort()
 
-    allowed_spans: Dict[str, List[tuple]] = {}
-    used_idx = set(claimed_spans)
-    for source_file, frags in frags_by_file.items():
-        off = (source_offset_lookup or {}).get(source_file, 0.0)
-        chosen: List[tuple] = []
-        for pos, (fs, fe, fit, i) in enumerate(frags):
-            if i not in used_idx:
-                continue
-            chosen.append((fs + off, fe + off))
-            for nb in (pos - 1, pos + 1):
-                if 0 <= nb < len(frags):
-                    nfs, nfe, nfit, nidx = frags[nb]
-                    if nfit == "strong" and nidx not in used_idx:
-                        chosen.append((nfs + off, nfe + off))
-        if chosen:
-            # Merge before use. 2026-09-08, Ryan: "extra footage has
-            # instances of duplicate footage." Real cause: when two used
-            # fragments sit either side of the SAME strong neighbour, that
-            # neighbour was appended once per used fragment, so the gap-walk
-            # in _compute_pool_leftovers ran over the identical span twice
-            # and emitted the identical leftover clip twice (confirmed:
-            # 2425.9-2449.6 appeared twice in the pool). Overlapping spans
-            # would produce partial duplicates for the same reason, so this
-            # merges rather than just de-duplicating exact matches.
-            allowed_spans[source_file] = _merge_spans(chosen)
+    allowed_spans = build_allowed_pool_spans(
+        frags_by_file, set(claimed_spans), source_offset_lookup)
 
     pool_ranges = _compute_pool_leftovers(
         ranges, phrases_by_source, source_offset_lookup, allowed_spans)

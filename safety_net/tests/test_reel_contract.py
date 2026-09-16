@@ -28,8 +28,10 @@ The eight properties, and the failure each one locks out:
   2. Leftovers never include off_topic material.
      (Failure: "What do shirt colors and fishing licenses have to do
      with wallpaper".)
-  3. Leftovers keep genuinely-continuous adjacent strong material.
-     (Failure: dropping the bathroom-scope talk that follows the demo.)
+  3. Leftovers keep genuinely-continuous strong material.
+     (Failure: dropping the bathroom-scope talk that follows the demo.
+     Broadened 2026-09-16 from "adjacent" to all strong material on a
+     used file — see section 14.)
   4. Leftovers never drop material the cut's own fragments contain.
      (Failure: "its still missing a bunch of the items i chose".)
   5. Cuts land on word boundaries, not phrase boundaries.
@@ -102,11 +104,17 @@ FRAG_BATHROOM_SCOPE = (315.1, 367.2)     # strong — directly follows it
 FRAG_CALIFORNIA_OFFTOPIC = (108.4, 145.6)
 
 # His final leftover ends at 372.6, which is ~5s inside a THIRD fragment
-# ("Mysterious item found in every house", also strong) that is adjacent
-# to the bathroom-scope fragment but NOT to the fragment his cut came
-# from. Our rule reaches one strong fragment out, so we legitimately stop
-# at 367.2. That 5.4s is a known, accepted difference — asserted as a
-# floor below rather than pretended away with a loose tolerance.
+# ("Mysterious item found in every house", also strong). The tests below
+# feed _compute_pool_leftovers hand-built allowed spans covering the
+# wallpaper + bathroom-scope fragments only, so they stop at 367.2 and
+# that 5.4s is a known, accepted difference — asserted as a floor rather
+# than pretended away with a loose tolerance.
+#
+# 2026-09-16: these hand-built spans no longer reflect how the spans are
+# actually CHOSEN in production. The "reach one strong fragment out"
+# radius is gone — see build_allowed_pool_spans and section 14 below.
+# These tests still earn their place: they lock the complement math,
+# which is a separate concern from which spans get fed into it.
 REF_TAIL_FLOOR_SEC = 360.0
 
 
@@ -1226,3 +1234,92 @@ def test_target_length_prompt_is_a_guide_not_the_selection_test():
     assert "necessity rule above" in block
     assert "Select fewer, shorter, better fragments" not in block
     assert "is simply left out" not in block
+
+
+# --------------------------------------------------------------------------
+# 14. The pool is bounded by TOPIC, not by distance from the cut
+# --------------------------------------------------------------------------
+#
+# 2026-09-16. The rule was "used fragments, plus an immediately adjacent
+# fragment only when it is itself strong". Measured against Ryan's two real
+# finished edits: of the footage he actually used that the cut didn't
+# propose, ~136s was blocked purely by that radius versus 7.5s by the fit
+# rule, and most of the radius-blocked material was ALREADY labelled strong.
+# The app found it, judged it on-topic, and discarded it for sitting more
+# than one fragment from a used clip.
+#
+# These tests exist because the previous rule had NO coverage at this level
+# at all — the pool tests above call _compute_pool_leftovers with hand-built
+# allowed spans, so they never exercised how those spans get chosen, and a
+# silent revert here would not have failed anything.
+
+def _frags(*rows):
+    """rows: (source_file, start, end, fit, index)"""
+    out = {}
+    for sf, s, e, fit, i in rows:
+        out.setdefault(sf, []).append((s, e, fit, i))
+    for v in out.values():
+        v.sort()
+    return out
+
+
+def test_strong_material_far_from_the_cut_is_still_pooled():
+    """The core of the 2026-09-16 fix. A strong fragment seven positions
+    away from anything the cut used is exactly what Ryan reached for and
+    exactly what the radius rule threw away."""
+    from posthouse.story_architect import build_allowed_pool_spans
+    frags = _frags(
+        ("A.mov", 0.0, 10.0, "strong", 0),      # used by the cut
+        ("A.mov", 20.0, 30.0, "strong", 1),
+        ("A.mov", 40.0, 50.0, "strong", 2),
+        ("A.mov", 60.0, 70.0, "strong", 3),
+        ("A.mov", 80.0, 90.0, "strong", 4),
+        ("A.mov", 100.0, 110.0, "strong", 5),
+        ("A.mov", 120.0, 130.0, "strong", 6),
+        ("A.mov", 140.0, 150.0, "strong", 7),   # seven away, still on topic
+    )
+    allowed = build_allowed_pool_spans(frags, used_idx={0})
+    spans = allowed["A.mov"]
+    assert any(s <= 140.0 and e >= 150.0 for s, e in spans), (
+        "a strong, on-topic fragment must reach the pool regardless of how "
+        "far it sits from the cut — distance is not relevance"
+    )
+
+
+def test_off_topic_and_possible_never_reach_the_pool():
+    """What actually fixed "what do shirt colors and fishing licenses have
+    to do with wallpaper" was the fit label, not the radius — so the fit
+    bound must survive the radius being removed."""
+    from posthouse.story_architect import build_allowed_pool_spans
+    frags = _frags(
+        ("A.mov", 0.0, 10.0, "strong", 0),        # used
+        ("A.mov", 20.0, 30.0, "off_topic", 1),    # shirt colours
+        ("A.mov", 40.0, 50.0, "possible", 2),
+    )
+    allowed = build_allowed_pool_spans(frags, used_idx={0})
+    spans = allowed["A.mov"]
+    assert not any(s < 30.0 and e > 20.0 for s, e in spans), "off_topic leaked in"
+    assert not any(s < 50.0 and e > 40.0 for s, e in spans), "possible leaked in"
+
+
+def test_files_the_cut_never_used_contribute_nothing():
+    """The other half of what stopped 37.6 minutes across six camera files:
+    leftovers come only from footage the cut actually drew on."""
+    from posthouse.story_architect import build_allowed_pool_spans
+    frags = _frags(
+        ("A.mov", 0.0, 10.0, "strong", 0),     # used
+        ("B.mov", 0.0, 600.0, "strong", 1),    # a whole other camera, untouched
+    )
+    allowed = build_allowed_pool_spans(frags, used_idx={0})
+    assert "B.mov" not in allowed, (
+        "a source file the cut never touched must not contribute leftovers, "
+        "however strong its material looks in isolation"
+    )
+
+
+def test_offsets_are_applied_to_allowed_spans():
+    from posthouse.story_architect import build_allowed_pool_spans
+    frags = _frags(("A.mov", 0.0, 10.0, "strong", 0))
+    allowed = build_allowed_pool_spans(frags, used_idx={0},
+                                        source_offset_lookup={"A.mov": 100.0})
+    assert allowed["A.mov"] == [(100.0, 110.0)]

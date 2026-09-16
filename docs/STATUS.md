@@ -62,6 +62,60 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-16 — Pool scoping fixed: bounded by topic, not by distance
+  from the cut. Verified on both real projects.** Ryan asked whether more
+  tuning was needed before a fresh end-to-end project. The diagnostic
+  answer was yes, for one specific thing: of the footage he used that the
+  app never surfaced, **79% had already been extracted as candidate
+  fragments.** The app found that material, labelled it, scored it — and
+  then discarded it before export. Not a retrieval problem; a scoping one.
+
+  Measured cause, per fragment: ~136s was blocked purely by the
+  adjacency radius (pool could only draw from used fragments ±1) versus
+  7.5s by the fit rule, and most of the radius-blocked material was
+  ALREADY labelled "strong". Proximity to the cut was standing in for
+  relevance when a real relevance signal existed. Ryan's own spec is not
+  positional: *"the right of the timeline was all of the footage that had
+  to do with that topic that i wasnt sure would make it into the cut."*
+
+  The radius is gone. What still bounds the pool is unchanged and is what
+  actually fixed the 37.6-minutes complaint: off_topic and "possible"
+  fragments excluded outright, and leftovers only from source files the
+  cut drew on. Four options were simulated against real data before
+  changing anything, to avoid re-creating that failure.
+
+  **Result, measured after regenerating both projects (not predicted):**
+
+  | | missing segments | missing footage | kept |
+  | --- | --- | --- | --- |
+  | wallpaper before | 10 | 96s | 3/10 |
+  | wallpaper after | **3** | **15s** | 2/11 |
+  | eviction before | 24 | 157s | 8/19 |
+  | eviction after | **18** | **100s** | 13/27 |
+
+  Footage Ryan used that never reaches his timeline at all — the thing
+  that costs him a re-export or a hand search — dropped 84% on wallpaper
+  and 36% on eviction. Kept-rate is roughly flat, which is expected: this
+  changes what survives into the pool, not what the cut picks.
+
+  The cost is a bigger pool (eviction: 1157s of leftovers beside a 308s
+  cut). That is the trade Ryan's own spec asks for, and it is the right
+  direction of error — a longer right side costs scrolling, a missing
+  clip costs a re-export.
+
+  `build_allowed_pool_spans` was extracted from inside `generate_story_angle`
+  specifically so this rule is testable: the existing pool tests feed
+  `_compute_pool_leftovers` hand-built spans, so they never exercised how
+  those spans get chosen and a silent revert would have failed nothing.
+  4 new tests in `test_reel_contract.py` §14. Safety net: 436 passed.
+
+  **Still open, recorded not fixed:** on eviction, reaching ~87% capture
+  would require including "possible"-fit fragments, i.e. ~24% of what
+  Ryan used there was judged merely "possible" by the flagging stage.
+  That is a fit-labelling question, separate from scoping, and should not
+  be changed blind — it is the bound that stops off-topic material.
+
+
 - **2026-09-16 — The measurement itself was wrong, three times over, and
   is now self-checking.** Ryan asked for more tests to get the app's
   output closer to his real cuts. Running them surfaced that the

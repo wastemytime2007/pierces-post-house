@@ -2308,3 +2308,28 @@ with Ryan touching only the intake and the checkpoints.
   265.75s vs a 266.02s render. Every future comparison in this area
   should carry a check of this kind — an invariant tied to physical
   reality, not to the parser's own idea of success.
+
+- **2026-09-16 — The leftovers pool is bounded by TOPIC, not by distance
+  from the cut.** Superseding the 2026-09-07 adjacency rule ("used
+  fragments plus an immediately adjacent fragment only when it is itself
+  strong"). That rule used proximity to the cut as a proxy for relevance
+  while a real relevance signal — the flagging stage's own per-fragment
+  fit label — already existed and was only being consulted for the
+  immediate neighbour. Measured against Ryan's two real finished edits:
+  79% of the footage he used that the app never surfaced had already been
+  extracted as candidate fragments, and ~136s of it was blocked purely by
+  the radius versus 7.5s by the fit rule. His spec for that side is not
+  positional: "the right of the timeline was all of the footage that had
+  to do with that topic that i wasnt sure would make it into the cut."
+
+  What still bounds the pool, unchanged, is what actually fixed the
+  37.6-minutes-of-nonsense complaint: off_topic and "possible" fragments
+  excluded outright, and leftovers drawn only from source files the cut
+  used. Four candidate rules were simulated against the real projects
+  before the change, specifically to avoid re-creating that failure.
+  Verified after: footage Ryan used that never reached the timeline fell
+  84% (wallpaper) and 36% (eviction).
+
+  The trade is a longer right side, and that is the correct direction of
+  error: scrolling past extra material costs seconds, a missing clip
+  costs a re-export or a hand search through raw footage.
