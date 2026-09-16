@@ -136,6 +136,17 @@ class Transcriber:
         options = {
             "word_timestamps": True,
             "verbose": False,
+            # Whisper feeds each window's decoded text back in as the prompt
+            # for the next one. On sparse audio -- long stretches of tile saw,
+            # footsteps, silence -- that turns one bad guess into a loop that
+            # repeats itself for the rest of the file. Turning the feedback off
+            # costs a little cross-sentence context and removes the loop.
+            # Measured on Runnells tiling _0003_D: with conditioning on, the
+            # middle of the file degraded to "the right on the left and the
+            # left and left and whatever"; with it off, the same moment reads
+            # "Now with the gloves on, I don't get the rubber mask, whatever,
+            # I'm going to rub my fingers over it."
+            "condition_on_previous_text": False,
         }
         if language:
             options["language"] = language

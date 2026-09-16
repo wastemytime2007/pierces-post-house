@@ -47,7 +47,23 @@ Keywords:"""
 # "base" is the sweet spot for interview-style A-roll on a modern laptop.
 # "medium" if you have a GPU and want better accuracy on accents/noise.
 WHISPER_MODEL = "base"
-WHISPER_LANGUAGE = None  # None = auto-detect. Set to "en" to skip detection.
+# 2026-09-16: was None (auto-detect). Auto-detect is not a neutral default on
+# this footage -- it is the single biggest source of transcript corruption we
+# have measured. Whisper decides the language from the first 30 seconds, and
+# Osmo A-roll routinely opens on tool noise, room tone, or a held breath. When
+# that window has no clear English in it, detection latches onto something else
+# and the WHOLE file decodes as that language.
+#
+# Measured on Runnells tiling DJI_..._0003_D (235s of two people grouting and
+# talking about gloves):
+#   language=None -> detected "ja", 8 segments, every one of them the identical
+#                    hallucinated string "JR東日本E233系電車". Zero real content.
+#   language="en" -> 33 segments of the actual conversation.
+# The same failure is on disk in other projects: "How to remove wallpaper"
+# _0001_D is `ja`, and four files in the "new" project are `nn` (Nynorsk).
+#
+# Ryan shoots in English. Set this per-project if that ever stops being true.
+WHISPER_LANGUAGE = "en"
 
 # ---------- Stage 2.5: Deliverable planner ----------
 # Anthropic API settings. Users provide API key via env var ANTHROPIC_API_KEY.
