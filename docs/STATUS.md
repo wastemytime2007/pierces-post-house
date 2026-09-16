@@ -160,30 +160,44 @@ because this session violated them once each.
   `posthouse/final_review.py` (real bug #1 above), a new regression
   test proving it, full safety net 419 passed.
 
-- **2026-09-10 — OPEN, and it changes what "correct output" means. Ryan
-  reframed the deliverable and this has NOT yet been implemented.** On
-  supplying `The Day You Take the Keys_Organized.xml` he wrote: *"This
-  isnt a finished edit. This is for you to see how i would have liked
-  this to have looked when it was grouped and exported for me. This is
-  what i would like to have to start from."* The left zone is therefore
-  **organized selects he will edit from**, not a finished cut — his
-  organized left side ran 4:19 against a 4:26 finished piece, roughly
-  1:1, where the app is built to hit a 45-75s Reel target. The current
-  duration ceiling would REJECT the correct answer for this mode.
-  He also noted his own initial read can be wrong: *"based on the amount
-  of content that needed to be used, i switched gears and decided to make
-  this a quick 5 min Youtube tutorial"* — so FORMAT (Reel vs tutorial)
-  may need to be a planner proposal driven by material volume, not an
-  input. Three questions were put to him and are **still unanswered**:
-  (a) is left-side ordering intended edit order or topic grouping,
-  (b) is the 4:19 / 8:17 split a proportion or a quality bar,
-  (c) should duration enforcement be off in this mode.
-  Do not start building against this until he answers — but do not
-  "fix" a cut that exceeds the Reel ceiling before checking whether this
-  is the mode it's in. Two refuted hypotheses, recorded so they aren't
-  retried: "depth not breadth" and a "~3s median clip" rule. Ryan:
-  *"No median is really fair to set as it strictly depends on content
-  itself."*
+- **2026-09-10, CORRECTED 2026-09-16 — this was written down wrong, and
+  the wrong version sat here for six days.** The original entry claimed
+  Ryan had "reframed the deliverable" to something called organized
+  selects that was a different product from the two-zone cut+pool the
+  app already builds, and that a whole new mode needed building. **That
+  was a misreading.** Ryan, correcting it directly: *"What i handed you
+  from arthur was what i told you i wanted. The left side of the
+  timeline was the story i was telling for the most part and the right
+  of the timeline was all of the footage that had to do with that topic
+  that i wasnt sure would make it into the cut."*
+
+  So the two-zone structure was never in question — left zone is the
+  story, right zone is the on-topic footage he is unsure about, and that
+  is exactly what the app already produces. What he meant by *"This isnt
+  a finished edit"* is that the LEFT side is his story laid out, not a
+  polished final cut — not that the structure was wrong.
+
+  **The real gap is only LENGTH.** His Arthur left side ran 4:19 because
+  that is what the story needed; the app defaults the left zone to ~60s
+  with a hard 75s ceiling because it assumes Reel. Same shape, wrong
+  assumption about how long a story is allowed to run.
+
+  **And that part is already demonstrated fixable** — see the eviction
+  entry above (2026-09-15): told through Plan with AI that the piece was
+  ~4.5 minutes, the planner set its own 260s target, built to it, and 12
+  of its 20 picks landed in what Ryan actually cut. The ceiling only
+  bites on the undirected "Generate ideas" button, which still assumes
+  60s. That button, not a new mode, is what needs the work.
+
+  Still open and genuinely his call: whether FORMAT (Reel vs longer
+  tutorial) should be a planner proposal driven by how much material
+  exists, since he noted his own initial read can be wrong — *"based on
+  the amount of content that needed to be used, i switched gears and
+  decided to make this a quick 5 min Youtube tutorial"*.
+
+  Two refuted hypotheses, recorded so they aren't retried: "depth not
+  breadth" and a "~3s median clip" rule. Ryan: *"No median is really
+  fair to set as it strictly depends on content itself."*
 
 - **2026-09-11 — Two taste calls open on the Mitch Interview cut, raised
   with Ryan, unanswered.** (a) Whether the Ballpoint logo story (plan
