@@ -62,6 +62,53 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-16 — Runnells tiling day, fresh end-to-end run. Ingest in
+  flight; nothing for Ryan to judge yet.** Ryan: *"Lets do the tiling
+  day."* Project created at `/Volumes/RDOSS_2025/SoldFast 2026/10050 NE
+  University Ave Runnells/Tiling the kitchen:bathroom` ("Runnells
+  Tiling"), both models populated — PreCut `project.json` (Osmo as
+  `aroll`, Source Audio as `audio`) and PM `manifest.json` (`how_to`,
+  client SoldFast, Brand/Authority audience_goal copied from Arthur).
+  5 Osmo files, ~60 min, ~51 GB; 3 proxies generated, 2 already existed.
+  Audio index done, audio sync running.
+
+  **This run immediately paid for itself by exposing a transcription
+  defect that predates it** — see the Whisper entry below. The first
+  ingest wrote its transcripts before the fix landed, so they are being
+  deleted and redone; the proxies (the expensive part) are unaffected.
+
+  Not yet done: fragment extraction, planning, generation, export. No
+  idea has been produced, so there is nothing for Ryan to look at.
+
+- **2026-09-16 — Whisper language auto-detect was silently emptying
+  transcripts. Fixed and guarded; the blast radius is not yet cleaned
+  up.** `WHISPER_LANGUAGE = None` let Whisper pick a language from each
+  file's first 30 seconds, which on Osmo A-roll is frequently tool noise
+  or room tone. A bad guess there makes the whole file decode as that
+  language, looping one hallucinated string. Measured on the tiling
+  day's `_0003_D` (235s of two people grouting and arguing about
+  gloves): `None` → 8 segments, all the identical string
+  `JR東日本E233系電車`; `"en"` → 33 segments of the real conversation.
+  Fix + evidence: commit `32ba3ab`, guarded by
+  `safety_net/tests/test_whisper_options.py` (verified to fail when
+  reverted). Decision Log entry: 2026-09-16.
+
+  **Still outstanding, and it matters for everything calibrated on this
+  data.** Already-ingested projects carry the damage on disk: "How to
+  remove wallpaper" `_0001_D` is `ja`, four files in the "new" project
+  are `nn`. On the tiling day itself two of five files were lost
+  outright — `_0005_D` is 13.7 minutes rendered as 19 phrases, 16 of
+  them duplicates. Any measurement taken against those projects predates
+  the fix, **including the pool-scoping numbers in the entry below**,
+  which were computed from wallpaper and Arthur transcripts. Ryan has
+  been asked whether to re-transcribe those two and re-run their diffs;
+  awaiting his call. Nothing has been re-measured yet.
+
+  This also corrects `docs/reference/RUNNELLS_CONTENT_INVENTORY.md`,
+  which recorded the corpus as "23% hallucinated" as though that were a
+  property of the footage. It was a setting. That document's per-topic
+  runtimes are floors, not estimates, and now say so.
+
 - **2026-09-16 — Pool scoping fixed: bounded by topic, not by distance
   from the cut. Verified on both real projects.** Ryan asked whether more
   tuning was needed before a fresh end-to-end project. The diagnostic
