@@ -12,6 +12,11 @@ import torch
 
 from .config import WHISPER_MODEL, WHISPER_LANGUAGE
 
+# Seed for Whisper's sampled temperature-fallback retries. Any fixed value
+# works; what matters is that it IS fixed, so re-transcribing the same file
+# gives the same transcript. See Transcriber.transcribe for the measurements.
+_DECODE_SEED = 0
+
 
 @dataclass
 class Word:
@@ -147,25 +152,30 @@ class Transcriber:
             # "Now with the gloves on, I don't get the rubber mask, whatever,
             # I'm going to rub my fingers over it."
             "condition_on_previous_text": False,
-            # Whisper's default is a temperature FALLBACK ladder: if a
-            # window's avg_logprob or compression ratio fails its quality
-            # gate, it re-decodes at temperature 0.2, 0.4 ... 1.0, and those
-            # retries SAMPLE. On jobsite audio the gate fails constantly, so
-            # the same file decodes differently every run. Measured on
-            # Runnells tiling _0003_D: three consecutive runs, identical
-            # settings, three different transcripts -- one of them opening
-            # "Schwe Bomber" followed by eleven segments of "Oh!".
-            #
-            # Pinning to 0 makes it reproducible. That is not cosmetic: the
-            # whole compare-against-Ryan's-finished-edit loop assumes a
-            # re-run is comparable to the last run, and silently it wasn't.
-            # Verified the fallback was not earning its keep here -- on
-            # _0005_D the output is byte-identical with and without it, and
-            # on _0003_D pinning produced no repetition (max 2x) because
-            # condition_on_previous_text=False already removes the main loop
-            # driver.
-            "temperature": 0.0,
         }
+
+        # Reproducibility WITHOUT giving up the loop guard.
+        #
+        # 2026-09-16, first attempt: this pinned "temperature": 0.0 to make
+        # decoding deterministic, on the evidence that the fallback ladder
+        # "was not earning its keep". That evidence came from ONE shoot (the
+        # Runnells tiling day) and did not generalise. Re-transcribing the
+        # wallpaper project surfaced the cost: repetition loops that the
+        # previous settings did not have -- "Go on the truck." x11, "I'll
+        # give him a fall." x14, "I'm just trying to figure out what I'm
+        # doing." x11. The ladder exists precisely to escape those, and
+        # turning it off traded one failure mode for a worse one.
+        #
+        # Measured on wallpaper _0004_D, the file that regressed hardest:
+        #   small, temperature=0        44 duplicate segments
+        #   small, ladder + seed        14   <- and byte-identical across runs
+        #   base,  ladder (the old default) 27
+        # So the ladder is kept, and determinism comes from seeding the RNG
+        # the sampled retries draw on instead. Two seeded runs hash the same;
+        # an unseeded one does not, which is what confirms the seed is doing
+        # the work.
+        torch.manual_seed(_DECODE_SEED)
+
         if language:
             options["language"] = language
 

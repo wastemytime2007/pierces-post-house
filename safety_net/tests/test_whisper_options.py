@@ -87,14 +87,15 @@ def test_transcribe_disables_previous_text_conditioning():
         "the pinned language must actually reach Whisper, not just sit in "
         "config -- transcribe()'s default argument is the wiring."
     )
-    assert captured.get("temperature") == 0.0, (
-        "temperature must be pinned to 0. Whisper's default is a FALLBACK "
-        "ladder (0.2, 0.4 ... 1.0) that re-decodes by SAMPLING whenever a "
-        "window fails its quality gate, which on jobsite audio is constant. "
-        "Measured: three consecutive runs of the same file with the same "
-        "settings produced three different transcripts. Reproducibility is "
-        "load-bearing -- comparing an idea against Ryan's finished edit "
-        "assumes a re-run is comparable to the last one."
+    assert "temperature" not in captured, (
+        "temperature must NOT be pinned. Pinning it to 0 disables Whisper's "
+        "fallback ladder, and that ladder is the guard against repetition "
+        "loops. Pinning it was tried on 2026-09-16 and reverted: it was "
+        "justified on one shoot (tiling) and regressed another (wallpaper) "
+        "into 'Go on the truck.' x11 and \"I'll give him a fall.\" x14. "
+        "Measured on wallpaper _0004_D -- small+temperature=0: 44 duplicate "
+        "segments; small+ladder+seed: 14. Determinism comes from seeding, "
+        "not from removing the guard."
     )
 
 
@@ -121,3 +122,23 @@ def test_harvest_wrapper_inherits_the_same_pinned_language():
         "not a hardcoded language of its own -- otherwise the two doors drift "
         "and a fix to config.py silently misses this one."
     )
+
+
+def test_decoding_is_seeded_so_reruns_match():
+    """Reproducibility is load-bearing -- comparing a generated idea against
+    Ryan's finished edit assumes a re-run is comparable to the last one. It
+    must not be bought by disabling the loop guard, so it comes from seeding
+    the RNG the sampled retries draw on.
+
+    Verified on real audio: two seeded runs of wallpaper _0004_D hash
+    identically, an unseeded run does not.
+    """
+    import inspect
+
+    T = _load_fork_module("transcriber")
+    src = inspect.getsource(T.Transcriber.transcribe)
+    assert "torch.manual_seed" in src, (
+        "transcribe() must seed torch before decoding, or the fallback "
+        "ladder's sampled retries make every run different."
+    )
+    assert isinstance(T._DECODE_SEED, int)
