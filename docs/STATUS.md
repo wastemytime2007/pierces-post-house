@@ -62,23 +62,60 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-16 — Runnells tiling day, fresh end-to-end run. Ingest in
-  flight; nothing for Ryan to judge yet.** Ryan: *"Lets do the tiling
-  day."* Project created at `/Volumes/RDOSS_2025/SoldFast 2026/10050 NE
-  University Ave Runnells/Tiling the kitchen:bathroom` ("Runnells
-  Tiling"), both models populated — PreCut `project.json` (Osmo as
-  `aroll`, Source Audio as `audio`) and PM `manifest.json` (`how_to`,
-  client SoldFast, Brand/Authority audience_goal copied from Arthur).
-  5 Osmo files, ~60 min, ~51 GB; 3 proxies generated, 2 already existed.
-  Audio index done, audio sync running.
+- **2026-09-16 — Runnells tiling day ran end to end. Export is on Ryan's
+  Desktop and passes all 15 checks; AWAITING HIS REVIEW, not Done.**
+  Ryan: *"Lets do the tiling day."* Project "Runnells Tiling" at
+  `/Volumes/RDOSS_2025/SoldFast 2026/10050 NE University Ave Runnells/Tiling
+  the kitchen:bathroom`, both models populated (PreCut `project.json` with
+  Osmo as `aroll` + Source Audio as `audio`; PM `manifest.json` as `how_to`,
+  client SoldFast, Brand/Authority audience_goal). 5 files, ~60 min, ~51 GB.
 
-  **This run immediately paid for itself by exposing a transcription
-  defect that predates it** — see the Whisper entry below. The first
-  ingest wrote its transcripts before the fix landed, so they are being
-  deleted and redone; the proxies (the expensive part) are unaffected.
+  Pipeline: 5 proxies, audio index, audio sync (15 pairs -> 4 reliable, 3
+  rescued), 34.7 min of speech, **76 fragments (48 strong / 16 possible /
+  12 off_topic)**. Three single-topic angles generated, not three variants
+  of one: "The Cardboard Story Stick (and the wall he had to redo)", "Bob
+  vs. the Schluter", "Why Your Fresh Paint Gets Wrecked by the Carpet Crew".
 
-  Not yet done: fragment extraction, planning, generation, export. No
-  idea has been produced, so there is nothing for Ryan to look at.
+  Exported the first: 9 clips / 74s cut, 28 leftovers / 9.4 min pool, one
+  camera file. `verify_export.py` -> all 15 applicable checks pass.
+  `~/Desktop/Runnells_Tiling_Cardboard_Story_Stick.xml`.
+
+  **The arc is the thing to judge.** Range order is 351 -> 363 -> 321 ->
+  334 -> 573 -> 719 -> 878 -> 597: method, confidence, "something went
+  drastically wrong", diagnosis, the cardboard trick returning as the fix,
+  and "that tub is dead-nuts, so I'm going to unfortunately redo everything
+  I just did" placed last. Non-chronological on purpose, with the cardboard
+  set up early and paid off at the end. That is the property Ryan said was
+  missing from the Mitch cut (*"theres no story here"*). Whether it actually
+  plays is his call and nobody else's.
+
+  Verified, because this is where measurement went wrong before: every
+  range's audio was read back and compared to its own summary -- 0
+  mismatches across all three ideas. Note the ranges are COMBINED-timeline
+  values carrying a per-file `source_file` label; reading them as per-file
+  produces confident nonsense (silence at every range) and bounds checks do
+  not catch it.
+
+  Known limitation on this shoot: the lav mics barely sync. Only 4 of 15
+  pairs cleared SCORE_USE, `LAV-TRACKS` skipped, so the cut rides on camera
+  audio. `_0004_D` (the Schluter and carpet-crew material) has the worst
+  coverage.
+
+- **2026-09-16 — Five defects surfaced by that one run, all fixed, none
+  catchable by the suite as it stood.** Every one produced structurally
+  valid output, which is why they survived: `32ba3ab` Whisper language
+  auto-detect (whole files decoding as Japanese); `5b273f2` non-deterministic
+  decoding (three runs of one file, three different transcripts) and
+  transcript_flagging reporting 5/5 failures as a clean stage; `b4253ff`
+  the `base` model substituting fluent wrong instructions ("white tile will
+  work better" where Bob said "I do a brick pattern"); `c304046` a 0.01s
+  overlap tolerance smaller than one frame at 60fps.
+
+  The model one is the one to remember. base did not garble the how-to
+  vocabulary, it replaced it with a different plausible claim in clean
+  English -- so fragment extraction, fit labelling and the architect all
+  treated it as what was said. Nothing downstream can detect a grammatical
+  fabrication.
 
 - **2026-09-16 — Whisper language auto-detect was silently emptying
   transcripts. Fixed and guarded; the blast radius is not yet cleaned
