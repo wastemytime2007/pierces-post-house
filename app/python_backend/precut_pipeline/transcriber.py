@@ -147,6 +147,24 @@ class Transcriber:
             # "Now with the gloves on, I don't get the rubber mask, whatever,
             # I'm going to rub my fingers over it."
             "condition_on_previous_text": False,
+            # Whisper's default is a temperature FALLBACK ladder: if a
+            # window's avg_logprob or compression ratio fails its quality
+            # gate, it re-decodes at temperature 0.2, 0.4 ... 1.0, and those
+            # retries SAMPLE. On jobsite audio the gate fails constantly, so
+            # the same file decodes differently every run. Measured on
+            # Runnells tiling _0003_D: three consecutive runs, identical
+            # settings, three different transcripts -- one of them opening
+            # "Schwe Bomber" followed by eleven segments of "Oh!".
+            #
+            # Pinning to 0 makes it reproducible. That is not cosmetic: the
+            # whole compare-against-Ryan's-finished-edit loop assumes a
+            # re-run is comparable to the last run, and silently it wasn't.
+            # Verified the fallback was not earning its keep here -- on
+            # _0005_D the output is byte-identical with and without it, and
+            # on _0003_D pinning produced no repetition (max 2x) because
+            # condition_on_previous_text=False already removes the main loop
+            # driver.
+            "temperature": 0.0,
         }
         if language:
             options["language"] = language

@@ -554,12 +554,14 @@ def _run_transcript_flagging(
     _emit_stage_start(emit, job.job_id, "transcript_flagging", total=total)
 
     completed = 0
+    n_done = n_skipped = n_failed = 0
     for tp in transcript_files:
         if job.cancel_flag.is_set():
             break
         completed += 1
         out_path = flags_dir / f"{tp.stem}.json"
         if out_path.exists():
+            n_skipped += 1
             emit({"type": "file_done", "job_id": job.job_id,
                   "stage": "transcript_flagging", "file": tp.name,
                   "status": "skipped", "completed": completed, "total": total})
@@ -580,18 +582,26 @@ def _run_transcript_flagging(
             emit({"type": "log", "level": "info",
                   "message": f"Flagged {original_path.name}: {len(tagged)} "
                              f"fragments, {coverage.coverage_fraction:.0%} coverage"})
+            n_done += 1
             emit({"type": "file_done", "job_id": job.job_id,
                   "stage": "transcript_flagging", "file": tp.name,
                   "status": "done", "completed": completed, "total": total})
         except Exception as e:
+            n_failed += 1
             emit({"type": "log", "level": "warn",
                   "message": f"Transcript flagging failed for {original_path.name}: {e}"})
             emit({"type": "file_done", "job_id": job.job_id,
                   "stage": "transcript_flagging", "file": tp.name,
                   "status": "failed", "completed": completed, "total": total})
 
+    # Report the same success/skipped/failed triple every other stage
+    # reports. Until 2026-09-16 this emitted the stage name alone, so a run
+    # where all five files failed (CLI mode off -> no LLM client) looked
+    # identical to a clean one in the event stream, and the UI had nothing
+    # to colour red. Found on the Runnells tiling ingest.
     emit({"type": "stage_complete", "job_id": job.job_id,
-          "stage": "transcript_flagging"})
+          "stage": "transcript_flagging",
+          "success": n_done, "skipped": n_skipped, "failed": n_failed})
 
 
 def _run_audio_indexing(

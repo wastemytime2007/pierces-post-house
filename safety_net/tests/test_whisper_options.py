@@ -126,6 +126,15 @@ def test_transcribe_disables_previous_text_conditioning():
         "the pinned language must actually reach Whisper, not just sit in "
         "config -- transcribe()'s default argument is the wiring."
     )
+    assert captured.get("temperature") == 0.0, (
+        "temperature must be pinned to 0. Whisper's default is a FALLBACK "
+        "ladder (0.2, 0.4 ... 1.0) that re-decodes by SAMPLING whenever a "
+        "window fails its quality gate, which on jobsite audio is constant. "
+        "Measured: three consecutive runs of the same file with the same "
+        "settings produced three different transcripts. Reproducibility is "
+        "load-bearing -- comparing an idea against Ryan's finished edit "
+        "assumes a re-run is comparable to the last one."
+    )
 
 
 def test_harvest_wrapper_inherits_the_same_pinned_language():
