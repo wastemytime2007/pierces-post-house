@@ -33,6 +33,31 @@ hundreds of times, `"I said hello"` ×626, `"東京都交通局"` ×543 (Tokyo
 Metropolitan Bureau of Transportation — a known Whisper artifact on
 silence), `"Four. Four. Four."` ×38.
 
+> **2026-09-16 — the cause was a setting, not the footage.** This section
+> originally read as if 23% of the Runnells corpus were simply
+> untranscribable. It isn't. Whisper was running with `language=None`
+> (auto-detect) and prompt-conditioning on, so it picked a language from
+> the first 30 seconds — frequently tool noise or room tone on Osmo
+> A-roll — and then decoded the whole file as that language, looping.
+> That is why the artifacts are Japanese: the audio isn't Japanese, the
+> detector is.
+>
+> Measured on the tiling day's `DJI_20260630093329_0003_D` (235s of two
+> people grouting and arguing about gloves): `language=None` gave 8
+> segments, all of them the identical string `JR東日本E233系電車`;
+> `language="en"` gave 33 segments of the real conversation. Fix and
+> evidence: commit `32ba3ab`, guarded by
+> `safety_net/tests/test_whisper_options.py`.
+>
+> **What this means for the numbers below.** They were computed from the
+> Agent Studio transcripts, which were produced under the broken setting.
+> The filter described here is still the correct way to read *those*
+> files, and the topic groupings still stand — they were derived from the
+> 77% that survived. But the 23% written off as unusable is mostly real
+> speech that was never decoded, so every per-topic runtime here is a
+> **floor, not an estimate**. Re-transcribe before treating any of these
+> totals as final.
+
 **This defeats naive keyword and density scanning.** A window of 500
 identical sentences scores as the densest "teaching" passage in the
 corpus. The first scan run against this data returned 13 of its top 19

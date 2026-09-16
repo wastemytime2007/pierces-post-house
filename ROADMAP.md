@@ -2333,3 +2333,36 @@ with Ryan touching only the intake and the checkpoints.
   The trade is a longer right side, and that is the correct direction of
   error: scrolling past extra material costs seconds, a missing clip
   costs a re-export or a hand search through raw footage.
+
+- **2026-09-16 — Whisper's language is pinned to English, not
+  auto-detected.** `WHISPER_LANGUAGE = None` was PreCut's shipped default
+  and looked like the neutral, general-purpose choice. On this footage it
+  is the single largest source of corrupted transcripts. Whisper decides
+  the language from the first 30 seconds; Osmo A-roll opens on tool
+  noise, room tone, or a held breath about as often as it opens on
+  speech, and a bad guess in that window makes the *entire* file decode
+  as the guessed language, looping one hallucinated string.
+
+  Measured on the tiling day's `DJI_20260630093329_0003_D`, 235 seconds
+  of two people grouting tile and arguing about whether to wear gloves:
+  `language=None` produced 8 segments, all of them the identical string
+  `JR東日本E233系電車`, and nothing else; `language="en"` produced 33
+  segments of the real conversation. `condition_on_previous_text=False`
+  is set too and improves the decode, but is **not** sufficient alone —
+  with auto-detect still on, the same file came back as Japanese with 34
+  segments instead of 8.
+
+  Two things follow. First, this was previously mis-diagnosed: the
+  Runnells corpus was recorded in `RUNNELLS_CONTENT_INVENTORY.md` as
+  "23% hallucinated," described as a property of the footage that
+  scanning had to filter around. It was a setting, and the per-topic
+  runtimes in that document are therefore floors rather than estimates.
+  Second, already-ingested projects carry the damage on disk — "How to
+  remove wallpaper" `_0001_D` is `ja`, four files in the "new" project
+  are `nn` — so any measurement taken against them predates the fix.
+
+  General lesson worth keeping: a default that describes itself as
+  "auto" is still a decision, and this one was being made from the worst
+  30 seconds of every file. Guarded by
+  `safety_net/tests/test_whisper_options.py`, verified to fail when the
+  setting is reverted.
