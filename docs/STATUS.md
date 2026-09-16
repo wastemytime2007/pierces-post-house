@@ -62,6 +62,52 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-16 — The measurement itself was wrong, three times over, and
+  is now self-checking.** Ryan asked for more tests to get the app's
+  output closer to his real cuts. Running them surfaced that the
+  comparison tool could not be trusted yet — every number reported on
+  2026-09-15 and earlier on 2026-09-16 was affected. Found only by
+  digging into an anomaly (three near-identical "dropped" entries for the
+  same beat) rather than accepting a good-looking result.
+
+  Three real defects, each verified on real exports before fixing:
+  1. **Zone conflation.** A real export is Ryan's own TWO-ZONE timeline —
+     his cut, a real gap, then his OWN leftover pool — exactly the shape
+     the app itself builds. The tool read the whole document as "what
+     Ryan used," so an idea was credited for matching footage he had
+     explicitly set aside and never delivered. This inflated every
+     "kept" and "pulled from pool" number the tool has ever produced.
+  2. **Premiere's `-1` timeline sentinel.** Clipitems whose timeline
+     position is not applicable carry `<start>-1</start>`. Read as a real
+     position, it manufactured a phantom 57-second "gap" at the head of
+     the wallpaper export and split the delivered cut in half.
+  3. **An empty leftover zone crashed the diff.** `parse_answer_key_xml`
+     raises on "zero usable ranges" (right for its own job); a
+     graphics-only leftover zone is a legitimate state here and is now
+     handled rather than taking the whole report down.
+
+  **The fix that matters most is the self-check.** The rendered video's
+  real duration is an INDEPENDENT ground truth for where the left zone
+  must end. The tool now computes both and refuses to present quiet,
+  confident numbers when they disagree — the report leads with a "READ
+  THIS FIRST" warning instead. On both real projects they now agree:
+  wallpaper left zone ends 66.0s against a 66.03s render; eviction
+  265.75s against 266.02s. That check would have caught this class of
+  error on sight instead of after a long dig.
+
+  **What the trustworthy numbers actually say** (see the necessity entry
+  below for the full table): the app converges with Ryan's real cuts on
+  roughly **25-42%** of what it proposes, and in every run there are
+  **24-29 separate segments of footage Ryan used that the app never
+  surfaced in either zone.** That gap — material it never found at all —
+  is now the clearest, best-evidenced problem, and it is a bigger one
+  than the necessity-vs-length question tuned earlier today.
+
+  Not done, deliberately: no further prompt tuning this session. Tuning
+  against a measurement that had just been proven wrong three times is
+  how the "60% -> 74%" claim happened in the first place.
+
+
 - **2026-09-16 — Necessity replaces length as the cut-selection test; a
   controlled before/after shows it working.** Ryan corrected the
   original design directly: *"the length limitation isnt as important as
@@ -87,20 +133,31 @@ because this session violated them once each.
   `run_generate_story_angle` so Ryan sees the real result and judges it
   himself (rule 6), rather than the app unilaterally deciding for him.
 
-  **Controlled comparison, same planning session, same target, same
-  footage, one variable changed** — this is the reliable evidence:
-  regenerated the Arthur/eviction idea from the identical session
-  (`plan_9c3e9176cc`, 260s target) under the new prompt only.
+  **The "60% -> 74%" improvement first reported for this change was
+  MEASUREMENT ERROR, not improvement. Corrected below.** A real export is
+  not one flat "final" — it is Ryan's own two-zone timeline (cut, a real
+  gap, then his OWN leftover pool), the same shape the app itself builds.
+  `final_review.py` was reading the whole document as "what Ryan used,"
+  so an idea got credited for matching material Ryan had explicitly set
+  aside and never delivered. See the 2026-09-16 zone-split entry below.
 
-  | | old prompt (idea_e85814b232) | new prompt (idea_fb4c61ca76) |
+  **Verified numbers, after the zone fix, self-checked against the
+  rendered videos' real durations:**
+
+  | | old prompt | new prompt |
   | --- | --- | --- |
-  | kept | 12/20 (60%) | **14/19 (74%)** |
-  | dropped | 8 | **5** |
-  | pulled from pool | 24 | 24 |
-  | added from elsewhere | 46 | **39** |
+  | eviction kept | 8/20 (40%) | 8/19 (42%) |
+  | eviction dropped | 12 | 11 |
+  | eviction added-from-elsewhere | 29 | **24** |
+  | wallpaper kept | 1/4 (25%, undirected) | 3/10 (30%, directed) |
 
-  Every metric that matters moved the right direction with nothing else
-  changed. Files in `<project>/finals/` alongside the earlier diffs.
+  Read honestly: **the necessity change is roughly neutral on whether the
+  app picks what Ryan picks.** Added-from-elsewhere improved (29 -> 24)
+  and dropped moved slightly, but kept-rate is flat within what a single
+  sample can tell us. The change is still right on principle — using a
+  time budget to decide what belongs in a story is backwards regardless —
+  but it did NOT measurably move convergence, and no claim that it did
+  should survive in this file.
 
   **Wallpaper regeneration was run too, but is NOT usable as evidence and
   is not reported as a finding either way.** A fresh undirected

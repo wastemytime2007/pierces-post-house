@@ -87,8 +87,12 @@ different question (cull precision/recall against a human answer key, not
 from __future__ import annotations
 
 import argparse
+import copy
 import json
+import os
 import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -104,6 +108,12 @@ Interval = tuple[float, float]
 # span worth calling a real fragment.
 MIN_KEPT_SEC = 3.0
 MIN_KEPT_FRAC = 0.5
+
+# How far the left zone's timeline end may sit from the rendered video's real
+# duration before the split is considered wrong. A couple of seconds covers
+# a trailing fade or a held last frame; anything more means the split landed
+# somewhere it shouldn't have.
+ZONE_END_TOLERANCE_SEC = 3.0
 
 
 class FinalReviewError(Exception):
@@ -154,6 +164,16 @@ class FinalReview:
     planned_cut_duration_sec: float = 0.0
     target_duration_sec: Optional[float] = None
     final_duration_sec: Optional[float] = None  # None unless a video was supplied
+    # 2026-09-16: the export's own right zone (Ryan's leftover pool), when a
+    # zone gap was found. None means single-zone or unsplittable — never
+    # confuse that with "he kept nothing," which is what silently treating
+    # the whole document as the cut used to imply.
+    had_right_zone: bool = False
+    idea_pool_matched_sec: float = 0.0     # idea's pool that overlaps HIS pool
+    idea_pool_total_sec: float = 0.0
+    final_pool_total_sec: float = 0.0      # his pool's total on-camera duration
+    left_zone_end_sec: Optional[float] = None   # timeline end of his real cut
+    zone_split_warning: str = ""                # set when it fails its own check
 
     @property
     def pool_used(self) -> list[ExtraClip]:
@@ -288,6 +308,112 @@ def load_idea_ranges(
     return title, target, _conv(cut_raw), _conv(pool_raw)
 
 
+# 2026-09-16, found while looking harder at a real result rather than
+# accepting it: a real export is not one flat "final" — it is Ryan's own
+# TWO-ZONE timeline, the same shape the app itself builds. Cut on the left,
+# a real gap, his own leftover pool on the right — exactly what
+# safety_net/verify_export.py already detects for the same reason (its
+# ZONE-GAP check). Treating the whole document as "what Ryan used" silently
+# credited an idea for matching his OWN LEFTOVER material as if it were his
+# cut, inflating every "kept" and "pulled from pool" number this tool had
+# reported before this fix.
+#
+# Verified on two real exports, both to within a frame of the rendered
+# video's real duration: the wallpaper zone break sits at 66.0s against a
+# 66.03s render; the eviction break sits at 265.8s against a 266.02s
+# render. Not a coincidence — it is the same convention on both.
+#
+# MIN_ZONE_GAP_SEC matches verify_export.py's own constant so "is this a
+# zone break" means the same thing in both places.
+MIN_ZONE_GAP_SEC = 20.0
+
+
+def _seq_for_diff(root) -> Optional[ET.Element]:
+    """The one real (non-nested, non-reference) sequence to read. Mirrors
+    verify_export.py's _seq_for_cut: the first sequence that isn't a
+    "Nested Sequence *" title/graphic wrapper or an "All Synced *"
+    reference bin."""
+    best = None
+    for seq in root.iter("sequence"):
+        name = (seq.findtext("name") or "").strip().lower()
+        if name.startswith("nested sequence") or name.startswith("all synced"):
+            continue
+        if best is None:
+            best = seq
+    return best
+
+
+def split_final_by_zone_gap(
+    final_xml_path: Path, min_gap_sec: float = MIN_ZONE_GAP_SEC,
+) -> tuple[Path, Optional[Path]]:
+    """Split a real export into (left_zone_path, right_zone_path).
+
+    Returns (final_xml_path, None) when no gap is found — a single-zone
+    export, or one too short/complex to reliably split. Callers must not
+    assume the right path exists.
+
+    Writes each zone as its own valid, complete XML document (same
+    <project>/<file> definitions, just a filtered clipitem list) so each
+    can be fed straight into parse_answer_key_xml unchanged — reusing its
+    already-solved frame-rate handling rather than re-deriving seconds
+    from timeline frames here, which is a different, simpler question
+    (timeline position, always in the sequence's own declared rate — no
+    conform-to-sequence or retimed-source ambiguity applies to it) but
+    still one this function should not quietly get wrong by improvising.
+    """
+    tree = ET.parse(final_xml_path)
+    root = tree.getroot()
+    seq = _seq_for_diff(root)
+    if seq is None:
+        raise FinalReviewError(f"No usable sequence found in {final_xml_path}")
+    tb = float(seq.findtext("rate/timebase") or 30)
+    track = seq.find("media/video/track")
+    if track is None:
+        return final_xml_path, None
+
+    # Premiere writes <start>-1</start> / <end>-1</end> for clipitems whose
+    # timeline position is not applicable. Those are NOT positions, and
+    # feeding them to gap detection invents a phantom gap at the head of the
+    # sequence — which is exactly what happened on the real wallpaper export
+    # (a spurious "gap" from 0 to 57.8s that split the delivered cut in half).
+    spans = sorted(
+        (int(ci.findtext("start")), int(ci.findtext("end")))
+        for ci in track.findall("clipitem")
+        if ci.find("file") is not None
+        and ci.findtext("start") is not None and ci.findtext("end") is not None
+        and int(ci.findtext("start")) >= 0 and int(ci.findtext("end")) >= 0
+    )
+    if len(spans) < 2:
+        return final_xml_path, None
+
+    gap_idx = None
+    for i in range(1, len(spans)):
+        if (spans[i][0] - spans[i - 1][1]) / tb >= min_gap_sec:
+            gap_idx = i
+            break
+    if gap_idx is None:
+        return final_xml_path, None
+    cutoff = spans[gap_idx][0]
+
+    def _write_zone(keep_before: bool) -> Path:
+        zone_root = copy.deepcopy(root)
+        zone_seq = _seq_for_diff(zone_root)
+        for zone_track in zone_seq.iter("track"):
+            for ci in list(zone_track.findall("clipitem")):
+                start = ci.findtext("start")
+                if start is None:
+                    continue
+                is_before = int(start) < cutoff
+                if is_before != keep_before:
+                    zone_track.remove(ci)
+        fd, path = tempfile.mkstemp(suffix=".xml")
+        with os.fdopen(fd, "wb") as f:
+            ET.ElementTree(zone_root).write(f, encoding="UTF-8", xml_declaration=True)
+        return Path(path)
+
+    return _write_zone(True), _write_zone(False)
+
+
 # A real Premiere export's <media><video>/<media><audio> tracks legitimately
 # hold more than camera footage: music, SFX, title-card PNGs, stock loops, the
 # brand logo. An idea's source_ranges/pool_ranges only ever reference camera
@@ -302,6 +428,26 @@ def load_idea_ranges(
 CAMERA_VIDEO_EXTENSIONS = {
     ".mp4", ".mov", ".m4v", ".mxf", ".avi", ".mts", ".m2ts",
 }
+
+
+def _zone_timeline_end_sec(zone_xml_path: Path) -> Optional[float]:
+    """Last real timeline position in a zone document, ignoring Premiere's
+    -1 "unpositioned" sentinels."""
+    try:
+        root = ET.parse(zone_xml_path).getroot()
+    except (OSError, ET.ParseError):
+        return None
+    seq = _seq_for_diff(root)
+    if seq is None:
+        return None
+    tb = float(seq.findtext("rate/timebase") or 30)
+    ends = [
+        int(ci.findtext("end"))
+        for ci in seq.iter("clipitem")
+        if ci.find("file") is not None and ci.findtext("end") is not None
+        and int(ci.findtext("end")) >= 0
+    ]
+    return max(ends) / tb if ends else None
 
 
 def load_final_ranges_by_stem(final_xml_path: Path) -> dict[str, list[Interval]]:
@@ -359,7 +505,24 @@ def diff_idea_against_final(
     idea_id = idea_data.get("idea_id", idea_json_path.stem)
     title, target_duration, cut_ranges, pool_ranges = load_idea_ranges(
         idea_json_path, offsets)
-    final_by_stem = load_final_ranges_by_stem(final_xml_path)
+
+    # 2026-09-16: a real export is Ryan's own two-zone timeline, not one flat
+    # "final" — see split_final_by_zone_gap's docstring. left_path is what he
+    # actually delivered; right_path (when it exists) is HIS OWN leftover
+    # pool, never his cut, and must never be scored as if it were.
+    left_path, right_path = split_final_by_zone_gap(final_xml_path)
+    final_by_stem = load_final_ranges_by_stem(left_path)
+    # A zone with no camera footage in it is a legitimate outcome — Ryan's
+    # leftover side can be graphics-only, or empty. parse_answer_key_xml
+    # raises on "zero usable ranges" (correct for its own job, where an
+    # empty answer key means you loaded the wrong file), so that has to be
+    # caught here rather than taking the whole diff down.
+    final_pool_by_stem: dict[str, list[Interval]] = {}
+    if right_path is not None:
+        try:
+            final_pool_by_stem = load_final_ranges_by_stem(right_path)
+        except _bench.AnswerKeyParseError:
+            final_pool_by_stem = {}
 
     review = FinalReview(
         idea_id=idea_id,
@@ -367,9 +530,46 @@ def diff_idea_against_final(
         final_xml_path=str(final_xml_path),
         target_duration_sec=target_duration,
         planned_cut_duration_sec=sum(r.end_sec - r.start_sec for r in cut_ranges),
+        had_right_zone=right_path is not None,
     )
     if final_video_path is not None:
         review.final_duration_sec = _probe_duration_sec(final_video_path)
+
+    # Self-check, added 2026-09-16 after the zone split silently landed on a
+    # phantom gap. The rendered video's real duration is an INDEPENDENT
+    # ground truth for where the left zone must end — if the split is right,
+    # they agree to within a couple of seconds. This turns the one
+    # assumption this whole tool rests on into a checked invariant instead
+    # of something that fails quietly and produces confident wrong numbers.
+    review.left_zone_end_sec = _zone_timeline_end_sec(left_path)
+    if (review.final_duration_sec is not None
+            and review.left_zone_end_sec is not None):
+        drift = abs(review.left_zone_end_sec - review.final_duration_sec)
+        if drift > ZONE_END_TOLERANCE_SEC:
+            review.zone_split_warning = (
+                f"Left zone ends at {review.left_zone_end_sec:.1f}s but the "
+                f"rendered video runs {review.final_duration_sec:.1f}s "
+                f"({drift:.1f}s apart). The cut/leftover split is probably "
+                f"wrong, so every number below is suspect — do not trust this "
+                f"report until that is resolved."
+            )
+
+    if right_path is not None:
+        idea_pool_by_stem: dict[str, list[Interval]] = {}
+        for r in pool_ranges:
+            idea_pool_by_stem.setdefault(r.source_stem, []).append((r.start_sec, r.end_sec))
+        idea_pool_by_stem = {s: _bench._merge_intervals(v) for s, v in idea_pool_by_stem.items()}
+
+        review.final_pool_total_sec = sum(
+            e - s for ivs in final_pool_by_stem.values() for s, e in ivs
+        )
+        review.idea_pool_total_sec = sum(
+            e - s for ivs in idea_pool_by_stem.values() for s, e in ivs
+        )
+        matched = 0.0
+        for stem, ivs in idea_pool_by_stem.items():
+            matched += _bench._overlap_sec(ivs, final_pool_by_stem.get(stem, []))
+        review.idea_pool_matched_sec = matched
 
     # ---- kept / dropped, per proposed cut range -------------------------
     cut_ivs_by_stem: dict[str, list[Interval]] = {}
@@ -416,11 +616,23 @@ def diff_idea_against_final(
     review.extra_clips.sort(key=lambda c: (c.source_stem, c.start_sec))
     review.cut_kept.sort(key=lambda v: (v.source_stem, v.start_sec))
     review.cut_dropped.sort(key=lambda v: (v.source_stem, v.start_sec))
+
+    # split_final_by_zone_gap writes real temp files when a gap is found
+    # (left_path is only ever == final_xml_path, never a temp file, when no
+    # gap was found — so only clean up paths that don't match the input).
+    for p in (left_path, right_path):
+        if p is not None and p != final_xml_path:
+            p.unlink(missing_ok=True)
+
     return review
 
 
 def render_report_markdown(review: FinalReview) -> str:
     lines = [f"# Final review — {review.idea_title}", "", f"idea: `{review.idea_id}`", ""]
+
+    if review.zone_split_warning:
+        lines.append(f"> **READ THIS FIRST: {review.zone_split_warning}**")
+        lines.append("")
 
     lines.append("## Duration")
     lines.append(f"- Planned cut (sum of proposed ranges): {review.planned_cut_duration_sec:.1f}s")
@@ -464,6 +676,23 @@ def render_report_markdown(review: FinalReview) -> str:
         lines.append(f"- {c.source_stem} {c.start_sec:.1f}-{c.end_sec:.1f}s "
                      f"({c.end_sec - c.start_sec:.1f}s)")
     lines.append("")
+
+    if review.had_right_zone:
+        lines.append("## Pool alignment — the idea's pool vs Ryan's own leftovers")
+        lines.append("(a separate question from the cut above: did the app also "
+                      "correctly guess what Ryan himself would set aside, not use?)")
+        lines.append(f"- Ryan's own leftover pool: {review.final_pool_total_sec:.1f}s")
+        lines.append(f"- Idea's proposed pool: {review.idea_pool_total_sec:.1f}s")
+        frac = (review.idea_pool_matched_sec / review.final_pool_total_sec
+                if review.final_pool_total_sec else 0.0)
+        lines.append(f"- Overlap: {review.idea_pool_matched_sec:.1f}s "
+                     f"({frac*100:.0f}% of Ryan's real leftover pool)")
+        lines.append("")
+    else:
+        lines.append("## Pool alignment — not available")
+        lines.append("(no zone gap found in the export — either a single-zone "
+                      "export, or Ryan set nothing aside as leftovers here)")
+        lines.append("")
 
     return "\n".join(lines)
 

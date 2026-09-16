@@ -2284,3 +2284,27 @@ with Ryan touching only the intake and the checkpoints.
   `emit()`, not discarded. Controlled before/after on the same planning
   session, same target, same footage: kept rate 60% -> 74%, dropped 8 ->
   5, added-from-elsewhere 46 -> 39. See `docs/STATUS.md`, 2026-09-16.
+
+- **2026-09-16 — A real export is a two-zone timeline, and the diff must
+  read only the left zone.** Superseding how `final_review.py` read a
+  final since it was built. Ryan's exports are his own cut, a real gap,
+  then his OWN leftover pool — the same two-zone shape the app builds,
+  and the same one `safety_net/verify_export.py` already detects. Reading
+  the whole document as "what Ryan used" credited an idea for matching
+  material he had explicitly set aside and never delivered, inflating
+  every "kept" and "pulled from pool" number the tool produced, including
+  a reported "60% -> 74%" improvement that was measurement error rather
+  than a real gain. Also fixed alongside it: Premiere's `<start>-1</start>`
+  "unpositioned" sentinel was being read as a real timeline position and
+  manufactured a phantom 57s gap, and an empty (graphics-only) leftover
+  zone crashed the diff.
+
+  **The durable rule this establishes: the rendered video's real duration
+  is an independent ground truth, and the tool must check itself against
+  it.** The left zone's timeline end and the MP4's duration have to agree
+  (within `ZONE_END_TOLERANCE_SEC`), and the report now leads with a
+  warning when they don't instead of quietly publishing confident wrong
+  numbers. Verified on both real projects: 66.0s vs a 66.03s render;
+  265.75s vs a 266.02s render. Every future comparison in this area
+  should carry a check of this kind — an invariant tied to physical
+  reality, not to the parser's own idea of success.

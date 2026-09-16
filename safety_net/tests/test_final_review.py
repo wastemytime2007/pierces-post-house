@@ -344,3 +344,224 @@ def test_refuses_to_diff_without_transcripts(tmp_path):
     final = _final_xml(tmp_path, [("A_Proxy.mov", "", 0.0, 10.0)])
     with pytest.raises(FinalReviewError):
         diff_idea_against_final(idea, final)  # deliberately no transcripts_dir
+
+
+# ---------------------------------------------------------------------------
+# The export's own two-zone structure. Found 2026-09-16 on two real exports:
+# a "final" is not one flat document — it's Ryan's own cut (left) then a real
+# gap then his own leftover pool (right), same as the app's own two-zone
+# contract. Treating the whole document as "what he used" silently credited
+# an idea for matching his OWN LEFTOVER material, inflating every "kept" and
+# "pulled from pool" number this tool reported before this fix. Verified on
+# real data to within a frame of the rendered video's real duration.
+
+def _timeline_clip(idx, name, tl_start, tl_end, src_start, src_end, fps=30):
+    return f"""
+              <clipitem id="clip-{idx}">
+                <name>{name}</name>
+                <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>
+                <start>{round(tl_start * fps)}</start>
+                <end>{round(tl_end * fps)}</end>
+                <in>{round(src_start * fps)}</in>
+                <out>{round(src_end * fps)}</out>
+                <file id="file-{idx}">
+                  <name>{name}</name>
+                  <pathurl>file://localhost/Volumes/T7/{name}</pathurl>
+                  <rate><timebase>{fps}</timebase><ntsc>FALSE</ntsc></rate>
+                  <duration>100000</duration>
+                </file>
+              </clipitem>"""
+
+
+def _two_zone_xml(tmp_path: Path, left_clips, right_gap_at, right_clips,
+                  seq_name="Some Working Title") -> Path:
+    """left_clips / right_clips: list of (name, src_start, src_end). Placed
+    back-to-back on the timeline within each zone, with a real gap between
+    the two zones starting at right_gap_at."""
+    body = ""
+    tl = 0.0
+    idx = 0
+    for name, s, e in left_clips:
+        dur = e - s
+        body += _timeline_clip(idx, name, tl, tl + dur, s, e)
+        tl += dur
+        idx += 1
+    tl = right_gap_at
+    for name, s, e in right_clips:
+        dur = e - s
+        body += _timeline_clip(idx, name, tl, tl + dur, s, e)
+        tl += dur
+        idx += 1
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <project>
+    <children>
+      <sequence id="seq-1">
+        <name>{seq_name}</name>
+        <duration>90000</duration>
+        <rate><timebase>30</timebase><ntsc>FALSE</ntsc></rate>
+        <media>
+          <video>
+            <track>{body}
+            </track>
+          </video>
+        </media>
+      </sequence>
+    </children>
+  </project>
+</xmeml>
+"""
+    p = tmp_path / "two_zone_final.xml"
+    p.write_text(xml)
+    return p
+
+
+def test_zone_split_finds_the_gap(tmp_path):
+    from posthouse.final_review import split_final_by_zone_gap, load_final_ranges_by_stem
+    xml = _two_zone_xml(
+        tmp_path,
+        left_clips=[("A_Proxy.mov", 100.0, 110.0), ("A_Proxy.mov", 110.0, 130.0)],
+        right_gap_at=150.0,  # 20s gap after left zone ends at 130.0
+        right_clips=[("A_Proxy.mov", 500.0, 520.0)],
+    )
+    left, right = split_final_by_zone_gap(xml)
+    assert right is not None, "a real 20s gap must be detected"
+    left_ivs = load_final_ranges_by_stem(left)["a_proxy"]
+    right_ivs = load_final_ranges_by_stem(right)["a_proxy"]
+    assert left_ivs == [(100.0, 130.0)]
+    assert right_ivs == [(500.0, 520.0)]
+
+
+def test_no_gap_means_single_zone(tmp_path):
+    from posthouse.final_review import split_final_by_zone_gap
+    xml = _two_zone_xml(
+        tmp_path,
+        left_clips=[("A_Proxy.mov", 0.0, 10.0), ("A_Proxy.mov", 10.0, 20.0)],
+        right_gap_at=20.0,  # touching, no real gap
+        right_clips=[("A_Proxy.mov", 200.0, 210.0)],
+    )
+    left, right = split_final_by_zone_gap(xml)
+    assert right is None
+    assert left == xml
+
+
+def test_leftover_zone_content_is_never_counted_as_kept(tmp_path):
+    """The whole point: an idea range that only matches content in Ryan's
+    OWN LEFTOVER zone — never delivered — must show as dropped, not kept.
+    This is the exact bug found on real data before this fix."""
+    td = _default_transcripts(tmp_path)
+    idea = _idea_json(
+        tmp_path,
+        # Matches content that lives ONLY in the right (leftover) zone below.
+        cut_ranges=[_range("A_Proxy.mp4", 500.0, 510.0, "beat")],
+        pool_ranges=[],
+    )
+    final = _two_zone_xml(
+        tmp_path,
+        left_clips=[("A_Proxy.mov", 0.0, 10.0)],       # his real delivered cut
+        right_gap_at=100.0,
+        right_clips=[("A_Proxy.mov", 500.0, 520.0)],    # his own unused leftovers
+    )
+    review = diff_idea_against_final(idea, final, transcripts_dir=td)
+    assert review.cut_dropped and review.cut_dropped[0].topic_label == "beat", (
+        "a range matching only Ryan's OWN LEFTOVER zone must be DROPPED, "
+        "not credited as kept — he never delivered that content"
+    )
+    assert not review.cut_kept
+
+
+def test_pool_alignment_measures_against_his_real_leftovers(tmp_path):
+    td = _default_transcripts(tmp_path)
+    idea = _idea_json(
+        tmp_path,
+        cut_ranges=[_range("A_Proxy.mp4", 0.0, 10.0, "beat")],
+        pool_ranges=[_range("A_Proxy.mp4", 500.0, 515.0)],  # overlaps half his real pool
+    )
+    final = _two_zone_xml(
+        tmp_path,
+        left_clips=[("A_Proxy.mov", 0.0, 10.0)],
+        right_gap_at=100.0,
+        right_clips=[("A_Proxy.mov", 500.0, 520.0)],  # his real 20s leftover
+    )
+    review = diff_idea_against_final(idea, final, transcripts_dir=td)
+    assert review.had_right_zone
+    assert review.final_pool_total_sec == pytest.approx(20.0)
+    assert review.idea_pool_matched_sec == pytest.approx(15.0)
+
+
+def test_no_right_zone_reports_pool_alignment_as_unavailable(tmp_path):
+    td = _default_transcripts(tmp_path)
+    idea = _idea_json(
+        tmp_path,
+        cut_ranges=[_range("A_Proxy.mp4", 0.0, 10.0, "beat")],
+        pool_ranges=[],
+    )
+    final = _two_zone_xml(
+        tmp_path,
+        left_clips=[("A_Proxy.mov", 0.0, 10.0)],
+        right_gap_at=10.0,
+        right_clips=[],
+    )
+    review = diff_idea_against_final(idea, final, transcripts_dir=td)
+    assert not review.had_right_zone
+    text = render_report_markdown(review)
+    assert "Pool alignment — not available" in text
+
+
+def test_zone_split_self_check_flags_a_bad_split(tmp_path):
+    """The rendered video's duration is an independent ground truth for
+    where the left zone must end. When they disagree the report must say
+    so at the top, not quietly publish confident wrong numbers — this is
+    the check that would have caught the 2026-09-16 phantom-gap bug on
+    sight instead of after a long dig."""
+    from posthouse.final_review import FinalReview, render_report_markdown
+    review = FinalReview(
+        idea_id="x", idea_title="t", final_xml_path="p",
+        final_duration_sec=66.0, left_zone_end_sec=389.0,
+        zone_split_warning="Left zone ends at 389.0s but the rendered video runs 66.0s",
+    )
+    text = render_report_markdown(review)
+    assert "READ THIS FIRST" in text
+    assert text.index("READ THIS FIRST") < text.index("## Duration")
+
+
+def test_negative_timeline_sentinels_do_not_create_a_phantom_gap(tmp_path):
+    """Premiere writes <start>-1</start> for clipitems whose timeline
+    position is not applicable. Treating -1 as a real position invented a
+    57-second 'gap' at the head of the real wallpaper export and split the
+    delivered cut in half."""
+    from posthouse.final_review import split_final_by_zone_gap, load_final_ranges_by_stem
+    body = _timeline_clip(0, "A_Proxy.mov", 0.0, 10.0, 100.0, 110.0)
+    # a -1 sentinel clipitem, as Premiere really writes it
+    body += """
+              <clipitem id="clip-sentinel">
+                <name>A_Proxy.mov</name>
+                <rate><timebase>30</timebase><ntsc>FALSE</ntsc></rate>
+                <start>-1</start>
+                <end>-1</end>
+                <in>3000</in>
+                <out>3300</out>
+                <file id="file-0"/>
+              </clipitem>"""
+    body += _timeline_clip(2, "A_Proxy.mov", 10.0, 20.0, 110.0, 120.0)
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+  <project><children>
+      <sequence id="seq-1">
+        <name>Real Cut</name><duration>90000</duration>
+        <rate><timebase>30</timebase><ntsc>FALSE</ntsc></rate>
+        <media><video><track>{body}
+            </track></video></media>
+      </sequence>
+  </children></project>
+</xmeml>
+"""
+    p = tmp_path / "sentinel.xml"
+    p.write_text(xml)
+    left, right = split_final_by_zone_gap(p)
+    assert right is None, (
+        "a -1 sentinel must not be read as a timeline position and must not "
+        "manufacture a zone gap"
+    )
