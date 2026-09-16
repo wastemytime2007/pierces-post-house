@@ -158,12 +158,33 @@ def check_xml(path: Path, rep: Report) -> dict:
             ))
         return sorted(out)
 
+    # Tolerance is ONE FRAME, not a fixed number of seconds.
+    #
+    # 2026-09-16, Runnells tiling export: two leftovers were flagged as
+    # "already used in the cut" on a 1-frame touch (0.0167s at 60fps). The
+    # old 0.01s tolerance is SMALLER than a frame at any timebase above
+    # 100fps, and smaller than a 60fps frame, so an exactly-abutting pair
+    # trips it. The cause is benign: the assembler expands a cut range
+    # slightly for handles, and where the fragment immediately before it is
+    # in the pool, the two now share their boundary frame.
+    #
+    # Deliberately kept tight rather than widened to "a second or two". What
+    # this check exists to catch is the Mitch Interview class of failure --
+    # clips replaying whole seconds of each other's source, and 37 minutes
+    # of leftovers duplicating the cut. Anything at or under a frame is a
+    # rounding artifact; anything above it is still a finding.
+    frame = 1.0 / tb
+    tol = 1.5 * frame
+
+    def _overlaps(a1, b1, a2, b2):
+        return a1 < b2 - tol and b1 > a2 + tol
+
     def _self_overlaps(spans):
         return [
             (f, a1, b1, a2, b2)
             for i, (f, a1, b1) in enumerate(spans)
             for (g, a2, b2) in spans[i + 1:]
-            if f == g and a1 < b2 - 0.01 and b1 > a2 + 0.01
+            if f == g and _overlaps(a1, b1, a2, b2)
         ]
 
     by_start = sorted(clips, key=lambda c: int(c.findtext("start")))
@@ -198,7 +219,7 @@ def check_xml(path: Path, rep: Report) -> dict:
             (f, a1, b1, a2, b2)
             for (f, a1, b1) in pool_spans
             for (g, a2, b2) in cut_spans
-            if f == g and a1 < b2 - 0.01 and b1 > a2 + 0.01
+            if f == g and _overlaps(a1, b1, a2, b2)
         ]
         rep.check(
             "XML-POOL-NOT-IN-CUT",
