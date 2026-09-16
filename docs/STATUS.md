@@ -62,6 +62,44 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-16 — Reference projects re-transcribed and re-diffed. The
+  headline: retrieval is good, RANKING into the tight cut is the weak
+  part.** Ryan: *"yes redo both"*. Both projects were re-transcribed with
+  the corrected decoder, ideas REGENERATED from those transcripts (the old
+  ideas were built on corrupt text, and their combined-timeline
+  coordinates were computed against durations that had since changed), and
+  diffed against Ryan's own finished edits.
+
+  Of the camera footage Ryan used that the app's tight cut did NOT
+  propose:
+
+  | | in the pool | missed |
+  | --- | --- | --- |
+  | Wallpaper | 17 ranges / 111.2s (86%) | 2 ranges / 17.4s |
+  | Arthur (eviction) | 34 ranges / 146.0s (44%) | 27 ranges / 184.9s |
+
+  **Arthur's 56% miss is mostly structural, not a retrieval failure.** Of
+  its 184.9s, only **18.7s** sits in files the tight cut drew on -- about
+  the same as wallpaper's 17.4s. The other **166.3s is in files the cut
+  never touched**, which the 2026-09-16 pool rule excludes by design
+  ("leftovers drawn only from source files the cut used"). The idea
+  scoped to one camera file; Ryan's finished eviction video spans four.
+  See the escalation below.
+
+  The real quality signal is elsewhere: Ryan kept only **2 of 11**
+  proposed wallpaper ranges and **3 of 8** proposed Arthur ranges, while
+  86% / 44% of what he actually used was sitting in the pool. The app is
+  FINDING the right material and ranking it onto the wrong side of the
+  timeline. That is precisely the thing Ryan named: *"we just need the app
+  to understand how to rank footage on the left side as necessary vs. the
+  right side being all related content."* Not yet acted on.
+
+  Evidence: `$CLAUDE_JOB_DIR/tmp/diff_{wallpaper,arthur}.json`; ideas
+  `idea_882d566e51` (wallpaper) and `idea_cdb48864e6` (Arthur). Stock
+  graphics (artlist elements) are excluded from all counts -- they are not
+  findable in footage and counting them would flatter the numbers.
+
+
 - **2026-09-16 — Runnells tiling day ran end to end. Export is on Ryan's
   Desktop and passes all 15 checks; AWAITING HIS REVIEW, not Done.**
   Ryan: *"Lets do the tiling day."* Project "Runnells Tiling" at
@@ -2175,6 +2213,25 @@ his pick (or his go-ahead to propose an order).
 the Lead before any re-dispatch; empty so far)*
 
 ## Escalations / blockers
+
+- **2026-09-16 — the pool's "same files as the cut" rule does not fit
+  long-form, and this is Ryan's call.** Measured on the Arthur eviction
+  diff: 166.3s of footage he used was unreachable because it lives in
+  camera files his tight cut never drew on, so the pool could not offer
+  it. For a Reel cut from one continuous take the rule is right and it is
+  what fixed the "37 minutes of unrelated footage" complaint. For a
+  long-form piece that spans a whole shoot day it is too narrow.
+
+  Options, with a recommendation: (1) keep the rule and accept that
+  long-form needs a wider pass -- simplest, no regression risk; (2) widen
+  the pool to any file with `strong` fragments on the SAME topic, which
+  is closer to Ryan's own words about the right side but risks
+  re-creating the unrelated-footage failure; (3) make it depend on the
+  deliverable -- narrow for Reels, topic-wide for long-form.
+  Recommend (3), because the two formats genuinely want different things
+  and the rule was only ever validated against a Reel. Not acted on;
+  needs Ryan.
+
 
 *(none open)*
 
