@@ -34,48 +34,9 @@ from pathlib import Path
 
 import pytest
 
-# Load the FORK's copy by explicit file path, never via `import
-# precut_pipeline`. That bare import is ambiguous in this suite: PRECUT_ROOT
-# points at the protected ~/precut-checkout, and whichever copy lands on
-# sys.path first wins. The first version of this file did exactly that and
-# passed alone, then failed inside the full suite -- reading the protected
-# checkout (still on the old setting) instead of the code the app ships.
-# The app bundles app/python_backend, so that is the only copy these
-# assertions are about.
-BACKEND = Path(__file__).resolve().parents[2] / "app" / "python_backend"
-PKG = BACKEND / "precut_pipeline"
-
-
-def _load_fork_module(name: str):
-    """Import ``precut_pipeline.<name>`` from the fork, as a real package.
-
-    Loading the .py file standalone does not work -- these modules use
-    relative imports and need a parent package. So instead: put the fork at
-    the FRONT of sys.path, drop any already-imported precut_pipeline (it may
-    be the protected checkout's, pulled in by another test module), import,
-    then assert the file we got is the one under app/python_backend.
-    """
-    path = PKG / f"{name}.py"
-    assert path.exists(), f"fork module missing: {path}"
-
-    sys.path.insert(0, str(BACKEND))
-    stale = [m for m in sys.modules if m == "precut_pipeline"
-             or m.startswith("precut_pipeline.")]
-    saved = {m: sys.modules.pop(m) for m in stale}
-    try:
-        mod = importlib.import_module(f"precut_pipeline.{name}")
-        assert Path(mod.__file__).resolve() == path.resolve(), (
-            f"loaded the wrong copy: {mod.__file__} (wanted {path})"
-        )
-        return mod
-    finally:
-        # Leave sys.modules as we found it so a later test that expects the
-        # PRECUT_ROOT copy still gets it.
-        for m in [m for m in sys.modules if m == "precut_pipeline"
-                  or m.startswith("precut_pipeline.")]:
-            sys.modules.pop(m, None)
-        sys.modules.update(saved)
-        sys.path.remove(str(BACKEND))
+# The fork loader now lives in conftest.py -- this file had its own copy
+# until the same ambiguity bit a second test module on 2026-09-16.
+from conftest import load_fork_module as _load_fork_module
 
 
 def test_whisper_language_is_pinned_not_autodetected():

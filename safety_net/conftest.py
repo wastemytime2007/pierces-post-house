@@ -489,3 +489,64 @@ def normalized_xml(synthetic_project) -> str:
 @pytest.fixture(scope="session")
 def exported_dom(synthetic_project):
     return minidom.parseString(synthetic_project["raw_text"].encode("utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# Loading the FORK's precut_pipeline, unambiguously
+# ---------------------------------------------------------------------------
+
+_FORK_BACKEND = Path(__file__).resolve().parent.parent / "app" / "python_backend"
+
+
+def load_fork_module(name: str):
+    """Import ``precut_pipeline.<name>`` from the FORK, as a real package.
+
+    `import precut_pipeline.<x>` is AMBIGUOUS in this suite. Two checkouts of
+    that package exist: the protected donor at ``$PRECUT_ROOT``
+    (``~/precut-checkout``, Ryan's production PreCut, never modified) and the
+    fork at ``app/python_backend/`` that this app actually bundles and runs.
+    Whichever lands on ``sys.path`` first wins, so a bare import reads one or
+    the other depending on how pytest was invoked and which test module
+    imported first.
+
+    That has now bitten twice, identically: a test asserting a change in the
+    FORK passed alone and failed in the full suite, because with PRECUT_ROOT
+    set it was reading the donor -- which of course does not have the change.
+    It looks like a broken test; it is the test grading the wrong file.
+
+    Loading the .py standalone does not work either (these modules use
+    relative imports and need a parent package), so: put the fork first on
+    sys.path, evict any already-imported ``precut_pipeline``, import, then
+    ASSERT the file we got is the one under app/python_backend. sys.modules is
+    restored afterwards so a later test that wants the donor still gets it.
+
+    Any test asserting something about code this app ships should use this.
+    """
+    import importlib
+    import sys
+
+    pkg_dir = _FORK_BACKEND / "precut_pipeline"
+    path = pkg_dir / f"{name}.py"
+    assert path.exists(), f"fork module missing: {path}"
+
+    sys.path.insert(0, str(_FORK_BACKEND))
+    stale = [m for m in sys.modules
+             if m == "precut_pipeline" or m.startswith("precut_pipeline.")]
+    saved = {m: sys.modules.pop(m) for m in stale}
+    try:
+        mod = importlib.import_module(f"precut_pipeline.{name}")
+        got = Path(mod.__file__).resolve()
+        assert got == path.resolve(), (
+            f"loaded the wrong copy of precut_pipeline.{name}: {got}\n"
+            f"expected the fork at {path}"
+        )
+        return mod
+    finally:
+        for m in [m for m in sys.modules
+                  if m == "precut_pipeline" or m.startswith("precut_pipeline.")]:
+            sys.modules.pop(m, None)
+        sys.modules.update(saved)
+        try:
+            sys.path.remove(str(_FORK_BACKEND))
+        except ValueError:
+            pass

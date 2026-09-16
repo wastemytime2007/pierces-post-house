@@ -85,6 +85,45 @@ MUTUAL_CORROBORATION_MIN = 3
 MUTUAL_CORROBORATION_SCORE_FLOOR = 3.0
 
 
+def _audio_clock_start(path: str) -> Optional[float]:
+    """Absolute recording start of an AUDIO file from its filename.
+
+    Separate from `_camera_clock_start` because the naming differs: DJI
+    recorders write `DJI_01_20260630_060652.WAV` -- date and time split by
+    an underscore -- so the camera's 14-CONTIGUOUS-digit pattern does not
+    match it. Returns None for anything unstamped (`Bob 1.WAV`), which is
+    what keeps the recorder-wide rule below from ever firing on a project
+    that cannot support it.
+    """
+    import re as _re
+    from datetime import datetime as _dt
+    m = _re.search(r"(\d{8})[_-](\d{6})", Path(path).name)
+    if not m:
+        return None
+    try:
+        return _dt.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S").timestamp()
+    except ValueError:
+        return None
+
+
+def _recorder_id(path: str) -> Optional[str]:
+    """Which physical recorder wrote this file, from the filename prefix
+    before the timestamp (`DJI_01_` above).
+
+    Scoping matters: two recorders in one folder have two DIFFERENT clock
+    offsets against the camera, and letting a strong pair from one vouch
+    for a weak pair from the other is exactly the "overlapping audio
+    sources from Bob 2 and Bob 3... those are different points in time"
+    failure. Returns None when there is no timestamp to sit behind.
+    """
+    import re as _re
+    name = Path(path).name
+    m = _re.search(r"(\d{8})[_-](\d{6})", name)
+    if not m:
+        return None
+    return name[: m.start()] or "<unprefixed>"
+
+
 def _camera_clock_start(path: str) -> Optional[float]:
     """Absolute recording start of a camera file, in seconds, read from a
     14-digit YYYYMMDDHHMMSS stamp in its filename (DJI/Osmo and most
@@ -167,6 +206,61 @@ def offset_is_corroborated(pair, state) -> bool:
         ]
         if len(eligible) >= MUTUAL_CORROBORATION_MIN:
             return True
+
+    # (c) Or it agrees with a strong pair from ANOTHER FILE BY THE SAME
+    # RECORDER, once each file is normalised by its own filename start.
+    #
+    # 2026-09-16, Runnells tiling day. Ryan: "tile day should be able to
+    # sync. If theres source audio it should be syncable." He was right,
+    # and the audio was there: the mic ran continuously for 67.4 minutes
+    # across the shoot's 67.2 minutes, split by the recorder into three
+    # ~30-minute chunks. The correlator found the CORRECT offset for every
+    # camera file that had speech -- verified against the filename clocks,
+    # accurate to between 0.0 and 1.5 seconds -- and four of the five were
+    # thrown away.
+    #
+    # Neither branch above could save them. (a) needs a pair >= 18 in the
+    # SAME audio file, and only the third chunk had one. (b) needs three
+    # agreeing pairs in the same file, and each chunk had exactly two.
+    # Splitting one recording into chunks had split its evidence with it.
+    #
+    # The invariant generalises: a recorder and a camera have ONE clock
+    # difference for the whole shoot, so `camera_start + offset -
+    # audio_file_start` is a single constant for every true pair, whichever
+    # chunk matched. Measured on that day: the five true pairs land inside
+    # 1.5s of each other (10934.86-10936.35) while the ten false ones
+    # scatter across 7216-12652, the nearest miss 333s out. That is a ~200x
+    # separation -- a far sharper discriminator than score, which had the
+    # true pairs at 3.21-25.67 and the false ones at 3.52-6.06, completely
+    # interleaved.
+    #
+    # This does NOT lower the bar the 2026-09-04 note set at the attach
+    # site; it adds independent evidence on top. Nothing is promoted unless
+    # a pair from the same recorder cleared SCORE_TIMELINE_ATTACH entirely
+    # on its own, so a recorder that never matched anything convincingly
+    # still vouches for nothing. It is also self-limiting: unstamped
+    # filenames return None and the branch never runs. The wallpaper
+    # project -- the one whose "Bob 2 and Bob 3... different points in
+    # time" failure motivated the caution above -- names its files
+    # `Bob 1.WAV`, so this rule cannot fire there at all.
+    own_recorder = _recorder_id(pair.audio_file)
+    own_audio_start = _audio_clock_start(pair.audio_file)
+    if own_recorder is not None and own_audio_start is not None:
+        own_delta = implied - own_audio_start
+        for other in state.pairs:
+            if other is pair:
+                continue
+            if other.score < SCORE_TIMELINE_ATTACH:
+                continue
+            if _recorder_id(other.audio_file) != own_recorder:
+                continue
+            other_cam = _camera_clock_start(other.aroll_file)
+            other_audio_start = _audio_clock_start(other.audio_file)
+            if other_cam is None or other_audio_start is None:
+                continue
+            other_delta = (other_cam + other.offset_sec) - other_audio_start
+            if abs(own_delta - other_delta) <= CORROBORATION_TOLERANCE_SEC:
+                return True
 
     return False
 
