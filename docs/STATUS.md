@@ -62,6 +62,60 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-18 — Ryan's own organize pass + finished edit for the tiling
+  day. Precision 9/9; the gap is recall, and its main cause is now
+  measured.** He supplied `How to Tile_Culled+Organized.xml` and
+  `How to Tile_Final.xml`, both built FROM the app's own export (the
+  sequences still carry the app's title), so correspondence is exact
+  rather than inferred.
+
+  **Every one of the app's 9 proposed ranges was used.** 5 landed in his
+  own left-zone story, 4 in his selects pool, **0 were never considered**.
+  The earlier "kept 2/9" figure was measured against the FINISHED edit,
+  which is a further trim; against the organize pass -- the artifact the
+  app's export is actually meant to seed -- nothing was wasted.
+
+  Recall is the real gap. Of his 371.4s left-zone story across 40 clips:
+
+  | | |
+  | --- | --- |
+  | proposed in the app's CUT | 23.2s (6%) |
+  | offered in the app's POOL | 208.3s (56%) |
+  | **surfaced somewhere** | **231.5s (62%)** |
+  | never surfaced | 139.9s (38%), 25 clips |
+
+  **Why the 38% was missed, measured rather than guessed:**
+
+  | cause | clips | seconds |
+  | --- | --- | --- |
+  | labelled `possible` (pool takes `strong` only) | 13 | **73.8s** |
+  | never extracted as a fragment at all | 8 | 35.7s |
+  | labelled `off_topic` | 2 | 13.6s |
+  | labelled `strong` but still not surfaced | 2 | 11.1s |
+
+  So the single largest cause is the fit label, not retrieval: 73.8s of
+  footage he put in his own story WAS found and understood, then excluded
+  because `possible` never reaches the pool. See the escalation below.
+
+  Other facts from his files, each worth keeping:
+  * His final runs **244s (4:04)** against the app's 74s target. This was
+    long-form, not a Reel; the length guide aimed at the wrong format.
+  * He used **`_0004_D`** (19 clipitems) which the app never offered --
+    the pool rule excludes files the tight cut didn't draw on, and the cut
+    used only `_0002_D`. Same structural block as the Arthur diff.
+  * He used **both lav chunks** (`060652` and `063742`), which is exactly
+    what the 2026-09-16 recorder-wide corroboration fix (`bbfb146`)
+    enables. Independent confirmation that fix was right and needed.
+  * He pulled **2 files from a different shoot day** (`DJI_20260701…`,
+    July 1) into a June 30 project. Nothing in the app can do that --
+    cross-project search is a known PreCut gap -- and it is worth knowing
+    that a finished piece reached outside its own shoot.
+
+  Evidence: `$CLAUDE_JOB_DIR/tmp/diff_tile_final.json`, idea
+  `idea_afa7b1b408`. Graphics, SFX and out-of-project footage are excluded
+  from every count and reported separately rather than dropped silently.
+
+
 - **2026-09-16 — Reference projects re-transcribed and re-diffed. The
   headline: retrieval is good, RANKING into the tight cut is the weak
   part.** Ryan: *"yes redo both"*. Both projects were re-transcribed with
@@ -2213,6 +2267,35 @@ his pick (or his go-ahead to propose an order).
 the Lead before any re-dispatch; empty so far)*
 
 ## Escalations / blockers
+
+- **2026-09-18 — `possible` fragments never reach the pool, and that is
+  now the largest single cause of missed material. Ryan's call.**
+  Measured on his own tiling organize pass: of the 139.9s of his story the
+  app never surfaced, **73.8s (53%) was extracted and labelled
+  `possible`**, then excluded because the pool takes `strong` only. A
+  second, independent instance of a pattern already recorded but not
+  acted on (2026-09-16: ~24% of the eviction footage he used was
+  `possible`, not `strong`).
+
+  The exclusion was logged deliberately, as part of what fixed the "37
+  minutes of unrelated footage" complaint -- but that failure was driven
+  by `off_topic` fragments and by leftovers drawn from unrelated files,
+  not by `possible`. Those are separable.
+
+  Options: (1) leave it, and accept ~half the miss; (2) admit `possible`
+  into the POOL only, never the cut, still restricted to files the cut
+  used; (3) re-tune the labeller so this material comes back `strong`.
+  Recommend (2): it is the smallest change that matches Ryan's own spec
+  for that side of the timeline -- *"the right of the timeline was all of
+  the footage that had to do with that topic that i wasnt sure would make
+  it into the cut"* -- `possible` is a precise description of "wasn't
+  sure". It cannot affect the tight cut, and the cost is a longer right
+  side, which is the correct direction of error. (3) is riskier: it moves
+  material toward the cut, where a wrong call is expensive.
+
+  Not acted on. Rule 2 -- this contradicts a logged decision, so it needs
+  Ryan, not a workaround.
+
 
 - **2026-09-16 — the pool's "same files as the cut" rule does not fit
   long-form, and this is Ryan's call.** Measured on the Arthur eviction
