@@ -1286,20 +1286,71 @@ def test_strong_material_far_from_the_cut_is_still_pooled():
     )
 
 
-def test_off_topic_and_possible_never_reach_the_pool():
+def test_off_topic_never_reaches_the_pool():
     """What actually fixed "what do shirt colors and fishing licenses have
     to do with wallpaper" was the fit label, not the radius — so the fit
-    bound must survive the radius being removed."""
+    bound must survive the radius being removed.
+
+    Note this test ONCE also asserted that "possible" was excluded. That
+    half was removed on 2026-09-19 (see the test below) after measurement
+    showed it was the largest single cause of material Ryan used never
+    reaching him. off_topic is the part that was load-bearing and it stays.
+    """
     from posthouse.story_architect import build_allowed_pool_spans
     frags = _frags(
         ("A.mov", 0.0, 10.0, "strong", 0),        # used
         ("A.mov", 20.0, 30.0, "off_topic", 1),    # shirt colours
-        ("A.mov", 40.0, 50.0, "possible", 2),
     )
     allowed = build_allowed_pool_spans(frags, used_idx={0})
     spans = allowed["A.mov"]
     assert not any(s < 30.0 and e > 20.0 for s, e in spans), "off_topic leaked in"
-    assert not any(s < 50.0 and e > 40.0 for s, e in spans), "possible leaked in"
+
+
+def test_possible_reaches_the_pool_but_never_the_cut():
+    """2026-09-19, Ryan: "do the pool fix".
+
+    Measured on the tiling day against his own organize pass: of the 139.9s
+    of his story the app never surfaced, 73.8s — 53%, the largest single
+    cause — had been extracted and labelled "possible", then dropped
+    because the pool took "strong" only. Admitting it moved recall of his
+    own story from 63% to 81%.
+
+    "possible" is a literal description of his spec for that side: "all of
+    the footage that had to do with that topic that i wasnt sure would make
+    it into the cut". The tight cut is built from the model's own chosen
+    ranges and never from this set, so this cannot loosen the cut.
+    """
+    from posthouse.story_architect import build_allowed_pool_spans, POOL_ELIGIBLE_FITS
+
+    assert POOL_ELIGIBLE_FITS == {"strong", "possible"}, (
+        "off_topic must never be pool-eligible — it is the shirt-colours "
+        "and fishing-licence material behind the 37.6-minute complaint."
+    )
+    frags = _frags(
+        ("A.mov", 0.0, 10.0, "strong", 0),        # used by the cut
+        ("A.mov", 40.0, 50.0, "possible", 1),
+        ("A.mov", 60.0, 70.0, "off_topic", 2),
+    )
+    allowed = build_allowed_pool_spans(frags, used_idx={0})
+    spans = allowed["A.mov"]
+    assert any(s <= 40.0 and e >= 50.0 for s, e in spans), "possible should be offered"
+    assert not any(s < 70.0 and e > 60.0 for s, e in spans), "off_topic leaked in"
+
+
+def test_possible_still_obeys_the_files_the_cut_used_bound():
+    """Admitting `possible` must not reopen the other half of the
+    37.6-minute failure: leftovers from files the cut never touched. Both
+    bounds are independent and both must hold."""
+    from posthouse.story_architect import build_allowed_pool_spans
+    frags = _frags(
+        ("A.mov", 0.0, 10.0, "strong", 0),        # used
+        ("B.mov", 10.0, 20.0, "possible", 1),     # cut never drew on B
+        ("B.mov", 30.0, 40.0, "strong", 2),
+    )
+    allowed = build_allowed_pool_spans(frags, used_idx={0})
+    assert "B.mov" not in allowed, (
+        "a file the cut never used contributes nothing, whatever its labels"
+    )
 
 
 def test_files_the_cut_never_used_contribute_nothing():

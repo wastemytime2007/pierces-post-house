@@ -641,6 +641,14 @@ def _merge_spans(spans: List[tuple]) -> List[tuple]:
     return out
 
 
+# Fit labels a leftover may carry. "off_topic" is deliberately absent and
+# should stay absent: those fragments ARE the shirt colours and fishing
+# licences behind "what do these have to do with wallpaper". "possible" was
+# excluded alongside it until 2026-09-19; see build_allowed_pool_spans for
+# the measurement that changed it.
+POOL_ELIGIBLE_FITS = frozenset({"strong", "possible"})
+
+
 def build_allowed_pool_spans(
     frags_by_file: Dict[str, List[tuple]],
     used_idx: set,
@@ -671,13 +679,46 @@ def build_allowed_pool_spans(
     on-topic footage.
 
     What still bounds it — and what actually fixed the
-    37.6-minutes-of-nonsense complaint in the first place — is unchanged:
-    off_topic and "possible" fragments are excluded outright (the shirt
-    colours and fishing licences were all already labelled off_topic; the
-    label just wasn't being consulted), and leftovers may only come from
-    source files the cut actually drew on. Measured effect on the two
-    real projects: capture of the material Ryan really used rose from 28%
-    to 89% (wallpaper) and 41% to 63% (eviction).
+    37.6-minutes-of-nonsense complaint in the first place — is that
+    off_topic fragments are excluded outright (the shirt colours and
+    fishing licences were all already labelled off_topic; the label just
+    wasn't being consulted), and leftovers may only come from source files
+    the cut actually drew on. Measured effect on the two real projects:
+    capture of the material Ryan really used rose from 28% to 89%
+    (wallpaper) and 41% to 63% (eviction).
+
+    2026-09-19 — "possible" is now ADMITTED to the pool, and only to the
+    pool. Ryan: "do the pool fix".
+
+    It used to be excluded alongside off_topic. Measured on the tiling
+    day against Ryan's own organize pass — the first time we have had his
+    two-zone timeline for the same footage the app cut — that exclusion
+    was the single largest cause of material he used never reaching him:
+    of the 139.9s of his own story the app never surfaced, 73.8s (53%)
+    had been extracted and labelled "possible", then dropped. A second
+    independent instance of a pattern already recorded on the eviction
+    project (~24% of what he used was "possible", not "strong").
+
+    Simulated against that ground truth before changing anything:
+
+        strong only        pool 24 frags / 640.7s   recall 63%
+        strong + possible  pool 33 frags / 841.2s   recall 81%
+        + off_topic        pool 38 frags / 877.9s   recall 85%
+
+    So "possible" buys 18 points of recall for ~31% more leftovers.
+    off_topic is NOT admitted: it buys 4 more points and it is precisely
+    what produced the shirt-colours complaint. Pool cost across all three
+    real projects is bounded — +31% (tiling), +27% (wallpaper), +10%
+    (eviction) — because the files-the-cut-used rule still holds.
+
+    Why this is the right side of the timeline for it: "possible" is a
+    literal description of Ryan's own spec for the leftovers — "all of
+    the footage that had to do with that topic that i wasnt sure would
+    make it into the cut". It cannot reach the tight cut, which is
+    selected from the model's own chosen ranges, not from this set; the
+    cost is a longer right side, and that is the correct direction of
+    error (scrolling past extra material costs seconds, a missing clip
+    costs a re-export or a hand search).
     """
     offsets = source_offset_lookup or {}
     allowed: Dict[str, List[tuple]] = {}
@@ -688,7 +729,7 @@ def build_allowed_pool_spans(
         chosen: List[tuple] = [
             (fs + off, fe + off)
             for (fs, fe, fit, i) in frags
-            if i in used_idx or fit == "strong"
+            if i in used_idx or fit in POOL_ELIGIBLE_FITS
         ]
         if chosen:
             # Merge before use. 2026-09-08, Ryan: "extra footage has

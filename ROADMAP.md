@@ -2366,3 +2366,51 @@ with Ryan touching only the intake and the checkpoints.
   30 seconds of every file. Guarded by
   `safety_net/tests/test_whisper_options.py`, verified to fail when the
   setting is reverted.
+
+- **2026-09-19 — "possible" fragments belong in the leftovers pool.**
+  Partially supersedes the 2026-09-16 entry above, which excluded both
+  `off_topic` and `possible` from the pool. `off_topic` stays excluded;
+  `possible` is now admitted, to the pool only and never to the tight cut.
+  Ryan's instruction: *"do the pool fix"*.
+
+  What changed was the evidence. For the first time we had Ryan's own
+  two-zone organize pass for the *same footage the app had cut* (the
+  tiling day — his sequences still carry the app's own title, so he built
+  from its export). That makes correspondence exact instead of inferred,
+  and it let the misses be attributed by cause rather than guessed at. Of
+  the 139.9s of his own story the app never surfaced:
+
+  | cause | seconds |
+  | --- | --- |
+  | labelled `possible` | **73.8s (53%)** |
+  | never extracted at all | 35.7s |
+  | labelled `off_topic` | 13.6s |
+  | labelled `strong`, still not surfaced | 11.1s |
+
+  The single largest cause was a label, not retrieval. Simulated against
+  that ground truth before changing anything: `strong` only gave 63%
+  recall of his story from a 640.7s pool; `strong + possible` gave **81%**
+  from 841.2s. Adding `off_topic` as well would have reached 85%, and is
+  refused — those 4 points are not worth re-creating the exact material
+  ("shirt colours and fishing licences") behind the 37.6-minute
+  complaint.
+
+  Cost is bounded because the other half of the 2026-09-16 rule is
+  untouched: leftovers still come only from source files the tight cut
+  drew on. Pool growth across all three real projects: +31% (tiling),
+  +27% (wallpaper), +10% (eviction). No repeat of the six-camera-file
+  sprawl.
+
+  The reasoning that makes this the right side of the timeline for it:
+  `possible` is a literal description of Ryan's own spec for the
+  leftovers — *"all of the footage that had to do with that topic that i
+  wasnt sure would make it into the cut."* "Wasn't sure" is the label.
+  It cannot loosen the tight cut, which is built from the model's chosen
+  ranges and never from this set.
+
+  Guarded by `test_possible_reaches_the_pool_but_never_the_cut` and
+  `test_possible_still_obeys_the_files_the_cut_used_bound` in
+  `test_reel_contract.py`; the older
+  `test_off_topic_and_possible_never_reach_the_pool` was narrowed to
+  `test_off_topic_never_reaches_the_pool` rather than deleted, so the
+  half that was load-bearing still has a test.
