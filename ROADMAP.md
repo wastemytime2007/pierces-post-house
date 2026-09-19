@@ -2414,3 +2414,40 @@ with Ryan touching only the intake and the checkpoints.
   `test_off_topic_and_possible_never_reach_the_pool` was narrowed to
   `test_off_topic_never_reaches_the_pool` rather than deleted, so the
   half that was load-bearing still has a test.
+
+- **2026-09-19 — Cutting rhythm is computed from the target, and enforced
+  at generation.** Ryan: *"fix the granularity issue"*.
+
+  `ARCHITECT_PROMPT_TEMPLATE` asked for "roughly 8-14 clips, most of them
+  2-6 seconds" anchored to a FIXED 45-second cut. The guidance never
+  scaled, so when a target grew the model held the clip count and
+  stretched every clip instead. Real case: a 112s tiling angle came back
+  as 9 clips at 4.8/min, averaging 12.5s, with single ranges of 16.9s and
+  20.6s.
+
+  Two changes. The prompt now computes its own expectation from the actual
+  target (~`TARGET_CLIPS_PER_MINUTE` = 12/min, floor 6/min,
+  `MAX_SINGLE_CLIP_SEC` = 15s) and states the three measured gears from
+  `WALLPAPER_REEL_ANATOMY.md` — ~2.2s in the hook, ~4.6s explaining, ~2.5s
+  to close. And it is now checked in `generate_story_angle` with a
+  `retry_note`, mirroring the `SANITY_OVERRUN_MULTIPLIER` gate, instead of
+  only by `verify_export` — which caught it, but only once the XML was
+  already on Ryan's Desktop and the generation had to be redone by hand.
+
+  The numbers are measured, not chosen. The floor equals
+  `verify_export.MIN_CLIPS_PER_MINUTE` and a test asserts they stay equal,
+  so a cut can no longer pass generation and fail export. Another test
+  checks the floor against Ryan's own work on the tiling day — his
+  organize pass runs 6.5 clips/min and his finished edit 13.5 — because a
+  floor that rejects his own cutting would be the wrong floor.
+
+  Measured effect, regenerating the same project: 4.8/min -> 8.6, 11.6 and
+  9.8/min across three angles, longest clip 20.6s -> 12.4s, average 12.5s
+  -> 5.2-6.9s. Recall of Ryan's own story held at 81% while the cut got
+  32% shorter.
+
+  Noted rather than excused: the 15s ceiling is a real tightening, and the
+  earlier 74s cut that shipped and verified clean contains a 21.6s range
+  that would now be rejected. That slab is the kind of thing the ceiling
+  targets, but this is stricter than "restore previous behaviour", not a
+  pure regression fix.

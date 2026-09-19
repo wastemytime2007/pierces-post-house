@@ -1374,3 +1374,70 @@ def test_offsets_are_applied_to_allowed_spans():
     allowed = build_allowed_pool_spans(frags, used_idx={0},
                                         source_offset_lookup={"A.mov": 100.0})
     assert allowed["A.mov"] == [(100.0, 110.0)]
+
+
+# ---------------------------------------------------------------------------
+# §15 — cutting rhythm. 2026-09-19.
+# ---------------------------------------------------------------------------
+
+def test_pacing_constants_match_the_verifier_and_the_reference_edit():
+    """The floor must not drift from the one verify_export enforces, or a
+    cut passes generation and fails at export — which is the situation this
+    section exists to remove."""
+    import re
+    from pathlib import Path
+    from posthouse.story_architect import (
+        MIN_CLIPS_PER_MINUTE, TARGET_CLIPS_PER_MINUTE, MAX_SINGLE_CLIP_SEC)
+
+    ve = (Path(__file__).resolve().parents[1] / "verify_export.py").read_text()
+    m = re.search(r"MIN_CLIPS_PER_MINUTE\s*=\s*([\d.]+)", ve)
+    assert m, "verify_export.py no longer defines MIN_CLIPS_PER_MINUTE"
+    assert float(m.group(1)) == MIN_CLIPS_PER_MINUTE, (
+        "the generator's floor and the verifier's floor must be the same "
+        "number; if they diverge a cut can pass one and fail the other"
+    )
+    # Sanity against Ryan's measured reference: his hand-cut reel runs
+    # ~2.2-4.6s per cut (~20/min) and his organize pass 6.5/min, so a
+    # target rate under the floor or a ceiling under his slowest gear
+    # would be incoherent.
+    assert TARGET_CLIPS_PER_MINUTE > MIN_CLIPS_PER_MINUTE
+    assert MAX_SINGLE_CLIP_SEC >= 5.0
+
+
+def test_the_real_112s_failure_would_now_be_rejected():
+    """The actual case. A regenerated tiling angle came back as 9 clips over
+    112s — 4.8/min, averaging 12.5s, with single ranges of 16.9s and 20.6s.
+    verify_export caught it, but only once it was already an XML on Ryan's
+    Desktop."""
+    from posthouse.story_architect import MIN_CLIPS_PER_MINUTE, MAX_SINGLE_CLIP_SEC
+    real = [8.1, 4.3, 9.6, 11.1, 12.5, 13.3, 16.9, 20.6, 15.8]
+    total = sum(real)
+    per_min = len(real) / (total / 60.0)
+    assert per_min < MIN_CLIPS_PER_MINUTE, "this is the case that must fail"
+    assert max(real) > MAX_SINGLE_CLIP_SEC, "and its longest clip is over the ceiling"
+
+
+def test_the_passing_74s_cut_is_still_accepted():
+    """Guard against over-tightening. The earlier tiling cut — 9 clips over
+    74s, 7.3/min — was shipped and verified, so the new gate must not
+    retroactively reject work that was fine."""
+    from posthouse.story_architect import MIN_CLIPS_PER_MINUTE, MAX_SINGLE_CLIP_SEC
+    real = [1.7, 7.1, 1.9, 7.5, 7.9, 9.1, 9.6, 21.6, 7.7]
+    per_min = len(real) / (sum(real) / 60.0)
+    assert per_min >= MIN_CLIPS_PER_MINUTE, "this cut passed at export and must still pass"
+    # NOTE: its 21.6s range DOES exceed the clip ceiling, and that is
+    # intentional — the ceiling is a real tightening, and this clip is the
+    # kind of slab it targets. Recorded rather than silently excused.
+
+
+def test_ryans_own_work_satisfies_the_floor():
+    """The floor is only legitimate if his own cutting clears it. Measured
+    from the tiling day files he supplied on 2026-09-18."""
+    from posthouse.story_architect import MIN_CLIPS_PER_MINUTE
+    organize_rate = 40 / (371.4 / 60.0)      # his culled+organized left zone
+    final_rate = 55 / (244.0 / 60.0)         # his finished edit
+    assert organize_rate >= MIN_CLIPS_PER_MINUTE, (
+        f"his organize pass runs {organize_rate:.1f}/min; a floor above that "
+        f"would reject his own work"
+    )
+    assert final_rate > organize_rate

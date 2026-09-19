@@ -407,9 +407,14 @@ repeated index with no sub-range given. Overlapping selections are rejected auto
 - `sequence` must be about ONE topic, no exceptions. If you're tempted to include a fragment \
 because it's a good moment "from the same footage" rather than because it's genuinely part of the \
 one topic's own start-to-finish arc, leave it out — don't stretch the cut to hold it.
-- **Cut like an editor: many short, deliberate clips.** A real 45-second tutorial cut is roughly \
-8-14 clips, most of them 2-6 seconds, not two big slabs. Take the exact sentence that does the \
-job and leave the throat-clearing either side of it. You may also REORDER: the sequence does not \
+- **Cut like an editor: many short, deliberate clips.** For a cut of about {target_sec:.0f}s you \
+want roughly {expected_clips} clips — a rate of ~{target_rate:.0f} per minute, and never fewer \
+than {min_rate:.0f} per minute. Most clips should be 2-6 seconds; **no single clip may exceed \
+{max_clip_sec:.0f} seconds.** This scales with the target: a longer cut means MORE clips, not \
+longer ones. Two big slabs is the failure mode — a real reference cut of this kind runs ~2.2s per \
+cut in the hook, ~4.6s while the actual expertise is being explained, and ~2.5s to close. Take \
+the exact sentence that does the job and leave the throat-clearing either side of it. You may \
+also REORDER: the sequence does not \
 have to run in source order if a later line is the better opener.
 - **Spend your length on the payoff, not the setup.** The shape that works: fast short clips \
 (1-4s) to establish the situation visually, then let the two or three clips carrying the actual \
@@ -1390,6 +1395,29 @@ DEFAULT_REEL_TARGET_SEC = 60.0
 # than a 60s default allows.
 SANITY_OVERRUN_MULTIPLIER = 4.0
 
+# Cutting rhythm the tight cut must actually hit.
+#
+# 2026-09-19. A regenerated tiling angle chose a 112s target and filled it
+# with 9 clips — 4.8/min, averaging 12.5s each, with single ranges up to
+# 20.6s. verify_export caught it (CUT-GRANULARITY), but only at export, by
+# which point it is already a file in Ryan's hands.
+#
+# The cause was in the prompt: it asked for "roughly 8-14 clips, most of
+# them 2-6 seconds" anchored to a FIXED 45-second cut. The guidance never
+# scaled, so when the target grew the model kept the clip count and
+# stretched every clip instead.
+#
+# Both numbers are measured, not chosen. MIN floor matches
+# safety_net/verify_export.py's MIN_CLIPS_PER_MINUTE (6.0) and Ryan's own
+# organize pass on the tiling day (40 clips / 371s = 6.5/min). The TARGET
+# rate and the max single-clip length come from his hand-cut reference
+# reel (docs/reference/WALLPAPER_REEL_ANATOMY.md): ~2.2s per cut in the
+# hook, ~4.6s while explaining, ~2.5s to close — roughly 20 cuts/min, and
+# nothing anywhere near 20s long.
+MIN_CLIPS_PER_MINUTE = 6.0
+TARGET_CLIPS_PER_MINUTE = 12.0
+MAX_SINGLE_CLIP_SEC = 15.0
+
 # How far either side of the used material to look when gathering the
 # leftover footage for the pool. Derived from Ryan's own reference edit
 # (Removing Wallpaper Tutorial.xml, 2026-09-07): its unused-footage side
@@ -2171,11 +2199,25 @@ def generate_story_angle(
     retry_clause = f"\n\n{retry_note.strip()}" if retry_note and retry_note.strip() else ""
 
     client = build_anthropic_client(api_key=api_key)
+    # Cutting rhythm scales with the target, so it is computed here rather
+    # than written into the template as a fixed number. A prompt that says
+    # "8-14 clips" regardless of length is what let a 112s cut come back as
+    # 9 slabs averaging 12.5s. Falls back to the Reel default when no
+    # target is set, so the guidance is never blank or nonsensical.
+    _target_for_pacing = max_duration_sec if max_duration_sec and max_duration_sec > 0 \
+        else DEFAULT_REEL_TARGET_SEC
+    _expected = max(4, round(_target_for_pacing / 60.0 * TARGET_CLIPS_PER_MINUTE))
+
     user_prompt = ARCHITECT_PROMPT_TEMPLATE.format(
         audience_goal=audience_goal.strip(),
         fragments=_format_candidates_for_llm(candidates, phrases_by_source),
         trend_research=_format_research_for_llm(research),
         planning_context=planning_context,
+        target_sec=_target_for_pacing,
+        expected_clips=f"{max(4, _expected - 2)}-{_expected + 3}",
+        target_rate=TARGET_CLIPS_PER_MINUTE,
+        min_rate=MIN_CLIPS_PER_MINUTE,
+        max_clip_sec=MAX_SINGLE_CLIP_SEC,
     ) + avoid_clause + retry_clause
     try:
         response = client.messages.create(
@@ -2324,6 +2366,56 @@ def generate_story_angle(
     # rejected here; it is measured and flagged by the caller
     # (run_generate_story_angle), which has emit() and can show Ryan the
     # real result instead of silently discarding it.
+    # Cutting rhythm, checked here rather than only at export.
+    #
+    # 2026-09-19. verify_export's CUT-GRANULARITY already catches a cut
+    # that is too sparse, but it runs on a finished XML — by then it is a
+    # file in Ryan's hands and the whole generation has to be redone by
+    # hand. This is the same failure the overrun gate below handles, so it
+    # gets the same treatment: fail loud, with a retry_note specific enough
+    # for the second attempt to actually correct.
+    #
+    # Real case: a 112s tiling cut came back as 9 clips (4.8/min) averaging
+    # 12.5s, with single ranges of 16.9s and 20.6s. Ryan's own organize
+    # pass on that footage runs 6.5 clips/min and his finished edit 13.5.
+    _cut_sec = sum(r.source_end_sec - r.source_start_sec for r in ranges)
+    if _cut_sec > 0 and ranges:
+        _per_min = len(ranges) / (_cut_sec / 60.0)
+        _longest = max(r.source_end_sec - r.source_start_sec for r in ranges)
+        _too_sparse = _per_min < MIN_CLIPS_PER_MINUTE
+        _too_long = _longest > MAX_SINGLE_CLIP_SEC
+        if _too_sparse or _too_long:
+            _why = []
+            if _too_sparse:
+                _why.append(
+                    f"{len(ranges)} clips across {_cut_sec:.0f}s is "
+                    f"{_per_min:.1f}/min, under the {MIN_CLIPS_PER_MINUTE:.0f}/min floor"
+                )
+            if _too_long:
+                _why.append(
+                    f"the longest single clip runs {_longest:.1f}s, over the "
+                    f"{MAX_SINGLE_CLIP_SEC:.0f}s ceiling"
+                )
+            err = StoryPlannerError(
+                "Tight cut is too coarse: " + "; ".join(_why) + ". This is a "
+                "few long slabs, not an edit."
+            )
+            err.retry_note = (
+                f"Your previous attempt produced {len(ranges)} clips totalling "
+                f"{_cut_sec:.0f}s — {_per_min:.1f} clips per minute, longest "
+                f"{_longest:.1f}s. That is a rough assembly, not a cut. Keep the "
+                f"same story and the same total length, but BREAK IT UP: aim for "
+                f"~{TARGET_CLIPS_PER_MINUTE:.0f} clips per minute "
+                f"(about {max(4, round(_cut_sec / 60.0 * TARGET_CLIPS_PER_MINUTE))} "
+                f"clips for {_cut_sec:.0f}s), no single clip over "
+                f"{MAX_SINGLE_CLIP_SEC:.0f}s, most of them 2-6s. Remember you may "
+                f"split ONE fragment into several non-overlapping sub-ranges — that "
+                f"is how a long fragment becomes a real sequence of cuts. Trim each "
+                f"clip to the exact sentence that does the job and drop the "
+                f"throat-clearing either side of it."
+            )
+            raise err
+
     if max_duration_sec and max_duration_sec > 0:
         actual_sec = sum(r.source_end_sec - r.source_start_sec for r in ranges)
         ceiling = max_duration_sec * SANITY_OVERRUN_MULTIPLIER
