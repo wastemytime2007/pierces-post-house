@@ -262,6 +262,64 @@ def offset_is_corroborated(pair, state) -> bool:
             if abs(own_delta - other_delta) <= CORROBORATION_TOLERANCE_SEC:
                 return True
 
+    # (d) Or enough pairs across the WHOLE RECORDER agree with each other
+    # to be conclusive without any single strong one — branch (b)'s
+    # argument, applied at the scope branch (c) established.
+    #
+    # 2026-09-22, the windows project (Runnells 05-28 + 06-02). Ryan:
+    # "None of the syncing came through." Four of nineteen camera files
+    # got audio. The recorder-wide clock invariant separated true from
+    # false as sharply as it ever has — the 06-02 pairs cluster across
+    # 93.72-95.53 (span 1.81s) and the 05-28 pairs across 80.18-80.62
+    # (span 0.45s), while the nearest false pair sits 84s out and most
+    # are 400s+ — and eight true pairs were still discarded, including
+    # the two highest-scoring pairs in the entire project (15.93, 15.31).
+    #
+    # The reason is that this shoot never produced an 18. Its ceiling was
+    # 15.93, so branches (a) and (c) — both of which need a pair that
+    # cleared SCORE_TIMELINE_ATTACH on its own — could not fire at all,
+    # and (b) saved only the one audio file that happened to contain
+    # three agreeing pairs by itself. The evidence was spread across four
+    # chunks instead of concentrated in one; that is a property of how
+    # the recorder splits files, not of whether the sync is right.
+    #
+    # Measured across every real project with stamped audio filenames
+    # before this branch was added — Arthur, windows, Test Project, new —
+    # each recorder yields EXACTLY ONE cluster of >=3 pairs agreeing
+    # within CORROBORATION_TOLERANCE_SEC, or none:
+    #     Arthur     DJI_01_  n=6   span 2.46s   (next pair ~1000s out)
+    #     windows    DJI_01_  n=3   span 0.45s   (05-28 day)
+    #     windows    DJI_01_  n=8   span 1.81s   (06-02 day)
+    #     Test       DJI_02_  n=3   span 1.43s
+    #     Test       DJI_03_  n=3   span 1.38s
+    #     new        DJI_02_  n=11  span 2.78s
+    #     new        DJI_01_  n=0            <- matched nothing, stays empty
+    # No recorder produced a second, spurious cluster. A recorder that
+    # never matched anything still vouches for nothing, two recorders in
+    # one folder still cannot vouch for each other (the "Bob 2 and Bob
+    # 3... different points in time" failure), and the wallpaper project
+    # names its files `Bob 1.WAV`, so this cannot fire there either.
+    #
+    # Note the two windows clusters are the two SHOOT DAYS. One recorder
+    # has one clock offset per day, not one forever, which is why this
+    # compares pairs to each other rather than to a per-recorder constant.
+    if own_recorder is not None and own_audio_start is not None:
+        agreeing_on_recorder = 0
+        for other in state.pairs:
+            if other.score < MUTUAL_CORROBORATION_SCORE_FLOOR:
+                continue
+            if _recorder_id(other.audio_file) != own_recorder:
+                continue
+            other_cam = _camera_clock_start(other.aroll_file)
+            other_audio_start = _audio_clock_start(other.audio_file)
+            if other_cam is None or other_audio_start is None:
+                continue
+            other_delta = (other_cam + other.offset_sec) - other_audio_start
+            if abs(own_delta - other_delta) <= CORROBORATION_TOLERANCE_SEC:
+                agreeing_on_recorder += 1
+        if agreeing_on_recorder >= MUTUAL_CORROBORATION_MIN:
+            return True
+
     return False
 
 

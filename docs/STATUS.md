@@ -865,6 +865,94 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-22 — **Audio sync: a whole shoot's lav discarded because it
+  never scored an 18.** Ryan, on the windows project: *"None of the
+  syncing came through."* Four of nineteen camera files had audio;
+  the cut he had just generated draws on exactly two files, and both
+  were in the discarded set — it would have come out camera-audio-only.
+  Fixed by adding branch (d) to `offset_is_corroborated`. Verified on
+  all five real projects with saved sync state, before and after.
+
+  **What was wrong.** The attach gate is `score >= SCORE_TIMELINE_ATTACH
+  (18) or offset_is_corroborated(...)`. Branches (a) and (c) of that
+  function both require some pair to have cleared 18 on its own. The
+  windows shoot's ceiling was **15.93** — it never produced an 18
+  anywhere — so both branches were dead on arrival, and (b), which wants
+  three agreeing pairs inside ONE audio file, rescued only the single
+  chunk that happened to hold three.
+
+  Meanwhile the recorder-wide clock invariant was as clean as it has
+  ever been. Normalising each pair by its own audio file's filename
+  start, the true pairs cluster and the false ones do not:
+
+  | day | n | delta range | span | nearest false pair |
+  | --- | --- | --- | --- | --- |
+  | 2026-05-28 | 3 | 80.18–80.62 | 0.45s | ~700s out |
+  | 2026-06-02 | 8 | 93.72–95.53 | 1.81s | 84s out |
+
+  Eight true pairs were thrown away, including the **two highest-scoring
+  pairs in the entire project** (15.93 and 15.31). Whether a recorder's
+  evidence lands in one chunk or spread across four is a property of how
+  the recorder splits files, not of whether the offsets are right.
+
+  **The fix.** Branch (d): branch (b)'s argument — enough pairs agreeing
+  with each other is conclusive without any single strong one — applied
+  at the recorder-wide scope branch (c) established. Same
+  `MUTUAL_CORROBORATION_MIN` (3), same `MUTUAL_CORROBORATION_SCORE_FLOOR`
+  (3.0), same `CORROBORATION_TOLERANCE_SEC` (3.0). It compares pairs to
+  each other rather than to a per-recorder constant, because one recorder
+  has one clock offset **per day**, not one forever — the windows project
+  carries both days on the same `DJI_01_`.
+
+  **Why this is safe, measured not assumed.** Across every real project
+  with stamped audio filenames, each recorder yields exactly ONE cluster
+  of >=3 pairs agreeing within tolerance, or none — no recorder produced
+  a second, spurious cluster:
+
+  | project | recorder | cluster n | span |
+  | --- | --- | --- | --- |
+  | Arthur | `DJI_01_` | 6 | 2.46s |
+  | windows | `DJI_01_` (05-28) | 3 | 0.45s |
+  | windows | `DJI_01_` (06-02) | 8 | 1.81s |
+  | Test Project | `DJI_02_` | 3 | 1.43s |
+  | Test Project | `DJI_03_` | 3 | 1.38s |
+  | new | `DJI_02_` | 11 | 2.78s |
+  | new | `DJI_01_` | **0** — matched nothing, stays empty | |
+
+  Before/after on the saved state of all five projects, running the real
+  gate (not a reimplementation of it — that mistake is logged 2026-09-08):
+
+  | project | before | after | lost |
+  | --- | --- | --- | --- |
+  | 1546 Arthur | 6 | 6 | 0 |
+  | **windows** | **4** | **11** | 0 |
+  | How to remove wallpaper | 18 | 18 | 0 |
+  | Test Project | 0 | 6 | 0 |
+  | new | 7 | 11 | 0 |
+
+  **Nothing was lost anywhere.** The two calibration projects — Arthur
+  and wallpaper — are byte-identical before and after. Wallpaper names
+  its files `Bob 1.WAV`, so no stamped-filename branch can fire there at
+  all, which is what keeps the "Bob 2 and Bob 3... different points in
+  time" failure fixed. Two recorders in one folder still cannot vouch for
+  each other.
+
+  **Supersedes in part** the 2026-09-04 bar as originally stated (*a
+  recorder that never matched anything convincingly vouches for
+  nothing*). The property that survives is about quantity of evidence,
+  not any one pair's score: agreement below three pairs vouches for
+  nothing. `test_recorder_corroboration.py` now carries seven tests for
+  branch (d) plus the rewritten record of the superseded rule — 21 tests
+  in that module, 516 passed / 2 skipped for the full safety net.
+
+  **No re-sync or re-transcribe is needed.** The saved pairs and offsets
+  were always correct; only the attach decision was wrong, and that is
+  made at export time in `find_covering_audio_for_phrase`. Restarting the
+  app and re-exporting is enough.
+
+  *Ryan has not yet opened an export from this. Stays here as fixed and
+  measured on saved state; his review of a real timeline is the sign-off.*
+
 - 2026-09-11 — **Three real bugs in the cut/export path, each found by
   Ryan on a real artifact, each fixed and verified on real project data.**
   Commits `426f2a6`, `1432b81`, `c689f93`. Safety net after all three:

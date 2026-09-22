@@ -101,18 +101,33 @@ def test_the_real_tiling_day_shape_now_corroborates():
         )
 
 
-def test_nothing_corroborates_without_a_strong_anchor():
-    """The bar from 2026-09-04 stands: a recorder that never matched
-    anything convincingly vouches for nothing, however self-consistent."""
+def test_a_recorder_without_enough_agreement_vouches_for_nothing():
+    """SUPERSEDED IN PART, 2026-09-22 -- read the change, not just the test.
+
+    This asserted the 2026-09-04 bar in its original form: *a recorder that
+    never matched anything convincingly vouches for nothing, however
+    self-consistent*, and its fixture was three weak pairs agreeing across
+    two chunks with no pair at SCORE_TIMELINE_ATTACH. Branch (d) now accepts
+    exactly that fixture, on purpose -- see this module's branch (d) section
+    for the measurement. The windows project proved the old form too strong:
+    it threw away eight true pairs, including the two highest-scoring pairs
+    in the project, because the shoot's ceiling was 15.93 and 18 was the
+    only door.
+
+    What survives is the property the bar was really protecting, restated as
+    a quantity of evidence rather than as one pair's score: agreement below
+    MUTUAL_CORROBORATION_MIN vouches for nothing. Two pairs is a coincidence
+    a shoot can produce; three across a recorder's own clock is not.
+    """
     weak = [
         _pair("20260630091331", "DJI_01_20260630_060652.WAV", "20260630060652", 9.34),
-        _pair("20260630093329", "DJI_01_20260630_060652.WAV", "20260630060652", 5.29),
         _pair("20260630093934", "DJI_01_20260630_063742.WAV", "20260630063742", 3.67),
     ]
     st = FakeState(weak)
-    # Branch (b) can still fire within ONE file if enough agree; these are
-    # spread across two files, so only (c) could help -- and must not.
-    assert not A.offset_is_corroborated(weak[2], st)
+    for p in weak:
+        assert not A.offset_is_corroborated(p, st), (
+            "two agreeing pairs and no anchor must still corroborate nothing"
+        )
 
 
 def test_a_pair_that_disagrees_with_the_clock_is_still_rejected():
@@ -192,3 +207,117 @@ def test_agreement_outside_tolerance_is_refused(err):
                 "20260630060652", 5.0, err=err)
     st = FakeState([anchor, far])
     assert not A.offset_is_corroborated(far, st)
+
+
+# ---------------------------------------------------------------------------
+# Branch (d): recorder-wide mutual corroboration, no strong anchor required.
+#
+# 2026-09-22, the windows project (Runnells 05-28 + 06-02). Ryan: "None of
+# the syncing came through." Four of nineteen camera files got audio.
+#
+# That shoot's top correlation score was 15.93 -- it never produced an 18 --
+# so branches (a) and (c), which both need a pair at SCORE_TIMELINE_ATTACH,
+# could not fire at all, and (b) rescued only the single audio chunk that
+# happened to hold three agreeing pairs by itself. Meanwhile the clock
+# invariant was as clean as it has ever been: the 06-02 pairs cluster over
+# 93.72-95.53 (span 1.81s) and the 05-28 pairs over 80.18-80.62 (span
+# 0.45s), with the nearest false pair 84s out and most of them 400s+.
+# Whether the evidence lands in one chunk or four is a property of how the
+# recorder splits files, not of whether the offsets are right.
+# ---------------------------------------------------------------------------
+
+
+def test_three_agreeing_pairs_across_chunks_need_no_strong_anchor():
+    """The windows shape: a recorder whose ceiling is below 18, whose true
+    pairs are spread one or two per chunk. Branch (b) cannot see them and
+    (a)/(c) have nothing to anchor on."""
+    pairs = [
+        _pair("20260602094903", "DJI_01_20260602_094815.WAV", "20260602094815", 7.90),
+        _pair("20260602100718", "DJI_01_20260602_101906.WAV", "20260602101906", 7.63),
+        _pair("20260602112955", "DJI_01_20260602_112044.WAV", "20260602112044", 15.31),
+    ]
+    st = FakeState(pairs)
+    assert max(p.score for p in pairs) < A.SCORE_TIMELINE_ATTACH, (
+        "the point of this fixture is that nothing clears the anchor bar"
+    )
+    for p in pairs:
+        assert A.offset_is_corroborated(p, st), (
+            f"score {p.score} pair agreeing with two others on the same "
+            f"recorder's clock should corroborate without an anchor"
+        )
+
+
+def test_two_agreeing_pairs_are_still_not_enough():
+    """MUTUAL_CORROBORATION_MIN is 3 for branch (d) exactly as for (b).
+    Two measurements agreeing is a coincidence a shoot can produce."""
+    pairs = [
+        _pair("20260602094903", "DJI_01_20260602_094815.WAV", "20260602094815", 7.90),
+        _pair("20260602100718", "DJI_01_20260602_101906.WAV", "20260602101906", 7.63),
+    ]
+    st = FakeState(pairs)
+    for p in pairs:
+        assert not A.offset_is_corroborated(p, st)
+
+
+def test_a_disagreeing_pair_is_not_carried_by_the_cluster():
+    """The cluster vouches for its own members, not for everything on the
+    recorder. On the real project the nearest false pair missed by 84s."""
+    good = [
+        _pair("20260602094903", "DJI_01_20260602_094815.WAV", "20260602094815", 7.90),
+        _pair("20260602100718", "DJI_01_20260602_101906.WAV", "20260602101906", 7.63),
+        _pair("20260602112955", "DJI_01_20260602_112044.WAV", "20260602112044", 15.31),
+    ]
+    liar = _pair("20260602103109", "DJI_01_20260602_104955.WAV",
+                 "20260602104955", 5.80, err=84.0)
+    st = FakeState(good + [liar])
+    assert A.offset_is_corroborated(good[0], st)
+    assert not A.offset_is_corroborated(liar, st)
+
+
+def test_branch_d_respects_the_recorder_boundary():
+    """Three agreeing pairs on unit 01 must not corroborate unit 02."""
+    good = [
+        _pair("20260602094903", "DJI_01_20260602_094815.WAV", "20260602094815", 7.90),
+        _pair("20260602100718", "DJI_01_20260602_101906.WAV", "20260602101906", 7.63),
+        _pair("20260602112955", "DJI_01_20260602_112044.WAV", "20260602112044", 15.31),
+    ]
+    other_unit = _pair("20260602103109", "DJI_02_20260602_104955.WAV",
+                       "20260602104955", 6.50)
+    st = FakeState(good + [other_unit])
+    assert not A.offset_is_corroborated(other_unit, st)
+
+
+def test_branch_d_keeps_the_noise_floor():
+    """Below MUTUAL_CORROBORATION_SCORE_FLOOR a correlation carries no
+    usable offset, however well it agrees -- one floor, not two."""
+    good = [
+        _pair("20260602094903", "DJI_01_20260602_094815.WAV", "20260602094815", 7.90),
+        _pair("20260602100718", "DJI_01_20260602_101906.WAV", "20260602101906", 7.63),
+        _pair("20260602112955", "DJI_01_20260602_112044.WAV", "20260602112044", 15.31),
+    ]
+    noise = _pair("20260602103109", "DJI_01_20260602_104955.WAV",
+                  "20260602104955", A.MUTUAL_CORROBORATION_SCORE_FLOOR - 0.5)
+    st = FakeState(good + [noise])
+    assert not A.offset_is_corroborated(noise, st)
+
+
+def test_two_shoot_days_on_one_recorder_do_not_merge():
+    """One recorder has one clock offset PER DAY, not one forever. The real
+    windows project carries both: 05-28 sits at ~80s and 06-02 at ~95s on
+    the same DJI_01_. Each day must corroborate itself and neither may
+    borrow the other's members -- which is why this compares pairs to each
+    other rather than to a single per-recorder constant."""
+    day2 = [
+        _pair("20260602094903", "DJI_01_20260602_094815.WAV", "20260602094815", 7.90),
+        _pair("20260602100718", "DJI_01_20260602_101906.WAV", "20260602101906", 7.63),
+        _pair("20260602112955", "DJI_01_20260602_112044.WAV", "20260602112044", 15.31),
+    ]
+    # Same recorder, 5 days earlier, clock 15s further off: a lone pair.
+    day1 = _pair("20260528080119", "DJI_01_20260528_075951.WAV",
+                 "20260528075951", 15.93, err=-15.0)
+    st = FakeState(day2 + [day1])
+    assert A.offset_is_corroborated(day2[0], st)
+    assert not A.offset_is_corroborated(day1, st), (
+        "a day with only one measurement must not be carried by another "
+        "day's cluster on the same recorder"
+    )
