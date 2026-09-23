@@ -865,6 +865,56 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-22 — **Three fast Reels shipped (Garbage Disposal/Doorknobs day),
+  and two real bugs found and fixed getting there.** Ryan: "set up all
+  three. Run them in the app. Build the xmls." Commits `dd44402`,
+  `bfea553`. All three verified by hand (verify_export.py's IDEA-CUT-PRESENT
+  check doesn't understand this idea schema -- see below) and exported to
+  `~/Desktop/Runnells_{Kitchen_Faucet,Sink_Drain_Disposal,Replace_Old_Doorknob}.xml`.
+
+  **(a) plan_directed raised "No Anthropic API key" under build-phase cost
+  mode.** `DeliverablePlanner.__init__` (planner.py) and
+  `StoryAnglePlanner.__init__` (story_planner.py) each checked
+  `os.environ.get("ANTHROPIC_API_KEY")` and raised before ever calling
+  `build_anthropic_client` -- the one place (its own docstring says so)
+  that's supposed to decide whether a real key is needed, and which
+  already routes through the local CLI when `POSTHOUSE_LLM_VIA_CLI` is on.
+  story_conversation.py and story_architect.py call it directly and always
+  worked; these two had a duplicate, wrong gate. Fixed both constructors.
+  `test_planner_cli_mode.py`.
+
+  **(b) No IG-Reels-branded preset existed at 60 seconds.** Ryan: "make
+  sure ... the IG Reels Preset is selected so the timeline comes in at the
+  right dimensions with the overlays." `reel_15s`/`reel_30s` are the only
+  presets carrying `ig_reels_1080x1920` overlay art; a directed plan's real
+  on-topic content ran to 82s (content length is driven by what's actually
+  on topic, not padded to a target), past even `youtube_shorts_60s`'s
+  tolerance, and relabeling it under `reel_30s` would have shown an 82s cut
+  as a "30s Reel." Added `reel_60s`: same 1080x1920/9:16, ig_reels overlay,
+  60s target with a 10s tolerance. `test_reel_60s_preset.py`.
+
+  Also confirmed and worth remembering: `deliverable`-kind ideas
+  (`plan_directed`'s output) have no independent platform/aspect override --
+  `set_angle_platform_and_aspect` is gated to `kind == "story_angle"` only
+  (producer.py:623). Overlay + dims for a deliverable are baked in entirely
+  via its `preset_key` at export time (matcher.py's `get_preset()` call).
+  That's why the fix was a new preset, not an RPC call.
+
+  **Verifier gap found, not yet closed.** `verify_export.py`'s
+  `check_idea()` only reads `source_ranges`/`pool_ranges` (the
+  `story_angle` schema) -- it has only ever been run against
+  story-architect output. All three of these ideas are `kind: "deliverable"`
+  (`segments`/`phrase_ids`/`source_start`/`source_end`), which it doesn't
+  recognize, so it reports a hard FAIL ("idea has no source_ranges") on an
+  otherwise-clean export. Verified these three by hand instead: read each
+  XML's actual in/out points, cross-checked every clip's speech against the
+  transcript, confirmed zero source overlaps and full lav coverage on the
+  enabled audio track. All three came back clean. The verifier itself still
+  needs a `deliverable`-aware branch before it can be trusted on this idea
+  family -- flagged here rather than patched under time pressure.
+
+  523 passed, 2 skipped after both fixes.
+
 - 2026-09-22 — **Audio sync: a whole shoot's lav discarded because it
   never scored an 18.** Ryan, on the windows project: *"None of the
   syncing came through."* Four of nineteen camera files had audio;
