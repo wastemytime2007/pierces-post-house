@@ -130,11 +130,12 @@ class StoryAnglePlanner:
     """Calls Claude to identify story angles in a transcript."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = ANTHROPIC_MODEL):
+        # 2026-09-22: same bug as DeliverablePlanner.__init__ in planner.py —
+        # see its comment. Raising here on a missing key, before ever calling
+        # build_anthropic_client, broke this path under build-phase cost mode
+        # (POSTHOUSE_LLM_VIA_CLI=1, no key configured) even though
+        # build_anthropic_client already handles that case correctly.
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            raise StoryPlannerError(
-                "No Anthropic API key. Set ANTHROPIC_API_KEY env var or pass api_key."
-            )
         self.client = build_anthropic_client(api_key=key)
         self.model = model
 

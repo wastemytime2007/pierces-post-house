@@ -31,11 +31,20 @@ class DeliverablePlanner:
     """Calls Claude to produce editorial plans from transcripts."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = ANTHROPIC_MODEL):
+        # 2026-09-22: this used to raise here if ANTHROPIC_API_KEY wasn't set,
+        # before ever calling build_anthropic_client — which meant directed
+        # planning (plan_directed / the AI producer's "brief" mode) hard-failed
+        # with "No Anthropic API key" even with build-phase cost mode ON
+        # (POSTHOUSE_LLM_VIA_CLI=1), while story_architect.py and
+        # story_conversation.py's identical-shaped calls worked fine with zero
+        # key configured, because they call build_anthropic_client directly
+        # and let IT decide whether a real key is needed. build_anthropic_client
+        # is the one documented place this decision is supposed to get made
+        # (see its own docstring) — checking for a key again here duplicated
+        # that logic and got it wrong. Found when plan_directed failed on the
+        # Runnells Kitchen/Doors reels with has_env=false, has_settings=false,
+        # llm_via_cli=true — exactly the configuration CLI mode exists for.
         key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            raise PlannerError(
-                "No Anthropic API key. Set ANTHROPIC_API_KEY env var or pass api_key."
-            )
         self.client = build_anthropic_client(api_key=key)
         self.model = model
 
