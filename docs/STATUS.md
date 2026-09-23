@@ -911,10 +911,65 @@ because this session violated them once each.
   / `aspect_vertical_9_16` set directly on the built idea, so this also
   picks up the two earlier fixes (CLI-mode routing, `reel_60s`) cleanly.
 
-  All three re-verified clean with `verify_export.py` against the real
-  `story_angle` schema (the tool's schema gap noted above no longer
-  applies to these): granularity, cut-length, zone-gap, pool-no-overlap,
-  pool-no-duplicates, pool-same-sources all PASS on all three.
+  All three re-verified with `verify_export.py` against the real
+  `story_angle` schema: granularity, cut-length, zone-gap, pool-no-overlap,
+  pool-no-duplicates, pool-same-sources all PASS on all three. **This was
+  reported as "verified clean" and was not** -- see the correction
+  immediately below, found by Ryan opening the actual export.
+
+  ---
+
+  **Correction, same day: all three shipped with the wrong footage, and
+  the checks above never had a chance to catch it.** Ryan, opening
+  `Runnells_Sink_Drain_Disposal.xml`: *"it says its idsposal but the
+  timeline is him putting in a ceiling light."* He was right, and the same
+  bug hit all three Reels, not just the one he happened to check.
+
+  **Root cause.** `story_assembler.assemble_cut_from_angle` resolves which
+  source file a range belongs to purely from where `source_start_sec`
+  falls in the PROJECT'S OWN combined transcript timeline
+  (`resolve_real_source`) -- it does not trust `TopicRange.source_file` at
+  all. This is documented, intentional, and already has its own
+  regression coverage via `build_source_offset_lookup` in
+  `story_architect.py`, precisely because it bit a real export once
+  before (2026-09-04). The conversion script that built these three
+  angles' `source_ranges`/`pool_ranges` converted each phrase's
+  COMBINED-timeline coordinates down to LOCAL per-file time before
+  writing them out -- the opposite of what the convention above requires.
+  Against an 11-file combined timeline, a small local number like 105s
+  lands inside whichever file sorts first in the project, not the real
+  source -- which is why "disposal" produced a ceiling-light install
+  clip.
+
+  **Why the verification above didn't catch it.** Every check that ran
+  is structural -- duration, clip count, overlap, gap -- and a completely
+  wrong clip that happens to be the right length and doesn't overlap
+  anything passes all of them. The only verification method that would
+  have caught this is reading the XML's actual `<in>`/`<out>` and
+  matching them against real transcript text, which is exactly what
+  caught the FIRST version of these exports' good content (2026-09-22,
+  the plan_directed/matcher.py path) but was **skipped** after switching
+  to the story_angle/pool mechanism, on the assumption that passing
+  checks meant the content was still right. It didn't.
+
+  **Fix.** `source_start_sec`/`source_end_sec` now stay in COMBINED-
+  timeline coordinates untouched (`ph.start`/`ph.end`), matching the
+  convention `build_source_offset_lookup` documents. Local per-file
+  coordinates are still computed but used only for the pool's own
+  overlap-exclusion check, never written into the saved idea. All three
+  re-exported and this time verified by reading every clip's actual
+  `<in>`/`<out>` against the real transcript -- every single clip in all
+  three Reels (cut and pool) now traces to the source it claims to be:
+  Kitchen Faucet all `..._0006_D` (faucet install), Sink/Disposal and
+  Doorknob both `..._0005_D` at their respective correct windows.
+  Structural checks re-run clean after the content check, not instead of
+  it.
+
+  **The lesson, stated plainly so it doesn't repeat:** a passing
+  structural verifier is not a content verifier. Any time the underlying
+  assembly mechanism changes -- not just the first time a deliverable
+  type is built -- the actual footage has to be read again, not assumed
+  carried over because the shape checks still pass.
 
   **Not done, and worth doing for real:** either (a) give the Deliverable/
   matcher export path genuine pool support instead of hand-converting
@@ -922,7 +977,7 @@ because this session violated them once each.
   so future directed-mode work can go through `story_plan_*` directly.
   Both are real capability gaps, not one-off bugs -- the conversion script
   used here was project-specific and intentionally not committed as
-  general tooling.
+  general tooling, and now carries this fix.
 
 - 2026-09-22 — **Three fast Reels shipped (Garbage Disposal/Doorknobs day),
   and two real bugs found and fixed getting there.** Ryan: "set up all
