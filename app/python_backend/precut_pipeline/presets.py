@@ -68,6 +68,39 @@ REEL_30S = DeliverablePreset(
     overlay_style="ig_reels_1080x1920",
 )
 
+REEL_60S = DeliverablePreset(
+    key="reel_60s",
+    display_name="60s Reel",
+    category="social",
+    target_duration_sec=60,
+    duration_tolerance=10,
+    style_notes=(
+        "Longer short-form vertical for IG Reels. Full story beat: setup, "
+        "complication, resolution. Hook still matters but there's room to let "
+        "a demonstration breathe — good for how-to content with several "
+        "connected steps rather than one punchy reveal."
+    ),
+    aspect_hint="9:16",
+    sequence_width=1080,
+    sequence_height=1920,
+    sequence_fps=30.0,
+    overlay_style="ig_reels_1080x1920",
+)
+
+# 2026-09-22: reel_15s and reel_30s were the only IG-Reels-branded presets
+# (overlay_style="ig_reels_1080x1920") until this one. Found needing it on
+# the Runnells Kitchen/Doors faucet Reel — a directed plan whose own content
+# ran to 82s (well past even youtube_shorts_60s's 4s tolerance), so neither
+# existing IG-branded preset (15s/30s) fit and the only 60s-ish options
+# carried YouTube Shorts or TikTok branded overlay art instead. Ryan's ask
+# was explicit: "make sure ... the IG Reels Preset is selected so the
+# timeline comes in at the right dimensions with the overlays" — swapping
+# to reel_30s would have gotten the overlay right but mislabeled an 82s cut
+# as a "30s Reel", which is its own kind of wrong. Duration tolerance here is
+# looser (10s vs 3-5s on its siblings) because directed-mode content length
+# is driven by how much on-topic speech actually exists, not padded to hit
+# a target — see plan_deliverable's brief-driven selection.
+
 TIKTOK_60S = DeliverablePreset(
     key="tiktok_60s",
     display_name="60s TikTok",
@@ -475,7 +508,7 @@ ALL_PRESETS: list[DeliverablePreset] = [
     ASPECT_HORIZONTAL, ASPECT_HORIZONTAL_4K,
     ASPECT_VERTICAL, ASPECT_SQUARE,
     # Legacy duration-coupled presets (still used by the Deliverable flow)
-    REEL_15S, REEL_30S, TIKTOK_60S,
+    REEL_15S, REEL_30S, REEL_60S, TIKTOK_60S,
     FACEBOOK_REEL_30S, YOUTUBE_SHORTS_60S, X_VERTICAL_15S,
     AD_15S, AD_30S, AD_60S, AD_120S,
     YOUTUBE_HIGHLIGHT, YOUTUBE_EPISODE,
