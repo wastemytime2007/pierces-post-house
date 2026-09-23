@@ -865,6 +865,65 @@ because this session violated them once each.
 
 ## Done
 
+- 2026-09-22 — **All three Kitchen/Doors Reels missing the selects pool
+  (right side of the timeline) — real gap found, worked around, not yet
+  closed for real.** Ryan: "Neither of them have the extra footage that is
+  related to the topic on the right side of the timeline." Correct --
+  confirmed structurally, not just observed.
+
+  **Root cause.** `plan_directed`'s output is `kind: "deliverable"`.
+  `pool_ranges` is a field on `CutList` that only `story_angle`-kind ideas
+  ever populate (via `posthouse.story_architect.assemble_two_zone_cutlist`,
+  Ryan's own two-zone workflow: tight cut left, `POOL_GAP_SEC` gap, selects
+  pool right). The legacy Deliverable/matcher export path
+  (`precut_pipeline/matcher.py`) never had this capability -- it predates
+  the two-zone architecture and nothing routes a deliverable through it.
+  Same root distinction as the platform/aspect finding logged above
+  (`set_angle_platform_and_aspect` also gates on `kind == "story_angle"`).
+
+  **This project also can't use the proper fix path directly.** The real
+  fix would be regenerating through `story_plan_start`/`generate_from_
+  planning_session`, which already has full pool support, tested and
+  working (built the windows video). But that path needs a manifest-based
+  project (`manifest.json` + `flags/` from `transcript_coverage`/
+  `audience_relevance`) via `posthouse.pm` -- this project was created
+  directly through `app/python_backend/project.py`'s `Project.create()`
+  (matching what `plan_directed` needs), which has neither. Standing up
+  the manifest/flagging infrastructure just to regenerate three
+  already-picked, already-verified Reels was judged disproportionate to
+  do under time pressure without its own test pass (rule 7).
+
+  **Workaround used instead.** Reused the tested two-zone assembler
+  directly rather than the manifest pipeline: converted each verified
+  deliverable's segments into a hand-built `story_angle`-shaped idea
+  (`kind: "story_angle"`, exact envelope PreCut/story_architect expects),
+  keeping the tight-cut content, order, and total runtime byte-identical
+  to what was already reviewed -- split per phrase rather than per
+  segment, which also fixed a real granularity regression the first
+  attempt introduced (flattening multi-phrase segments into one TopicRange
+  dropped Kitchen Faucet from 17 clips to 8, failing `CUT-GRANULARITY`;
+  splitting at each phrase's own boundary restored 17 clips at the
+  identical 82s runtime). Pool built by keyword-scanning the same shoot
+  day's other transcripts for topic-relevant, not-yet-used speech, hand
+  reviewed before export -- two keyword false-positives caught and
+  dropped (behind-the-scenes filming chatter that matched "spray"; an
+  unrelated inventory line that matched "door knob"). `platform_ig_reels`
+  / `aspect_vertical_9_16` set directly on the built idea, so this also
+  picks up the two earlier fixes (CLI-mode routing, `reel_60s`) cleanly.
+
+  All three re-verified clean with `verify_export.py` against the real
+  `story_angle` schema (the tool's schema gap noted above no longer
+  applies to these): granularity, cut-length, zone-gap, pool-no-overlap,
+  pool-no-duplicates, pool-same-sources all PASS on all three.
+
+  **Not done, and worth doing for real:** either (a) give the Deliverable/
+  matcher export path genuine pool support instead of hand-converting
+  around it, or (b) make `plan_directed` create manifest-backed projects
+  so future directed-mode work can go through `story_plan_*` directly.
+  Both are real capability gaps, not one-off bugs -- the conversion script
+  used here was project-specific and intentionally not committed as
+  general tooling.
+
 - 2026-09-22 — **Three fast Reels shipped (Garbage Disposal/Doorknobs day),
   and two real bugs found and fixed getting there.** Ryan: "set up all
   three. Run them in the app. Build the xmls." Commits `dd44402`,
