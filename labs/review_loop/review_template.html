@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cut Review</title>
+<style>
+  :root {
+    --bg: #0d1420; --panel: #152033; --line: #24344f; --text: #e8eef7; --dim: #8fa1bd;
+    --accent: #0391d8; --pin: #f4690b; --clipA: #1b2c47; --clipB: #223756;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  .meta { color: var(--dim); font-size: 13px; margin-bottom: 12px; }
+  video { width: 100%; max-height: 62vh; background: #000; border-radius: 8px; display: block; }
+  .bar { position: relative; height: 34px; margin: 10px 0 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; overflow: hidden; }
+  .seg { position: absolute; top: 0; bottom: 0; }
+  .seg:nth-child(odd) { background: var(--clipA); }
+  .seg:nth-child(even) { background: var(--clipB); }
+  .pin { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--pin); }
+  .head { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
+  .now { min-height: 22px; color: var(--dim); font-size: 13px; margin-bottom: 8px; }
+  .now b { color: var(--text); font-weight: 600; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  button, select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .time { font-variant-numeric: tabular-nums; color: var(--dim); min-width: 120px; }
+  .spacer { flex: 1; }
+  #editor { display: none; background: var(--panel); border: 1px solid var(--pin); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+  #editor textarea { width: 100%; min-height: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; }
+  #editor .hint { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  h2 { font-size: 15px; margin: 16px 0 8px; }
+  .note { display: grid; grid-template-columns: 74px 1fr auto; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; background: var(--panel); }
+  .note .t { color: var(--pin); font-variant-numeric: tabular-nums; font-weight: 600; cursor: pointer; }
+  .note .where { color: var(--dim); font-size: 12px; }
+  .note .x { color: var(--dim); background: none; border: none; padding: 0 4px; }
+  .empty { color: var(--dim); font-size: 13px; }
+  @media (max-width: 600px) { main { padding: 12px; } .note { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <div class="meta" id="meta"></div>
+  <video id="v" src="preview.mp4" preload="auto" playsinline></video>
+  <div class="bar" id="bar"><div class="head" id="head"></div></div>
+  <div class="now" id="now"></div>
+  <div class="row">
+    <button id="play" class="primary">Play</button>
+    <button id="back">-5s</button>
+    <button id="fwd">+5s</button>
+    <select id="rate"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select>
+    <span class="time" id="time"></span>
+    <span class="spacer"></span>
+    <button id="add">+ Note at this moment (n)</button>
+  </div>
+  <div id="editor">
+    <div id="editorAt" class="where"></div>
+    <textarea id="text" placeholder="What is wrong or what should change here?"></textarea>
+    <div class="hint">Enter saves. Shift+Enter adds a line. Esc cancels.</div>
+  </div>
+  <div class="row">
+    <h2 style="margin:0" id="count"></h2>
+    <span class="spacer"></span>
+    <button id="copy">Copy all feedback</button>
+    <button id="dl">Download JSON</button>
+  </div>
+  <div id="notes"></div>
+</main>
+<script>
+const DATA = /*__DATA__*/null;
+const v = document.getElementById('v'), bar = document.getElementById('bar'), head = document.getElementById('head');
+const KEY = 'review_loop:' + DATA.sequence + ':' + DATA.duration.toFixed(2);
+let notes = [];
+try { notes = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { notes = []; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch (e) {} }
+
+const fmt = s => { const m = Math.floor(s / 60); return String(m).padStart(2, '0') + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); };
+const clipAt = t => DATA.clips.find(c => t >= c.start && t < c.end) || DATA.clips[DATA.clips.length - 1];
+function where(t) {
+  const c = clipAt(t);
+  const srcT = c.src_in + Math.max(0, t - c.start);
+  return { clip: c.idx, of: DATA.clips.length, source: c.source, source_sec: +srcT.toFixed(2), text: 'clip ' + c.idx + '/' + DATA.clips.length + ' · ' + c.source + ' @ ' + fmt(srcT) };
+}
+
+document.getElementById('title').textContent = DATA.sequence;
+document.getElementById('meta').textContent = DATA.clips.length + ' clips · ' + fmt(DATA.duration) + ' · ' + DATA.audio_source;
+
+DATA.clips.forEach(c => {
+  const d = document.createElement('div');
+  d.className = 'seg';
+  d.style.left = (c.start / DATA.duration * 100) + '%';
+  d.style.width = ((c.end - c.start) / DATA.duration * 100) + '%';
+  d.title = 'clip ' + c.idx + ' · ' + c.source;
+  bar.insertBefore(d, head);
+});
+
+function drawPins() {
+  bar.querySelectorAll('.pin').forEach(p => p.remove());
+  notes.forEach(n => {
+    const p = document.createElement('div');
+    p.className = 'pin';
+    p.style.left = (n.timeline_sec / DATA.duration * 100) + '%';
+    bar.insertBefore(p, head);
+  });
+}
+function esc(s) { return s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch])); }
+function drawNotes() {
+  document.getElementById('count').textContent = 'Feedback (' + notes.length + ')';
+  const box = document.getElementById('notes');
+  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Press n while watching to leave one at that moment.</div>';
+  notes.forEach((n, i) => {
+    const el = document.createElement('div');
+    el.className = 'note';
+    el.innerHTML = '<div class="t">' + fmt(n.timeline_sec) + '</div><div><div>' + esc(n.text) + '</div><div class="where">' + esc(n.where) + '</div></div><button class="x" title="Delete">✕</button>';
+    el.querySelector('.t').onclick = () => { v.currentTime = n.timeline_sec; };
+    el.querySelector('.x').onclick = () => { notes.splice(i, 1); save(); drawPins(); drawNotes(); };
+    box.appendChild(el);
+  });
+  drawPins();
+}
+
+function tick() {
+  const t = v.currentTime;
+  head.style.left = (t / DATA.duration * 100) + '%';
+  document.getElementById('time').textContent = fmt(t) + ' / ' + fmt(DATA.duration);
+  const w = where(t);
+  document.getElementById('now').innerHTML = '<b>Clip ' + w.clip + '/' + w.of + '</b> · ' + esc(w.source) + ' · source ' + fmt(w.source_sec);
+  document.getElementById('play').textContent = v.paused ? 'Play' : 'Pause';
+}
+v.addEventListener('timeupdate', tick); v.addEventListener('play', tick); v.addEventListener('pause', tick); v.addEventListener('loadedmetadata', tick);
+bar.addEventListener('click', e => { const r = bar.getBoundingClientRect(); v.currentTime = (e.clientX - r.left) / r.width * DATA.duration; });
+const toggle = () => v.paused ? v.play() : v.pause();
+document.getElementById('play').onclick = toggle;
+document.getElementById('back').onclick = () => { v.currentTime = Math.max(0, v.currentTime - 5); };
+document.getElementById('fwd').onclick = () => { v.currentTime = Math.min(DATA.duration, v.currentTime + 5); };
+document.getElementById('rate').onchange = e => { v.playbackRate = parseFloat(e.target.value); };
+
+const editor = document.getElementById('editor'), ta = document.getElementById('text');
+let pendingT = 0;
+function openEditor() {
+  v.pause(); pendingT = v.currentTime;
+  document.getElementById('editorAt').textContent = 'Note at ' + fmt(pendingT) + ' · ' + where(pendingT).text;
+  editor.style.display = 'block'; ta.value = ''; ta.focus();
+}
+function closeEditor() { editor.style.display = 'none'; ta.blur(); }
+function commit() {
+  const text = ta.value.trim();
+  if (text) {
+    const w = where(pendingT);
+    notes.push({ timeline_sec: +pendingT.toFixed(2), clip: w.clip, source: w.source, source_sec: w.source_sec, where: w.text, text });
+    notes.sort((a, b) => a.timeline_sec - b.timeline_sec);
+    save(); drawNotes();
+  }
+  closeEditor();
+}
+document.getElementById('add').onclick = openEditor;
+ta.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
+  else if (e.key === 'Escape') { closeEditor(); }
+  e.stopPropagation();
+});
+document.addEventListener('keydown', e => {
+  if (e.target === ta) return;
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  else if (e.key === 'ArrowLeft') { v.currentTime = Math.max(0, v.currentTime - 5); }
+  else if (e.key === 'ArrowRight') { v.currentTime = Math.min(DATA.duration, v.currentTime + 5); }
+  else if (e.key === 'n') { e.preventDefault(); openEditor(); }
+});
+
+function payload() {
+  return { schema: 'review_notes.v0-draft', sequence: DATA.sequence, preview_duration_sec: DATA.duration,
+    notes: notes.map(n => ({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text })) };
+}
+function feedbackText() {
+  const lines = ['Review notes for "' + DATA.sequence + '" (' + notes.length + ' notes)', ''];
+  notes.forEach((n, i) => lines.push((i + 1) + '. [' + fmt(n.timeline_sec) + '] ' + n.where + ' :: ' + n.text));
+  return lines.join('\n') + '\n\n```json\n' + JSON.stringify(payload(), null, 2) + '\n```\n';
+}
+document.getElementById('copy').onclick = async e => {
+  try { await navigator.clipboard.writeText(feedbackText()); e.target.textContent = 'Copied'; }
+  catch (err) { e.target.textContent = 'Copy blocked, use Download'; }
+  setTimeout(() => { e.target.textContent = 'Copy all feedback'; }, 1800);
+};
+document.getElementById('dl').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(payload(), null, 2)], { type: 'application/json' }));
+  a.download = 'review_notes.json'; a.click();
+};
+drawNotes(); tick();
+</script>
+</body>
+</html>

@@ -62,6 +62,31 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-29 — Review loop spike built, NOT yet judged by Ryan.**
+  Prompted by an outside creator's Claude Code editing workflow (video
+  "Forget Capcut", HyperFrames + here.now + ElevenLabs). Gap analysis
+  against ours: he has generated music/SFX, a timecoded review-and-revise
+  loop, and generated graphics/captions; we have none of the three
+  (`ROADMAP.md` Role -> skill map: music, SFX, Supervisor loop all "Not
+  started"). Ryan agreed to build them as standalone modules and integrate
+  only when usable, starting with the review loop.
+
+  Built: `labs/review_loop/` (`build_review.py`, `timeline.py`,
+  `render_preview.py`, `verify_preview.py`, page template, 8 hermetic
+  tests). On the real `Runnells_Tiling_v3.xml` cut zone (11 clips, 76.4s)
+  the folder is at `~/Documents/Post House Reviews/Runnells Tiling v3/`;
+  open `review.html`. Machine checks pass (duration, audible audio, frame
+  match vs source, lav-to-camera sync within 0.02s; negative control on the
+  file-rate misreading lags -5.03s). Driven end to end in headless Chrome:
+  play, add notes, copy, reload persistence, no JS errors.
+
+  **Not verified, and only Ryan can:** whether the page is actually useful
+  to review with, and whether the note format is what a revision step
+  would need. Nothing here is wired into `app/`. Music/SFX generation is
+  not started and would contradict the 2026-08-31 Artlist-local-library
+  decision; that needs Ryan's call first. Ryan's own reference edit has no
+  SFX stings, so SFX style is his taste call as well.
+
 - **2026-09-18 — Ryan's own organize pass + finished edit for the tiling
   day. Precision 9/9; the gap is recall, and its main cause is now
   measured.** He supplied `How to Tile_Culled+Organized.xml` and

@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+"""Check a built review folder against the ORIGINAL sources, not against itself.
+
+    python3 labs/review_loop/verify_preview.py <review_dir>
+
+  DURATION     preview length matches the cut zone.
+  AUDIO-PRESENT / AUDIO-AUDIBLE   the preview is not silent.
+  FRAME-MATCH  frames pulled from the preview resemble the source frames the
+               XML says they came from (and NOT frames from elsewhere in the file).
+  LAV-SYNC     the lav placed on the timeline lines up with that clip's own camera
+               audio (cross-correlation peak within 0.1s). This is the check that
+               catches the frame-rate misreading in timeline.py's header.
+Exit 0 = all applicable checks passed.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import numpy as np
+from scipy.signal import correlate
+
+SR = 8000
+
+
+def _pcm(path: str, start: float, dur: float) -> np.ndarray:
+    p = subprocess.run(
+        ["ffmpeg", "-v", "error", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}", "-i", path,
+         "-vn", "-ac", "1", "-ar", str(SR), "-f", "f32le", "-"], capture_output=True)
+    return np.frombuffer(p.stdout, dtype=np.float32)
+
+
+def _gray(path: str, t: float) -> np.ndarray:
+    p = subprocess.run(
+        ["ffmpeg", "-v", "error", "-ss", f"{t:.4f}", "-i", path, "-frames:v", "1",
+         "-vf", "scale=64:36", "-pix_fmt", "gray", "-f", "rawvideo", "-"], capture_output=True)
+    return np.frombuffer(p.stdout, dtype=np.uint8).astype(np.float32)
+
+
+def _lag(a: np.ndarray, b: np.ndarray) -> float:
+    n = min(len(a), len(b))
+    a, b = a[:n] - a[:n].mean(), b[:n] - b[:n].mean()
+    if n == 0 or a.std() < 1e-6 or b.std() < 1e-6:
+        return float("nan")
+    c = correlate(a, b, mode="full", method="fft")
+    return (int(np.argmax(c)) - (n - 1)) / SR
+
+
+def main() -> int:
+    d = Path(sys.argv[1])
+    tl = json.loads((d / "timeline.json").read_text())
+    prev = str(d / "preview.mp4")
+    rows: list[tuple[str, bool | None, str]] = []
+
+    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
+                                "default=nw=1:nk=1", prev], capture_output=True, text=True).stdout)
+    zone = tl["clips"][-1]["end"]
+    rows.append(("DURATION", abs(dur - zone) < 0.5, f"preview {dur:.2f}s vs cut {zone:.2f}s"))
+
+    streams = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of",
+                              "csv=p=0", prev], capture_output=True, text=True).stdout.split()
+    rows.append(("AUDIO-PRESENT", "audio" in streams, f"streams: {','.join(streams)}"))
+    vol = subprocess.run(["ffmpeg", "-i", prev, "-af", "volumedetect", "-vn", "-f", "null", "-"],
+                         capture_output=True, text=True).stderr
+    mean = next((float(l.split("mean_volume:")[1].split()[0]) for l in vol.splitlines() if "mean_volume:" in l), None)
+    rows.append(("AUDIO-AUDIBLE", mean is not None and mean > -60, f"mean {mean} dB"))
+
+    clips = tl["clips"]
+    picks = sorted({0, len(clips) // 2, len(clips) - 1})
+    for i in picks:
+        c = clips[i]
+        mid_tl = (c["start"] + c["end"]) / 2
+        mid_src = c["src_in"] + (mid_tl - c["start"])
+        got = _gray(prev, mid_tl)
+        want = _gray(c["source_path"], mid_src)
+        other = _gray(c["source_path"], (mid_src + 97.0) % max(1.0, c["src_out"] + 60))
+        if got.size == 0 or want.size != got.size:
+            rows.append((f"FRAME-MATCH clip {c['idx']}", False, "could not extract comparable frames"))
+            continue
+        d_right, d_other = float(np.abs(got - want).mean()), float(np.abs(got - other).mean())
+        rows.append((f"FRAME-MATCH clip {c['idx']}", d_right < 25 and d_right < d_other,
+                     f"diff vs claimed source {d_right:.1f}, vs unrelated frame {d_other:.1f}"))
+
+    cam = {c["source_path"]: c for c in clips}
+    checked = 0
+    for a in tl.get("audio", []):
+        v = next((c for c in clips if abs(c["start"] - a["start"]) < 0.05), None)
+        if v is None or checked >= 3:
+            continue
+        span = min(6.0, v["end"] - v["start"])
+        lag = _lag(_pcm(a["source_path"], a["src_in"], span), _pcm(v["source_path"], v["src_in"], span))
+        rows.append((f"LAV-SYNC clip {v['idx']}", abs(lag) < 0.1 if lag == lag else None,
+                     f"lav vs camera lag {lag:+.3f}s" if lag == lag else "no usable signal"))
+        checked += 1
+    if not tl.get("audio"):
+        rows.append(("LAV-SYNC", None, "camera audio preview; nothing to sync"))
+
+    w = max(len(n) for n, _, _ in rows)
+    bad = 0
+    for n, ok, detail in rows:
+        mark = "SKIP" if ok is None else ("PASS" if ok else "FAIL")
+        bad += ok is False
+        print(f"  [{mark}] {n.ljust(w)}  {detail}")
+    print("\nAll applicable checks passed." if not bad else f"\n{bad} check(s) FAILED.")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

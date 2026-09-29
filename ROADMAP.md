@@ -2451,3 +2451,14 @@ with Ryan touching only the intake and the checkpoints.
   that would now be rejected. That slab is the kind of thing the ceiling
   targets, but this is stricter than "restore previous behaviour", not a
   pure regression fix.
+
+- **2026-09-29 — New capabilities are built standalone in `labs/`, file
+  in and file out, and integrated only when Ryan judges them usable.**
+  Applies to the Supervisor review loop, generated captions/graphics
+  (HyperFrames, Apache 2.0), and music/SFX. Each ends in something Ryan
+  can open (a page or a render), is proven on one real unit first (rule
+  7), and never becomes a second app to run (`CLAUDE.md` top section).
+  Integration is its own approved step. Not decided here: generated music
+  via API would contradict the 2026-08-31 Artlist-local-library decision,
+  so it stays unstarted until Ryan rules on it. First slice:
+  `labs/review_loop/`.
