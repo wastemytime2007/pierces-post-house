@@ -80,6 +80,17 @@ because this session violated them once each.
   file-rate misreading lags -5.03s). Driven end to end in headless Chrome:
   play, add notes, copy, reload persistence, no JS errors.
 
+  **Added the same day at Ryan's request: on-frame drawing** (pen, circle,
+  arrow, box) attached to a note's frame, Frame.io style. Verified in
+  Chrome by `labs/review_loop/tests/drive_page.js` (16 checks: canvas
+  aligned to the picture, shapes stored as frame fractions, drawing returns
+  on its own frame and only there, undo, drawing-only notes, thumbnails on
+  the right frame, feedback text names where each mark is, reload persists).
+  Known limit: the exported feedback carries shape geometry and a sentence
+  per mark, not a flattened PNG, because Chrome blocks reading video pixels
+  from a page opened off disk. Coordinates equal source-frame coordinates
+  only for uncropped clips.
+
   **Not verified, and only Ryan can:** whether the page is actually useful
   to review with, and whether the note format is what a revision step
   would need. Nothing here is wired into `app/`. Music/SFX generation is

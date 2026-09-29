@@ -14,7 +14,11 @@
   main { max-width: 1100px; margin: 0 auto; padding: 16px; }
   h1 { font-size: 18px; margin: 0 0 2px; }
   .meta { color: var(--dim); font-size: 13px; margin-bottom: 12px; }
+  .stage { position: relative; }
   video { width: 100%; max-height: 62vh; background: #000; border-radius: 8px; display: block; }
+  #draw { position: absolute; pointer-events: none; touch-action: none; }
+  #draw.on { pointer-events: auto; cursor: crosshair; }
+  .stage.drawing video { outline: 2px solid var(--pin); }
   .bar { position: relative; height: 34px; margin: 10px 0 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; overflow: hidden; }
   .seg { position: absolute; top: 0; bottom: 0; }
   .seg:nth-child(odd) { background: var(--clipA); }
@@ -27,15 +31,24 @@
   button, select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
   button:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.on { border-color: var(--pin); box-shadow: inset 0 0 0 1px var(--pin); }
   .time { font-variant-numeric: tabular-nums; color: var(--dim); min-width: 120px; }
   .spacer { flex: 1; }
   #editor { display: none; background: var(--panel); border: 1px solid var(--pin); border-radius: 8px; padding: 10px; margin-bottom: 12px; }
   #editor textarea { width: 100%; min-height: 64px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; resize: vertical; }
   #editor .hint { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0; }
+  .tools.off { opacity: .45; }
+  .sw { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+  .sw.on { border-color: #fff; }
   h2 { font-size: 15px; margin: 16px 0 8px; }
   .note { display: grid; grid-template-columns: 74px 1fr auto; gap: 10px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; background: var(--panel); }
   .note .t { color: var(--pin); font-variant-numeric: tabular-nums; font-weight: 600; cursor: pointer; }
   .note .where { color: var(--dim); font-size: 12px; }
+  .note .drawn { color: var(--pin); font-size: 12px; }
+  .thumb { position: relative; width: 240px; max-width: 100%; margin-top: 6px; }
+  .thumb video { width: 100%; display: block; border-radius: 4px; background: #05090f; }
+  .thumb canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
   .note .x { color: var(--dim); background: none; border: none; padding: 0 4px; }
   .empty { color: var(--dim); font-size: 13px; }
   @media (max-width: 600px) { main { padding: 12px; } .note { grid-template-columns: 1fr; } }
@@ -45,7 +58,10 @@
 <main>
   <h1 id="title"></h1>
   <div class="meta" id="meta"></div>
-  <video id="v" src="preview.mp4" preload="auto" playsinline></video>
+  <div class="stage" id="stage">
+    <video id="v" src="preview.mp4" preload="auto" playsinline></video>
+    <canvas id="draw"></canvas>
+  </div>
   <div class="bar" id="bar"><div class="head" id="head"></div></div>
   <div class="now" id="now"></div>
   <div class="row">
@@ -55,12 +71,27 @@
     <select id="rate"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select>
     <span class="time" id="time"></span>
     <span class="spacer"></span>
+    <button id="addDraw">Draw on frame (d)</button>
     <button id="add">+ Note at this moment (n)</button>
   </div>
   <div id="editor">
     <div id="editorAt" class="where"></div>
-    <textarea id="text" placeholder="What is wrong or what should change here?"></textarea>
-    <div class="hint">Enter saves. Shift+Enter adds a line. Esc cancels.</div>
+    <div class="tools" id="tools">
+      <button id="drawToggle">Draw on frame</button>
+      <button data-tool="pen">Pen</button>
+      <button data-tool="ellipse">Circle</button>
+      <button data-tool="arrow">Arrow</button>
+      <button data-tool="rect">Box</button>
+      <span id="swatches"></span>
+      <button id="undo">Undo</button>
+      <button id="clear">Clear drawing</button>
+    </div>
+    <textarea id="text" placeholder="What is wrong or what should change here? (circle or draw on the frame to point at it)"></textarea>
+    <div class="row" style="margin:8px 0 0">
+      <button id="save" class="primary">Save note</button>
+      <button id="cancel">Cancel</button>
+      <span class="hint">Enter in the text box saves. Shift+Enter adds a line. Esc cancels.</span>
+    </div>
   </div>
   <div class="row">
     <h2 style="margin:0" id="count"></h2>
@@ -73,6 +104,7 @@
 <script>
 const DATA = /*__DATA__*/null;
 const v = document.getElementById('v'), bar = document.getElementById('bar'), head = document.getElementById('head');
+const cv = document.getElementById('draw'), stage = document.getElementById('stage');
 const KEY = 'review_loop:' + DATA.sequence + ':' + DATA.duration.toFixed(2);
 let notes = [];
 try { notes = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { notes = []; }
@@ -98,6 +130,127 @@ DATA.clips.forEach(c => {
   bar.insertBefore(d, head);
 });
 
+/* ---------- drawing: shapes are stored as fractions of the frame (0..1, top-left origin) ---------- */
+const COLORS = ['#f4690b', '#e5333d', '#ffd400', '#ffffff', '#00c8ff', '#38d66b'];
+let tool = 'pen', color = COLORS[0], drawMode = false, pending = null, cur = null;
+
+function paint(ctx, shapes, w, h) {
+  const lw = Math.max(3, w * 0.004);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = lw;
+  shapes.forEach(s => {
+    ctx.strokeStyle = s.color; ctx.fillStyle = s.color; ctx.beginPath();
+    if (s.type === 'pen') {
+      s.pts.forEach((p, i) => i ? ctx.lineTo(p[0] * w, p[1] * h) : ctx.moveTo(p[0] * w, p[1] * h));
+      if (s.pts.length === 1) ctx.lineTo(s.pts[0][0] * w + 0.1, s.pts[0][1] * h);
+      ctx.stroke();
+    } else if (s.type === 'ellipse') {
+      ctx.ellipse(s.cx * w, s.cy * h, Math.max(1, s.rx * w), Math.max(1, s.ry * h), 0, 0, Math.PI * 2); ctx.stroke();
+    } else if (s.type === 'rect') {
+      ctx.strokeRect(s.x * w, s.y * h, s.w * w, s.h * h);
+    } else if (s.type === 'arrow') {
+      const x1 = s.x1 * w, y1 = s.y1 * h, x2 = s.x2 * w, y2 = s.y2 * h, a = Math.atan2(y2 - y1, x2 - x1), hs = Math.max(12, w * 0.02);
+      ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - hs * Math.cos(a - 0.45), y2 - hs * Math.sin(a - 0.45));
+      ctx.lineTo(x2 - hs * Math.cos(a + 0.45), y2 - hs * Math.sin(a + 0.45));
+      ctx.closePath(); ctx.fill();
+    }
+  });
+}
+function bbox(s) {
+  let x0, y0, x1, y1;
+  if (s.type === 'pen') { const xs = s.pts.map(p => p[0]), ys = s.pts.map(p => p[1]); x0 = Math.min(...xs); x1 = Math.max(...xs); y0 = Math.min(...ys); y1 = Math.max(...ys); }
+  else if (s.type === 'ellipse') { x0 = s.cx - s.rx; x1 = s.cx + s.rx; y0 = s.cy - s.ry; y1 = s.cy + s.ry; }
+  else if (s.type === 'rect') { x0 = s.x; x1 = s.x + s.w; y0 = s.y; y1 = s.y + s.h; }
+  else { x0 = Math.min(s.x1, s.x2); x1 = Math.max(s.x1, s.x2); y0 = Math.min(s.y1, s.y2); y1 = Math.max(s.y1, s.y2); }
+  const c = n => +Math.min(1, Math.max(0, n)).toFixed(3);
+  return { x0: c(x0), y0: c(y0), x1: c(x1), y1: c(y1) };
+}
+function region(b) {
+  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  const col = cx < 1 / 3 ? 'left' : cx < 2 / 3 ? 'center' : 'right', row = cy < 1 / 3 ? 'upper' : cy < 2 / 3 ? 'middle' : 'lower';
+  return row === 'middle' && col === 'center' ? 'center' : row + ' ' + col;
+}
+const pct = n => Math.round(n * 100) + '%';
+const LABEL = { pen: 'freehand mark', ellipse: 'circle', rect: 'box', arrow: 'arrow' };
+function describe(s) {
+  const b = bbox(s);
+  let d = LABEL[s.type] + ' in the ' + region(b) + ' (x ' + pct(b.x0) + '-' + pct(b.x1) + ', y ' + pct(b.y0) + '-' + pct(b.y1) + ' of the frame)';
+  if (s.type === 'arrow') d += ', pointing at (' + pct(s.x2) + ', ' + pct(s.y2) + ')';
+  return d;
+}
+function exportShape(s) { return Object.assign({}, s, { bbox: bbox(s), region: region(bbox(s)) }); }
+
+function layoutCanvas() {
+  if (!v.videoWidth) return;
+  const r = v.getBoundingClientRect(), sc = Math.min(r.width / v.videoWidth, r.height / v.videoHeight);
+  const w = v.videoWidth * sc, h = v.videoHeight * sc, dpr = window.devicePixelRatio || 1;
+  cv.style.left = ((r.width - w) / 2) + 'px'; cv.style.top = ((r.height - h) / 2) + 'px';
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  redraw();
+}
+function redraw() {
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  let list = [];
+  if (pending) { if (v.paused) list = pending.shapes.concat(cur ? [cur] : []); }
+  else if (v.paused) notes.forEach(n => { if (n.shapes && n.shapes.length && Math.abs(n.timeline_sec - v.currentTime) <= 0.3) list = list.concat(n.shapes); });
+  paint(ctx, list, cv.width, cv.height);
+}
+function pt(e) {
+  const r = cv.getBoundingClientRect(), c = n => Math.min(1, Math.max(0, n));
+  return [c((e.clientX - r.left) / r.width), c((e.clientY - r.top) / r.height)];
+}
+cv.addEventListener('pointerdown', e => {
+  if (!drawMode || !pending) return;
+  cv.setPointerCapture(e.pointerId);
+  const p = pt(e);
+  cur = { type: tool, color, x0: p[0], y0: p[1], pts: [p] };
+  shapeFrom(cur, p);
+  redraw();
+});
+cv.addEventListener('pointermove', e => { if (cur) { shapeFrom(cur, pt(e)); redraw(); } });
+cv.addEventListener('pointerup', e => {
+  if (!cur) return;
+  shapeFrom(cur, pt(e));
+  const s = cur; cur = null;
+  const big = s.type === 'pen'
+    || (s.type === 'ellipse' && (s.rx > 0.005 || s.ry > 0.005))
+    || (s.type === 'rect' && (s.w > 0.01 || s.h > 0.01))
+    || (s.type === 'arrow' && Math.hypot(s.x2 - s.x1, s.y2 - s.y1) > 0.02);
+  if (big) { delete s.x0; delete s.y0; if (s.type !== 'pen') delete s.pts; pending.shapes.push(s); }
+  redraw();
+});
+function shapeFrom(s, p) {
+  if (s.type === 'pen') { s.pts.push(p); return; }
+  if (s.type === 'ellipse') { s.cx = (s.x0 + p[0]) / 2; s.cy = (s.y0 + p[1]) / 2; s.rx = Math.abs(p[0] - s.x0) / 2; s.ry = Math.abs(p[1] - s.y0) / 2; }
+  else if (s.type === 'rect') { s.x = Math.min(s.x0, p[0]); s.y = Math.min(s.y0, p[1]); s.w = Math.abs(p[0] - s.x0); s.h = Math.abs(p[1] - s.y0); }
+  else if (s.type === 'arrow') { s.x1 = s.x0; s.y1 = s.y0; s.x2 = p[0]; s.y2 = p[1]; }
+}
+function setTool(t) { tool = t; document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === t)); }
+function setColor(c) { color = c; document.querySelectorAll('.sw').forEach(b => b.classList.toggle('on', b.dataset.color === c)); }
+function setDrawMode(on) {
+  drawMode = on && !!pending;
+  cv.classList.toggle('on', drawMode); stage.classList.toggle('drawing', drawMode);
+  document.getElementById('tools').classList.toggle('off', !drawMode);
+  document.getElementById('drawToggle').classList.toggle('on', drawMode);
+  document.getElementById('drawToggle').textContent = drawMode ? 'Drawing on' : 'Draw on frame';
+}
+COLORS.forEach(c => {
+  const b = document.createElement('button');
+  b.className = 'sw'; b.dataset.color = c; b.style.background = c; b.title = c;
+  b.onclick = () => setColor(c);
+  document.getElementById('swatches').appendChild(b);
+});
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => { setTool(b.dataset.tool); setDrawMode(true); });
+document.getElementById('drawToggle').onclick = () => setDrawMode(!drawMode);
+document.getElementById('undo').onclick = () => { if (pending) { pending.shapes.pop(); redraw(); } };
+document.getElementById('clear').onclick = () => { if (pending) { pending.shapes = []; redraw(); } };
+setTool('pen'); setColor(COLORS[0]);
+window.addEventListener('resize', layoutCanvas); v.addEventListener('loadedmetadata', layoutCanvas);
+
+/* ---------- notes ---------- */
 function drawPins() {
   bar.querySelectorAll('.pin').forEach(p => p.remove());
   notes.forEach(n => {
@@ -111,13 +264,21 @@ function esc(s) { return s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;',
 function drawNotes() {
   document.getElementById('count').textContent = 'Feedback (' + notes.length + ')';
   const box = document.getElementById('notes');
-  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Press n while watching to leave one at that moment.</div>';
+  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Press n to leave a note, or d to draw on the frame.</div>';
   notes.forEach((n, i) => {
     const el = document.createElement('div');
     el.className = 'note';
-    el.innerHTML = '<div class="t">' + fmt(n.timeline_sec) + '</div><div><div>' + esc(n.text) + '</div><div class="where">' + esc(n.where) + '</div></div><button class="x" title="Delete">✕</button>';
-    el.querySelector('.t').onclick = () => { v.currentTime = n.timeline_sec; };
-    el.querySelector('.x').onclick = () => { notes.splice(i, 1); save(); drawPins(); drawNotes(); };
+    const hasDraw = n.shapes && n.shapes.length;
+    el.innerHTML = '<div class="t">' + fmt(n.timeline_sec) + '</div><div><div>' + esc(n.text || '(drawing only)') + '</div><div class="where">' + esc(n.where) + '</div>'
+      + (hasDraw ? '<div class="drawn">drawn: ' + n.shapes.map(s => esc(describe(s))).join('; ') + '</div><div class="thumb"><video src="preview.mp4" muted preload="auto" playsinline></video><canvas></canvas></div>' : '')
+      + '</div><button class="x" title="Delete">✕</button>';
+    if (hasDraw) {
+      const t = el.querySelector('.thumb canvas'), tv = el.querySelector('.thumb video'), ar = (v.videoHeight && v.videoWidth) ? v.videoHeight / v.videoWidth : 9 / 16;
+      t.width = 480; t.height = Math.round(480 * ar); paint(t.getContext('2d'), n.shapes, t.width, t.height);
+      tv.addEventListener('loadedmetadata', () => { tv.currentTime = n.timeline_sec; });
+    }
+    el.querySelector('.t').onclick = () => { v.pause(); v.currentTime = n.timeline_sec; setTimeout(redraw, 50); };
+    el.querySelector('.x').onclick = () => { notes.splice(i, 1); save(); drawPins(); drawNotes(); redraw(); };
     box.appendChild(el);
   });
   drawPins();
@@ -130,8 +291,11 @@ function tick() {
   const w = where(t);
   document.getElementById('now').innerHTML = '<b>Clip ' + w.clip + '/' + w.of + '</b> · ' + esc(w.source) + ' · source ' + fmt(w.source_sec);
   document.getElementById('play').textContent = v.paused ? 'Play' : 'Pause';
+  redraw();
 }
-v.addEventListener('timeupdate', tick); v.addEventListener('play', tick); v.addEventListener('pause', tick); v.addEventListener('loadedmetadata', tick);
+function followPlayhead() { if (pending && v.paused) { pending.t = v.currentTime; updateEditorAt(); } }
+v.addEventListener('timeupdate', tick); v.addEventListener('play', tick); v.addEventListener('pause', () => { followPlayhead(); tick(); });
+v.addEventListener('seeked', () => { followPlayhead(); tick(); }); v.addEventListener('loadedmetadata', tick);
 bar.addEventListener('click', e => { const r = bar.getBoundingClientRect(); v.currentTime = (e.clientX - r.left) / r.width * DATA.duration; });
 const toggle = () => v.paused ? v.play() : v.pause();
 document.getElementById('play').onclick = toggle;
@@ -140,24 +304,35 @@ document.getElementById('fwd').onclick = () => { v.currentTime = Math.min(DATA.d
 document.getElementById('rate').onchange = e => { v.playbackRate = parseFloat(e.target.value); };
 
 const editor = document.getElementById('editor'), ta = document.getElementById('text');
-let pendingT = 0;
-function openEditor() {
-  v.pause(); pendingT = v.currentTime;
-  document.getElementById('editorAt').textContent = 'Note at ' + fmt(pendingT) + ' · ' + where(pendingT).text;
-  editor.style.display = 'block'; ta.value = ''; ta.focus();
+function updateEditorAt() {
+  if (pending) document.getElementById('editorAt').textContent = 'Note at ' + fmt(pending.t) + ' · ' + where(pending.t).text;
 }
-function closeEditor() { editor.style.display = 'none'; ta.blur(); }
+function openEditor(withDraw) {
+  v.pause(); layoutCanvas();
+  pending = { t: v.currentTime, shapes: [] };
+  updateEditorAt();
+  editor.style.display = 'block'; ta.value = '';
+  setDrawMode(!!withDraw);
+  if (!withDraw) ta.focus();
+  redraw();
+}
+function closeEditor() { pending = null; cur = null; setDrawMode(false); editor.style.display = 'none'; ta.blur(); redraw(); }
 function commit() {
+  if (!pending) return;
   const text = ta.value.trim();
-  if (text) {
-    const w = where(pendingT);
-    notes.push({ timeline_sec: +pendingT.toFixed(2), clip: w.clip, source: w.source, source_sec: w.source_sec, where: w.text, text });
+  if (text || pending.shapes.length) {
+    const w = where(pending.t);
+    const shapes = pending.shapes.map(s => JSON.parse(JSON.stringify(s)));
+    notes.push({ timeline_sec: +pending.t.toFixed(2), clip: w.clip, source: w.source, source_sec: w.source_sec, where: w.text, text, shapes });
     notes.sort((a, b) => a.timeline_sec - b.timeline_sec);
-    save(); drawNotes();
+    save();
   }
-  closeEditor();
+  closeEditor(); drawNotes();
 }
-document.getElementById('add').onclick = openEditor;
+document.getElementById('add').onclick = () => openEditor(false);
+document.getElementById('addDraw').onclick = () => openEditor(true);
+document.getElementById('save').onclick = commit;
+document.getElementById('cancel').onclick = closeEditor;
 ta.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commit(); }
   else if (e.key === 'Escape') { closeEditor(); }
@@ -165,19 +340,27 @@ ta.addEventListener('keydown', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.target === ta) return;
+  if (e.key === 'Escape' && pending) { closeEditor(); return; }
+  if ((e.metaKey || e.ctrlKey) && e.key === 'z' && pending) { e.preventDefault(); pending.shapes.pop(); redraw(); return; }
   if (e.code === 'Space') { e.preventDefault(); toggle(); }
   else if (e.key === 'ArrowLeft') { v.currentTime = Math.max(0, v.currentTime - 5); }
   else if (e.key === 'ArrowRight') { v.currentTime = Math.min(DATA.duration, v.currentTime + 5); }
-  else if (e.key === 'n') { e.preventDefault(); openEditor(); }
+  else if (e.key === 'n') { e.preventDefault(); openEditor(false); }
+  else if (e.key === 'd') { e.preventDefault(); openEditor(true); }
 });
 
 function payload() {
   return { schema: 'review_notes.v0-draft', sequence: DATA.sequence, preview_duration_sec: DATA.duration,
-    notes: notes.map(n => ({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text })) };
+    shape_coords: 'fractions of the video frame, 0..1, origin top-left',
+    notes: notes.map(n => ({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text,
+      shapes: (n.shapes || []).map(exportShape) })) };
 }
 function feedbackText() {
   const lines = ['Review notes for "' + DATA.sequence + '" (' + notes.length + ' notes)', ''];
-  notes.forEach((n, i) => lines.push((i + 1) + '. [' + fmt(n.timeline_sec) + '] ' + n.where + ' :: ' + n.text));
+  notes.forEach((n, i) => {
+    lines.push((i + 1) + '. [' + fmt(n.timeline_sec) + '] ' + n.where + ' :: ' + (n.text || '(drawing only)'));
+    (n.shapes || []).forEach(s => lines.push('     drawn on frame: ' + describe(s)));
+  });
   return lines.join('\n') + '\n\n```json\n' + JSON.stringify(payload(), null, 2) + '\n```\n';
 }
 document.getElementById('copy').onclick = async e => {
@@ -190,7 +373,7 @@ document.getElementById('dl').onclick = () => {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(payload(), null, 2)], { type: 'application/json' }));
   a.download = 'review_notes.json'; a.click();
 };
-drawNotes(); tick();
+setDrawMode(false); drawNotes(); tick();
 </script>
 </body>
 </html>
