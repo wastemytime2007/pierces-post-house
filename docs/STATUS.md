@@ -62,41 +62,16 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-29 — Review loop spike built, NOT yet judged by Ryan.**
-  Prompted by an outside creator's Claude Code editing workflow (video
-  "Forget Capcut", HyperFrames + here.now + ElevenLabs). Gap analysis
-  against ours: he has generated music/SFX, a timecoded review-and-revise
-  loop, and generated graphics/captions; we have none of the three
-  (`ROADMAP.md` Role -> skill map: music, SFX, Supervisor loop all "Not
-  started"). Ryan agreed to build them as standalone modules and integrate
-  only when usable, starting with the review loop.
-
-  Built: `labs/review_loop/` (`build_review.py`, `timeline.py`,
-  `render_preview.py`, `verify_preview.py`, page template, 8 hermetic
-  tests). On the real `Runnells_Tiling_v3.xml` cut zone (11 clips, 76.4s)
-  the folder is at `~/Documents/Post House Reviews/Runnells Tiling v3/`;
-  open `review.html`. Machine checks pass (duration, audible audio, frame
-  match vs source, lav-to-camera sync within 0.02s; negative control on the
-  file-rate misreading lags -5.03s). Driven end to end in headless Chrome:
-  play, add notes, copy, reload persistence, no JS errors.
-
-  **Added the same day at Ryan's request: on-frame drawing** (pen, circle,
-  arrow, box) attached to a note's frame, Frame.io style. Verified in
-  Chrome by `labs/review_loop/tests/drive_page.js` (16 checks: canvas
-  aligned to the picture, shapes stored as frame fractions, drawing returns
-  on its own frame and only there, undo, drawing-only notes, thumbnails on
-  the right frame, feedback text names where each mark is, reload persists).
-  Known limit: the exported feedback carries shape geometry and a sentence
-  per mark, not a flattened PNG, because Chrome blocks reading video pixels
-  from a page opened off disk. Coordinates equal source-frame coordinates
-  only for uncropped clips.
-
-  **Not verified, and only Ryan can:** whether the page is actually useful
-  to review with, and whether the note format is what a revision step
-  would need. Nothing here is wired into `app/`. Music/SFX generation is
-  not started and would contradict the 2026-08-31 Artlist-local-library
-  decision; that needs Ryan's call first. Ryan's own reference edit has no
-  SFX stings, so SFX style is his taste call as well.
+- **2026-09-29 — Review loop: page signed off, everything after it is
+  open.** The standalone review page with on-frame drawing is in § Done.
+  Still open, none of it started: (1) turning a note or drawing into a
+  revised cut (the note format `review_notes.v0-draft` is a draft; the real
+  revision-operation schema is Phase 5); (2) HyperFrames captions and
+  graphics spike (Apache 2.0, untested on our footage); (3) music and SFX
+  generation, which would contradict the 2026-08-31 Artlist-local-library
+  decision and needs Ryan's ruling first (his own reference edit also has
+  no SFX stings, so SFX style is his taste call); (4) a screen in `app/`,
+  which is its own approved step and has not been asked for.
 
 - **2026-09-18 — Ryan's own organize pass + finished edit for the tiling
   day. Precision 9/9; the gap is recall, and its main cause is now
@@ -900,6 +875,35 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Review page with timecoded notes and on-frame drawing
+  (standalone, `labs/review_loop/`). Ryan: "That feels good."** Scope of
+  that sign-off is the page itself. It is not wired into `app/`, and notes
+  do not yet change a cut.
+
+  Prompted by an outside creator's Claude Code editing workflow ("Forget
+  Capcut": HyperFrames + here.now + ElevenLabs), which has a timecoded
+  review loop, generated music/SFX, and generated graphics/captions that
+  we lack. Ryan agreed to build them standalone and integrate only when
+  usable (`ROADMAP.md` Decision Log, 2026-09-29).
+
+  Evidence, on the real `Runnells_Tiling_v3.xml` cut zone (11 clips,
+  76.4s), output at `~/Documents/Post House Reviews/Runnells Tiling v3/`:
+  * `verify_preview.py`: duration matches, audio audible, frames match the
+    source frames the XML names, lav-to-camera sync within 0.02s. Negative
+    control: reading the WAV's in/out at its declared rate instead of the
+    exporter's sequence frames lags -5.03s, so the check does catch it.
+  * `tests/drive_page.js`, 16 checks in real Chrome: canvas aligned to the
+    picture, shapes stored as frame fractions, a drawing returns on its own
+    frame and only there, undo, drawing-only notes, thumbnails on the right
+    frame, feedback names where each mark is, notes persist across reload.
+  * 8 hermetic pytest tests in `labs/review_loop/tests/`.
+  * Commits `f635750` and `295c2ae` on branch `worktree-review-loop-spike`.
+
+  Known limits: previews the cut zone only, at proxy quality; feedback
+  carries shape geometry and a sentence per mark, not a flattened PNG
+  (Chrome blocks reading video pixels from a page opened off disk);
+  coordinates equal source-frame coordinates only for uncropped clips.
 
 - 2026-09-22 — **All three Kitchen/Doors Reels missing the selects pool
   (right side of the timeline) — real gap found, worked around, not yet
