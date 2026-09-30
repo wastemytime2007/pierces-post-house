@@ -202,6 +202,50 @@ def test_a_longer_callout_is_verified_by_its_time_on_screen_before_and_after(tmp
     assert "on screen 3.50s, was 2.00s (+1.50s" in results[0].rows[0].detail and "asked for +3.00s" in results[0].rows[0].detail
 
 
+def _worded_callout(root: Path, name: str, title: str, subtitle: str, color: str) -> Path:
+    import subprocess
+    f = root / name
+    f.mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c={color}@0.9:s=320x60:r=60000/1001:d=2,format=yuva444p10le,pad=320:180:0:0:color=black@0.0",
+                    "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", str(f / "overlay.mov")], check=True)
+    (f / "placement.json").write_text(json.dumps({"overlay_path": str(f / "overlay.mov"), "duration_sec": 2.0, "title": title, "subtitle": subtitle,
+                                                  "anchor": {"source": "a.mp4", "source_sec": 22.0, "lead_sec": 0.5}, "geometry": {"t_in": 0.5, "t_out": 1.5}}))
+    return f
+
+
+def test_changed_callout_words_are_verified_against_the_note_and_the_rendered_layer(tmp_path, pair):
+    base = rl.make_xml(tmp_path / "old.xml", *pair)
+    was, now = _worded_callout(tmp_path, "was", "The spacer", "a cardboard tab", "red"), _worded_callout(tmp_path, "now", "Cardboard spacer", "", "blue")
+    before, after = tmp_path / "before_v3.xml", tmp_path / "after_v3.xml"
+    po.place(base, before, was)
+    po.place(base, after, now)
+    old, new = timeline.load_cut(before), timeline.load_cut(after)
+    note = {"timeline_sec": old.video[1].tl_start + 2.5, "text": "call it Cardboard spacer and drop the small line"}
+
+    def run(op, tag, xml_after=after, cut_new=new):
+        r, *_ = qa.qa([note], [dict(op, note=1, op="edit_callout")], [], old, cut_new, xml_after, tmp_path / tag, before_xml=before)
+        return r[0]
+    good = run({"title": "Cardboard spacer", "subtitle": None, "remove_subtitle": True}, "a")
+    assert good.status == qa.VERIFIED and 'now reads "Cardboard spacer" / ""' in good.rows[0].detail and "pixels of the rendered layer differ" in good.rows[0].detail
+    wrong = run({"title": "Something else", "subtitle": None, "remove_subtitle": False}, "b")
+    assert wrong.status == qa.FAILED and 'the note asked for "Something else"' in wrong.rows[0].detail
+    unchanged = run({"title": "The spacer", "subtitle": None, "remove_subtitle": False}, "c", xml_after=before, cut_new=old)
+    assert unchanged.status == qa.FAILED and "nothing changed" in unchanged.rows[0].detail
+
+
+def test_words_that_changed_in_the_record_but_not_in_the_picture_fail(tmp_path, pair):
+    base = rl.make_xml(tmp_path / "old.xml", *pair)
+    was = _worded_callout(tmp_path, "was", "The spacer", "a tab", "red")
+    liar = _worded_callout(tmp_path, "liar", "Cardboard spacer", "a tab", "red")            # the record says new words; the render is identical
+    before, after = tmp_path / "before_v3.xml", tmp_path / "after_v3.xml"
+    po.place(base, before, was)
+    po.place(base, after, liar)
+    old, new = timeline.load_cut(before), timeline.load_cut(after)
+    note = {"timeline_sec": old.video[1].tl_start + 2.5, "text": "call it Cardboard spacer"}
+    r, *_ = qa.qa([note], [{"note": 1, "op": "edit_callout", "title": "Cardboard spacer", "subtitle": None, "remove_subtitle": False}], [], old, new, after, tmp_path / "qa", before_xml=before)
+    assert r[0].status == qa.FAILED and "too few for a changed label" in r[0].rows[0].detail
+
+
 def test_an_unchanged_callout_fails_and_a_missing_before_version_is_unmeasured(tmp_path, pair):
     base = rl.make_xml(tmp_path / "old.xml", *pair)
     short = _callout(tmp_path, "short", 2.0)

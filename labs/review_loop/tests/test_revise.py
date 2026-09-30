@@ -317,6 +317,39 @@ def test_extend_graphic_needs_a_graphic_a_wish_for_longer_and_never_invents_an_a
     assert got[6]["op"] == "unsupported" and "not a believable" in got[6]["reason"]
 
 
+def test_edit_callout_takes_its_words_from_the_note_and_removes_only_what_is_asked(xml):
+    cut = timeline.load_cut(xml)
+    notes = [{"timeline_sec": 14, "text": 'change the text bubble to say "Cardboard spacer"'},
+             {"timeline_sec": 14, "text": "drop the small line under the text bubble title"},
+             {"timeline_sec": 14, "text": "change the text bubble to say something punchy"},
+             {"timeline_sec": 14, "text": "change the text bubble"},
+             {"timeline_sec": 14, "text": "change the text bubble title to spacer"},
+             {"timeline_sec": 14, "text": "get rid of the text bubble"},
+             {"timeline_sec": 14, "text": "make the text bubble bigger"}]
+    got = {o["note"]: o for o in opsmod.validate([
+        {"note": 1, "op": "edit_callout", "title": "Cardboard spacer", "subtitle": None, "remove_subtitle": False},
+        {"note": 2, "op": "edit_callout", "title": None, "subtitle": None, "remove_subtitle": True},
+        {"note": 3, "op": "edit_callout", "title": "Quick Tip: Spacers", "subtitle": None, "remove_subtitle": False},      # wording the note never gave
+        {"note": 4, "op": "edit_callout", "title": None, "subtitle": None, "remove_subtitle": False},                      # nothing asked
+        {"note": 5, "op": "edit_callout", "title": "spacer", "subtitle": "a cardboard tab", "remove_subtitle": True},      # remove and set together
+        {"note": 6, "op": "edit_callout", "title": None, "subtitle": None, "remove_subtitle": True},                       # no mention of the second line
+        {"note": 7, "op": "edit_callout", "title": "Bigger", "subtitle": None, "remove_subtitle": False},                  # about size, not words
+    ], notes, cut)}
+    assert got[7]["op"] == "unsupported" and "does not ask to change or remove any words" in got[7]["reason"]
+    assert got[1]["op"] == "edit_callout" and got[1]["title"] == "Cardboard spacer" and got[1]["remove_subtitle"] is False
+    assert got[2]["op"] == "edit_callout" and got[2]["remove_subtitle"] is True and got[2]["title"] is None
+    assert got[3]["op"] == "unsupported" and "not in the note" in got[3]["reason"]
+    assert got[4]["op"] == "unsupported" and "no change to the callout's words" in got[4]["reason"]
+    assert got[5]["op"] == "unsupported"
+    assert got[6]["op"] == "unsupported" and "second line" in got[6]["reason"]
+
+
+def test_an_edit_callout_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
+    cut = timeline.load_cut(xml)
+    changes, _s, _i = apply_ops.plan(cut, [{"note": 1, "op": "edit_callout", "title": "X", "subtitle": None, "remove_subtitle": False}], [{"timeline_sec": 14, "text": "change it to X"}])
+    assert len(changes) == 1 and changes[0].applied is False and "graphics step" in changes[0].summary
+
+
 def test_an_extend_graphic_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
     cut = timeline.load_cut(xml)
     changes, _s, _i = apply_ops.plan(cut, [{"note": 1, "op": "extend_graphic", "seconds": None}], [{"timeline_sec": 14, "text": "keep the arrow up longer"}])

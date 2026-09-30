@@ -16,8 +16,13 @@ LLM) only chooses among them; it does not get to invent a time.
                                  not on the timeline, so revise.py reports it as not applied here.
   extend_graphic {seconds}       the note wants an on-screen graphic (callout, text bubble, arrow) to stay up
                                  longer. `seconds` only if the note states an amount, else null (the applier
-                                 uses a stated default step and says so). Made by labs/overlay/hold_callout.py,
+                                 uses a stated default step and says so). Made by labs/overlay/change_callout.py,
                                  not on the timeline, so revise.py reports it as not applied here.
+  edit_callout {title, subtitle, remove_subtitle}
+                                 the note wants the words on a callout changed, or its smaller second line
+                                 removed. New words come only from the note; nothing is removed that the note
+                                 does not ask to remove. Made by labs/overlay/change_callout.py, not on the
+                                 timeline, so revise.py reports it as not applied here.
   unsupported {reason}           everything else, reported and never silently dropped
 
 All times are on the timeline the notes were left on (V1).
@@ -42,6 +47,8 @@ HAS_NUMBER = re.compile(rf"\d|\b({NOTE_WORDS})\b", re.I)
 SAYS_SOUND = re.compile(r"\b(sfx|sound effects?|sound|noise|whoosh|swoosh|pop|click|ding|chime|beep|clap|thud)\b", re.I)
 SAYS_GRAPHIC = re.compile(r"\b(text|graphic|graphics|arrow|callout|call-out|bubble|label|title|caption box|highlight|overlay|box)\b", re.I)
 SAYS_LONGER = re.compile(r"\b(longer|more time|more seconds?|extra (time|seconds?)|linger|stay(s)?|sit|hold|too (short|fast|quick|brief)|only (shows?|appears?|lasts?)|half a second|barely)\b|\bkeep\b[^.]{0,40}\b(up|on)\b", re.I)
+SAYS_EDIT = re.compile(r"\b(change|rename|reword|replace|instead|say(s)?|read(s)?|wording|words|remove|delete|get rid|drop|without|shorten|simplify|no )\b", re.I)
+SAYS_SUBTITLE = re.compile(r"\b(subtitle|sub-title|second line|smaller text|small text|smaller line|description|underneath|line (below|under)|sub text|subtext)\b", re.I)
 SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that) out|cut (this|it|that)( out| clip| shot)?)\b", re.I)
 
 SYSTEM = """You translate an editor's review notes on a rough cut into edit operations.
@@ -56,6 +63,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
+- edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
 
 Rules: never invent a time or an amount that the note does not give. A note may produce more than one op. Every note must appear at least once. Prefer unsupported over guessing."""
@@ -173,6 +181,33 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     if not 0.3 <= sec <= 10:
                         raise ValueError(f"{sec}s is not a believable extra time on screen")
                 out.append({"note": note, "op": op, "seconds": sec, "why": why})
+            elif op == "edit_callout":
+                if not SAYS_GRAPHIC.search(text):
+                    raise ValueError("the note does not talk about an on-screen graphic")
+                if not SAYS_EDIT.search(text):
+                    raise ValueError("the note does not ask to change or remove any words")
+                fields = {}
+                nt = set(words_mod.tokens(text))
+                for label, cap in (("title", 60), ("subtitle", 120)):
+                    val = raw.get(label)
+                    if val is None:
+                        continue
+                    val = str(val).strip()
+                    toks = words_mod.tokens(val)
+                    if not toks or len(val) > cap:
+                        raise ValueError(f"no usable {label}")
+                    if sum(w in nt for w in toks) < 0.9 * len(toks):
+                        raise ValueError(f"that {label} is not in the note, refusing to write wording the note did not give")
+                    fields[label] = val
+                rm = bool(raw.get("remove_subtitle"))
+                if rm:
+                    if not SAYS_SUBTITLE.search(text):
+                        raise ValueError("the note does not mention the smaller second line, refusing to remove it")
+                    if "subtitle" in fields:
+                        raise ValueError("a note cannot both remove the subtitle and set it")
+                if not fields and not rm:
+                    raise ValueError("no change to the callout's words was asked for")
+                out.append({"note": note, "op": op, "title": fields.get("title"), "subtitle": fields.get("subtitle"), "remove_subtitle": rm, "why": why})
             elif op == "unsupported":
                 out.append(_unsupported(note, str(raw.get("reason", "not supported"))[:300], why))
             else:

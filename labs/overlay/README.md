@@ -33,12 +33,22 @@ that agree (timeline = file = definition), the callout enters on the frame the n
 (recomputed from the output), the file is reachable, and `verify_export.py` passes.
 The clip has no `masterclipid` (there is no master clip to point to) and carries `alphatype=straight`.
 
-## Keeping a callout on screen longer (`hold_callout.py`)
+## Changing a callout from notes (`change_callout.py`)
+Two kinds of note change a callout that is already on the cut, and one render carries both:
+**`extend_graphic`** (stay on screen longer, below) and **`edit_callout`** (different words, or drop the
+smaller second line). For `edit_callout` the interpreter may only use words the note itself gives (quoted or
+plainly stated; it is refused wording the note did not contain) and may only remove the second line if the
+note mentions it. If two notes change the same field, the first is applied and the second is reported.
+QA checks the new words against the note and confirms the rendered layer really changed, not just its record.
+Proved on the real cut: "change the text bubble to say 'Cardboard spacer' and get rid of the small line" became
+title "The spacer" -> "Cardboard spacer" with the second line removed, and the frame reads that way.
+
+### Keeping a callout on screen longer
 A note like "the text bubble only shows for a moment, have it sit on screen longer" goes through
 `revise.py`: the interpreter chooses `extend_graphic`, and may give `seconds` only if the note states an
 amount ("two more seconds"); otherwise it is null. `revise.py` changes nothing on the timeline for it.
 ```
-python3 labs/overlay/hold_callout.py --ops "<revise's ops.json>" --notes "<review_notes.json>" \
+python3 labs/overlay/change_callout.py --ops "<revise's ops.json>" --notes "<review_notes.json>" \
     --xml "<the XML the notes were left on>" --out "<new callout folder>" [--default-extra 1.5]
 ```
 The note is matched to the callout on screen at the note's moment (by time, since the note is left while

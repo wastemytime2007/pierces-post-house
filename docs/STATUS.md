@@ -226,7 +226,7 @@ because this session violated them once each.
   Ryan said "go ahead and move on", so this was my pick (the first of the extra note
   types, item 5). A new `extend_graphic` operation (`ops.py`: only when the note is about
   an on-screen graphic and asks for it longer; an amount only if the note states one;
-  never invented) and `labs/overlay/hold_callout.py`, which re-renders the callout with a
+  never invented) and `labs/overlay/change_callout.py`, which re-renders the callout with a
   longer hold (same words, region and anchor frame; `make_overlay` gained `--hold` and a
   reusable `build_overlay`). Proved on the real cut with a STAND-IN note (the creator's
   own phrase, mine, not Ryan's) left while the callout was up: the interpreter chose
@@ -240,6 +240,20 @@ because this session violated them once each.
   v4 C (longer callout)/review/review.html`; QA: `... QA pass (longer callout)/qa_report.html`.
   The 1.5s default is a taste call: Ryan can change it. Not in `app/`. Still open from
   item 5: "remove the text behind the logo" and "border and highlight a cropped screenshot".
+
+  **Built, NOT yet tested by Ryan (batch, see the testing guide when it lands): notes that
+  change a callout's words.** `edit_callout` operation (words only from the note; the second
+  line removed only if the note mentions it) applied by `labs/overlay/change_callout.py`
+  (renamed from `hold_callout.py`; one render carries "longer" and word changes together; a
+  second note on the same field is reported, and two "longer" notes no longer double the
+  extension). QA checks the new words against the note and that the rendered layer really
+  changed (a record-only change FAILS). Real cut, stand-in note (mine): "change the text
+  bubble to say 'Cardboard spacer' and get rid of the small line underneath" -> the
+  interpreter gave title "Cardboard spacer" + remove second line; 11 render checks pass in
+  4K; reconform put it on and rebuilt captions; QA VERIFIED (209,149 pixels differ); the
+  frame reads "Cardboard spacer" with no second line. 127 tests pass across `labs/`.
+  Files: `Runnells Tiling v3 - reconformed v4 D (callout words)/review/review.html`, `...
+  QA pass (callout words)/qa_report.html`.
 
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it

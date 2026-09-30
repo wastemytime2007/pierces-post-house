@@ -13,7 +13,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "review_loop"))
 sys.path.insert(0, str(HERE.parents[1] / "safety_net"))
 
-import hold_callout as hc  # noqa: E402
+import change_callout as hc  # noqa: E402
 import layers as ly  # noqa: E402
 import place_overlay as po  # noqa: E402
 
@@ -122,7 +122,51 @@ def test_a_note_when_no_callout_is_on_screen_and_a_second_note_for_the_same_call
     rec = Recorder()
     ledger = _apply(xml, ops, notes, tmp_path, build=rec)
     assert [e["applied"] for e in ledger] == [True, False, False] and len(rec.calls) == 1
-    assert "already changed this callout" in ledger[1]["reason"] and "no callout is on screen at 3.00s" in ledger[2]["reason"]
+    assert "one extension per callout per run" in ledger[1]["reason"] and "no callout is on screen at 3.00s" in ledger[2]["reason"]
+
+
+def _edit(note, **kw):
+    return {"note": note, "op": "edit_callout", "title": kw.get("title"), "subtitle": kw.get("subtitle"), "remove_subtitle": kw.get("remove_subtitle", False)}
+
+
+def test_new_words_and_a_removed_second_line_are_rendered_once_with_the_old_hold(placed, tmp_path):
+    xml, _f = placed
+    lay = ly.find_layers(xml)[0]
+    rec = Recorder()
+    notes = [{"timeline_sec": lay.start + 0.8, "text": "call it Cardboard spacer and drop the small line"}]
+    (e,) = _apply(xml, [_edit(1, title="Cardboard spacer", remove_subtitle=True)], notes, tmp_path, build=rec)
+    assert e["applied"] and len(rec.calls) == 1
+    assert rec.calls[0]["title"] == "Cardboard spacer" and rec.calls[0]["subtitle"] == "" and rec.calls[0]["hold"] == pytest.approx(1.0)      # the hold is untouched
+    assert 'title "The spacer" -> "Cardboard spacer"' in e["reason"] and "second line removed" in e["reason"]
+    assert (tmp_path / "new" / "hold_change.json").exists()
+
+
+def test_a_subtitle_change_keeps_the_title_and_a_longer_hold_in_the_same_render(placed, tmp_path):
+    xml, _f = placed
+    lay = ly.find_layers(xml)[0]
+    rec = Recorder()
+    notes = [{"timeline_sec": lay.start + 0.8, "text": "longer"}, {"timeline_sec": lay.start + 0.9, "text": "change the small line to cardboard off the box"}]
+    ops = [{"note": 1, "op": "extend_graphic", "seconds": 2.0}, _edit(2, subtitle="cardboard off the box")]
+    ledger = _apply(xml, ops, notes, tmp_path, build=rec)
+    assert [e["applied"] for e in ledger] == [True, True] and len(rec.calls) == 1                       # one render carries both changes
+    assert rec.calls[0]["title"] == "The spacer" and rec.calls[0]["subtitle"] == "cardboard off the box" and rec.calls[0]["hold"] == pytest.approx(3.0)
+
+
+def test_two_notes_for_the_same_words_apply_the_first_and_report_the_second(placed, tmp_path):
+    xml, _f = placed
+    lay = ly.find_layers(xml)[0]
+    notes = [{"timeline_sec": lay.start + 0.8, "text": "a"}, {"timeline_sec": lay.start + 0.9, "text": "b"}]
+    rec = Recorder()
+    ledger = _apply(xml, [_edit(1, title="First"), _edit(2, title="Second")], notes, tmp_path, build=rec)
+    assert [e["applied"] for e in ledger] == [True, False] and "already changed this callout's title" in ledger[1]["reason"]
+    assert rec.calls[0]["title"] == "First"
+
+
+def test_words_that_already_read_that_way_say_so(placed, tmp_path):
+    xml, _f = placed
+    lay = ly.find_layers(xml)[0]
+    (e,) = _apply(xml, [_edit(1, title="The spacer")], [{"timeline_sec": lay.start + 0.8, "text": "call it The spacer"}], tmp_path, build=Recorder())
+    assert e["applied"] and "nothing to change" in e["reason"]
 
 
 def test_other_operations_are_ignored(placed, tmp_path):
