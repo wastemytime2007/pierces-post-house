@@ -78,8 +78,8 @@ because this session violated them once each.
   drawing rendered as a transparent layer and placed in the XML, confirmed in
   Premiere.
 
-  **Built, NOT yet judged by Ryan:** captions (`labs/captions/`, first window
-  0-22s of the Tiling V3 cut, 4K). Words come from transcribing the cut's own
+  **Captions: signed off by Ryan for the first window (§ Done). Details:**
+  (`labs/captions/`, first window 0-22s of the Tiling V3 cut, 4K). Words come from transcribing the cut's own
   audio with PreCut's Transcriber (60 words -> 16 lines), verbatim, no dashes;
   the word being spoken is highlighted light blue; a line moves to the top when
   the note-3 callout would cover it (3 lines did). Evidence: 9 gating checks pass
@@ -934,6 +934,16 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Captions (`labs/captions/`), first window 0-22s of the Tiling
+  V3 cut. Ryan, after opening the preview and importing the XML into Premiere:
+  "Looks good and imports correctly."** Scope: that one 22s window, 4K, on his
+  footage; style (white on navy pill, light-blue word highlight, Inter) accepted
+  as is. Not yet run on the rest of the cut or a second project (rule 7), not in
+  `app/`. Evidence: commit `495cfdf`; 9 gating checks on the rendered files, a
+  second Whisper model agreeing on 92% of words (20ms median), 0 pixels of
+  overlap with the callout, placement on V3 with 7 checks and `verify_export`
+  clean; 54 tests across `labs/`.
 
 - 2026-09-29 — **Overlay auto-placed in the export XML
   (`labs/overlay/place_overlay.py`). Ryan, after importing it into Premiere:
