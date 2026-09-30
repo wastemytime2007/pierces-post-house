@@ -110,14 +110,18 @@ def write_wav(path: Path, x: np.ndarray, sr: int, channels: int = 1) -> None:
         w.writeframes(pcm.tobytes())
 
 
-def transcribe_timed(wav: Path, model: str = "small") -> list[tuple[str, float, float]]:
-    """(word, start, end) for every spoken word. English is set, not guessed; `small` hears profanity better than `base`."""
+def transcribe_detail(wav: Path, model: str = "small") -> list[tuple[str, float, float, float]]:
+    """(word, start, end, probability) for every spoken word. English is set, not guessed; `small` hears profanity better than `base`."""
     try:
         import whisper
     except ImportError as e:
         raise BleepError(f"Whisper is not installed, so the words cannot be found ({e})")
     r = whisper.load_model(model).transcribe(str(wav), language="en", word_timestamps=True, condition_on_previous_text=False, fp16=False)
-    return [(w["word"].strip(), float(w["start"]), float(w["end"])) for seg in r["segments"] for w in seg.get("words", [])]
+    return [(w["word"].strip(), float(w["start"]), float(w["end"]), float(w.get("probability", 1.0))) for seg in r["segments"] for w in seg.get("words", [])]
+
+
+def transcribe_timed(wav: Path, model: str = "small") -> list[tuple[str, float, float]]:
+    return [(w, s, e) for w, s, e, _p in transcribe_detail(wav, model)]
 
 
 def find_hits(words: list[tuple[str, float, float]], pats: list[re.Pattern]) -> list[dict]:
@@ -125,29 +129,72 @@ def find_hits(words: list[tuple[str, float, float]], pats: list[re.Pattern]) -> 
 
 
 SUSPECT_MIN_SEC, SUSPECT_MAX_SEC, BURST_DB, BURST_MIN_SEC, FRAME_SEC = 0.40, 1.0, 6.0, 0.10, 0.05
+UNSURE_P, UNSURE_MIN_SEC, DISAGREE_MIN_SEC, MIN_SIGNALS, LIKELY_SIGNALS = 0.35, 0.20, 0.20, 2, 3
 
 
-def find_suspects(words: list[tuple[str, float, float]], speech: np.ndarray, sr: int = SR) -> list[dict]:
-    """Whisper drops or softens profanity, so a curse word can be spoken and never written. The tell: a short word stretched over
-    0.4-1.0 s with a loud burst inside it (6 dB over the speech around it, for 0.1 s or more). Returns the burst's span. These are
-    SUSPECTS, not hits: nothing is bleeped from them unless a note points at that stretch."""
+def find_suspects(words: list[tuple[str, float, float]], speech: np.ndarray, sr: int = SR, details: list | None = None,
+                  other: list | None = None, min_signals: int = MIN_SIGNALS) -> list[dict]:
+    """Whisper drops or softens profanity, so a curse word can be spoken and never written. A word is a SUSPECT when at least `min_signals`
+    independent signals agree that something odd was said there:
+      stretched        a short word spread over 0.4-1.0 s (the decoder stretched it over something it did not write)
+      burst            a loud burst inside it, 6 dB over the speech around it for 0.1 s or more
+      unsure           Whisper's own probability for the word is under 0.35 (needs `details`)
+      models disagree  a second, smaller model heard a different word at the same time (needs `other`)
+    Two signals make it 'possible', three or more 'likely'. When the transcript's own uncertainty is available (`details` or `other`), at least one
+    of `unsure` or `models disagree` is REQUIRED: a hidden word leaves a transcription problem, while a loud or long word that Whisper is sure of
+    and both models agree on is just emphasis (9 of the 14 flags on Ryan's cut were exactly that). Nothing is bleeped from a suspect unless a note
+    confirms it. The span is the burst if there is one, else the word."""
     n = int(FRAME_SEC * sr)
     frames = 20 * np.log10(np.maximum(np.sqrt((speech[:len(speech) // n * n].reshape(-1, n) ** 2).mean(axis=1)), 1e-6))
+    prob = {(round(s, 2), round(e, 2)): p for _w, s, e, p in (details or [])}
+    other_words = [(norm(w), s, e) for w, s, e in (other or [])]
     out = []
     for w, s, e in words:
-        if not SUSPECT_MIN_SEC <= e - s <= SUSPECT_MAX_SEC or len(norm(w)) > 6:
-            continue
-        i0, i1 = int(s / FRAME_SEC), int(np.ceil(e / FRAME_SEC))
-        near = np.r_[frames[max(0, i0 - 30):max(0, i0)], frames[i1:i1 + 30]]
-        near = near[near > -60]
-        if len(near) < 8:
-            continue
-        base = float(np.median(near))
-        hot = [i for i in range(i0, min(i1, len(frames))) if frames[i] >= base + BURST_DB]
-        if len(hot) * FRAME_SEC >= BURST_MIN_SEC:
-            out.append({"word": w, "word_start": round(s, 3), "word_end": round(e, 3), "start": round(hot[0] * FRAME_SEC, 3), "end": round((hot[-1] + 1) * FRAME_SEC, 3),
-                        "burst_db_over_speech": round(float(frames[hot].max() - base), 1)})
+        d = e - s
+        sig, burst = [], None
+        if SUSPECT_MIN_SEC <= d <= SUSPECT_MAX_SEC and len(norm(w)) <= 6:
+            sig.append("stretched")
+            i0, i1 = int(s / FRAME_SEC), int(np.ceil(e / FRAME_SEC))
+            near = np.r_[frames[max(0, i0 - 30):max(0, i0)], frames[i1:i1 + 30]]
+            near = near[near > -60]
+            if len(near) >= 8:
+                base = float(np.median(near))
+                hot = [i for i in range(i0, min(i1, len(frames))) if frames[i] >= base + BURST_DB]
+                if len(hot) * FRAME_SEC >= BURST_MIN_SEC:
+                    sig.append("burst")
+                    burst = (hot[0] * FRAME_SEC, (hot[-1] + 1) * FRAME_SEC, float(frames[hot].max() - base))
+        p = prob.get((round(s, 2), round(e, 2)))
+        if p is not None and p < UNSURE_P and d >= UNSURE_MIN_SEC:
+            sig.append("unsure")
+        if other is not None and d >= DISAGREE_MIN_SEC and norm(w) not in [t for t, a, b in other_words if a < e + 0.15 and b > s - 0.15]:
+            sig.append("models disagree")
+        transcript_doubt = "unsure" in sig or "models disagree" in sig
+        if len(sig) >= min_signals and (transcript_doubt or (details is None and other is None)):
+            out.append({"word": w, "word_start": round(s, 3), "word_end": round(e, 3),
+                        "start": round(burst[0], 3) if burst else round(s, 3), "end": round(burst[1], 3) if burst else round(e, 3),
+                        "burst_db_over_speech": round(burst[2], 1) if burst else 0.0, "signals": sig, "score": len(sig),
+                        "tier": "likely" if len(sig) >= LIKELY_SIGNALS else "possible", "probability": None if p is None else round(p, 2)})
     return out
+
+
+def snap_voiced(speech: np.ndarray, t: float, sr: int = SR, reach: float = 0.4, half: float = 0.3) -> tuple[float, float]:
+    """The spoken stretch at a clicked moment: the run of voiced 20 ms frames (12 dB over the local quiet level) nearest `t`, trimmed to `half`
+    seconds either side of it. When nothing is voiced there it is simply t +- half. A person clicked on the word, so the answer is theirs."""
+    n = int(0.02 * sr)
+    fr = 20 * np.log10(np.maximum(np.sqrt((speech[:len(speech) // n * n].reshape(-1, n) ** 2).mean(axis=1)), 1e-6))
+    i = min(max(int(t / 0.02), 0), len(fr) - 1)
+    lo, hi = max(0, i - 100), min(len(fr), i + 100)
+    thr = float(np.percentile(fr[lo:hi], 15)) + 12.0
+    cand = [j for j in range(max(0, i - int(reach / 0.02)), min(len(fr), i + int(reach / 0.02) + 1)) if fr[j] >= thr]
+    if not cand:
+        return round(max(0.0, t - half), 3), round(t + half, 3)
+    j = min(cand, key=lambda k: abs(k - i))
+    a = b = j
+    while a > 0 and fr[a - 1] >= thr - 3:
+        a -= 1
+    while b < len(fr) - 1 and fr[b + 1] >= thr - 3:
+        b += 1
+    return round(max(a * 0.02, t - half), 3), round(min((b + 1) * 0.02, t + half), 3)
 
 
 def spans_of(hits: list[dict], duration: float) -> list[tuple[float, float]]:
@@ -376,7 +423,8 @@ def verify(before: Path, after: Path, spans: list[tuple[float, float]], clips: l
 
 # ---------------------------------------------------------------- the whole job
 def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Pattern] | None = None, check_transcript: bool = True,
-          suspect_windows: list[tuple[float, float]] | None = None) -> dict:
+          suspect_windows: list[tuple[float, float]] | None = None, requests: list[dict] | None = None, detail_of=None, other_of=None,
+          min_signals: int = MIN_SIGNALS) -> dict:
     """Returns {hits, spans, xml, clips, rows}. If nothing is found, xml is None and nothing is written but bleep.json."""
     import place_audio as pa
     pats = pats or load_patterns()
@@ -389,17 +437,30 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     speech = cut_audio(cut)
     wav = out / "speech.wav"
     write_wav(wav, speech, SR)
-    words = words_of(wav)
+    detail = detail_of(wav) if detail_of else None
+    words = [(w, s, e) for w, s, e, _p in detail] if detail else words_of(wav)
+    other = other_of(wav) if other_of else None
     hits = find_hits(words, pats)
-    suspects = find_suspects(words, speech)
+    suspects = find_suspects(words, speech, details=detail, other=other, min_signals=min_signals)
     for sus in suspects:
         sus["bleeped"] = False
-    for wa, wb in suspect_windows or []:                          # a note pointed at this stretch: its single strongest suspect is bleeped, the rest are only reported
-        inside = [x for x in suspects if wa <= x["start"] and x["end"] <= wb]
-        if inside:
-            top = max(inside, key=lambda x: x["burst_db_over_speech"])
-            top["bleeped"] = True
-            hits.append({"word": f"(not transcribed; heard as '{top['word']}')", "start": top["start"], "end": top["end"]})
+    reqs = list(requests or []) + [{"kind": "window", "start": a_, "end": b_} for a_, b_ in (suspect_windows or [])]
+    for r in reqs:
+        if r["kind"] == "span":                                   # the page's Suspects box was confirmed by a note: exactly that span
+            hits.append({"word": f"(confirmed by a note: {r.get('label', 'suspect')})", "start": r["start"], "end": r["end"]})
+            for x in suspects:
+                x["bleeped"] = x["bleeped"] or (x["start"] < r["end"] and x["end"] > r["start"])
+        elif r["kind"] == "at":                                   # a note left by clicking the clip at the word: the spoken stretch at that spot
+            a_, b_ = snap_voiced(speech, r["t"])
+            hits.append({"word": f"(the spot clicked at {r['t']:.2f}s)", "start": a_, "end": b_})
+            for x in suspects:
+                x["bleeped"] = x["bleeped"] or (x["start"] < b_ and x["end"] > a_)
+        else:                                                     # a note pointed at a stretch: its single strongest suspect is bleeped, the rest are only reported
+            inside = [x for x in suspects if r["start"] <= x["start"] and x["end"] <= r["end"]]
+            if inside:
+                top = max(inside, key=lambda x: (x.get("score", 0), x.get("burst_db_over_speech", 0.0)))
+                top["bleeped"] = True
+                hits.append({"word": f"(not transcribed; heard as '{top['word']}')", "start": top["start"], "end": top["end"]})
     spans = spans_of(hits, cut.zone_end)
     res = {"hits": hits, "suspects": suspects, "spans": spans, "words_heard": len(words), "xml": None, "clips": [], "rows": []}
     (out / "bleep.json").write_text(json.dumps({k: v for k, v in res.items() if k != "rows"}, indent=2))
@@ -419,19 +480,29 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     return res
 
 
-def windows_from_notes(ops: list[dict], notes: list[dict], around: float = 1.0) -> list[tuple[float, float]]:
-    """The stretches a `bleep_word` note points at: the clip or element it was left on, else `around` seconds either side of its moment."""
+def requests_from_notes(ops: list[dict], notes: list[dict], around: float = 1.0) -> list[dict]:
+    """What each `bleep_word` note asks for, most exact first: a confirmed Suspects box (that span); a click on a clip box at the word (the spoken
+    stretch at the click); a clip or element (its strongest suspect); else about a second around the note's moment."""
     out = []
     for o in ops:
         if o.get("op") != "bleep_word":
             continue
         n = notes[o["note"] - 1]
-        tg = n.get("target")
-        if tg and tg.get("lane") in ("Clips", "Captions", "Cuts") and tg.get("end", 0) > tg.get("start", 0):
-            out.append((float(tg["start"]), float(tg["end"])))
+        tg = n.get("target") or {}
+        if tg.get("lane") == "Suspects":
+            out.append({"kind": "span", "start": float(tg["start"]), "end": float(tg["end"]), "label": str(tg.get("label", ""))[:60]})
+        elif tg.get("clicked"):
+            out.append({"kind": "at", "t": float(n["timeline_sec"])})
+        elif tg.get("lane") in ("Clips", "Captions", "Cuts") and tg.get("end", 0) > tg.get("start", 0):
+            out.append({"kind": "window", "start": float(tg["start"]), "end": float(tg["end"])})
         else:
-            out.append((max(0.0, n["timeline_sec"] - around), n["timeline_sec"] + around))
+            out.append({"kind": "window", "start": max(0.0, n["timeline_sec"] - around), "end": n["timeline_sec"] + around})
     return out
+
+
+def windows_from_notes(ops: list[dict], notes: list[dict], around: float = 1.0) -> list[tuple[float, float]]:
+    """The stretch-style requests only (kept for callers that want windows)."""
+    return [(r["start"], r["end"]) for r in requests_from_notes(ops, notes, around) if r["kind"] == "window"]
 
 
 def main() -> int:
@@ -440,20 +511,21 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--list", type=Path, help="a word list to use instead of profanity.txt")
     ap.add_argument("--words", help="extra words to bleep for this run, comma separated")
+    ap.add_argument("--min-signals", type=int, default=MIN_SIGNALS, help="how many independent signals must agree before a stretch is called a suspect (2 = possible, 3 = likely)")
     ap.add_argument("--suspects-in", action="append", default=[], metavar="START,END",
                     help="bleep a suspected untranscribed curse word found inside this stretch of the timeline (seconds); repeatable. Without it suspects are only reported")
     a = ap.parse_args()
     try:
         pats = load_patterns(a.list, (a.words or "").split(","))
         windows = [tuple(float(x) for x in w.split(",")) for w in a.suspects_in]
-        r = bleep(a.xml, a.out, pats=pats, suspect_windows=windows)
+        r = bleep(a.xml, a.out, pats=pats, suspect_windows=windows, detail_of=transcribe_detail, other_of=lambda wav: transcribe_timed(wav, "base"), min_signals=a.min_signals)
     except (BleepError, timeline.TimelineError, OSError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
     print(f"{r['words_heard']} words heard; {len(r['hits'])} listed: " + (", ".join(f"{h['word']} at {h['start']:.2f}s" for h in r["hits"]) or "none"))
     for sus in r["suspects"]:
-        print(f"  suspect: '{sus['word']}' at {sus['word_start']:.2f}-{sus['word_end']:.2f}s is unusually long with a burst {sus['burst_db_over_speech']} dB over the speech at "
-              f"{sus['start']:.2f}-{sus['end']:.2f}s: a possible word Whisper did not write. " + ("BLEEPED (a note pointed here)." if sus["bleeped"] else "Not bleeped; check by ear."))
+        print(f"  suspect ({sus['tier']}): '{sus['word']}' at {sus['word_start']:.2f}-{sus['word_end']:.2f}s, signals: {', '.join(sus['signals'])}. "
+              + ("BLEEPED (a note pointed here)." if sus["bleeped"] else "Not bleeped; check by ear."))
     if not r["spans"]:
         print("nothing to bleep; no XML written")
         return 0

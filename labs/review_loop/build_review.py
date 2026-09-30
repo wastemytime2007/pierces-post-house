@@ -20,7 +20,7 @@ from render_preview import render_preview  # noqa: E402
 from timeline import TimelineError, load_cut  # noqa: E402
 
 
-def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None) -> Path:
+def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, suspects: list[dict] | None = None) -> Path:
     cut = load_cut(xml)
     out.mkdir(parents=True, exist_ok=True)
     info = render_preview(cut, out / "preview.mp4", height=height)
@@ -54,7 +54,7 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None) 
         data["layers"] = [{"kind": l.kind, "name": l.name, "start": round(l.start, 2), "end": round(l.end, 2)} for l in layers]
     if changes:
         data["changes"] = changes
-    data["beatmap"] = beatmap(cut, layers, changes["items"] if changes else None)
+    data["beatmap"] = beatmap(cut, layers, changes["items"] if changes else None, suspects)
     (out / "timeline.json").write_text(json.dumps(data, indent=2))
     html = (HERE / "review_template.html").read_text().replace(
         "/*__DATA__*/null", json.dumps(data).replace("</", "<\\/"))

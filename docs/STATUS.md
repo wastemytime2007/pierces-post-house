@@ -3149,3 +3149,14 @@ the Lead before any re-dispatch; empty so far)*
   control proves it still fails real damage; an empty-looking `or True` assertion I wrote was caught on re-read and replaced; the
   interpreter's "remove it ... cards" could have dropped footage, now guarded; the QA sound-effect check gave a false FAIL on a
   reconform-rebuilt folder (now reads the recorded prompt, with a test that a wrong prompt still fails). 243+ tests pass. Not in `app/`.
+
+
+  **The strict detector (2026-09-30, Ryan: "no sfx happened at the curse word. But yes lets build the strict detector").** The bleep I
+  placed in clip 8 was on the wrong word: it was audible in the page's audio (a pure 1 kHz tone, speech silent, measured) but sat on a
+  burst inside "what", which Whisper was 96% sure of. My earlier report said the word was inferred, not heard; it was also wrong. Built:
+  four-signal scoring (stretched, burst, unsure, models disagree; `labs/bleep/bleep.py`), requiring a transcript signal so emphasis is
+  not flagged (14 flags on the real cut became 4: "Yeah," 0.0 s, "by" 26.30 s, "The" 31.50 s, "Yeah." 66.80 s; clip 8's two are the
+  region where `small` and `base` disagree, "the glue by that because" vs "and go through it, because"); a **Suspects** lane on the review page;
+  confirming a Suspects box bleeps exactly that span; clicking a clip box at the word ("bleep this") bleeps the spoken stretch there
+  (`snap_voiced`). 255 tests. Round 4 result: `... your round 4 result/` has no guess-bleep: the page shows the Suspects lane for him
+  to click. **Still not known: where the curse word is.** That needs his ear (a timestamp or a click on the clip at the word).

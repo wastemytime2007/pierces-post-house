@@ -122,8 +122,9 @@ def run_audio(clean_xml: Path, out: Path, meta: dict, base: Path, preview: Path,
         raise ReconformError("rebuilding the music and effect failed:\n" + (p.stderr or p.stdout)[-800:])
 
 
-def run_bleep(xml: Path, out: Path, suspect_windows=None) -> dict:
-    return bp.bleep(xml, out, suspect_windows=suspect_windows)
+def run_bleep(xml: Path, out: Path, suspect_windows=None, requests=None) -> dict:
+    return bp.bleep(xml, out, suspect_windows=suspect_windows, requests=requests, detail_of=bp.transcribe_detail,
+                    other_of=lambda wav: bp.transcribe_timed(wav, "base"))
 
 
 def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio: Path | None, out: Path,
@@ -260,11 +261,12 @@ def main() -> int:
     ap.add_argument("--notes", type=Path, help="the review notes those operations came from")
     a = ap.parse_args()
     windows = [tuple(float(x) for x in w.split(",")) for w in a.suspects_in]
+    requests: list[dict] = []
     if a.ops and a.notes:
-        windows += bp.windows_from_notes(json.loads(a.ops.read_text()), json.loads(a.notes.read_text())["notes"])
+        requests = bp.requests_from_notes(json.loads(a.ops.read_text()), json.loads(a.notes.read_text())["notes"])
     try:
         final, ledger = reconform(a.revised, a.overlay, a.captions, a.audio, a.out, drop=a.drop,
-                                  bleep_step=None if a.no_bleep else (lambda x, o: run_bleep(x, o, windows)))
+                                  bleep_step=None if a.no_bleep else (lambda x, o: run_bleep(x, o, windows, requests)))
     except (ReconformError, po.PlaceError, pa.PlaceError, timeline.TimelineError, OSError, KeyError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
@@ -288,7 +290,8 @@ def main() -> int:
         return 1
     from build_review import build
     print("\nBuilding the review page with the rebuilt layers:")
-    page = build(final, a.out / "review", a.height)
+    bj = a.out / "bleep" / "bleep.json"
+    page = build(final, a.out / "review", a.height, suspects=json.loads(bj.read_text()).get("suspects", []) if bj.exists() else None)
     (a.out / "reconform.json").write_text(json.dumps({"ledger": ledger, "xml": str(final)}, indent=2))
     print(f"\n{final}\n{page}")
     return 0

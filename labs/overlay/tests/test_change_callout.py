@@ -391,3 +391,30 @@ def test_the_sound_effect_check_reads_the_recorded_prompt_when_the_folder_was_re
     assert qa.check_replace_sfx(o, {}, {"before": old, "after": other_note}).status == qa.FAILED            # replace_sfx's own record still has to name this note
     mine = folder("mine", 2200, "x", replaced={"now": "a bell ding sound, short", "note": 1})
     assert qa.check_replace_sfx(o, {}, {"before": old, "after": mine}).status == qa.VERIFIED
+
+
+def test_a_note_on_a_suspects_box_needs_no_word_and_a_clicked_clip_is_remembered_as_clicked():
+    sys.path.insert(0, str(HERE.parent / "review_loop"))
+    import ops as opsmod
+    cut = type("C", (), {"video": [object()], "zone_end": 70.0})()
+    sus = {"lane": "Suspects", "label": "possible curse word?", "start": 28.9, "end": 29.3}
+    notes = [{"timeline_sec": 29.0, "text": "yes", "target": sus}, {"timeline_sec": 29.0, "text": "yes", "target": dict(sus, lane="Clips", clip=8)},
+             {"timeline_sec": 29.0, "text": "make it longer", "target": sus}]
+    got = opsmod.validate([{"note": 1, "op": "bleep_word"}, {"note": 2, "op": "bleep_word"}, {"note": 3, "op": "extend_graphic", "seconds": None}], notes, cut)
+    assert got[0]["op"] == "bleep_word"                                                              # "yes" on a suspect box means bleep it
+    assert got[1]["op"] == "unsupported" and "does not ask for a word to be bleeped" in got[1]["reason"]   # the same word on a clip box means nothing
+    assert got[2]["op"] == "unsupported" and "left on a Suspects element" in got[2]["reason"]
+
+
+def test_qa_looks_for_the_bleep_where_the_note_pointed_whichever_way_it_pointed(tmp_path):
+    sys.path.insert(0, str(HERE.parent / "qa"))
+    import qa_pass as qa
+    (tmp_path / "bleeps").mkdir()
+    (tmp_path / "bleep.json").write_text("{}")
+    b = ly.Layer("audio", "bleep_1.wav", str(tmp_path / "bleeps" / "bleep_1.wav"), 28.8, 29.4, 3)
+    o = {"note": 1, "op": "bleep_word"}
+    sus = {"timeline_sec": 29.0, "text": "yes", "target": {"lane": "Suspects", "start": 28.9, "end": 29.3}}
+    click = {"timeline_sec": 29.1, "text": "bleep", "target": {"lane": "Clips", "start": 26.0, "end": 33.0, "clicked": True}}
+    assert qa.check_bleep_word(o, sus, ([], [b])).status == qa.VERIFIED and qa.check_bleep_word(o, click, ([], [b])).status == qa.VERIFIED
+    far = {"timeline_sec": 31.5, "text": "bleep", "target": {"lane": "Clips", "start": 26.0, "end": 33.0, "clicked": True}}
+    assert qa.check_bleep_word(o, far, ([], [b])).status == qa.NOT_DONE                               # a click 2 s away is not satisfied by a bleep elsewhere in the clip

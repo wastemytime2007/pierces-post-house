@@ -31,3 +31,19 @@ word, yet the audio has a burst 15 dB over the speech inside "what" (28.74 to 29
   **only** when a note points at that stretch (`bleep_word`; the strongest suspect in the stretch only).
 - For such a word the tool has measured silence, a tone and a level, **not what the word was**. That is for the ear.
 Padding can clip a neighbouring word by a few hundredths of a second. The bleep is a plain tone, not a chosen sound.
+
+
+## The strict detector, and the two ways to point a bleep at a word Whisper did not write
+Built after the real cut showed the limit. Each spoken word is scored on four independent signals: **stretched** (a short word spread over
+0.4 to 1.0 s), **burst** (6 dB louder than the speech around it for 0.1 s), **unsure** (Whisper's own probability under 0.35) and **models
+disagree** (the smaller `base` model heard a different word at that time). A word is flagged when two signals agree ("possible") or three
+("likely"), **and at least one is a transcript signal** (unsure or disagree): a hidden word leaves a transcription problem, while a loud
+long word both models agree on is just emphasis. Measured on the real 73 s cut: the acoustic-only rule flagged 14 stretches, 9 of them
+confident, agreed, merely loud words; with the transcript requirement it flags 4 (`--min-signals 3` flags 1). Whether those 4 are the
+curse word is not known: there was no ground truth for the cut. (My first guess, a burst inside "what", was wrong: Whisper was 96% sure of
+"what" and the bleep landed on a word that was not the curse word.)
+
+Flagged stretches appear on the review page as a **Suspects** lane. Two ways to bleep one, neither needing the word to be transcribed:
+1. **Click a Suspects box** and leave any note ("yes"): that exact span is bleeped.
+2. **Click the clip's box at the word** (the click position is kept) and note "bleep this": the spoken stretch at that spot is bleeped, at
+   most 0.3 s either side of the click. This needs no detection at all, so it is the reliable route when the detector has nothing.

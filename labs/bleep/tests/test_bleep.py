@@ -180,7 +180,7 @@ def test_a_long_word_with_a_loud_burst_inside_is_a_suspect_and_ordinary_words_ar
 def test_a_suspect_is_only_bleeped_when_a_note_points_at_its_stretch(xml, tmp_path, monkeypatch):
     spans = [(12.42, 13.02)]
     fake = [{"word": "what", "word_start": 12.3, "word_end": 13.0, "start": 12.5, "end": 12.8, "burst_db_over_speech": 11.0}]
-    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR: [dict(f) for f in fake])
+    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [dict(f) for f in fake])
     plain = bl.bleep(xml, tmp_path / "plain", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False)
     assert plain["xml"] is None and plain["suspects"][0]["bleeped"] is False                # reported, not bleeped
     told = bl.bleep(xml, tmp_path / "told", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False, suspect_windows=[(10.0, 15.0)])
@@ -192,6 +192,95 @@ def test_a_suspect_is_only_bleeped_when_a_note_points_at_its_stretch(xml, tmp_pa
 def test_when_several_suspects_fall_in_the_stretch_a_note_points_at_only_the_strongest_is_bleeped(xml, tmp_path, monkeypatch):
     fake = [{"word": "what", "word_start": 12.3, "word_end": 12.8, "start": 12.5, "end": 12.8, "burst_db_over_speech": 15.0},
             {"word": "just", "word_start": 12.8, "word_end": 13.4, "start": 13.0, "end": 13.2, "burst_db_over_speech": 8.0}]
-    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR: [dict(f) for f in fake])
+    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [dict(f) for f in fake])
     r = bl.bleep(xml, tmp_path / "x", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False, suspect_windows=[(10.0, 15.0)])
     assert [s_["word"] for s_ in r["suspects"] if s_["bleeped"]] == ["what"] and len(r["spans"]) == 1 and r["spans"][0][1] < 13.0
+
+
+# ---- the strict detector, click snapping, requests from notes ----
+
+def _flat(n=10, db=-35):
+    return np.random.default_rng(9).standard_normal(16000 * n) * 10 ** (db / 20)
+
+
+def test_the_strict_detector_needs_two_independent_signals_and_names_them():
+    base = [(f"w{i}", i * 0.5, i * 0.5 + 0.3) for i in range(9)]
+    speech = _flat()
+    # one signal alone (Whisper unsure of a short word) is not enough
+    one = base + [("by", 4.6, 4.85)]
+    details = [(w, s_, e_, 0.95) for w, s_, e_ in base] + [("by", 4.6, 4.85, 0.3)]
+    assert bl.find_suspects(sorted(one, key=lambda x: x[1]), speech, details=sorted(details, key=lambda x: x[1])) == []
+    # unsure + the second model heard something else: two signals, flagged 'possible'
+    other = [(w, s_, e_) for w, s_, e_ in base] + [("through", 4.6, 4.85)]
+    sus = bl.find_suspects(sorted(one, key=lambda x: x[1]), speech, details=sorted(details, key=lambda x: x[1]), other=sorted(other, key=lambda x: x[1]))
+    assert [x["word"] for x in sus] == ["by"] and sus[0]["signals"] == ["unsure", "models disagree"] and sus[0]["tier"] == "possible" and sus[0]["score"] == 2
+    assert (sus[0]["start"], sus[0]["end"]) == (4.6, 4.85)                                          # no burst: the span is the word
+    # stretched + burst + unsure + disagreeing = all four, 'likely'
+    words = base + [("what", 4.8, 5.3)]
+    sp = _speech_with_burst()
+    det = [(w, s_, e_, 0.95) for w, s_, e_ in base] + [("what", 4.8, 5.3, 0.2)]
+    oth = base + [("the", 4.8, 5.3)]
+    four = bl.find_suspects(sorted(words, key=lambda x: x[1]), sp, details=sorted(det, key=lambda x: x[1]), other=sorted(oth, key=lambda x: x[1]))
+    assert four[0]["signals"] == ["stretched", "burst", "unsure", "models disagree"] and four[0]["tier"] == "likely"
+    assert four[0]["start"] == pytest.approx(5.0, abs=0.06)                                         # the burst's span when there is one
+    # a word both models agree on, that Whisper is sure of, is never a suspect however it sounds
+    sure = bl.find_suspects(sorted(words, key=lambda x: x[1]), _flat(), details=sorted([(w, s_, e_, 0.99) for w, s_, e_ in words], key=lambda x: x[1]), other=sorted(words, key=lambda x: x[1]))
+    assert sure == []
+
+
+def test_a_higher_bar_flags_fewer_stretches():
+    base = [(f"w{i}", i * 0.5, i * 0.5 + 0.3) for i in range(9)]
+    words = sorted(base + [("by", 4.6, 4.85)], key=lambda x: x[1])
+    details = sorted([(w, s_, e_, 0.95) for w, s_, e_ in base] + [("by", 4.6, 4.85, 0.3)], key=lambda x: x[1])
+    other = sorted(base + [("through", 4.6, 4.85)], key=lambda x: x[1])
+    assert len(bl.find_suspects(words, _flat(), details=details, other=other, min_signals=2)) == 1
+    assert bl.find_suspects(words, _flat(), details=details, other=other, min_signals=3) == []
+
+
+def test_a_clicked_spot_snaps_to_the_spoken_stretch_and_never_bleeps_a_whole_sentence():
+    x = np.random.default_rng(3).standard_normal(16000 * 10) * 10 ** (-60 / 20)                     # quiet room
+    x[int(4.0 * 16000):int(4.4 * 16000)] += np.random.default_rng(4).standard_normal(int(0.4 * 16000)) * 10 ** (-25 / 20)       # a 0.4 s word
+    a, b = bl.snap_voiced(x, 4.2)
+    assert a == pytest.approx(4.0, abs=0.05) and b == pytest.approx(4.4, abs=0.05)                  # the word, not wider
+    a, b = bl.snap_voiced(x, 4.25)                                                                  # off centre still finds it
+    assert a == pytest.approx(4.0, abs=0.05) and b == pytest.approx(4.4, abs=0.05)
+    a, b = bl.snap_voiced(x, 8.0)                                                                   # nothing voiced near the click: plus or minus 0.3 s of it
+    assert (a, b) == (7.7, 8.3)
+    run = np.random.default_rng(5).standard_normal(16000 * 10) * 10 ** (-25 / 20)                   # continuous speech: capped to 0.3 s either side of the click
+    a, b = bl.snap_voiced(run, 5.0)
+    assert b - a <= 0.61 and a <= 5.0 <= b
+
+
+def test_a_note_turns_into_the_most_exact_request_it_can():
+    ops = [{"note": i, "op": "bleep_word"} for i in (1, 2, 3, 4)]
+    notes = [{"timeline_sec": 29.0, "text": "bleep", "target": {"lane": "Suspects", "label": "x", "start": 28.9, "end": 29.3}},
+             {"timeline_sec": 27.5, "text": "bleep here", "target": {"lane": "Clips", "label": "c", "start": 26.4, "end": 33.3, "clicked": True}},
+             {"timeline_sec": 29.8, "text": "bleep the curse word", "target": {"lane": "Clips", "label": "c", "start": 26.4, "end": 33.3}},
+             {"timeline_sec": 10.0, "text": "bleep the swear word"}]
+    r = bl.requests_from_notes(ops, notes)
+    assert r[0] == {"kind": "span", "start": 28.9, "end": 29.3, "label": "x"} and r[1] == {"kind": "at", "t": 27.5}
+    assert r[2] == {"kind": "window", "start": 26.4, "end": 33.3} and r[3] == {"kind": "window", "start": 9.0, "end": 11.0}
+
+
+def test_a_confirmed_suspect_and_a_clicked_spot_are_bleeped_exactly_there(xml, tmp_path, monkeypatch):
+    fake = [{"word": "what", "word_start": 12.3, "word_end": 13.0, "start": 12.5, "end": 12.8, "burst_db_over_speech": 0.0, "signals": ["unsure", "models disagree"], "score": 2, "tier": "possible"}]
+    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [dict(f) for f in fake])
+    none = lambda w: [("Hello", 1.0, 1.4)]                                                          # noqa: E731
+    confirmed = bl.bleep(xml, tmp_path / "a", words_of=none, check_transcript=False, requests=[{"kind": "span", "start": 12.5, "end": 12.8, "label": "what"}])
+    assert len(confirmed["spans"]) == 1 and confirmed["spans"][0] == pytest.approx((12.42, 12.92), abs=0.02) and confirmed["suspects"][0]["bleeped"] is True
+    clicked = bl.bleep(xml, tmp_path / "b", words_of=none, check_transcript=False, requests=[{"kind": "at", "t": 20.2}])
+    assert len(clicked["spans"]) == 1 and clicked["spans"][0][0] < 20.2 < clicked["spans"][0][1] and clicked["suspects"][0]["bleeped"] is False
+    bad = [(n, d) for n, ok, d in clicked["rows"] if ok is False]
+    assert not bad, bad                                                                             # silence, tone, level and the rest all hold for a clicked spot
+
+
+def test_a_loud_stretched_word_the_transcript_is_sure_of_is_emphasis_not_a_suspect():
+    """Nine of fourteen flags on the real cut were this. With the transcript's uncertainty available, acoustic signals alone do not count."""
+    words = sorted([(f"w{i}", i * 0.5, i * 0.5 + 0.3) for i in range(9)] + [("what", 4.8, 5.3)], key=lambda x: x[1])
+    sure = [(w, s_, e_, 0.96) for w, s_, e_ in words]
+    sp = _speech_with_burst()
+    assert [x["word"] for x in bl.find_suspects(words, sp)] == ["what"]                                   # with no transcript evidence at all, the acoustic rule still flags it
+    assert bl.find_suspects(words, sp, details=sure, other=words) == []                                    # sure and agreed: emphasis
+    unsure = [(w, s_, e_, 0.2 if w == "what" else 0.96) for w, s_, e_ in words]
+    got = bl.find_suspects(words, sp, details=unsure, other=words)
+    assert [x["word"] for x in got] == ["what"] and got[0]["signals"] == ["stretched", "burst", "unsure"]   # the same word, once Whisper doubts it

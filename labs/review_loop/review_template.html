@@ -32,6 +32,8 @@
   .blk { position: absolute; top: 2px; bottom: 2px; min-width: 3px; border-radius: 3px; background: var(--accent); opacity: .7; cursor: pointer; }
   .lane.Captions .blk { background: #00ade1; } .lane.Music .blk { background: #38d66b; } .lane.SFX .blk { background: #ffd400; }
   .lane.Clips .blk { background: #3b5a85; opacity: .85; box-shadow: inset -1px 0 0 var(--bg, #0d1420); }
+  .lane.Suspects .blk { background: #ff4d6d; opacity: .8; }
+  .lane.Bleep .blk { background: #ff9f1c; }
   .lane.Callout .blk { background: var(--pin); } .lane.Card .blk { background: #b48cff; }
   .tk { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: #cfd9e8; cursor: pointer; }
   .lane.Edits .tk { background: #38d66b; width: 4px; }
@@ -440,6 +442,7 @@ function openElementNote(lane, tick, it, el, ev) {
   v.currentTime = Math.min(DATA.duration - 0.05, mid);
   pending = { t: mid, shapes: [], target: { lane, label: it.label, start: +it.start.toFixed(2), end: +end.toFixed(2), kind: tick ? 'tick' : 'block' } };
   if (it.clip) pending.target.clip = it.clip;
+  if (ev && ev.detail > 0) pending.target.clicked = true;      /* a real click: the time is where you clicked, so a note like "bleep this" means that spot */
   BEATS.forEach(b => b.el.classList.toggle('picked', b.el === el));
   updateEditorAt();
   editor.style.display = 'block'; ta.value = '';

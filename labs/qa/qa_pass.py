@@ -212,7 +212,14 @@ def check_bleep_word(o: dict, note: dict, layers: tuple | None) -> Row:
         return Row(n, "bleep_word", UNMEASURED, "no before-version XML was given")
     _before, after = layers
     t, tg = note["timeline_sec"], note.get("target")
-    lo, hi = (float(tg["start"]), float(tg["end"])) if tg and tg.get("lane") in ("Clips", "Captions", "Cuts") and tg.get("end", 0) > tg.get("start", 0) else (t - 1.0, t + 1.0)
+    if tg and tg.get("lane") == "Suspects":
+        lo, hi = float(tg["start"]), float(tg["end"])
+    elif tg and tg.get("clicked"):
+        lo, hi = t - 0.8, t + 0.8
+    elif tg and tg.get("lane") in ("Clips", "Captions", "Cuts") and tg.get("end", 0) > tg.get("start", 0):
+        lo, hi = float(tg["start"]), float(tg["end"])
+    else:
+        lo, hi = t - 1.0, t + 1.0
     got = [l for l in after if l.kind == "audio" and ly.lane_name(l) == "Bleep" and l.start < hi and l.end > lo]
     if not got:
         return Row(n, "bleep_word", NOT_DONE, f"no bleep sits in {lo:.2f}-{hi:.2f}s on the new version (nothing in that stretch was found to bleep; see bleep.json for the suspects)")

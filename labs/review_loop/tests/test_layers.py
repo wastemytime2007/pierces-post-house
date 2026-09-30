@@ -236,3 +236,14 @@ def test_boxes_on_the_map_are_named_for_a_person_not_a_file(tmp_path):
     assert lanes["Callout"]["items"][0]["label"] == 'callout "Cardboard spacer"'
     assert lanes["SFX"]["items"][0]["label"] == "sound effect" or lanes["SFX"]["items"][0]["label"].startswith("sound effect")
     assert lanes["Music"]["items"][0]["label"].startswith("music bed")
+
+
+def test_suspects_get_their_own_lane_and_say_what_was_heard_and_why(layered):
+    _base, full = layered
+    sus = [{"word": "what", "start": 5.0, "end": 5.3, "tier": "likely", "signals": ["stretched", "burst"], "bleeped": False},
+           {"word": "by", "start": 7.0, "end": 7.2, "tier": "possible", "signals": ["unsure", "models disagree"], "bleeped": True}]
+    lanes = ly.beatmap(timeline.load_cut(full), ly.find_layers(full), None, sus)
+    lane = next(l for l in lanes if l["name"] == "Suspects")
+    assert lane["kind"] == "blocks" and lanes[-1] is lane
+    assert lane["items"][0]["label"] == 'likely curse word? heard as "what" (stretched, burst)' and lane["items"][1]["label"].endswith("(bleeped)")
+    assert all(l["name"] != "Suspects" for l in ly.beatmap(timeline.load_cut(full), ly.find_layers(full)))                      # no suspects, no lane

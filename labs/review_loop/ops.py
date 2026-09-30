@@ -71,7 +71,7 @@ SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it
 CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "start_at_words", "drop_clip"}
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
-LANE_OPS = {"Card": {"remove_graphic"}, "Captions": {"edit_caption"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
+LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
 LANE_WHY = {"Music": "no tool changes the music bed from a note yet"}
 
 
@@ -247,7 +247,7 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("the note does not ask for it to be removed")
                 out.append({"note": note, "op": op, "why": why})
             elif op == "bleep_word":
-                if not SAYS_BLEEP.search(text):
+                if lane != "Suspects" and not SAYS_BLEEP.search(text):
                     raise ValueError("the note does not ask for a word to be bleeped")
                 out.append({"note": note, "op": op, "why": why})
             elif op == "end_graphic":

@@ -63,7 +63,7 @@ def find_layers(xml: Path) -> list[Layer]:
 
 
 LANE_OF = (("bleep", "Bleep"), ("overlay", "Callout"), ("callout", "Callout"), ("card", "Card"), ("caption", "Captions"), ("music", "Music"), ("sfx", "SFX"))
-LANE_ORDER = ["Clips", "Cuts", "Edits", "Callout", "Card", "Captions", "Music", "SFX", "Bleep"]
+LANE_ORDER = ["Clips", "Cuts", "Edits", "Callout", "Card", "Captions", "Music", "SFX", "Bleep", "Suspects"]
 
 
 def lane_name(l: Layer) -> str:
@@ -88,7 +88,7 @@ def _label(l: Layer, lane: str) -> str:
     return f'{plain} "{title[:40]}"' if title else plain
 
 
-def beatmap(cut, layers: list[Layer], items: list[dict] | None = None) -> list[dict]:
+def beatmap(cut, layers: list[Layer], items: list[dict] | None = None, suspects: list[dict] | None = None) -> list[dict]:
     """The edit decisions along the timeline, one lane per kind: cuts, the revision's edits, and each layer
     (captions expand to one block per line when the layer's captions.json sits beside its file)."""
     import json
@@ -117,6 +117,9 @@ def beatmap(cut, layers: list[Layer], items: list[dict] | None = None) -> list[d
                 blocks.append({"start": round(l.start + (s - l.src_in), 3), "end": round(l.start + (e - l.src_in), 3), "label": g["text"]})
         else:
             blocks.append({"start": round(l.start, 3), "end": round(l.end, 3), "label": _label(l, lane)})
+    for x in suspects or []:                                     # stretches the bleep scan could not settle: click one and say to bleep it
+        lanes.setdefault("Suspects", []).append({"start": round(x["start"], 3), "end": round(max(x["end"], x["start"] + 0.05), 3),
+                                                 "label": f'{x.get("tier", "possible")} curse word? heard as "{x["word"]}" ({", ".join(x.get("signals", []))})' + (" (bleeped)" if x.get("bleeped") else "")})
     order = LANE_ORDER + sorted(k for k in lanes if k not in LANE_ORDER)
     return [{"name": k, "kind": "ticks" if k in ("Cuts", "Edits") else "blocks", "items": sorted(lanes[k], key=lambda x: x["start"])} for k in order if k in lanes]
 
