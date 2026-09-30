@@ -72,8 +72,8 @@ because this session violated them once each.
   reframe needs scale and position filters in the XML). (3) Music and SFX
   generation, which would contradict the 2026-08-31 Artlist-local-library
   decision and needs Ryan's ruling first; his own reference edit has no SFX
-  stings, so SFX style is his call. (4) Premiere import of a revised XML has
-  not been confirmed. (5) A screen in `app/`, its own approved step, not
+  stings, so SFX style is his call. (4) Premiere import of a revised XML is
+  confirmed, via the overlay-placed XML that carries the V3 cut. (5) A screen in `app/`, its own approved step, not
   asked for. (6) The note format `review_notes.v0-draft` is still a draft;
   the real revision-operation schema is Phase 5.
 
@@ -949,8 +949,10 @@ because this session violated them once each.
   proven on Ryan's own notes. Ryan: "The cuts/revisions were implemented
   perfectly."** Scope of that sign-off: the two edits it made from his real
   notes on the Tiling cut (V2 -> V3, 74.17s -> 74.24s). It is not wired into
-  `app/`, Premiere import of the revised XML has not been confirmed, and his
-  third note (arrow and on-screen text) was correctly not applied.
+  `app/`, and his third note (arrow and on-screen text) was correctly not
+  applied here (it became the overlay, below). Premiere import of the revised
+  XML: not part of this sign-off, but later confirmed indirectly, since the
+  overlay-placed XML Ryan imported ("It worked...") carries this V3 cut on V1.
 
   How it works: the page's exported notes go to the local `claude` CLI, which
   may only choose from a small vocabulary of operations and may not invent a
@@ -2661,7 +2663,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |
 | Audio Designer: loudness → clip gain | Not started — B |
 | Colorist: exposure/contrast QC report | Not started — C |
-| Supervisor loop (notes → revised cut) | **Review page and notes -> revised cut both signed off by Ryan (2026-09-29, § Done), as standalone modules in `labs/review_loop/`.** Not wired into `app/`; Premiere import of a revised XML unconfirmed; graphics/drawing-driven edits and a screen in the app still open (§ In progress). |
+| Supervisor loop (notes → revised cut) | **Review page and notes -> revised cut both signed off by Ryan (2026-09-29, § Done), as standalone modules in `labs/review_loop/`.** Overlay layer and its placement in the XML also signed off, and the result opens in Premiere at the right size. Not wired into `app/`; acting on drawings (crop/reframe) and a screen in the app still open (§ In progress). |
 
 **Not yet decided: which skill to start on next.** Asked Ryan; awaiting
 his pick (or his go-ahead to propose an order).
