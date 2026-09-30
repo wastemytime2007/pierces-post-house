@@ -255,6 +255,19 @@ because this session violated them once each.
   Files: `Runnells Tiling v3 - reconformed v4 D (callout words)/review/review.html`, `...
   QA pass (callout words)/qa_report.html`.
 
+  **Built, NOT yet tested by Ryan (batch): the image card (`labs/overlay/make_image_card.py`).**
+  The creator's "give this cropped screenshot a border and highlight what matters": a
+  screenshot/photo shown whole in a brand-blue border with an optional hollow orange highlight and
+  a caption strip, as a transparent 4K layer anchored to a source frame (so reconform re-places it
+  and captions avoid it; beatmap "Card" lane). `verify_image_card.py` measures the render against
+  the source image (11 checks); tests include five deliberately wrong cards that must be
+  rejected. Real unit: a crop of the spacer close-up from Ryan's own footage, shown at 29.5s with a
+  highlight box on the spacer, caption "The spacer": all 11 checks pass at 3840x2160@59.94, it is on
+  the reconformed cut with the callout (3 picture layers, none split, 119,327 pixels differ at
+  32.7s), frame inspected. The shot only had room for a 3.79s card, so the hold shrank (recorded).
+  140 tests pass across `labs/`. Page: `Runnells Tiling v3 - reconformed v4 E (image card)/review/
+  review.html`. The image and highlight are inputs, not chosen by the tool. Not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.

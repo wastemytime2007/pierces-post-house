@@ -194,6 +194,14 @@ def test_the_revisions_applied_edits_get_their_own_lane_and_unapplied_ones_do_no
     assert [i["label"] for i in edits["items"]] == ["note 1: removed 2s of dead air"] and lanes[1]["name"] == "Edits"
 
 
+def test_an_image_card_gets_its_own_lane_between_the_callout_and_the_captions():
+    mk = lambda name: ly.Layer("video", name, "/x/" + name, 1.0, 4.0, 1)                     # noqa: E731
+    assert ly.lane_name(mk("card.mov")) == "Card" and ly.lane_name(mk("overlay.mov")) == "Callout" and ly.lane_name(mk("captions.mov")) == "Captions"
+    cut = type("C", (), {"video": []})()
+    lanes = ly.beatmap(cut, [mk("captions.mov"), mk("card.mov"), mk("overlay.mov")])
+    assert [l["name"] for l in lanes] == ["Cuts", "Callout", "Card", "Captions"]
+
+
 def test_a_cut_with_no_layers_still_gets_a_cuts_lane_and_the_page_carries_the_beatmap(layered, tmp_path):
     base, _full = layered
     page = build(base, tmp_path / "plain", height=180)

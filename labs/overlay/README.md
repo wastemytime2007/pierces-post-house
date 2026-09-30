@@ -61,6 +61,27 @@ under 0.3s is reported as not applied. One change per callout per run. Then put 
 `labs/reconform` (`--overlay <new folder>`), which also rebuilds the captions so they keep clear of the
 longer callout. `make_overlay.py --hold SEC` does the same for a fresh callout.
 
+## A framed, highlighted image (`make_image_card.py`)
+From the creator's "make this cropped screenshot look better, give it a border and highlight what matters".
+```
+python3 labs/overlay/make_image_card.py <image> --out "<folder>" --xml "<export.xml>" \
+    --anchor-source "<file name>" --anchor-sec <seconds> [--highlight x0,y0,x1,y1] [--caption "..."] \
+    [--position center|left|right] [--hold 3.5] [--lead 0.5]
+```
+The image is shown whole (fitted, never cropped, never enlarged past 1.5x) inside a brand-blue border with a
+soft shadow; `--highlight` draws a hollow orange box (as fractions of the image) that animates in; `--caption`
+adds a navy strip below. Rendered by HyperFrames to a transparent ProRes 4444 `.mov` at the target
+sequence's size and rate, and **anchored to a source frame like a callout**, so `labs/reconform` re-places it
+after a revision (pass it as another `--overlay`) and the captions keep clear of it. If the shot ends before
+the hold fits, the hold shrinks (`hold_sec` in `placement.json` says how much; under 1.5s is refused).
+`verify_image_card.py` measures the render against the source image: real alpha at the right size and rate,
+transparent before and after, the image file untouched, margins, the opaque card covering exactly the
+planned rectangle, the blue border on all four sides, the picture matching the source (mean difference), all
+corners and edge midpoints of the source present (not cropped), the orange ring on four sides and hollow, the
+caption strip with text. The tests include cards that are deliberately wrong (no border, shifted picture,
+filled highlight, missing caption, altered source), each of which must be rejected.
+Not done: choosing the image or where to highlight (both are inputs), animation styles beyond this one.
+
 ## Why a separate layer
 The footage is never re-rendered. `overlay.mov` is transparent (ProRes 4444 with alpha, which is
 what Premiere ingests), so it goes on a track above the untouched clip. `placement.json` says
