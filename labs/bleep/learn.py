@@ -43,6 +43,8 @@ PRIOR = 3                                       # the defaults count as this man
 MIN_MISSES = 3                                  # added bleeps needed before the reach is changed
 SAME_TOL = 0.03                                 # an edge moved by less than this counts as left alone
 PAD_BEFORE_RANGE, PAD_AFTER_RANGE = (-0.05, 0.30), (0.0, 0.40)
+WORD_TIMES = 2                                  # the same word removed (and never kept) or added this many times becomes a learned exception or addition
+ADDED_WORD_MAX_SEC = 0.45                       # a longer word under an added bleep is a stretched one (a hidden word), not an ordinary word he wants added
 
 
 def learn_dir() -> Path:
@@ -129,7 +131,12 @@ def records_from_edits(edits: dict, before: dict, cut: str) -> list[dict]:
         out.append(_rec(cut, kind, source, word, a, f, timing, _context(before, f)))
     for i, f in enumerate(final):
         if i not in used_final:
-            out.append(_rec(cut, "added", "manual", None, None, f, None, _context(before, f)))
+            ctx = _context(before, f)
+            r = _rec(cut, "added", "manual", None, None, f, None, ctx)
+            if ctx.get("inside_word") and (ctx.get("hiding_word_duration") or 9) < ADDED_WORD_MAX_SEC:      # an ordinary-length word Whisper wrote: he wants THAT word bleeped
+                r["added_word"] = bl.norm(ctx["inside_word"])
+                r["id"] = hashlib.sha1((r["id"] + r["added_word"]).encode()).hexdigest()[:12]
+            out.append(r)
     return out
 
 
@@ -190,6 +197,17 @@ def fit(records: list[dict] | None = None) -> dict:
         lower = max(0.25, round(0.9 * min(durs), 2))
         det["suspect_min_sec"] = lower if lower < bl.SUSPECT_MIN_SEC else None               # the reach is only ever lowered, never raised
     model["detection"] = det
+    deleted, kept_w, added_w = {}, {}, {}
+    for r in records:
+        w = bl.norm(r.get("word") or "") if r.get("source") == "transcript" else ""
+        if r["kind"] == "deleted" and w:
+            deleted[w] = deleted.get(w, 0) + 1
+        elif r["kind"] in ("kept", "adjusted") and w:
+            kept_w[w] = kept_w.get(w, 0) + 1
+        if r["kind"] == "added" and r.get("added_word"):
+            added_w[r["added_word"]] = added_w.get(r["added_word"], 0) + 1
+    model["words"] = {"skip": {w: n for w, n in deleted.items() if n >= WORD_TIMES and not kept_w.get(w)},
+                      "add": {w: n for w, n in added_w.items() if n >= WORD_TIMES}}
     model_path().parent.mkdir(parents=True, exist_ok=True)
     model_path().write_text(json.dumps(model, indent=2) + "\n")
     return model
@@ -207,6 +225,11 @@ def report() -> str:
     for src, s in m["sources"].items():
         if s["kept"] + s["wrong"]:
             lines.append(f"  {src} bleeps: {s['kept']} kept, {s['wrong']} wrong (precision {s['precision']:.0%})")
+    w = m.get("words", {})
+    lines.append("  words: " + (", ".join(f"'{k}' is no longer bleeped (you removed it {n} times)" for k, n in w.get("skip", {}).items())
+                               + (", " if w.get("skip") and w.get("add") else "")
+                               + ", ".join(f"'{k}' is now bleeped (you added it {n} times)" for k, n in w.get("add", {}).items())
+                               or "none learned yet (a word needs to be removed or added 2 times; undo one with: learn.py forget WORD)"))
     d = m["detection"]
     lines.append(f"  missed words (bleeps you added): {d['misses']}; {d['misses_outside_loud_stretches']} of them outside any loud stretch. " +
                  (f"The shortest stretched word examined is now {d['suspect_min_sec']} s." if d["suspect_min_sec"] else f"The reach is unchanged until {d['misses_needed']} have been added."))
@@ -230,6 +253,8 @@ def main() -> int:
     b = sub.add_parser("ingest-notes")
     b.add_argument("--notes", type=Path, required=True)
     b.add_argument("--cut", default="unknown")
+    f = sub.add_parser("forget", help="undo a learned word: remove every record that taught the model about it")
+    f.add_argument("word")
     sub.add_parser("fit")
     sub.add_parser("report")
     args = ap.parse_args()
@@ -240,6 +265,11 @@ def main() -> int:
         notes = json.loads(args.notes.read_text())
         recs = records_from_notes(notes, args.cut if args.cut != "unknown" else notes.get("sequence", "unknown"))
         print(f"{len(recs)} yes/no answer(s) on flagged stretches, {save(recs)} new")
+    elif args.cmd == "forget":
+        w = bl.norm(args.word)
+        keep = [r for r in load_records() if not (bl.norm(r.get("word") or "") == w or r.get("added_word") == w)]
+        feedback_path().write_text("".join(json.dumps(r) + "\n" for r in keep))
+        print(f"forgot every record about '{w}'")
     elif args.cmd == "fit":
         fit()
     print(report())

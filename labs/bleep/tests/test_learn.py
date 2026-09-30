@@ -114,3 +114,47 @@ def test_applying_edits_teaches_the_model_through_apply_edits_and_says_so(xml, t
     third = ae.apply(res["xml"], edits, tmp_path / "out3")                                                          # edits on his own edit: no automatic baseline
     assert third["learned"] is None or third["learned"]["records"] == []
     assert len(lr.load_records()) == 1
+
+
+def _rec(kind, word=None, source="transcript", **extra):
+    r = {"kind": kind, "source": source, "word": word, "auto": None, "final": None, "word_timing": None, "context": {}}
+    r.update(extra)
+    return r
+
+
+def test_a_word_removed_twice_and_never_kept_is_skipped_and_one_removal_or_any_keep_prevents_it():
+    assert lr.fit([_rec("deleted", "hell")])["words"]["skip"] == {}                                        # once is not enough
+    assert lr.fit([_rec("deleted", "hell"), _rec("deleted", "Hell,")])["words"]["skip"] == {"hell": 2}
+    assert lr.fit([_rec("deleted", "hell"), _rec("deleted", "hell"), _rec("kept", "hell", final={"start": 1, "end": 2}, word_timing={"start": 1, "end": 2})])["words"]["skip"] == {}   # he kept it once: no
+    assert lr.fit([_rec("deleted", "x", source="suspect"), _rec("deleted", "x", source="suspect")])["words"]["skip"] == {}                    # only words Whisper wrote, never a guessed stretch
+
+
+def test_an_ordinary_word_he_adds_a_bleep_over_twice_is_learned_but_a_stretched_hiding_word_is_not():
+    before = dict(BEFORE, spans=[], hits=[], words=[["crap", 5.0, 5.3, 0.95], ["what", 8.0, 8.7, 0.9]], loud=[])
+    edits = {"sequence": "Cut B", "spans": [{"start": 5.05, "end": 5.3}, {"start": 8.1, "end": 8.5}]}
+    recs = lr.records_from_edits(edits, before, "Cut B")
+    assert [r.get("added_word") for r in recs] == ["crap", None]                                          # "crap" (0.3 s) is an ordinary word; "what" (0.7 s) is a stretched one
+    assert lr.fit(recs)["words"]["add"] == {}                                                              # added once: not yet
+    assert lr.fit([recs[0], dict(recs[0], id="z"), recs[1]])["words"]["add"] == {"crap": 2}                # twice: learned; the stretched "what" never is
+
+
+def test_the_bleep_tool_skips_a_learned_skip_word_and_bleeps_a_learned_added_word_and_says_so(xml, tmp_path, monkeypatch):
+    d = tmp_path / "L"
+    d.mkdir()
+    monkeypatch.setenv("POSTHOUSE_BLEEP_LEARNING", str(d))
+    (d / "model.json").write_text(json.dumps({"pads": {}, "words": {"skip": {"shit": 2}, "add": {"crap": 2}}}))
+    assert bl.is_profane("crap", bl.load_patterns()) and not bl.is_profane("crap", bl.load_patterns(path=bl.LIST_FILE))      # learned, without touching the list file itself
+    r = bl.bleep(xml, tmp_path / "x", words_of=lambda w: [("Hello", 1.0, 1.4), ("Shit,", 12.4, 12.9), ("crap", 20.0, 20.4)], check_transcript=False)
+    assert [h["word"] for h in r["hits"]] == ["crap"] and [h["word"] for h in r["skipped"]] == ["Shit,"]
+    assert "skipped" in json.loads((tmp_path / "x" / "bleep.json").read_text())
+    monkeypatch.setenv("POSTHOUSE_BLEEP_LEARNING", str(tmp_path / "none"))
+    r2 = bl.bleep(xml, tmp_path / "y", words_of=lambda w: [("Shit,", 12.4, 12.9), ("crap", 20.0, 20.4)], check_transcript=False)
+    assert [h["word"] for h in r2["hits"]] == ["Shit,"] and r2["skipped"] == []                              # with nothing learned: the list as written
+
+
+def test_forgetting_a_learned_word_removes_what_taught_it(tmp_path, monkeypatch):
+    lr.save([dict(_rec("deleted", "hell"), id="a1", cut="c", at="2026-01-01"), dict(_rec("deleted", "hell"), id="a2", cut="c", at="2026-01-01"), dict(_rec("deleted", "other"), id="a3", cut="c", at="2026-01-01")])
+    assert lr.fit()["words"]["skip"] == {"hell": 2}
+    monkeypatch.setattr(sys, "argv", ["learn.py", "forget", "Hell"])
+    lr.main()
+    assert [r["word"] for r in lr.load_records()] == ["other"] and lr.fit()["words"]["skip"] == {}

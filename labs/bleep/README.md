@@ -124,3 +124,11 @@ What it never does: turn a detector off, bleep more or less because of a count, 
 0.045 s (was 0.08; you start 0.06 s after Whisper's start and end 0.12 s after its end), everything else is still at the defaults, and the reach is unchanged until three bleeps have been
 added. One data point is thin: this moves the next automatic bleep 0.035 s, which is the honest size of what one edit can teach. The suspect flags are 0 for 3 (precision 0%).
 Not learned, on purpose: anything about detecting words it cannot hear yet (there is one example; three missed words are needed before the reach changes).
+
+
+### Learning which words, not only where (added 2026-09-30, after Ryan confirmed the intent: the tool finds bleeps from the transcript and applies them; placements, additions and removals he makes are applied and taught)
+- **A word you remove the bleep from twice, and never keep, is skipped** in future cuts (only words Whisper wrote; never a guessed stretch). It is reported each time ("skipped 'hell' at 12.3 s: you removed
+  that bleep before") so nothing vanishes silently, and `learn.py forget WORD` undoes it (it deletes every record that taught it).
+- **An ordinary-length word (under 0.45 s) you add a bleep over twice is added** to what is bleeped in future cuts. A long, stretched word under an added bleep is a hiding word, which teaches
+  the reach (above), not the word list. `profanity.txt` itself is never written to: learned words live in `learning/model.json`.
+- One removal or one addition changes nothing; a word you have kept even once is never skipped.

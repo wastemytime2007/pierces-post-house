@@ -3237,3 +3237,10 @@ the Lead before any re-dispatch; empty so far)*
   before 0.045 s (one edit moves it a quarter of the way), three "no" suspects, suspect precision 0%. Tests: classification, the same edits twice count once, bounds, the reach only lowered,
   the loop through apply_edits, and a conftest that keeps every other test away from any learned model. 41 bleep tests. One of my own slips caught by the tests: doubled backslashes in two
   regexes in learn.py. Not in `app/`.
+
+
+  **The learning also covers which words (2026-09-30, Ryan confirmed the intent: "the app finds bleeps itself based on transcript and applies the bleeps. If they need refining on placement, or
+  any need to be added or removed, then those changes get downloaded and applied so the app learns to apply the knowledge learned from those adjustments on future videos").** Placement already
+  taught the padding. Now removals and additions teach words: a word whose bleep he removes twice (never keeping it) is skipped and reported each time; an ordinary-length word he adds a bleep over
+  twice is bleeped in future; `learn.py forget WORD` undoes either; `profanity.txt` is never written to. 45 bleep tests (the rule needs 2, a keep blocks a skip, a stretched hiding word is never
+  learned as a word, the tool honours and reports both, forgetting removes what taught it). Nothing learned about words yet (no word has been removed or added twice). Not in `app/`.

@@ -40,5 +40,9 @@
     "misses_needed": 3,
     "suspect_min_sec": null,
     "misses_outside_loud_stretches": 0
+  },
+  "words": {
+    "skip": {},
+    "add": {}
   }
 }

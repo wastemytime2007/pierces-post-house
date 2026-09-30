@@ -70,6 +70,7 @@ class BleepError(Exception):
 def load_patterns(path: Path | None = None, extra: list[str] | None = None) -> list[re.Pattern]:
     words = [ln.strip().lower() for ln in (path or LIST_FILE).read_text().splitlines() if ln.strip() and not ln.strip().startswith("#")]
     words += [w.strip().lower() for w in (extra or []) if w.strip()]
+    words += [w for w in (_model().get("words", {}).get("add", {}) if path is None else {}) if w.isalpha()]        # words Ryan added bleeps over at least twice (never written to profanity.txt)
     pats = []
     for w in words:
         stem = re.escape(w.rstrip("*"))
@@ -526,6 +527,9 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     else:                                                         # the spans are given (Ryan's edits): nothing is scanned or transcribed
         detail, words, other, reveal_with = None, [], None, None
     hits = find_hits(words, pats)
+    skip = _model().get("words", {}).get("skip", {})                  # words Ryan removed the bleep from at least twice and never kept: reported, not bleeped
+    skipped = [h for h in hits if norm(h["word"]) in skip]
+    hits = [h for h in hits if norm(h["word"]) not in skip]
     suspects = find_suspects(words, speech, details=detail, other=other, min_signals=min_signals)
     revealed = []
     loud = [(x_["start"], x_["end"]) for x_ in find_suspects(words, speech, min_signals=2, require_doubt=False) if "burst" in x_.get("signals", [])] if detect else []
@@ -569,7 +573,7 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
         else:
             merged.append([a_, b_])
     spans = [(a_, b_) for a_, b_ in merged if b_ - a_ > 0.05]
-    res = {"origin": "automatic" if detect else "edits", "hits": hits, "overridden": overridden, "revealed": revealed, "suspects": suspects, "spans": spans,
+    res = {"origin": "automatic" if detect else "edits", "skipped": skipped, "hits": hits, "overridden": overridden, "revealed": revealed, "suspects": suspects, "spans": spans,
            "words_heard": len(words), "loud": [[round(a_, 3), round(b_, 3)] for a_, b_ in loud],          # what a later edit is compared with, and what learn.py studies
            "words": [[w, round(s_, 3), round(e_, 3), (round(p_, 2) if p_ is not None else None)] for (w, s_, e_), p_ in zip(words, [t[3] for t in detail] if detail else [None] * len(words))],
            "xml": None, "clips": [], "rows": []}
@@ -646,6 +650,8 @@ def main() -> int:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
     print(f"{r['words_heard']} words heard; {len(r['hits'])} listed: " + (", ".join(f"{h['word']} at {h['start']:.2f}s" for h in r["hits"]) or "none"))
+    for h in r.get("skipped", []):
+        print(f"  skipped '{h['word']}' at {h['start']:.2f}s: you removed that bleep before (undo with: learn.py forget {norm(h['word'])})")
     for sus in r["suspects"]:
         print(f"  suspect ({sus['tier']}): '{sus['word']}' at {sus['word_start']:.2f}-{sus['word_end']:.2f}s, signals: {', '.join(sus['signals'])}. "
               + ("BLEEPED (a note pointed here)." if sus["bleeped"] else "Not bleeped; check by ear."))
