@@ -143,7 +143,8 @@ because this session violated them once each.
   `Runnells_Tiling_v3_v3_with_overlay_captions_and_audio_v2.xml`) and `... - sfx
   note (stand-in)/`. Moves to Done only when Ryan listens and says so.
 
-  **Built, NOT yet opened by Ryan: the review page shows the layers.** Ryan asked
+  **Review page shows the layers: signed off by Ryan through the reconformed page
+  ("Looks good", § Done). Details:** Ryan asked
   why the cuts, callout, captions, music and effect were not on the frame.io-like
   page where he makes his revisions. `labs/review_loop/layers.py`: the layers placed
   by our tools are read back from the XML and composited into `preview_full.mp4`; the
@@ -163,8 +164,9 @@ because this session violated them once each.
   tracks alike, so a removal through the callout/effect/music cuts through them
   (each listed as a `layers` warning on the page). Not opened by Ryan; not in `app/`.
 
-  **Built, NOT yet opened by Ryan: layers re-placed after a revision
-  (`labs/reconform/`).** Closes that gap. After `revise.py`, it strips the layers
+  **Layers re-placed after a revision (`labs/reconform/`): signed off by Ryan
+  ("Looks good", § Done), with the rule that a callout whose frame is cut out is
+  dropped, not moved (ROADMAP Decision Log). Details:** Closes that gap. After `revise.py`, it strips the layers
   off the revised XML (the cut is checked identical) and puts them back: the callout
   re-placed by the source frame it was drawn on; captions rebuilt from the revised
   cut's own audio; the music and effect re-mixed from the same cached generations
@@ -1020,6 +1022,19 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Layers on the review page, and layers re-placed after a
+  revision (`labs/review_loop/layers.py`, `labs/reconform/`). Ryan, after opening
+  the reconformed page: "Looks good."** He answered the one open call in the same
+  message: "Drop with the cut frames if that happens" (a callout whose drawn frame is
+  cut out is dropped and reported; ROADMAP Decision Log). Scope: the reconformed V4
+  page from a stand-in pause note on the Tiling cut (his page showing callout,
+  captions, music and effect over the cut, with revised versions rebuilt); not
+  recorded as a sign-off on every edge case, on a second project, or on `app/`
+  (nothing is in `app/`). Evidence: commits `3c8f710` and `ee486b0`; layers verified
+  from the files (visible, in the mix, clean outside), reconform result checks
+  (layers whole, cut unchanged, effect 1 ms from callout), toggle exercised in
+  headless Chrome; 89 tests across `labs/`.
 
 - 2026-09-29 — **Generated sound effect and music bed (`labs/audio/`), first
   proof unit, 0-22s of the Tiling V3 cut. Ryan, after opening the preview and the

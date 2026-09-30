@@ -2509,3 +2509,12 @@ with Ryan touching only the intake and the checkpoints.
   so nothing generated ships in published work until that is checked. Verified
   2026-09-29: the key has sound-generation and music permissions (a 1s SFX and a
   3s music clip both returned real audio).
+
+- **2026-09-29 — When a revision cuts out the frame a callout was drawn on, the
+  callout is dropped with it, not moved.** Ryan: "Drop with the cut frames if that
+  happens." A callout is anchored to the source frame it was drawn on; if that frame
+  is no longer in the cut, `labs/reconform` reports the callout dropped and does not
+  slide it to a neighbouring frame. The effect that went with it is not rebuilt (it
+  has nothing to be timed to), and the captions and music are still rebuilt. The
+  report says so plainly. Applies to labs/overlay callouts placed by their anchor
+  frame; it does not decide how any other kind of layer behaves.
