@@ -20,6 +20,9 @@ python3 labs/audio/place_audio.py "<export.xml>" "<folder>" --out "<new.xml>"
 python3 -m pytest labs/audio/tests -q
 ```
 
+Name the placed XML with the cut's version last (`..._layers_v3.xml`, not `..._audio_v2.xml`): the
+review loop reads the version from a trailing `_vN`.
+
 ## Replacing an effect from a note (`replace_sfx.py`)
 A note like "make this sound effect sound like something being highlighted on a piece of paper" goes
 through `revise.py`: the interpreter chooses the `replace_sfx` operation and must copy the wanted sound

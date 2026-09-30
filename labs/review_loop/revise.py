@@ -25,6 +25,7 @@ sys.path.insert(0, str(HERE.parents[1] / "safety_net"))
 import verify_export  # noqa: E402
 from apply_ops import apply_ops  # noqa: E402
 from build_review import build  # noqa: E402
+from layers import find_layers, layer_warnings  # noqa: E402
 import words as words_mod  # noqa: E402
 from ops import interpret, level_db, validate  # noqa: E402
 from timeline import Cut, TimelineError, _seq_for_cut, load_cut  # noqa: E402
@@ -162,8 +163,11 @@ def main() -> int:
         return 1
 
     cut2 = load_cut(v2_xml)
+    warnings = layer_warnings(find_layers(args.xml), find_layers(v2_xml))
+    for w in warnings:
+        print(f"\nWARNING (layers): {w}")
     changes_payload = {"v1_duration": round(cut1.zone_end, 2), "v2_duration": round(cut2.zone_end, 2), "items": items,
-                       "from_label": lab_in, "to_label": lab_out}
+                       "from_label": lab_in, "to_label": lab_out, "layer_warnings": warnings}
     page = build(v2_xml, args.out, args.height, changes=changes_payload)
     (args.out / "changes.json").write_text(json.dumps(changes_payload, indent=2))
     pv = subprocess.run([sys.executable, str(HERE / "verify_preview.py"), str(args.out)], capture_output=True, text=True)

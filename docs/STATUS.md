@@ -143,6 +143,27 @@ because this session violated them once each.
   `Runnells_Tiling_v3_v3_with_overlay_captions_and_audio_v2.xml`) and `... - sfx
   note (stand-in)/`. Moves to Done only when Ryan listens and says so.
 
+  **Built, NOT yet opened by Ryan: the review page shows the layers.** Ryan asked
+  why the cuts, callout, captions, music and effect were not on the frame.io-like
+  page where he makes his revisions. `labs/review_loop/layers.py`: the layers placed
+  by our tools are read back from the XML and composited into `preview_full.mp4`; the
+  page has a Layers on/off toggle (default on) and lists what is on top; the clean
+  preview stays the verified one. Real page:
+  `Runnells Tiling v3 - review page (all layers)/review.html`. Verified from the
+  files: same length, identical outside the layers, callout and captions visible
+  (56,000 pixels differ), music and effect in the mix (mismatch 29 and 32 dB below the
+  layer), sound unchanged after the layers end; toggle clicked in headless Chrome
+  (switches preview_full.mp4 <-> preview.mp4). 83 tests pass across `labs/`. Bugs
+  found on the way and fixed: `timeline.py` read the placed music and effect as the
+  cut's speech (16 audio clips instead of 12); a millisecond rounding of the effect
+  time broke the audio check; numpy `False` slipped past an `is False` gate (results
+  now plain bools); `revise.py` read a `_audio_v2` file name as version 2. Revising
+  a layered cut with a real note (stand-in, not Ryan's: tighten the 1.4s pause at
+  13.7-15.1s) applied and verified, and shows the known gap: `apply_ops` ripples all
+  tracks alike, so a removal through the callout/effect/music cuts through them
+  (each listed as a `layers` warning on the page). Re-conforming layers after a
+  revision is not built. Not opened by Ryan; not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.

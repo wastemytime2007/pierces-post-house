@@ -65,7 +65,7 @@
   <h1 id="title"></h1>
   <div class="meta" id="meta"></div>
   <div class="stage" id="stage">
-    <video id="v" src="preview.mp4" preload="auto" playsinline></video>
+    <video id="v" preload="auto" playsinline></video>
     <canvas id="draw"></canvas>
   </div>
   <div id="changes"></div>
@@ -75,6 +75,7 @@
     <button id="play" class="primary">Play</button>
     <button id="back">-5s</button>
     <button id="fwd">+5s</button>
+    <button id="layersBtn" style="display:none" title="Show or hide the callouts, captions, music and effects placed on this cut">Layers: on</button>
     <select id="rate"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select>
     <span class="time" id="time"></span>
     <span class="spacer"></span>
@@ -112,6 +113,22 @@
 const DATA = /*__DATA__*/null;
 const v = document.getElementById('v'), bar = document.getElementById('bar'), head = document.getElementById('head');
 const cv = document.getElementById('draw'), stage = document.getElementById('stage');
+const FULL = DATA.preview_full || null;
+let showLayers = !!FULL;
+const SRC = () => (showLayers && FULL) ? FULL : 'preview.mp4';
+v.src = SRC();
+if (FULL) {
+  const lb = document.getElementById('layersBtn');
+  lb.style.display = '';
+  lb.onclick = () => {
+    const t = v.currentTime, was = !v.paused, r = v.playbackRate;
+    showLayers = !showLayers;
+    lb.textContent = 'Layers: ' + (showLayers ? 'on' : 'off');
+    v.src = SRC();
+    v.addEventListener('loadedmetadata', () => { v.currentTime = t; v.playbackRate = r; if (was) v.play(); }, { once: true });
+    document.querySelectorAll('.thumb video').forEach(x => { x.src = SRC(); });
+  };
+}
 const KEY = 'review_loop:' + DATA.sequence + ':' + DATA.duration.toFixed(2);
 let notes = [];
 try { notes = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { notes = []; }
@@ -126,7 +143,8 @@ function where(t) {
 }
 
 document.getElementById('title').textContent = DATA.sequence;
-document.getElementById('meta').textContent = DATA.clips.length + ' clips · ' + fmt(DATA.duration) + ' · ' + DATA.audio_source;
+document.getElementById('meta').textContent = DATA.clips.length + ' clips · ' + fmt(DATA.duration) + ' · ' + DATA.audio_source
+  + (DATA.layers ? ' · on top: ' + DATA.layers.map(l => l.name.replace(/\.(mov|wav)$/, '') + ' ' + fmt(l.start) + '-' + fmt(l.end)).join(', ') : '');
 
 DATA.clips.forEach(c => {
   const d = document.createElement('div');
@@ -157,6 +175,17 @@ if (DATA.changes) {
     q.className = 'q';
     q.textContent = 'note ' + i.note + ' at ' + fmt(i.note_time) + ' on ' + FROM + ': "' + (i.note_text || '(drawing only)') + '"';
     t.append(document.createTextNode(i.summary), q);
+    row.append(k, t);
+    box.appendChild(row);
+  });
+  (C.layer_warnings || []).forEach(w => {
+    const row = document.createElement('div');
+    row.className = 'chg no';
+    const k = document.createElement('div');
+    k.className = 'k';
+    k.textContent = 'layers';
+    const t = document.createElement('div');
+    t.textContent = w;
     row.append(k, t);
     box.appendChild(row);
   });
@@ -302,7 +331,7 @@ function drawNotes() {
     el.className = 'note';
     const hasDraw = n.shapes && n.shapes.length;
     el.innerHTML = '<div class="t">' + fmt(n.timeline_sec) + '</div><div><div>' + esc(n.text || '(drawing only)') + '</div><div class="where">' + esc(n.where) + '</div>'
-      + (hasDraw ? '<div class="drawn">drawn: ' + n.shapes.map(s => esc(describe(s))).join('; ') + '</div><div class="thumb"><video src="preview.mp4" muted preload="auto" playsinline></video><canvas></canvas></div>' : '')
+      + (hasDraw ? '<div class="drawn">drawn: ' + n.shapes.map(s => esc(describe(s))).join('; ') + '</div><div class="thumb"><video src="' + SRC() + '" muted preload="auto" playsinline></video><canvas></canvas></div>' : '')
       + '</div><button class="x" title="Delete">✕</button>';
     if (hasDraw) {
       const t = el.querySelector('.thumb canvas'), tv = el.querySelector('.thumb video'), ar = (v.videoHeight && v.videoWidth) ? v.videoHeight / v.videoWidth : 9 / 16;

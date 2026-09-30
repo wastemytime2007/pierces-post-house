@@ -15,6 +15,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+from layers import composite, find_layers, verify as verify_layers  # noqa: E402
 from render_preview import render_preview  # noqa: E402
 from timeline import TimelineError, load_cut  # noqa: E402
 
@@ -41,6 +42,16 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None) 
             for a in cut.audio
         ],
     }
+    layers = find_layers(xml)
+    if layers:
+        composite(out / "preview.mp4", layers, out / "preview_full.mp4")
+        rows = verify_layers(out / "preview.mp4", out / "preview_full.mp4", layers, cut.zone_end)
+        for name, ok, detail in rows:
+            print(f"  [{'SKIP' if ok is None else 'PASS' if ok else 'FAIL'}] {name}  {detail}")
+        if any(ok is False for _n, ok, _d in rows):
+            raise TimelineError("the preview with layers does not match the layers in the XML")
+        data["preview_full"] = "preview_full.mp4"
+        data["layers"] = [{"kind": l.kind, "name": l.name, "start": round(l.start, 2), "end": round(l.end, 2)} for l in layers]
     if changes:
         data["changes"] = changes
     (out / "timeline.json").write_text(json.dumps(data, indent=2))

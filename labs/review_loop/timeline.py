@@ -32,6 +32,8 @@ from posthouse.benchmark import (  # noqa: E402
 )
 
 MIN_ZONE_GAP_SEC = 20.0
+LAYER_VIDEO_PREFIX = "overlay-file-"       # ids labs/overlay and labs/captions give the layers they place (V2, V3...)
+LAYER_AUDIO_PREFIX = "audio-file-"         # ids labs/audio gives the music and effects it places
 BOUNDS_EPS_SEC = 0.5
 
 
@@ -179,6 +181,8 @@ def load_cut(xml_path: Path) -> Cut:
         for ci in track.findall("clipitem"):
             if (ci.findtext("enabled") or "TRUE").strip().upper() != "TRUE":
                 continue
+            if (ci.find("file").get("id") or "").startswith(LAYER_AUDIO_PREFIX):
+                continue                                         # music or an effect placed by labs/audio: a layer, not the cut's speech
             start, end = int(ci.findtext("start")), int(ci.findtext("end"))
             if start / seq_fps >= zone_end:
                 continue

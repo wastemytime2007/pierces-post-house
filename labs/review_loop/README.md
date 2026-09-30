@@ -99,6 +99,30 @@ above 0.2x its loud level), which is looser than a fixed -55 dB. On the real til
 measured a 1.38s pause where ffmpeg's stricter detector saw 0.53s, so listen at the edit
 to check no quiet word was clipped, and tighten the threshold if one was.
 
+## Layers on the page (`layers.py`)
+A cut that has had a callout, captions, music or an effect placed on it (by `labs/overlay`,
+`labs/captions`, `labs/audio`) shows them on the page: the layers are read back from the XML (the
+tracks whose file ids start `overlay-file-` and `audio-file-`) and composited into
+`preview_full.mp4`, so the page plays what Premiere will. **Layers: on/off** switches between it
+and `preview.mp4`, the clean cut, which stays the verified one. Notes keep the same timecodes
+either way. `build_review.py` refuses to write the page unless the full preview passes: same
+length, identical to the clean one outside the layers, each picture layer visibly present, each
+audio layer in the mix (mix minus clean-plus-layers far below the layer), and the clean sound
+unchanged after the layers end. `timeline.py` skips the placed music and effects when reading the
+cut's speech, so they are never mistaken for it.
+
+**Name layered XMLs with the cut's version last** (`..._layers_v3.xml`): `revise.py` reads the
+version from a trailing `_vN`, so a name ending `_audio_v2` makes a V3 cut read as V2.
+
+**What a revision does to layers, and its known gap.** `revise.py` ripples every track alike.
+That keeps captions with the speech, and layers after the edit shift with the picture. But a
+removal that runs through a callout, an effect or the music bed cuts through it, and each layer
+that lost time is listed as a `layers` warning in the Changes panel and the console. Proved on the
+real cut: tightening the 1.4s pause at 13.7-15.1s (inside the callout) applied and verified, and
+warned that the callout, captions, music and effect were each cut through. Re-conforming layers
+after a revision (re-placing the callout by its frame, rebuilding the music and captions on the
+new cut) is not built.
+
 ## What it deliberately does not do
 - Only the **cut zone** (before the 20s gap that separates it from the selects
   pool). The pool is not previewed.
