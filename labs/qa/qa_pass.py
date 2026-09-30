@@ -125,14 +125,49 @@ def find_piece(new: timeline.Cut, path: str, *, src_in: float | None = None, src
     return None
 
 
+def anchor_of(l: ly.Layer):
+    """The frame a callout layer was drawn on, read from the placement.json beside its file (None if there is none)."""
+    try:
+        a = json.loads((Path(l.path).parent / "placement.json").read_text())["anchor"]
+        return a["source"], round(a["source_sec"], 2)
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def check_extend_graphic(o: dict, note: dict, layers: tuple | None) -> Row:
+    n = o["note"]
+    if not layers or layers[0] is None:
+        return Row(n, "extend_graphic", UNMEASURED, "no before-version XML with the callout was given (pass the layered XML the note was left on as --before-xml)")
+    before, after = layers
+    t = note["timeline_sec"]
+    live = [l for l in before if l.kind == "video" and ly.lane_name(l) == "Callout" and l.start <= t <= l.end]
+    if not live:
+        return Row(n, "extend_graphic", NOT_DONE, f"no callout was on screen at {t:.2f}s on the version the note was left on")
+    b = min(live, key=lambda l: abs(t - (l.start + l.end) / 2))
+    key = anchor_of(b)
+    cand = [l for l in after if l.kind == "video" and ly.lane_name(l) == "Callout" and (key is None or anchor_of(l) == key)]
+    if not cand:
+        return Row(n, "extend_graphic", FAILED, "that callout is not on the new version")
+    a = cand[0]
+    was, now = b.end - b.start, a.end - a.start
+    gained = now - was
+    want = o.get("seconds")
+    need = (want - 0.25) if want is not None else 0.3
+    asked = f"asked for +{want:.2f}s" if want is not None else "no amount stated, so the default step applies"
+    ok = gained >= need
+    return Row(n, "extend_graphic", VERIFIED if ok else FAILED, f"the callout is on screen {now:.2f}s, was {was:.2f}s ({gained:+.2f}s; {asked})")
+
+
 def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: timeline.Cut, pages: dict, t_new: float | None,
-             audio: dict) -> Row:
+             audio: dict, layers: tuple | None = None) -> Row:
     n, kind = o["note"], o["op"]
     applied = bool(item and item.get("applied"))
     if kind == "unsupported":
         return Row(n, kind, NOT_DONE, f"not done: {o.get('reason', 'not supported')}")
     if kind == "replace_sfx":
         return check_replace_sfx(o, note, audio)
+    if kind == "extend_graphic":
+        return check_extend_graphic(o, note, layers)
     if not applied:
         return Row(n, kind, NOT_DONE, f"not applied: {(item or {}).get('summary', 'no record from the revise step')}")
 
@@ -364,8 +399,9 @@ figcaption{{color:var(--mute);font-size:12px;margin-top:2px}} .gone{{color:var(-
 
 def qa(notes: list[dict], ops: list[dict], items: list[dict], old: timeline.Cut, new: timeline.Cut, after_xml: Path, out: Path, *,
        before_page: Path | None = None, after_page: Path | None = None, overlays: list[Path] | None = None,
-       audio: dict | None = None, title: str = "QA pass") -> tuple[list[NoteResult], list, list[str], Path]:
+       audio: dict | None = None, title: str = "QA pass", before_xml: Path | None = None) -> tuple[list[NoteResult], list, list[str], Path]:
     out.mkdir(parents=True, exist_ok=True)
+    layers = (ly.find_layers(before_xml) if before_xml else None, ly.find_layers(after_xml))
     fdir = out / "frames"
     fdir.mkdir(exist_ok=True)
     audio = audio or {}
@@ -385,7 +421,7 @@ def qa(notes: list[dict], ops: list[dict], items: list[dict], old: timeline.Cut,
         else:
             t_for_op = r.t_new
         for o in [x for x in ops if x["note"] == k]:
-            r.rows.append(check_op(o, item, note, old, new, pages, t_for_op, audio))
+            r.rows.append(check_op(o, item, note, old, new, pages, t_for_op, audio, layers))
         if any(x.status == NOT_DONE for x in r.rows) or not r.rows:
             c = check_callout(note, overlays, new, after_xml, pages) if overlays else None
             if c:
@@ -439,7 +475,7 @@ def main() -> int:
         old, new = timeline.load_cut(a.before_xml), timeline.load_cut(a.after_xml)
         results, glob, unreq, report = qa(notes, ops, items, old, new, a.after_xml, a.out, before_page=a.before_page, after_page=a.after_page,
                                           overlays=a.overlay, audio={"before": a.audio_before, "after": a.audio_after},
-                                          title=f"QA pass: {a.after_xml.stem}")
+                                          title=f"QA pass: {a.after_xml.stem}", before_xml=a.before_xml)
     except (timeline.TimelineError, OSError, KeyError, ValueError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1

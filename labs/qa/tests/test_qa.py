@@ -173,3 +173,44 @@ def test_the_worst_row_decides_a_notes_status(tmp_path, pair):
     r.rows.append(qa.Row(1, "d", qa.FAILED, ""))
     assert r.status == qa.FAILED
     assert qa.NoteResult(2, 1.0, "y").status == qa.NOT_DONE                                                 # no rows at all: nothing was done
+
+
+def _callout(root: Path, name: str, secs: float) -> Path:
+    import subprocess
+    f = root / name
+    f.mkdir()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=red@0.8:s=320x60:r=60000/1001:d={secs},format=yuva444p10le,pad=320:180:0:0:color=black@0.0",
+                    "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le", str(f / "overlay.mov")], check=True)
+    (f / "placement.json").write_text(json.dumps({"overlay_path": str(f / "overlay.mov"), "duration_sec": secs,
+                                                  "anchor": {"source": "a.mp4", "source_sec": 22.0, "lead_sec": 0.5}}))
+    return f
+
+
+def test_a_longer_callout_is_verified_by_its_time_on_screen_before_and_after(tmp_path, pair):
+    base = rl.make_xml(tmp_path / "old.xml", *pair)
+    short, long_ = _callout(tmp_path, "short", 2.0), _callout(tmp_path, "long", 3.5)
+    before, after = tmp_path / "before_v3.xml", tmp_path / "after_v3.xml"
+    po.place(base, before, short)
+    po.place(base, after, long_)
+    old, new = timeline.load_cut(before), timeline.load_cut(after)
+    t = timeline.load_cut(before).video[1].tl_start + 2.5                                     # while the callout is up
+    note = {"timeline_sec": t, "text": "keep the bubble up longer"}
+    for seconds, want in ((None, qa.VERIFIED), (1.5, qa.VERIFIED), (3.0, qa.FAILED)):
+        ops = [{"note": 1, "op": "extend_graphic", "seconds": seconds}]
+        results, *_ = qa.qa([note], ops, [{"note": 1, "applied": False, "summary": "graphics step"}], old, new, after, tmp_path / f"qa{seconds}", before_xml=before)
+        assert results[0].status == want, (seconds, results[0].rows[0].detail)
+    assert "on screen 3.50s, was 2.00s (+1.50s" in results[0].rows[0].detail and "asked for +3.00s" in results[0].rows[0].detail
+
+
+def test_an_unchanged_callout_fails_and_a_missing_before_version_is_unmeasured(tmp_path, pair):
+    base = rl.make_xml(tmp_path / "old.xml", *pair)
+    short = _callout(tmp_path, "short", 2.0)
+    same = tmp_path / "same_v3.xml"
+    po.place(base, same, short)
+    cut = timeline.load_cut(same)
+    note = {"timeline_sec": cut.video[1].tl_start + 2.5, "text": "keep the bubble up longer"}
+    ops = [{"note": 1, "op": "extend_graphic", "seconds": None}]
+    results, *_ = qa.qa([note], ops, [], cut, cut, same, tmp_path / "qa1", before_xml=same)
+    assert results[0].status == qa.FAILED and "+0.00s" in results[0].rows[0].detail                   # nothing changed: not verified
+    results, *_ = qa.qa([note], ops, [], cut, cut, same, tmp_path / "qa2")
+    assert results[0].status == qa.UNMEASURED and "--before-xml" in results[0].rows[0].detail

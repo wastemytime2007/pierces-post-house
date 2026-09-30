@@ -33,6 +33,24 @@ that agree (timeline = file = definition), the callout enters on the frame the n
 (recomputed from the output), the file is reachable, and `verify_export.py` passes.
 The clip has no `masterclipid` (there is no master clip to point to) and carries `alphatype=straight`.
 
+## Keeping a callout on screen longer (`hold_callout.py`)
+A note like "the text bubble only shows for a moment, have it sit on screen longer" goes through
+`revise.py`: the interpreter chooses `extend_graphic`, and may give `seconds` only if the note states an
+amount ("two more seconds"); otherwise it is null. `revise.py` changes nothing on the timeline for it.
+```
+python3 labs/overlay/hold_callout.py --ops "<revise's ops.json>" --notes "<review_notes.json>" \
+    --xml "<the XML the notes were left on>" --out "<new callout folder>" [--default-extra 1.5]
+```
+The note is matched to the callout on screen at the note's moment (by time, since the note is left while
+the bubble is up, not on the frame it was drawn on). That callout is rendered again with a longer hold:
+same words, same drawn region, same anchor frame, at the target sequence's size and rate, and every
+`verify_overlay.py` check runs on it. **The amount** is the note's when it states one; otherwise a default
+step of 1.5s, and the ledger says "the note gave no amount" so the choice is visible and easy to change
+with `--default-extra`. If the shot ends before the extra time fits, the callout gets what fits; a gain
+under 0.3s is reported as not applied. One change per callout per run. Then put it on the cut with
+`labs/reconform` (`--overlay <new folder>`), which also rebuilds the captions so they keep clear of the
+longer callout. `make_overlay.py --hold SEC` does the same for a fresh callout.
+
 ## Why a separate layer
 The footage is never re-rendered. `overlay.mov` is transparent (ProRes 4444 with alpha, which is
 what Premiere ingests), so it goes on a track above the untouched clip. `placement.json` says

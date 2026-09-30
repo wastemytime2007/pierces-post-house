@@ -222,6 +222,25 @@ because this session violated them once each.
   by `revise.py`; captions expand only when their `captions.json` is beside the layer
   file. Not in `app/`.
 
+  **Built, NOT yet opened by Ryan: a note that keeps a graphic on screen longer.**
+  Ryan said "go ahead and move on", so this was my pick (the first of the extra note
+  types, item 5). A new `extend_graphic` operation (`ops.py`: only when the note is about
+  an on-screen graphic and asks for it longer; an amount only if the note states one;
+  never invented) and `labs/overlay/hold_callout.py`, which re-renders the callout with a
+  longer hold (same words, region and anchor frame; `make_overlay` gained `--hold` and a
+  reusable `build_overlay`). Proved on the real cut with a STAND-IN note (the creator's
+  own phrase, mine, not Ryan's) left while the callout was up: the interpreter chose
+  `extend_graphic` with no amount; the hold went 3.3s -> 4.8s using the default 1.5s step,
+  which the ledger states as "the note gave no amount"; all 11 render checks pass in 4K;
+  reconform put it on the cut and rebuilt the captions around it (0 pixels overlap across
+  6 moments), reusing the cached music and effect (no spend); QA VERIFIED it (on screen
+  6.51s, was 5.00s). 119 tests pass across `labs/`. Fixed on the way: the vocabulary missed
+  "keep it up for two more seconds"; a chained reconform would have silently regenerated
+  music (its cache was not carried), now carried. Page: `Runnells Tiling v3 - reconformed
+  v4 C (longer callout)/review/review.html`; QA: `... QA pass (longer callout)/qa_report.html`.
+  The 1.5s default is a taste call: Ryan can change it. Not in `app/`. Still open from
+  item 5: "remove the text behind the logo" and "border and highlight a cropped screenshot".
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.

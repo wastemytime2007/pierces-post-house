@@ -38,6 +38,9 @@ A note's status is its worst row. A note with no operation at all is NOT DONE.
   mid-sentence), and the new version's audio reads the asked words from it.
 - `replace_sfx` (with `--audio-before/--audio-after`): the effect is a measurably different sound, generated
   from that note's words.
+- `extend_graphic` (needs the layered XML the note was left on as `--before-xml`): the callout on the new
+  version is on screen longer than before by the stated amount (or by at least 0.3s when the note gave
+  none); an unchanged callout FAILS.
 - A drawn or graphic note: done if a callout layer is anchored on its frame (with the layered page, the
   layer is also confirmed visible by pixels); if that frame was cut out, it is reported NOT DONE.
 - Whole cut: `verify_export`, layers whole, length change. And any source footage that entered or left the

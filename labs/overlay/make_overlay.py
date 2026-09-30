@@ -110,9 +110,10 @@ def layout(bbox: dict, title: str, subtitle: str) -> dict:
     }
 
 
-def plan(note: dict, timeline: dict, title: str, subtitle: str) -> dict:
+def plan(note: dict, timeline: dict, title: str, subtitle: str, hold: float | None = None) -> dict:
     clip, t_note = locate(note, timeline)
-    lead, hold = LEAD, HOLD
+    lead, hold = LEAD, HOLD if hold is None else hold
+    wanted = hold
     start = t_note - lead
     if start < clip["start"]:
         start, lead = clip["start"], t_note - clip["start"]
@@ -122,9 +123,10 @@ def plan(note: dict, timeline: dict, title: str, subtitle: str) -> dict:
         total = lead + hold + FADE_OUT + TAIL
         if hold < 1.5:
             raise OverlayError("not enough of this shot is left after the note for a callout that can be read")
-    cfg = layout(union_bbox(note.get("shapes", [])), title, subtitle)
+    cfg = layout(note.get("region") or union_bbox(note.get("shapes", [])), title, subtitle)
     cfg.update({"t_in": round(lead, 3), "t_out": round(lead + hold, 3), "fade_out": FADE_OUT, "total": round(total, 3)})
-    return {"clip": clip, "t_note": t_note, "start": round(start, 3), "total": round(total, 3), "cfg": cfg}
+    return {"clip": clip, "t_note": t_note, "start": round(start, 3), "total": round(total, 3), "cfg": cfg,
+            "hold": round(hold, 3), "hold_wanted": round(wanted, 3)}
 
 
 def cut_excerpt(p: dict, timeline: dict, out: Path) -> None:
@@ -171,6 +173,55 @@ def hf(proj: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["npx", "--yes", f"hyperframes@{HF_VERSION}", *args], cwd=proj, capture_output=True, text=True, env=env)
 
 
+def build_overlay(note: dict, timeline: dict, out: Path, title: str, subtitle: str, spec: dict, note_no: int, hold: float | None = None) -> tuple[int, dict | None]:
+    """Render a callout for a note (or, with note["region"], for a remembered region) into `out`. Returns (exit code, plan)."""
+    try:
+        p = plan(note, timeline, title, subtitle, hold)
+    except OverlayError as e:
+        print(f"REFUSING: {e}", file=sys.stderr)
+        return 1, None
+    out.mkdir(parents=True, exist_ok=True)
+    proj = out / "hyperframes_project"
+    excerpt, mov, preview = out / "excerpt.mp4", out / "overlay.mov", out / "overlay_preview.mp4"
+    print(f"note {note_no}: V-time {p['t_note']:.2f}s in clip {p['clip']['idx']}; excerpt {p['start']:.2f}s for {p['total']:.2f}s")
+    cut_excerpt(p, timeline, excerpt)
+    write_project(proj, p["cfg"])
+
+    chk = hf(proj, "check")
+    tail = "\n".join(chk.stdout.splitlines()[-12:])
+    if "Check passed" not in chk.stdout:
+        print("HyperFrames check FAILED:\n" + tail, file=sys.stderr)
+        return 1, p
+    print("HyperFrames check passed")
+    rargs = ["render", "--format", "mov", "--fps", spec["fps_arg"], "-o", str(mov)]
+    if spec["resolution"]:
+        rargs += ["--resolution", spec["resolution"]]
+    r = hf(proj, *rargs)
+    if r.returncode != 0 or not mov.exists():
+        print("render FAILED:\n" + (r.stdout + r.stderr)[-1500:], file=sys.stderr)
+        return 1, p
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(excerpt), "-i", str(mov), "-filter_complex",
+                    f"[1:v]scale={W}:{H},fps={FPS}[o];[0:v][o]overlay=format=auto:shortest=1[v]", "-map", "[v]", "-map", "0:a",
+                    "-c:v", "libx264", "-crf", "17", "-pix_fmt", "yuv420p", "-c:a", "copy", str(preview)], check=True)
+
+    region = note.get("region") or union_bbox(note.get("shapes", []))
+    placement = {"place_overlay_on_timeline_at_sec": p["start"], "duration_sec": p["total"], "overlay": mov.name,
+                 "overlay_path": str(mov.resolve()),
+                 "render": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"], "fps_arg": spec["fps_arg"]},
+                 "anchor": {"source": note["source"], "source_sec": note["source_sec"], "lead_sec": p["cfg"]["t_in"]},
+                 "note": note_no, "note_text": note.get("text", ""), "title": title, "subtitle": subtitle,
+                 "hyperframes": HF_VERSION, "gsap": GSAP_VERSION, "geometry": p["cfg"], "region": region,
+                 "hold_sec": p["hold"], "hold_wanted_sec": p["hold_wanted"]}
+    (out / "placement.json").write_text(json.dumps(placement, indent=2))
+    v = subprocess.run([sys.executable, str(HERE / "verify_overlay.py"), str(out)], capture_output=True, text=True)
+    print(v.stdout.rstrip())
+    if v.returncode != 0:
+        print(v.stderr, file=sys.stderr)
+        return 1, p
+    print(f"\nplace {mov.name} at {p['start']:.2f}s on the timeline; preview: {preview}")
+    return 0, p
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("notes", type=Path)
@@ -180,6 +231,7 @@ def main() -> int:
     ap.add_argument("--title", default="The spacer")
     ap.add_argument("--subtitle", default="A piece of cardboard pulled off the box")
     ap.add_argument("--xml", type=Path, help="the export the overlay will be placed in; renders at its size and frame rate")
+    ap.add_argument("--hold", type=float, help="seconds the callout stays on screen after it has drawn in (default %.1f)" % HOLD)
     ap.add_argument("--open", action="store_true")
     a = ap.parse_args()
 
@@ -187,53 +239,14 @@ def main() -> int:
         notes = json.loads(a.notes.read_text())["notes"]
         note = notes[a.note - 1]
         timeline = json.loads((a.review_dir / "timeline.json").read_text())
-        p = plan(note, timeline, a.title, a.subtitle)
         spec = sequence_spec(a.xml)
     except (OverlayError, IndexError, KeyError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
-
-    a.out.mkdir(parents=True, exist_ok=True)
-    proj = a.out / "hyperframes_project"
-    excerpt, mov, preview = a.out / "excerpt.mp4", a.out / "overlay.mov", a.out / "overlay_preview.mp4"
-    print(f"note {a.note}: V-time {p['t_note']:.2f}s in clip {p['clip']['idx']}; excerpt {p['start']:.2f}s for {p['total']:.2f}s")
-    cut_excerpt(p, timeline, excerpt)
-    write_project(proj, p["cfg"])
-
-    chk = hf(proj, "check")
-    tail = "\n".join(chk.stdout.splitlines()[-12:])
-    if "Check passed" not in chk.stdout:
-        print("HyperFrames check FAILED:\n" + tail, file=sys.stderr)
-        return 1
-    print("HyperFrames check passed")
-    rargs = ["render", "--format", "mov", "--fps", spec["fps_arg"], "-o", str(mov)]
-    if spec["resolution"]:
-        rargs += ["--resolution", spec["resolution"]]
-    r = hf(proj, *rargs)
-    if r.returncode != 0 or not mov.exists():
-        print("render FAILED:\n" + (r.stdout + r.stderr)[-1500:], file=sys.stderr)
-        return 1
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(excerpt), "-i", str(mov), "-filter_complex",
-                    f"[1:v]scale={W}:{H},fps={FPS}[o];[0:v][o]overlay=format=auto:shortest=1[v]", "-map", "[v]", "-map", "0:a",
-                    "-c:v", "libx264", "-crf", "17", "-pix_fmt", "yuv420p", "-c:a", "copy", str(preview)], check=True)
-
-    placement = {"place_overlay_on_timeline_at_sec": p["start"], "duration_sec": p["total"], "overlay": mov.name,
-                 "overlay_path": str(mov.resolve()),
-                 "render": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"], "fps_arg": spec["fps_arg"]},
-                 "anchor": {"source": note["source"], "source_sec": note["source_sec"], "lead_sec": p["cfg"]["t_in"]},
-                 "note": a.note, "note_text": note.get("text", ""), "title": a.title, "subtitle": a.subtitle,
-                 "hyperframes": HF_VERSION, "gsap": GSAP_VERSION, "geometry": p["cfg"],
-                 "region": union_bbox(note.get("shapes", []))}
-    (a.out / "placement.json").write_text(json.dumps(placement, indent=2))
-    v = subprocess.run([sys.executable, str(HERE / "verify_overlay.py"), str(a.out)], capture_output=True, text=True)
-    print(v.stdout.rstrip())
-    if v.returncode != 0:
-        print(v.stderr, file=sys.stderr)
-        return 1
-    print(f"\nplace {mov.name} at {p['start']:.2f}s on the timeline; preview: {preview}")
-    if a.open:
-        subprocess.run(["open", str(preview)])
-    return 0
+    code, _p = build_overlay(note, timeline, a.out, a.title, a.subtitle, spec, a.note, a.hold)
+    if code == 0 and a.open:
+        subprocess.run(["open", str(a.out / "overlay_preview.mp4")])
+    return code
 
 
 if __name__ == "__main__":

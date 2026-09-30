@@ -293,6 +293,36 @@ def test_replace_sfx_takes_its_sound_from_the_note_and_refuses_an_invented_one(x
     assert got[4]["op"] == "unsupported" and "no usable description" in got[4]["reason"]
 
 
+def test_extend_graphic_needs_a_graphic_a_wish_for_longer_and_never_invents_an_amount(xml):
+    cut = timeline.load_cut(xml)
+    notes = [{"timeline_sec": 14, "text": "the text bubble only shows for half a second, have it sit on the screen a little longer"},
+             {"timeline_sec": 14, "text": "keep the arrow up for two more seconds"},
+             {"timeline_sec": 14, "text": "the text bubble should stay up longer"},
+             {"timeline_sec": 14, "text": "the shot is too short, make it longer"},
+             {"timeline_sec": 14, "text": "make the text bubble bigger"},
+             {"timeline_sec": 14, "text": "keep the arrow up for five more seconds"}]
+    got = {o["note"]: o for o in opsmod.validate([
+        {"note": 1, "op": "extend_graphic", "seconds": None},
+        {"note": 2, "op": "extend_graphic", "seconds": 2},
+        {"note": 3, "op": "extend_graphic", "seconds": 3},                        # note states no number
+        {"note": 4, "op": "extend_graphic", "seconds": None},                     # not about a graphic
+        {"note": 5, "op": "extend_graphic", "seconds": None},                     # about a graphic, but not about time
+        {"note": 6, "op": "extend_graphic", "seconds": 99},                       # not believable
+    ], notes, cut)}
+    assert got[1]["op"] == "extend_graphic" and got[1]["seconds"] is None
+    assert got[2]["op"] == "extend_graphic" and got[2]["seconds"] == 2.0
+    assert got[3]["op"] == "unsupported" and "refusing to invent one" in got[3]["reason"]
+    assert got[4]["op"] == "unsupported" and "does not talk about an on-screen graphic" in got[4]["reason"]
+    assert got[5]["op"] == "unsupported" and "does not ask for it to stay longer" in got[5]["reason"]
+    assert got[6]["op"] == "unsupported" and "not a believable" in got[6]["reason"]
+
+
+def test_an_extend_graphic_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
+    cut = timeline.load_cut(xml)
+    changes, _s, _i = apply_ops.plan(cut, [{"note": 1, "op": "extend_graphic", "seconds": None}], [{"timeline_sec": 14, "text": "keep the arrow up longer"}])
+    assert len(changes) == 1 and changes[0].applied is False and "graphics step" in changes[0].summary
+
+
 def test_a_sound_effect_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
     cut = timeline.load_cut(xml)
     notes = [{"timeline_sec": 14, "text": "make the sound effect sound like a paper tap"}]

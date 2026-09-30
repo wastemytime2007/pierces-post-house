@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 import urllib.error
@@ -206,6 +207,8 @@ def main() -> int:
         sfx_mp3, sfx_info = generate("sfx", a.sfx_prompt, 1.2, cache)
         music_mp3, music_info = generate("music", a.music_prompt, a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0), cache)
         music_stem, sfx_clip = a.out / "music_stem.wav", a.out / "sfx_clip.wav"
+        if cache.resolve() != (a.out / "generated").resolve():
+            shutil.copytree(cache, a.out / "generated", dirs_exist_ok=True)               # the folder carries its own cache, so a later rebuild from it needs nothing else
         levels = build_music_stem(music_mp3, speech, music_stem, dur, a.music_db, a.duck_db)
         sfx_gain = build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db)
         preview = a.out / "audio_preview.mp4"

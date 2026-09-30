@@ -92,3 +92,18 @@ def test_plan_shortens_the_lead_at_the_start_of_a_shot_and_the_hold_at_its_end()
     too_late = dict(NOTE, source_sec=342.9)
     with pytest.raises(mo.OverlayError, match="not enough of this shot"):
         mo.plan(too_late, TIMELINE, "T", "")
+
+
+def test_a_longer_hold_is_used_when_the_shot_has_room_and_clamped_when_it_does_not():
+    base = mo.plan(NOTE, TIMELINE, "T", "")
+    assert base["hold"] == pytest.approx(mo.HOLD) and base["hold_wanted"] == pytest.approx(mo.HOLD)
+    room = mo.plan(NOTE, TIMELINE, "T", "", hold=5.0)                                # frame at 13.96s of a clip that ends at 21.39s
+    assert room["cfg"]["t_out"] - room["cfg"]["t_in"] == pytest.approx(5.0, abs=0.01) and room["total"] == pytest.approx(room["cfg"]["t_out"] + mo.FADE_OUT + mo.TAIL, abs=0.01)
+    tight = mo.plan(dict(NOTE, source_sec=340.4), TIMELINE, "T", "", hold=9.0)       # 2.6s left after the frame
+    assert tight["hold_wanted"] == 9.0 and tight["hold"] < 3.0 and tight["start"] + tight["total"] <= 21.39 + 1e-6
+
+
+def test_a_remembered_region_stands_in_for_a_drawing():
+    drawn = mo.plan(NOTE, TIMELINE, "The spacer", "sub")
+    remembered = mo.plan({"source": "A.MP4", "source_sec": 335.61, "region": BOX}, TIMELINE, "The spacer", "sub")
+    assert remembered["cfg"]["box"] == drawn["cfg"]["box"] and remembered["cfg"]["label"] == drawn["cfg"]["label"]
