@@ -96,8 +96,9 @@ because this session violated them once each.
   `Runnells_Tiling_v3_v3_with_overlay_and_captions.xml`). Moves to Done only when
   Ryan opens it and says so; the rest of the cut waits for that (rule 7).
 
-  **Built, NOT yet heard by Ryan: generated sound effect and music bed (items 2
-  and 3, first proof unit).** `labs/audio/`, the same 0-22s window. ElevenLabs
+  **Generated sound effect and music bed (items 2 and 3, first proof unit):
+  Ryan: "That worked" (§ Done). Details below; the sign-off is his one line, so
+  the prompts, levels and rights caveats stay open until he says otherwise.** `labs/audio/`, the same 0-22s window. ElevenLabs
   (key at `~/.config/post-house/elevenlabs.env`, outside the repo) generated one
   1.2s effect for the note-3 callout and one 23s music bed from two default prompts
   Claude chose (inputs, Ryan's to change). The music is a stem with the ducking
@@ -958,6 +959,17 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Generated sound effect and music bed (`labs/audio/`), first
+  proof unit, 0-22s of the Tiling V3 cut. Ryan, after opening the preview and the
+  placed XML: "That worked."** Scope: that one window; one ElevenLabs effect for
+  the note-3 callout and one music bed from Claude's default prompts, mixed under
+  his speech and placed on new audio tracks. Not recorded as a sign-off on the
+  prompts, the levels, or using generated audio in published work (ElevenLabs
+  commercial terms for effects are unconfirmed), and it does not overturn the
+  Artlist decision. Not in `app/`. Evidence: commit `b20d569`; 9 gating checks on
+  the rendered files, `place_audio.py` 11 checks and `verify_export` clean, 66
+  tests across `labs/`.
 
 - 2026-09-29 — **Captions (`labs/captions/`), first window 0-22s of the Tiling
   V3 cut. Ryan, after opening the preview and importing the XML into Premiere:
