@@ -3224,3 +3224,16 @@ the Lead before any re-dispatch; empty so far)*
   the word, so its own spot has no bleep: superseded by his edit, not a defect). Also changed: `reveal` returns the word's own span (Whisper's timing on the partly
   silenced audio, 29.38-29.58 s, was right to within about 0.1 s of his; joining it to the silenced stretch had dragged the start to 28.9 s); the automatic span is now
   29.30-29.70 s, covering 100% of his span and starting 0.14 s early. Labels updated (`ground_truth.json` range 29.44-29.70). 269 tests. Not in `app/`.
+
+
+  **Second real cuts, and the tool now learns from Ryan's bleep edits (2026-09-30, Ryan: "add the ability for the app to learn how to analyze where the adjustments were made to do a
+  better job in the future on added bleeps").** (1) The full bleep pipeline (two Whisper models, listed words, silence-and-listen-again at each loud stretch, checks) on four more
+  real cuts from his Desktop: carpet 33 s, septic 56 s, smoke detectors 61 s, windows 59 s (1080p): about 660 words, **nothing bleeped, no false alarms**, 16 stretches flagged, none
+  bleeped; runtime 24-113 s each. That shows the tool does not cry wolf; it does NOT show it catches hidden words on those cuts (unknown whether they contain any), and the editable lane
+  and the learning loop could not be exercised there because nothing was bleeped. Results: `Post House Reviews/Second real cuts - bleep test results.txt`. (2) `labs/bleep/learn.py`:
+  `apply_edits.py` records each edit against the automatic run's `bleep.json` (kept, adjusted, deleted, added with context), re-fits `learning/model.json`, and `bleep.py` reads it on every
+  run: padding per hit source (shrunk toward the defaults, bounded) and the reach for hidden words (lowered only after 3+ added bleeps, never below 0.25 s). `bleep.json` now also records the
+  words Whisper heard, the loud stretches and whether the result was automatic or hand-edited (an edit on a hand-edited result teaches nothing). Seeded from his real edit: revealed padding
+  before 0.045 s (one edit moves it a quarter of the way), three "no" suspects, suspect precision 0%. Tests: classification, the same edits twice count once, bounds, the reach only lowered,
+  the loop through apply_edits, and a conftest that keeps every other test away from any learned model. 41 bleep tests. One of my own slips caught by the tests: doubled backslashes in two
+  regexes in learn.py. Not in `app/`.

@@ -105,3 +105,22 @@ automatic** undoes every edit, Alt+arrow nudges by 0.02 s (Shift 0.1 s). Because
 Limits: the live preview mutes everything in a box (music and effects too, which is moot at a bleep); the preview's timing depends on the browser's audio latency (the lead
 is 0.05 s while playing); the tone itself could not be auditioned by the tool that built it (the browser test ran without a user click, so it checked the gate's decisions
 and the mute, not the sound).
+
+
+## Learning from how you adjust the bleeps (`learn.py`)
+Your idea: have the tool learn from where you moved the bleeps, so the next automatic bleeps start closer. **Applying your edits now teaches it automatically**
+(`apply_edits.py` compares your final spans with the automatic run's own record, `bleep.json`, stores what it finds, and re-fits a small model that `bleep.py` reads on every run).
+What is recorded, one line per judged bleep in `labs/bleep/learning/feedback.jsonl` (times and words only, never audio):
+- **kept / adjusted**: the tool's span, the word's own timing from Whisper, and your final span;
+- **deleted**: a bleep you removed (a false alarm); **added**: a bleep you put where the tool had none (a missed word), with what Whisper heard around it and whether it sat inside
+  a stretched word or a loud stretch; **yes / no** on the flagged stretches (`learn.py ingest-notes`).
+What it changes, all small, bounded and starting from the defaults:
+- **Padding**, separately for words Whisper wrote and words found by the silence-and-listen-again step: the median of where your edges sit relative to the word, blended with the defaults
+  as (n x median + 3 x default) / (n + 3). One edit moves it a quarter of the way, ten most of the way; clamped to -0.05..0.30 s before and 0..0.40 s after.
+- **Reach**: the shortest stretched word examined for a hidden word, lowered (never raised, never below 0.25 s) only after three or more bleeps you added, toward the durations of the
+  words the missed curse words hid behind.
+What it never does: turn a detector off, bleep more or less because of a count, or edit the word list. Reliability counts are reported for you to decide.
+`python3 labs/bleep/learn.py report` says what has been learned and what has not. **Today** it holds your one real edit and three "no" answers: revealed-word padding before the word is
+0.045 s (was 0.08; you start 0.06 s after Whisper's start and end 0.12 s after its end), everything else is still at the defaults, and the reach is unchanged until three bleeps have been
+added. One data point is thin: this moves the next automatic bleep 0.035 s, which is the honest size of what one edit can teach. The suspect flags are 0 for 3 (precision 0%).
+Not learned, on purpose: anything about detecting words it cannot hear yet (there is one example; three missed words are needed before the reach changes).

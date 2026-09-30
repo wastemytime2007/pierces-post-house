@@ -2551,3 +2551,10 @@ with Ryan touching only the intake and the checkpoints.
   delete; the page mutes the speech and plays a tone inside each box (close to live, not sample-exact); "Download bleep edits" is applied exactly by
   `labs/bleep/apply_edits.py`, which replaces the automatic spans instead of merging with them. The automatic bleeps are starting positions. Reason: five rounds of typed
   times and my own analysis all missed the word; he placed it in one go at 29.44-29.70 s. Also: one folder, `0 - CURRENT (open this one)`, is overwritten each round.
+
+- **2026-09-30 (third addendum to the automatic-bleep entry) — the bleep tool learns from how Ryan adjusts bleeps.** Ryan: "add the ability for the app to learn how to analyze
+  where the adjustments were made to do a better job in the future on added bleeps." Applying his edits (`apply_edits.py`) records each bleep as kept, adjusted, deleted or added
+  (with the words Whisper heard and whether it sat in a stretched word or loud stretch) in `labs/bleep/learning/feedback.jsonl` (times only, never audio) and re-fits a small model
+  `bleep.py` reads on every run: padding per kind of hit, shrunk toward the defaults as (n x median + 3 x default) / (n + 3) and bounded; the reach for hidden words, lowered
+  (never raised) only after three or more added bleeps. It never turns a detector off or edits the word list; reliability counts are only reported. Seeded from his one real edit
+  and three "no" answers. Also: the pipeline ran on four more real cuts (about 660 words): no false alarms; recall on hidden words there is unknown.

@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import os
 import re
 import subprocess
 import sys
@@ -42,6 +43,20 @@ LIST_FILE = HERE / "profanity.txt"
 SR = 16000
 OUT_SR = 48000
 PAD_BEFORE, PAD_AFTER = 0.08, 0.12
+
+
+def _model() -> dict:
+    """What labs/bleep/learn.py has learned from Ryan's edits (small, bounded, starts from the defaults). Missing or unreadable: nothing learned, defaults."""
+    p = Path(os.environ.get("POSTHOUSE_BLEEP_LEARNING") or Path(__file__).resolve().parent / "learning") / "model.json"
+    try:
+        return json.loads(p.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def learned_pads(source: str) -> tuple[float, float]:
+    m = _model().get("pads", {}).get(source)
+    return (float(m["before"]), float(m["after"])) if m and m.get("n") else (PAD_BEFORE, PAD_AFTER)
 TONE_HZ = 1000.0
 BELOW_PEAK_DB = 6.0
 MUTED_SUFFIX = "-bleep"                       # a clipitem id ending this is a piece that was silenced by this tool
@@ -125,7 +140,7 @@ def transcribe_timed(wav: Path, model: str = "small") -> list[tuple[str, float, 
 
 
 def find_hits(words: list[tuple[str, float, float]], pats: list[re.Pattern]) -> list[dict]:
-    return [{"word": w, "start": round(s, 3), "end": round(e, 3)} for w, s, e in words if is_profane(w, pats)]
+    return [{"word": w, "start": round(s, 3), "end": round(e, 3), "source": "transcript"} for w, s, e in words if is_profane(w, pats)]
 
 
 SUSPECT_MIN_SEC, SUSPECT_MAX_SEC, BURST_DB, BURST_MIN_SEC, FRAME_SEC = 0.40, 1.0, 6.0, 0.10, 0.05
@@ -145,6 +160,7 @@ def find_suspects(words: list[tuple[str, float, float]], speech: np.ndarray, sr:
     and both models agree on is just emphasis (9 of the 14 flags on Ryan's cut were exactly that). Nothing is bleeped from a suspect unless a note
     confirms it. The span is the burst if there is one, else the word."""
     n = int(FRAME_SEC * sr)
+    lo_sec = float(_model().get("detection", {}).get("suspect_min_sec") or SUSPECT_MIN_SEC)          # learned from bleeps Ryan added where the tool found none
     frames = 20 * np.log10(np.maximum(np.sqrt((speech[:len(speech) // n * n].reshape(-1, n) ** 2).mean(axis=1)), 1e-6))
     prob = {(round(s, 2), round(e, 2)): p for _w, s, e, p in (details or [])}
     other_words = [(norm(w), s, e) for w, s, e in (other or [])]
@@ -152,7 +168,7 @@ def find_suspects(words: list[tuple[str, float, float]], speech: np.ndarray, sr:
     for w, s, e in words:
         d = e - s
         sig, burst = [], None
-        if SUSPECT_MIN_SEC <= d <= SUSPECT_MAX_SEC and len(norm(w)) <= 6:
+        if lo_sec <= d <= SUSPECT_MAX_SEC and len(norm(w)) <= 6:
             sig.append("stretched")
             i0, i1 = int(s / FRAME_SEC), int(np.ceil(e / FRAME_SEC))
             near = np.r_[frames[max(0, i0 - 30):max(0, i0)], frames[i1:i1 + 30]]
@@ -235,7 +251,9 @@ def snap_voiced(speech: np.ndarray, t: float, sr: int = SR, reach: float = 0.4, 
 
 
 def spans_of(hits: list[dict], duration: float) -> list[tuple[float, float]]:
-    raw = sorted((max(0.0, h["start"] - PAD_BEFORE), min(duration, h["end"] + PAD_AFTER)) for h in hits)
+    def pads(h):                                                   # padding learned from how Ryan trims each kind of hit (defaults until he has)
+        return learned_pads(h.get("source", "transcript"))
+    raw = sorted((max(0.0, h["start"] - pads(h)[0]), min(duration, h["end"] + pads(h)[1])) for h in hits)
     out: list[list[float]] = []
     for a, b in raw:
         if out and a <= out[-1][1] + 0.05:
@@ -510,11 +528,11 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     hits = find_hits(words, pats)
     suspects = find_suspects(words, speech, details=detail, other=other, min_signals=min_signals)
     revealed = []
+    loud = [(x_["start"], x_["end"]) for x_ in find_suspects(words, speech, min_signals=2, require_doubt=False) if "burst" in x_.get("signals", [])] if detect else []
     if reveal_with is not None:                                   # loud stretches Whisper may be hiding a curse word behind: silence them and listen again
-        loud = [(x_["start"], x_["end"]) for x_ in find_suspects(words, speech, min_signals=2, require_doubt=False) if "burst" in x_["signals"]]
         revealed = reveal(speech, loud, reveal_with, pats, out)
         hits += [{"word": f"{h['word']} (was hidden; revealed by silencing {h['masked'][0][0]:.2f}-{h['masked'][0][1]:.2f}s)" if h["masked"] else f"{h['word']} (revealed)",
-                  "start": h["start"], "end": h["end"]} for h in revealed if not any(abs(h["word_start"] - q["start"]) < 0.3 for q in hits)]
+                  "start": h["start"], "end": h["end"], "source": "revealed"} for h in revealed if not any(abs(h["word_start"] - q["start"]) < 0.3 for q in hits)]
     for sus in suspects:
         sus["bleeped"] = False
     reqs = list(requests or []) + [{"kind": "window", "start": a_, "end": b_} for a_, b_ in (suspect_windows or [])]
@@ -533,7 +551,7 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
             if inside:
                 top = max(inside, key=lambda x: (x.get("score", 0), x.get("burst_db_over_speech", 0.0)))
                 top["bleeped"] = True
-                hits.append({"word": f"(not transcribed; heard as '{top['word']}')", "start": top["start"], "end": top["end"]})
+                hits.append({"word": f"(not transcribed; heard as '{top['word']}')", "start": top["start"], "end": top["end"], "source": "suspect"})
     exact = [(float(r["start"]), float(r["end"])) for r in reqs if r["kind"] == "exact"]
     # a person who gives times is correcting the tool: where the tool's own hits overlap those times (within 0.15 s) the person's times win, unmerged
     overridden = [h for h in hits if any(h["start"] < b_ + 0.15 and h["end"] > a_ - 0.15 for a_, b_ in exact)]
@@ -551,7 +569,10 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
         else:
             merged.append([a_, b_])
     spans = [(a_, b_) for a_, b_ in merged if b_ - a_ > 0.05]
-    res = {"hits": hits, "overridden": overridden, "revealed": revealed, "suspects": suspects, "spans": spans, "words_heard": len(words), "xml": None, "clips": [], "rows": []}
+    res = {"origin": "automatic" if detect else "edits", "hits": hits, "overridden": overridden, "revealed": revealed, "suspects": suspects, "spans": spans,
+           "words_heard": len(words), "loud": [[round(a_, 3), round(b_, 3)] for a_, b_ in loud],          # what a later edit is compared with, and what learn.py studies
+           "words": [[w, round(s_, 3), round(e_, 3), (round(p_, 2) if p_ is not None else None)] for (w, s_, e_), p_ in zip(words, [t[3] for t in detail] if detail else [None] * len(words))],
+           "xml": None, "clips": [], "rows": []}
     (out / "bleep.json").write_text(json.dumps({k: v for k, v in res.items() if k != "rows"}, indent=2))
     if not spans:
         return res

@@ -41,9 +41,24 @@ def read_spans(path: Path, duration: float) -> list[tuple[float, float]]:
     return sorted(spans)
 
 
-def apply(xml: Path, edits: Path, out: Path, listen: bool = False, words_of=None) -> dict:
+def automatic_record(xml: Path, out: Path, given: Path | None = None) -> Path | None:
+    """The record of the automatic run these edits were made on top of (what the tool guessed), found beside the XML."""
+    for p in ([given] if given else []) + [xml.parent / "bleep.json", xml.parent / "bleep" / "bleep.json", out / "bleep" / "bleep.json"]:
+        if p and p.exists():
+            return p
+    return None
+
+
+def apply(xml: Path, edits: Path, out: Path, listen: bool = False, words_of=None, auto_json: Path | None = None, learn: bool = True) -> dict:
     cut = timeline.load_cut(xml)
     spans = read_spans(edits, cut.zone_end)
+    before = None
+    rec = automatic_record(xml, out, auto_json)
+    if learn and rec:
+        try:
+            before = json.loads(rec.read_text())              # read now: applying the edits overwrites it
+        except (OSError, ValueError):
+            before = None
     work = out / "bleep"
     work.mkdir(parents=True, exist_ok=True)
     if spans:
@@ -60,7 +75,12 @@ def apply(xml: Path, edits: Path, out: Path, listen: bool = False, words_of=None
             shutil.copy2(xml, new_xml)
     final = out / xml.name
     final.write_text(new_xml.read_text())
-    return {"xml": final, "spans": spans, "rows": rows}
+    learned = None
+    if learn and before is not None:                          # what the tool guessed against what he made of it: recorded, and the model re-fitted
+        import learn as lr
+        recs = lr.records_from_edits(json.loads(edits.read_text()), before, cut.sequence_name)
+        learned = {"records": recs, "new": lr.save(recs), "model": lr.fit() if recs else None}
+    return {"xml": final, "spans": spans, "rows": rows, "learned": learned}
 
 
 def main() -> int:
@@ -80,6 +100,14 @@ def main() -> int:
     for n, ok, d in r["rows"]:
         print(f"  [{'SKIP' if ok is None else 'PASS' if ok else 'FAIL'}] {n}  {d}")
     print(f"{len(r['spans'])} bleep(s): " + (", ".join(f"{x:.2f}-{y:.2f}s" for x, y in r["spans"]) or "none"))
+    L = r["learned"]
+    if L and L["records"]:
+        print(f"learned from these edits ({L['new']} new of {len(L['records'])}): " + "; ".join(
+            f"{x['kind']} ({x['source']})" + (f", his span {x['final']['start']:.2f}-{x['final']['end']:.2f}s vs the tool's {x['auto']['start']:.2f}-{x['auto']['end']:.2f}s" if x.get("auto") and x.get("final") else "") for x in L["records"]))
+    elif L is not None:
+        print("learning: these edits were made on a result that was already hand-edited, so there is no automatic guess to compare with")
+    else:
+        print("learning: no record of an automatic run was found beside the XML, so nothing was learned this time")
     from build_review import build
     page = build(r["xml"], out / "review", a.height)
     print(f"\n{r['xml']}\n{page}")
