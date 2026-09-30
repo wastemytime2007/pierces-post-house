@@ -289,6 +289,22 @@ because this session violated them once each.
   Library`: 44 music folders / 50 files, 35 sound effects, footage), which bears on the open
   Artlist-vs-generation question. 159 tests pass across `labs/`. Not in `app/`.
 
+  **Built, NOT yet tested by Ryan (batch): style from a reference video (`labs/style/style_profile.py`).**
+  Measures a reference and a cut the same way (visible cuts, loudness, pauses, brightness, contrast,
+  saturation, palette, motion, lower-third text-like activity) and reports the differences as a table,
+  side-by-side frames, each one's shot rhythm drawn to scale, and SUGGESTED notes; it never edits.
+  Validated on Ryan's finished wallpaper reel against the anatomy doc: loudness -12.5 LUFS / 4.4 LU exact,
+  25 shots (21.8/min) vs the doc's ~23 cuts (20.6/min) at the chosen scene threshold 0.20 (my first
+  default 0.12 gave 46: wrong for a reel with animated text, corrected from that check). Real finding:
+  jump cuts inside one continuous shoot are mostly invisible to picture detection (2 of the Tiling cut's
+  12 real cuts had a visible signature), so pace rows are marked UNRELIABLE when the detector's recall
+  on a cut with known cut times is low, and audio pauses are added as the signal that does see them
+  (trusted only with a quiet floor). Real comparison: `Runnells Tiling v3 - style profile (wallpaper
+  reel vs Tiling cut)/style_report.html` (5 suggested notes, e.g. the preview sits at -30.6 LUFS vs the
+  reel's -12.5). Noted: the wallpaper file is 66.03 s, the anatomy doc says 67.1 s (unexplained; doc not
+  edited, it is the Lead's). 17 tests pass in `labs/style`, built on videos of known construction. Not
+  measured: what the graphics look like, what the shots show, whether the style suits the piece. Not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.
