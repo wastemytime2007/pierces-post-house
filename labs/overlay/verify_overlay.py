@@ -24,11 +24,11 @@ import numpy as np
 W, H = 1920, 1080
 
 
-def frame(path: Path, t: float, pix: str) -> np.ndarray:
+def frame(path: Path, t: float, pix: str, w: int = W, h: int = H) -> np.ndarray:
     ch = 4 if pix == "rgba" else 3
     p = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(path), "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", pix, "-"],
                        capture_output=True)
-    return np.frombuffer(p.stdout, dtype=np.uint8).reshape(H, W, ch)
+    return np.frombuffer(p.stdout, dtype=np.uint8).reshape(h, w, ch)
 
 
 def pcm(path: Path) -> np.ndarray:
@@ -50,35 +50,46 @@ def main() -> int:
     mov, preview, excerpt = d / "overlay.mov", d / "overlay_preview.mp4", d / "excerpt.mp4"
     rows: list[tuple[str, bool, str]] = []
 
-    m = probe(mov)
-    rows.append(("MOV-ALPHA", m["codec_name"] == "prores" and "a" in m["pix_fmt"].replace("yuv", "") and (m["width"], m["height"]) == (W, H)
-                 and abs(m["duration"] - total) < 0.1, f"{m['codec_name']} {m['pix_fmt']} {m['width']}x{m['height']} {m['duration']:.2f}s (wanted {total:.2f}s)"))
+    rend = pl.get("render", {"width": W, "height": H, "fps": 30.0})
+    rw, rh, rfps = rend["width"], rend["height"], rend["fps"]
+    s = rw / W                                           # layout coordinates are in 1920x1080 space
+    S = lambda v: int(round(v * s))                      # noqa: E731
 
-    a_before = frame(mov, cfg["t_in"] * 0.4, "rgba")[..., 3]
-    a_after = frame(mov, total - 0.04, "rgba")[..., 3]
+    m = probe(mov)
+    num, den = (int(x) for x in m["r_frame_rate"].split("/"))
+    rows.append(("MOV-ALPHA", m["codec_name"] == "prores" and "a" in m["pix_fmt"].replace("yuv", "") and (m["width"], m["height"]) == (rw, rh)
+                 and abs(m["duration"] - total) < 0.1 and abs(num / den - rfps) < 0.01,
+                 f"{m['codec_name']} {m['pix_fmt']} {m['width']}x{m['height']} {num / den:.3f}fps {m['duration']:.2f}s (wanted {rw}x{rh} {rfps:.3f}fps {total:.2f}s)"))
+
+    a_before = frame(mov, cfg["t_in"] * 0.4, "rgba", rw, rh)[..., 3]
+    a_after = frame(mov, total - 0.04, "rgba", rw, rh)[..., 3]
     rows.append(("TRANSPARENT-BEFORE", int(a_before.max()) <= 2, f"max alpha {int(a_before.max())} at {cfg['t_in'] * 0.4:.2f}s"))
     rows.append(("TRANSPARENT-AFTER", int(a_after.max()) <= 2, f"max alpha {int(a_after.max())} at {total - 0.04:.2f}s"))
 
     t_mid = cfg["t_in"] + 1.6
-    mid = frame(mov, t_mid, "rgba")
+    mid = frame(mov, t_mid, "rgba", rw, rh)
     al = mid[..., 3]
-    b, lb, ar = cfg["box"], cfg["label"], cfg["arrow"]
-    cy, cx = b["y"] + b["h"] // 2, b["x"] + b["w"] // 2
-    edges = {"left": al[cy, b["x"] + 3], "right": al[cy, b["x"] + b["w"] - 3], "top": al[b["y"] + 3, b["x"] + b["w"] // 4], "bottom": al[b["y"] + b["h"] - 3, b["x"] + b["w"] // 4]}
+    b, lb, ar = cfg["box"], cfg["label"], cfg["arrow"]                    # 1080p layout, used for the preview
+    sb, sl = {k: S(v) for k, v in b.items()}, {k: S(v) for k, v in lb.items()}   # the same, at render size
+    cy, cx = sb["y"] + sb["h"] // 2, sb["x"] + sb["w"] // 2
+    edges = {"left": al[cy, sb["x"] + S(3)], "right": al[cy, sb["x"] + sb["w"] - S(3)],
+             "top": al[sb["y"] + S(3), sb["x"] + sb["w"] // 4], "bottom": al[sb["y"] + sb["h"] - S(3), sb["x"] + sb["w"] // 4]}
     rows.append(("BOX", min(int(v) for v in edges.values()) >= 200 and int(al[cy, cx]) == 0,
                  f"edge alpha {min(int(v) for v in edges.values())}+, centre {int(al[cy, cx])} (hollow)"))
-    lcx, lcy = lb["x"] + lb["w"] // 2, lb["y"] + lb["h"] // 2
-    rows.append(("LABEL", int(al[lcy, lcx]) >= 200 and tuple(int(v) for v in mid[lb["y"] + 8, lb["x"] + 300, :3]) != (0, 0, 0),
-                 f"alpha {int(al[lcy, lcx])} at centre; navy at top edge {tuple(int(v) for v in mid[lb['y'] + 8, lb['x'] + 300, :3])}"))
+    lcx, lcy = sl["x"] + sl["w"] // 2, sl["y"] + sl["h"] // 2
+    navy = tuple(int(v) for v in mid[sl["y"] + S(8), sl["x"] + S(300), :3])
+    rows.append(("LABEL", int(al[lcy, lcx]) >= 200 and navy != (0, 0, 0), f"alpha {int(al[lcy, lcx])} at centre; navy at top edge {navy}"))
     tx, ty = ar["tip"]
-    mx, my = int(ar["x"] + (tx - ar["x"]) * 0.5), int(ar["y"] + (ty - ar["y"]) * 0.5)
-    rows.append(("ARROW", int(al[my, mx]) >= 200 and int(al[100, W - 100]) == 0, f"alpha {int(al[my, mx])} at its midpoint, empty corner {int(al[100, W - 100])}"))
+    mx, my = S(ar["x"] + (tx - ar["x"]) * 0.5), S(ar["y"] + (ty - ar["y"]) * 0.5)
+    rows.append(("ARROW", int(al[my, mx]) >= 200 and int(al[S(100), rw - S(100)]) == 0,
+                 f"alpha {int(al[my, mx])} at its midpoint, empty corner {int(al[S(100), rw - S(100)])}"))
 
     reg = pl["region"]
-    row = np.where(al[cy, max(0, b["x"] - 30):b["x"] + b["w"] + 30] > 128)[0] + max(0, b["x"] - 30)
-    got_cx = (int(row.min()) + int(row.max())) / 2 if len(row) else -1
+    lo = max(0, sb["x"] - S(30))
+    row = np.where(al[cy, lo:sb["x"] + sb["w"] + S(30)] > 128)[0] + lo
+    got_cx = (int(row.min()) + int(row.max())) / 2 / s if len(row) else -1      # back in 1920 space
     want_cx = (reg["x0"] + reg["x1"]) / 2 * W
-    rows.append(("POSITION", abs(got_cx - want_cx) <= 6, f"box centre x {got_cx:.0f}px vs the drawing's {want_cx:.0f}px"))
+    rows.append(("POSITION", abs(got_cx - want_cx) <= 6, f"box centre x {got_cx:.0f}px vs the drawing's {want_cx:.0f}px (1920 space)"))
 
     pv = probe(preview)
     rows.append(("PREVIEW-FORMAT", pv["codec_name"] == "h264" and abs(pv["duration"] - total) < 0.15, f"{pv['codec_name']} {pv['duration']:.2f}s"))

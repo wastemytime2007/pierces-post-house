@@ -12,10 +12,26 @@ HyperFrames project that made it.
 ```
 python3 labs/overlay/make_overlay.py <review_notes.json> --note 3 \
     --review-dir "<folder>" --out "<folder>" \
-    [--title "The spacer"] [--subtitle "A piece of cardboard pulled off the box"] [--open]
+    [--title "The spacer"] [--subtitle "A piece of cardboard pulled off the box"] \
+    [--xml "<the export it will go in>"] [--open]
 python3 labs/overlay/verify_overlay.py "<folder>"
+python3 labs/overlay/place_overlay.py "<export.xml>" "<overlay folder>" --out "<new.xml>"
 python3 -m pytest labs/overlay/tests -q
 ```
+Pass `--xml` so the overlay is rendered at that sequence's own size and frame rate (3840x2160 at
+59.94 for the Tiling cut). Without it the overlay is 1920x1080 at 30 and `place_overlay.py` will
+refuse it for a 4K sequence, because dropped in at native size it would fill a quarter of the frame
+and its frame rate would have to be conformed.
+
+## Placing it in the XML (`place_overlay.py`)
+Adds the overlay as one clip on a new video track above the cut and changes nothing else. It is
+placed by the note's source frame, found in the target XML, so it lands correctly on any later
+version of the cut. It refuses a size or frame-rate mismatch, a missing alpha channel, a frame no
+longer in the cut, or a clip that would run past the cut, and it will not present the result unless
+these pass: everything else in the sequence is structurally unchanged, one new clip with frame counts
+that agree (timeline = file = definition), the callout enters on the frame the note was drawn on
+(recomputed from the output), the file is reachable, and `verify_export.py` passes.
+The clip has no `masterclipid` (there is no master clip to point to) and carries `alphatype=straight`.
 
 ## Why a separate layer
 The footage is never re-rendered. `overlay.mov` is transparent (ProRes 4444 with alpha, which is
@@ -43,11 +59,12 @@ clip's; away from the callout the preview equals the original footage; over the 
 ## Real limits
 - The callout is fixed in the frame. That is correct for this shot (steady camera, the spacer does
   not move; checked frame by frame across the hold) and would drift on a moving shot. No tracking.
-- Not opened in Premiere. That the `.mov` imports with its alpha there is unconfirmed.
+- Ryan confirmed the 1080p `.mov` shows with its transparency in Premiere. That the XML written by
+  `place_overlay.py` imports there, with the overlay on V2 at the right time and size, is unconfirmed.
 - Font: HyperFrames swaps in a fixed web font for deterministic renders, so the label is Inter, not
   the brand's ITC Avant Garde Gothic (licensed, not installed). Drop the font file into the project
   and reference it with `@font-face` to use it.
-- The overlay is not inserted into the revised XML. It is a separate file you place.
+- `revise.py` does not call `place_overlay.py` yet; they are run one after the other.
 - Colours: navy label with a blue edge, one orange box and arrow (orange used sparingly, per the
   brand book). Style and timing are Ryan's calls.
 

@@ -62,12 +62,37 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-29 — Overlay auto-placed in the XML, NOT yet judged by Ryan**
+  (`labs/overlay/place_overlay.py`). Writes `Runnells_Tiling_v3_v3_with_overlay.xml`:
+  the V3 cut plus the note 3 callout as one clip on a new V2, in
+  `~/Documents/Post House Reviews/Runnells Tiling v3 - overlay note 3 (4K,
+  placed)/`. Prompted by a problem found before building it: the sequence is
+  3840x2160 at 59.94 and the first overlay was 1920x1080 at 30, so dropped in at
+  native size it would fill a quarter of the frame, with a frame rate to
+  conform. `make_overlay.py --xml` now renders the overlay at the sequence's
+  own size and rate (HyperFrames `--resolution landscape-4k`, `--fps 60000/1001`),
+  so it drops in at 100%, one frame per frame. Placement is anchored on the
+  note's source frame in the target XML, so it survives re-timing (tested).
+
+  Verified: overlay render 11 checks (3840x2160, 59.94, alpha, position 799px
+  vs the drawing's 800px); placement 7 checks on the output XML (everything
+  else structurally unchanged with whitespace ignored, one new clip, frame
+  counts agree at 300, callout enters at 13.981s vs the drawn frame at 13.972s,
+  inside the cut, file reachable, `verify_export` passes) and 7 hermetic tests
+  incl. refusals for a size mismatch, a rate mismatch, no alpha, a frame no
+  longer in the cut, and running past the cut. 42 tests across `labs/`.
+
+  **Not verified, only Ryan can:** that Premiere imports this XML with the
+  overlay on V2 at the right time and size. The clip is hand-written (no
+  `masterclipid`, `alphatype=straight`), which is the part most likely to need a
+  fix. `revise.py` does not call `place_overlay.py` yet.
+
 - **2026-09-29 — Review loop: what is still open after Ryan's sign-off on
   the page, on the revisions and on the callout overlay (§ Done).** (1) Ryan's
-  note 3 (arrow and on-screen text) is done as a separate transparent layer;
-  what is left is placing overlays automatically (into the revised XML on a
-  track above the cut) and confirming a `.mov` imports with alpha in
-  Premiere. (2) Acting on drawings (a crop or
+  note 3 (arrow and on-screen text) is done as a transparent layer and its
+  placement in the XML is built (previous entry); what is left is Ryan's
+  Premiere test of that XML and calling `place_overlay.py` from `revise.py`.
+  (2) Acting on drawings (a crop or
   reframe needs scale and position filters in the XML). (3) Music and SFX
   generation, which would contradict the 2026-08-31 Artlist-local-library
   decision and needs Ryan's ruling first; his own reference edit has no SFX
@@ -882,9 +907,10 @@ because this session violated them once each.
 - 2026-09-29 — **Transparent callout overlay from a note's drawing
   (standalone, `labs/overlay/`), built for Ryan's note 3. Ryan: "Perfect. All
   worked."** Scope: the callout he watched (box on the spacer, arrow, label,
-  timing, wording) and the overlay layer. His words did not say whether he
-  imported the `.mov` into Premiere, so that stays unconfirmed. Not wired into
-  `app/`; the overlay is a separate file, not inserted into the revised XML.
+  timing, wording) and the overlay layer. Premiere: Ryan then confirmed the
+  1080p `.mov` shows with its transparency ("Yes transparency worked"). Not
+  wired into `app/`; this entry's overlay was a separate file you place (the
+  auto-placed version is under § In progress).
 
   What it does: his drawn box becomes an animated orange box, arrow and navy
   label, rendered by HyperFrames 0.8.93 (Apache 2.0) to a transparent ProRes

@@ -25,6 +25,10 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent / "review_loop"))
+import timeline as rl_timeline  # noqa: E402  (the review_loop XML reader)
+import xml.etree.ElementTree as ET  # noqa: E402
+
 HF_VERSION = "0.8.93"
 GSAP_VERSION = "3.15.0"
 W, H, FPS = 1920, 1080, 30
@@ -45,6 +49,23 @@ def locate(note: dict, timeline: dict) -> tuple[dict, float]:
         if c["source"] == note["source"] and c["src_in"] - 0.02 <= note["source_sec"] <= c["src_out"] + 0.02:
             return c, c["start"] + (note["source_sec"] - c["src_in"])
     raise OverlayError(f"the frame this note was left on ({note['source']} at {note['source_sec']}s) is not in this cut")
+
+
+RESOLUTIONS = {(1920, 1080): None, (3840, 2160): "landscape-4k"}
+
+
+def sequence_spec(xml: Path | None) -> dict:
+    """Size and frame rate to render the overlay at: the target sequence's own, so it drops in
+    at 100% with one frame per frame and nothing left to conform. Default 1920x1080 at 30."""
+    if xml is None:
+        return {"width": 1920, "height": 1080, "fps": 30.0, "fps_arg": "30", "resolution": None}
+    seq = rl_timeline._seq_for_cut(ET.parse(xml).getroot())
+    w, h = int(seq.findtext("media/video/format/samplecharacteristics/width")), int(seq.findtext("media/video/format/samplecharacteristics/height"))
+    tb, ntsc = int(float(seq.findtext("rate/timebase"))), (seq.findtext("rate/ntsc") or "FALSE").strip().upper() == "TRUE"
+    if (w, h) not in RESOLUTIONS:
+        raise OverlayError(f"the sequence is {w}x{h}; overlays can be rendered at 1920x1080 or 3840x2160")
+    return {"width": w, "height": h, "fps": tb * 1000 / 1001 if ntsc else float(tb),
+            "fps_arg": f"{tb * 1000}/1001" if ntsc else str(tb), "resolution": RESOLUTIONS[(w, h)]}
 
 
 def union_bbox(shapes: list[dict]) -> dict:
@@ -158,6 +179,7 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--title", default="The spacer")
     ap.add_argument("--subtitle", default="A piece of cardboard pulled off the box")
+    ap.add_argument("--xml", type=Path, help="the export the overlay will be placed in; renders at its size and frame rate")
     ap.add_argument("--open", action="store_true")
     a = ap.parse_args()
 
@@ -166,6 +188,7 @@ def main() -> int:
         note = notes[a.note - 1]
         timeline = json.loads((a.review_dir / "timeline.json").read_text())
         p = plan(note, timeline, a.title, a.subtitle)
+        spec = sequence_spec(a.xml)
     except (OverlayError, IndexError, KeyError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
@@ -183,15 +206,21 @@ def main() -> int:
         print("HyperFrames check FAILED:\n" + tail, file=sys.stderr)
         return 1
     print("HyperFrames check passed")
-    r = hf(proj, "render", "--format", "mov", "--fps", str(FPS), "-o", str(mov))
+    rargs = ["render", "--format", "mov", "--fps", spec["fps_arg"], "-o", str(mov)]
+    if spec["resolution"]:
+        rargs += ["--resolution", spec["resolution"]]
+    r = hf(proj, *rargs)
     if r.returncode != 0 or not mov.exists():
         print("render FAILED:\n" + (r.stdout + r.stderr)[-1500:], file=sys.stderr)
         return 1
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(excerpt), "-i", str(mov), "-filter_complex",
-                    "[0:v][1:v]overlay=format=auto:shortest=1[v]", "-map", "[v]", "-map", "0:a", "-c:v", "libx264", "-crf", "17",
-                    "-pix_fmt", "yuv420p", "-c:a", "copy", str(preview)], check=True)
+                    f"[1:v]scale={W}:{H},fps={FPS}[o];[0:v][o]overlay=format=auto:shortest=1[v]", "-map", "[v]", "-map", "0:a",
+                    "-c:v", "libx264", "-crf", "17", "-pix_fmt", "yuv420p", "-c:a", "copy", str(preview)], check=True)
 
     placement = {"place_overlay_on_timeline_at_sec": p["start"], "duration_sec": p["total"], "overlay": mov.name,
+                 "overlay_path": str(mov.resolve()),
+                 "render": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"], "fps_arg": spec["fps_arg"]},
+                 "anchor": {"source": note["source"], "source_sec": note["source_sec"], "lead_sec": p["cfg"]["t_in"]},
                  "note": a.note, "note_text": note.get("text", ""), "title": a.title, "subtitle": a.subtitle,
                  "hyperframes": HF_VERSION, "gsap": GSAP_VERSION, "geometry": p["cfg"],
                  "region": union_bbox(note.get("shapes", []))}
