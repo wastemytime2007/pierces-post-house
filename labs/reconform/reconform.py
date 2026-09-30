@@ -103,7 +103,7 @@ def run_audio(clean_xml: Path, out: Path, meta: dict, base: Path, preview: Path,
            "--out", str(out), "--start", f"{start:.3f}", "--end", f"{end:.3f}", "--callout", str(callout),
            "--sfx-prompt", g["sfx"]["prompt"], "--music-prompt", g["music"]["prompt"], "--music-ms", str(g["music"]["ms"]),
            "--music-db", str(meta["music_db_rel_speech"]), "--duck-db", str(meta["duck_db"]),
-           "--sfx-below-peak-db", str(meta["sfx_below_speech_peak_db"]), "--cache", str(old_audio / "generated")]
+           "--sfx-below-peak-db", str(meta["sfx_below_speech_peak_db"]), "--cache", str(old_audio / "generated")] + (["--music-file", str(old_audio / "generated" / g["music"]["file"])] if g["music"].get("file") and (old_audio / "generated" / g["music"]["file"]).exists() else []) + (["--music-reference", meta["music_reference"]["path"]] if meta.get("music_reference") and Path(meta["music_reference"]["path"]).exists() else [])
     p = subprocess.run(cmd, capture_output=True, text=True)
     print(p.stdout.rstrip())
     if p.returncode:

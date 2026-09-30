@@ -23,6 +23,37 @@ python3 -m pytest labs/audio/tests -q
 Name the placed XML with the cut's version last (`..._layers_v3.xml`, not `..._audio_v2.xml`): the
 review loop reads the version from a trailing `_vN`.
 
+## Music like a reference track (`reference_music.py`)
+The creator attaches a track he likes and has it generate one "very similar". Made measurable:
+```
+python3 labs/audio/reference_music.py --reference "<track>" --out "<folder>" --seconds 23 [--tries 3]
+python3 labs/audio/reference_music.py --reference "<track>" --out "<folder>" --rank-library "<Artlist Library/Music>"
+python3 labs/audio/make_audio.py ... --music-reference "<track>"        # the same, inside the normal build
+```
+1. **Measure the reference:** tempo (from the onset envelope), where its energy sits in tone (log-frequency
+   centre), rhythmic density, dynamics (one-second windows, fades ignored), stereo width, low end, loudness.
+2. **Describe it in words, only from those measurements** (a fixed mapping, no model, no names): no song, artist
+   or lyric is ever named, so nothing asks for a copy of a particular piece. A tempo above 140 BPM is asked for at
+   half (generators hold mid tempos far better; half or double time counts as a match when measured).
+3. **Generate a few takes** (each a few cents; `--tries`, default 3) and re-measure each against the reference.
+   A take is **close enough** when tempo is within 8% (half/double counts) and at least two of tone (within a
+   third), rhythmic density (within 60%) and dynamics (within 4 dB) also hold. The closest take is kept.
+4. **`--rank-library`** does the free, licensed version: it measures every track in a folder once (cached) and ranks
+   them against the reference. No generation, no spend.
+5. In `make_audio`, `--music-reference` picks the take the same way; `--music-file` reuses an exact earlier file
+   (reconform does this, so a rebuild never changes the music). `verify_audio` re-measures the finished stem
+   against the reference; it is a gating check only when a take was accepted as close, otherwise it is shown as
+   information with the measured gap.
+
+**What was actually found** (real reference: Barrell, "Takin' a Walk", from the local Artlist library; six generated
+takes over two prompt versions, all measured): a description-only prompt pins down **tempo and rhythm reliably**
+(after folding the tempo, two of three takes landed on the reference's tempo exactly) but **not tone or dynamics**:
+tone overshot to about half the reference's centre with "dark, bass-heavy" wording, and dynamics missed in every
+take. No take met the bar. The measurements themselves had flaws that were fixed after the first round (a frame-averaged
+centroid dragged up by quiet bright frames; fades counted as dynamic swings), and the tone wording was then set to an
+evidence-based middle that has **not** been tried against the generator. So: use the ranking for a dependable match,
+and treat generated takes as approximate, with the gap printed.
+
 ## Replacing an effect from a note (`replace_sfx.py`)
 A note like "make this sound effect sound like something being highlighted on a piece of paper" goes
 through `revise.py`: the interpreter chooses the `replace_sfx` operation and must copy the wanted sound

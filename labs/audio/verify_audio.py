@@ -123,10 +123,26 @@ def main() -> int:
     head, tail, mid = float(np.sqrt((m[:int(0.1 * SR)] ** 2).mean())), float(np.sqrt((m[-int(0.1 * SR):] ** 2).mean())), float(np.sqrt((m[len(m) // 2 - SR // 2:len(m) // 2 + SR // 2] ** 2).mean()))
     rows.append(("FADES", head < 0.5 * mid and tail < 0.5 * mid, f"first 0.1s is {db(head) - db(mid):.1f} dB and last 0.1s is {db(tail) - db(mid):.1f} dB relative to the middle"))
 
+    mr = meta.get("music_reference")
+    if mr and Path(mr["path"]).exists():                           # re-measure the finished stem against the reference, not the recorded numbers
+        import reference_music as rm
+        try:
+            c = rm.closeness(rm.analyze(Path(mr["path"])), rm.analyze(music), dynamics=False)
+            detail = (f"the music stem vs the reference track: tempo {c['tempo_error']:.0%} off (half or double time counts), brightness x{c['brightness_ratio']}, "
+                      f"rhythmic density x{c['density_ratio']}; checks {c['checks']}")
+            if mr.get("passed"):
+                rows.append(("REFERENCE-MATCH", bool(c["passed"]), detail))                 # a take was accepted as close: the finished stem must still be
+            else:
+                rows.append(("info: REFERENCE-MATCH", None, "NO take was close enough to the reference by measurement; the closest was used. " + detail))
+        except rm.ReferenceError as e:
+            rows.append(("REFERENCE-MATCH", False, str(e)))
+    elif mr:
+        rows.append(("REFERENCE-MATCH", False, f"the reference track {mr['path']} is no longer there to measure against"))
+
     g = meta["generated"]
     rows.append(("info: GENERATED", None, f"effect: \"{g['sfx']['prompt']}\" ({'reused from cache' if g['sfx']['cached'] else 'newly generated'}); music: \"{g['music']['prompt']}\" ({'reused from cache' if g['music']['cached'] else 'newly generated'})"))
 
-    gating = {"STEM-FORMAT", "MUSIC-AUDIBLE", "MUSIC-UNDER-SPEECH", "DUCKS", "SPEECH-LEVEL-KEPT", "SFX-QUIETER-THAN-SPEECH", "SFX-AT-CALLOUT", "MIX-NOT-CLIPPING", "FADES"}
+    gating = {"REFERENCE-MATCH", "STEM-FORMAT", "MUSIC-AUDIBLE", "MUSIC-UNDER-SPEECH", "DUCKS", "SPEECH-LEVEL-KEPT", "SFX-QUIETER-THAN-SPEECH", "SFX-AT-CALLOUT", "MIX-NOT-CLIPPING", "FADES"}
     wd = max(len(r[0]) for r in rows)
     bad = 0
     for name, ok, detail in rows:

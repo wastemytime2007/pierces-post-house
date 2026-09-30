@@ -55,13 +55,14 @@ def load_key() -> str:
     raise AudioError(f"{KEYFILE} has no ELEVENLABS_API_KEY line")
 
 
-def generate(kind: str, prompt: str, seconds: float, cache: Path) -> tuple[Path, dict]:
-    """kind is 'sfx' or 'music'. Returns the mp3 and whether it came from the cache."""
+def generate(kind: str, prompt: str, seconds: float, cache: Path, salt: str = "") -> tuple[Path, dict]:
+    """kind is 'sfx' or 'music'. Returns the mp3 and whether it came from the cache. A different `salt`
+    is a different take of the same prompt (the prompt sent is unchanged)."""
     ms = int(round(seconds * 1000))
-    h = hashlib.sha1(f"{kind}|{prompt}|{ms}".encode()).hexdigest()[:12]
+    h = hashlib.sha1(f"{kind}|{prompt}|{ms}".encode() + (f"|{salt}".encode() if salt else b"")).hexdigest()[:12]
     out = cache / f"{kind}_{h}.mp3"
     if out.exists() and out.stat().st_size > 1000:
-        return out, {"cached": True, "prompt": prompt, "ms": ms}
+        return out, {"cached": True, "prompt": prompt, "ms": ms, "salt": salt, "file": out.name}
     if kind == "sfx":
         url, body = f"{API}/sound-generation?output_format=mp3_44100_128", {"text": prompt, "duration_seconds": round(seconds, 2)}
     else:
@@ -73,7 +74,7 @@ def generate(kind: str, prompt: str, seconds: float, cache: Path) -> tuple[Path,
         raise AudioError(f"ElevenLabs {kind} refused ({e.code}): {e.read()[:200].decode(errors='replace')}")
     cache.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
-    return out, {"cached": False, "prompt": prompt, "ms": ms}
+    return out, {"cached": False, "prompt": prompt, "ms": ms, "salt": salt, "file": out.name}
 
 
 def run(*args) -> str:
@@ -183,6 +184,9 @@ def main() -> int:
     ap.add_argument("--sfx-below-peak-db", type=float, default=6.0, help="effect peak below the speech's peak")
     ap.add_argument("--preview-video", type=Path, help="video to put the mixed audio under (default: --base)")
     ap.add_argument("--cache", type=Path, help="where generated audio is cached (default: <out>/generated); point it at an earlier folder's to reuse its audio")
+    ap.add_argument("--music-reference", type=Path, help="match the music to this track: it is measured, described in words, and the closest of a few generated takes is kept")
+    ap.add_argument("--reference-tries", type=int, default=3)
+    ap.add_argument("--music-file", type=Path, help="use exactly this already-generated music file (a rebuild uses this so the music never changes)")
     ap.add_argument("--music-ms", type=int, help="length to request the music at; the same length and prompt as an earlier run finds it in the cache instead of generating new music")
     a = ap.parse_args()
 
@@ -205,7 +209,33 @@ def main() -> int:
         speech = a.out / "speech_window.wav"
         speech_wav(a.base, speech, a.start, dur)
         sfx_mp3, sfx_info = generate("sfx", a.sfx_prompt, 1.2, cache)
-        music_mp3, music_info = generate("music", a.music_prompt, a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0), cache)
+        music_secs = a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0)
+        music_ref = None
+        if a.music_file:
+            if not a.music_file.exists() or probe_dur(a.music_file) < dur:
+                raise AudioError(f"--music-file {a.music_file} is missing or shorter than the {dur:.1f}s window")
+            shown = a.music_prompt if a.music_prompt != DEFAULT_MUSIC else f"(an existing file: {a.music_file.name})"
+            music_mp3, music_info = a.music_file, {"cached": True, "prompt": shown, "ms": int(round(music_secs * 1000)), "file": a.music_file.name, "salt": ""}
+            if a.music_reference:                                   # a rebuild keeps the link to the reference and re-measures the file against it
+                import reference_music as rm
+                ref_feats, got = rm.analyze(a.music_reference), rm.analyze(a.music_file)
+                c = rm.closeness(ref_feats, got)
+                music_ref = {"path": str(a.music_reference.resolve()), "features": ref_feats, "passed": c["passed"], "chosen_take": None,
+                             "takes": [{"take": 1, "features": got, "closeness": c}]}
+        elif a.music_reference:
+            import reference_music as rm
+            try:
+                ref_feats = rm.analyze(a.music_reference)
+            except rm.ReferenceError as e:
+                raise AudioError(str(e))
+            a.music_prompt = rm.build_prompt(ref_feats)
+            music_mp3, res = rm.pick_best(ref_feats, a.music_prompt, music_secs, cache, a.reference_tries)
+            best = next(t for t in res["takes"] if t["take"] == res["chosen_take"])
+            music_info = {**best["info"], "cached": all(t["info"]["cached"] for t in res["takes"])}
+            music_ref = {"path": str(a.music_reference.resolve()), "features": ref_feats, "passed": res["passed"], "chosen_take": res["chosen_take"],
+                         "takes": [{"take": t["take"], "features": t["features"], "closeness": t["closeness"]} for t in res["takes"]]}
+        else:
+            music_mp3, music_info = generate("music", a.music_prompt, music_secs, cache)
         music_stem, sfx_clip = a.out / "music_stem.wav", a.out / "sfx_clip.wav"
         if cache.resolve() != (a.out / "generated").resolve():
             shutil.copytree(cache, a.out / "generated", dirs_exist_ok=True)               # the folder carries its own cache, so a later rebuild from it needs nothing else
@@ -220,7 +250,7 @@ def main() -> int:
     (a.out / "audio.json").write_text(json.dumps({
         "window": {"start": a.start, "end": a.end}, "speech_window": speech.name, "music_db_rel_speech": a.music_db, "duck_db": a.duck_db, "levels": levels,
         "sfx_below_speech_peak_db": a.sfx_below_peak_db, "sfx_gain_db": round(sfx_gain, 2), "callout_sec": t_sfx,
-        "generated": {"sfx": sfx_info, "music": music_info},
+        "generated": {"sfx": sfx_info, "music": music_info}, "music_reference": music_ref,
         "clips": [{"kind": "music", "name": "music_stem.wav", "path": str(music_stem.resolve()), "start_sec": a.start, "duration_sec": probe_dur(music_stem)},
                   {"kind": "sfx", "name": "sfx_clip.wav", "path": str(sfx_clip.resolve()), "start_sec": t_sfx, "duration_sec": probe_dur(sfx_clip)}],
         "speech_wav": str(speech.resolve()), "preview_video": str((a.preview_video or a.base).resolve())}, indent=2))

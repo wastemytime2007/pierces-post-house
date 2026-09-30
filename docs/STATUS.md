@@ -268,6 +268,27 @@ because this session violated them once each.
   140 tests pass across `labs/`. Page: `Runnells Tiling v3 - reconformed v4 E (image card)/review/
   review.html`. The image and highlight are inputs, not chosen by the tool. Not in `app/`.
 
+  **Built, NOT yet tested by Ryan (batch): music like a reference track
+  (`labs/audio/reference_music.py`, `make_audio --music-reference`, `--music-file`).** Measure a
+  reference (tempo, tone centre, rhythmic density, dynamics, stereo width, low end), describe it in
+  words only from those numbers (no names), generate a few takes, re-measure each, keep the closest;
+  plus `--rank-library` to rank a folder of licensed tracks by closeness (free). **Honest result on
+  a real reference (Barrell, "Takin' a Walk", from Ryan's local Artlist library), six generated
+  takes over two prompt versions: NO take met the measured bar.** A description-only prompt holds
+  tempo and rhythm (after folding a >140 BPM tempo to half, two of three takes hit the reference
+  tempo exactly, density x0.9-1.4) but not tone or dynamics (tone centre came out about half the
+  reference's with "dark, bass-heavy" wording; dynamics missed every take). Two of my own
+  measurements were flawed and fixed after round 1 (frame-averaged centroid; fades counted as
+  dynamics), stated openly; the tone wording was then set to an evidence-based middle that is
+  UNTRIED against the generator (I stopped generating at two rounds rather than grind to a
+  pass). The ranking works and is free: it measured Ryan's 50 Artlist files and ranked the closest
+  (the reference itself first, then Ardie Son "Omega", BENJA "The Barrenness of a Busy Life" at half
+  time...). Integration proven on the real cut with the tempo-matched take (tempo 0% off, density
+  x1.03, tone x0.59 shown as information); a rebuild reuses the exact music file so reconform
+  never changes it. Discovered: Ryan already has a local Artlist library (`~/Downloads/Artlist
+  Library`: 44 music folders / 50 files, 35 sound effects, footage), which bears on the open
+  Artlist-vs-generation question. 159 tests pass across `labs/`. Not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.
