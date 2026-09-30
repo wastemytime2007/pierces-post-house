@@ -194,7 +194,7 @@ def test_a_suspect_is_only_bleeped_when_a_note_points_at_its_stretch(xml, tmp_pa
     spans = [(12.42, 13.02)]
     fake = [{"word": "what", "word_start": 12.3, "word_end": 13.0, "start": 12.5, "end": 12.8, "burst_db_over_speech": 11.0}]
     monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [dict(f) for f in fake])
-    plain = bl.bleep(xml, tmp_path / "plain", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False)
+    plain = bl.bleep(xml, tmp_path / "plain", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False, flag_suspects=True)
     assert plain["xml"] is None and plain["suspects"][0]["bleeped"] is False                # reported, not bleeped
     told = bl.bleep(xml, tmp_path / "told", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False, suspect_windows=[(10.0, 15.0)])
     assert told["xml"] and told["suspects"][0]["bleeped"] is True and len(told["spans"]) == 1
@@ -279,9 +279,9 @@ def test_a_confirmed_suspect_and_a_clicked_spot_are_bleeped_exactly_there(xml, t
     fake = [{"word": "what", "word_start": 12.3, "word_end": 13.0, "start": 12.5, "end": 12.8, "burst_db_over_speech": 0.0, "signals": ["unsure", "models disagree"], "score": 2, "tier": "possible"}]
     monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [dict(f) for f in fake])
     none = lambda w: [("Hello", 1.0, 1.4)]                                                          # noqa: E731
-    confirmed = bl.bleep(xml, tmp_path / "a", words_of=none, check_transcript=False, requests=[{"kind": "span", "start": 12.5, "end": 12.8, "label": "what"}])
+    confirmed = bl.bleep(xml, tmp_path / "a", words_of=none, check_transcript=False, flag_suspects=True, requests=[{"kind": "span", "start": 12.5, "end": 12.8, "label": "what"}])
     assert len(confirmed["spans"]) == 1 and confirmed["spans"][0] == pytest.approx((12.42, 12.92), abs=0.02) and confirmed["suspects"][0]["bleeped"] is True
-    clicked = bl.bleep(xml, tmp_path / "b", words_of=none, check_transcript=False, requests=[{"kind": "at", "t": 20.2}])
+    clicked = bl.bleep(xml, tmp_path / "b", words_of=none, check_transcript=False, flag_suspects=True, requests=[{"kind": "at", "t": 20.2}])
     assert len(clicked["spans"]) == 1 and clicked["spans"][0][0] < 20.2 < clicked["spans"][0][1] and clicked["suspects"][0]["bleeped"] is False
     bad = [(n, d) for n, ok, d in clicked["rows"] if ok is False]
     assert not bad, bad                                                                             # silence, tone, level and the rest all hold for a clicked spot
@@ -423,3 +423,27 @@ def test_times_a_person_gives_override_the_tools_own_hit_where_they_overlap(xml,
     assert not bad, bad
     far = bl.bleep(xml, tmp_path / "y", words_of=listen, check_transcript=False, requests=[{"kind": "exact", "start": 5.0, "end": 5.4}])
     assert far["overridden"] == [] and len(far["spans"]) == 3                                           # times that overlap nothing the tool found simply add a bleep
+
+
+def test_ordinary_words_are_not_flagged_unless_asked_for_and_only_definitive_words_are_bleeped(xml, tmp_path, monkeypatch):
+    """Ryan: 'why is it pulling normal words like so, real, now, because, just, when ... just apply bleeps to definitive curse words and let me add to any that may be missed.'"""
+    fake = [{"word": "so", "word_start": 12.3, "word_end": 12.8, "start": 12.5, "end": 12.8, "burst_db_over_speech": 12.0, "signals": ["stretched", "burst"], "score": 2, "tier": "possible"}]
+    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [dict(f) for f in fake])
+    r = bl.bleep(xml, tmp_path / "x", words_of=lambda w: [("Hello", 1.0, 1.4), ("Shit,", 20.0, 20.4)], check_transcript=False)
+    assert r["suspects"] == [] and [h["word"] for h in r["hits"]] == ["Shit,"]                              # no flags, and only the listed word is bleeped
+    r2 = bl.bleep(xml, tmp_path / "y", words_of=lambda w: [("Hello", 1.0, 1.4)], check_transcript=False, flag_suspects=True)
+    assert [x["word"] for x in r2["suspects"]] == ["so"] and r2["xml"] is None                               # asked for, they are listed; still nothing is bleeped from them
+
+
+def test_a_word_end_stretched_over_a_pause_is_pulled_back_to_where_the_sound_stops_and_nothing_else_is_touched():
+    """Ryan's DeWalt video: Whisper put a 0.3 s curse word's end 0.8 s late; the sound was over by 36.6 s."""
+    x = np.random.default_rng(11).standard_normal(16000 * 40) * 10 ** (-50 / 20)                              # a quiet room
+    x[int(36.28 * 16000):int(36.6 * 16000)] += np.random.default_rng(12).standard_normal(int(0.32 * 16000)) * 10 ** (-22 / 20)          # the word: 0.32 s, 28 dB above the room
+    a, b = bl.trim_to_sound(x, 36.28, 37.42)
+    assert a == 36.28 and b == pytest.approx(36.6 + bl.TRIM_TAIL_SEC, abs=0.04)                                 # start kept, end pulled back to the sound plus a soft-release margin
+    assert bl.trim_to_sound(x, 36.28, 36.75) == (36.28, 36.75)                                                   # under 0.25 s to save: left alone
+    loud = np.random.default_rng(13).standard_normal(16000 * 10) * 10 ** (-25 / 20)
+    assert bl.trim_to_sound(loud, 2.0, 3.0) == (2.0, 3.0)                                                        # continuous sound to the end: nothing to trim
+    assert bl.trim_to_sound(x, 36.28, 36.4) == (36.28, 36.4)                                                     # a very short span is never trimmed
+    a2, b2 = bl.trim_to_sound(x, 36.28, 37.42)
+    assert b2 <= 37.42 and a2 >= 36.28                                                                           # never extends

@@ -125,10 +125,8 @@ def verify_placed(xml_in: Path, xml_out: Path, info: dict) -> list[tuple[str, bo
         path = _decode_pathurl(cis[0].find("file").findtext("pathurl"))[0]
         rows.append((f"FILE-REACHABLE ({c['kind']})", Path(path) == c["path"].resolve() and Path(path).exists(), path))
         rows.append((f"INSIDE-THE-CUT ({c['kind']})", vals[0][1] <= round(cut2.zone_end * fps) + 1, f"ends at {vals[0][1] / fps:.2f}s; the cut ends at {cut2.zone_end:.2f}s"))
-    rep = verify_export.Report()
-    verify_export.check_xml(xml_out, rep)
-    bad = [n for n, ok, _d in rep.rows if ok is False]
-    rows.append(("verify_export", not bad, "all applicable checks pass" if not bad else f"FAILED: {', '.join(bad)}"))
+    import export_gate
+    rows.append(export_gate.row(xml_out))
     return rows
 
 

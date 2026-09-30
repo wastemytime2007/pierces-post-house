@@ -124,7 +124,7 @@ def run_audio(clean_xml: Path, out: Path, meta: dict, base: Path, preview: Path,
 
 def run_bleep(xml: Path, out: Path, suspect_windows=None, requests=None) -> dict:
     return bp.bleep(xml, out, suspect_windows=suspect_windows, requests=requests, detail_of=bp.transcribe_detail,
-                    other_of=lambda wav: bp.transcribe_timed(wav, "base"), reveal_with=bp.transcribe_timed)
+                    reveal_with=bp.transcribe_timed)
 
 
 def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio: Path | None, out: Path,

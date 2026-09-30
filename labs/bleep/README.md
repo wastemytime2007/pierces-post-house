@@ -132,3 +132,14 @@ Not learned, on purpose: anything about detecting words it cannot hear yet (ther
 - **An ordinary-length word (under 0.45 s) you add a bleep over twice is added** to what is bleeped in future cuts. A long, stretched word under an added bleep is a hiding word, which teaches
   the reach (above), not the word list. `profanity.txt` itself is never written to: learned words live in `learning/model.json`.
 - One removal or one addition changes nothing; a word you have kept even once is never skipped.
+
+
+## Only definitive curse words (Ryan, 2026-09-30: "why is it pulling normal words like so, real, now, because, just, when ... just apply bleeps to definitive curse words and let me add to any that may be missed")
+The automatic run no longer flags ordinary words. It bleeps only **definitive** curse words: a word on `profanity.txt` (or one learned from his edits) that Whisper wrote, or one revealed by silencing a
+loud stretch and listening again. Anything else that was missed, he adds on the page, and that teaches the tool. The "suspect" stretches (stretched, unsure or disagreed-on words) are off by default
+(`--flag-suspects` brings them back for debugging); that also drops the second Whisper pass (the `base` model) that only existed to produce them. A note that points at a stretch still works.
+**A word's end is trimmed to where the sound stops** (`trim_to_sound`): on his DeWalt/Milwaukee video Whisper wrote "f**k." at 36.28 s and gave it an end 0.8 s late (37.42 s; the sound was over by
+36.6 s), which made a 1.3 s bleep. Now the end is pulled back to the sound plus a 0.06 s release margin, only when that saves at least 0.25 s, and the start is never trimmed: that bleep is 0.5 s.
+**Finished videos work too** (`labs/review_loop/xml_from_media.py` makes a one-clip XML from an exported video, size and frame rate unchanged): the export check's coarse-slab rule (CUT-GRANULARITY)
+does not apply to a single finished file and is skipped only for an XML carrying the converter's marker (`export_gate.py`); a single-clip XML without the marker still fails it (tested).
+**Silence is rounded outward to whole frames**: at 30 fps a frame is 33 ms and rounding to the nearest frame left the start of a bleep audible (-41 dBFS); found by the end-to-end test on a converted video.

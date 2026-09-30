@@ -3258,3 +3258,13 @@ the Lead before any re-dispatch; empty so far)*
   ordinary tutorial speech, no censored-looking tokens), but a bare "0 bleeps" read like a failure. The page now says what the scan did ("heard 155 words, found no curse words, so there are no bleeps
   yet ... add it ... that is how the tool learns") and lists the six flagged stretches as buttons that jump there (`build_review.py --scan <bleep.json>`). Tested (DATA.scan, wording, no scan record no
   note), screenshot checked, editor still works. Whether the cut has curse words the tool missed is unknown until he listens; if it does, those are exactly the missed words the learning needs. 282 tests.
+
+
+  **The DeWalt / Milwaukee video, and only definitive curse words (2026-09-30).** Ryan: "why is it pulling normal words like so, real, now, because, just, when that's a massive waste. Just apply
+  bleeps to definitive curse words and let me add to any that may be missed", then "check out the dewalt/milwaukee jokes footage, there's some curses in there". (1) The ordinary-word "suspects" are
+  off by default (and the second Whisper pass that produced them); only listed or revealed words are bleeped. (2) Only the exported video exists locally (`Milwaukee vs DeWalt Bit.mp4`, 39 s, vertical,
+  91 words; the raw footage is not findable by name, the drives RDOSS_2025 and Samsung T7_ are mounted but unsearched), so `xml_from_media.py` makes a one-clip edit from a finished video and
+  `export_gate.py` skips CUT-GRANULARITY only for that marked shape (negative control tested). (3) **First real curse words found on a second cut:** the tool found one, a censored "f**k." at about
+  36.3 s, in 38 s; its 1.3 s span (Whisper's word end was 0.8 s too late) is now 0.5 s (36.235-36.74) by trimming the end to where the sound stops; all checks pass including a listen check. He said
+  "some curses", the tool found one of 91 words: whether more are there is unknown until he listens, and any he adds are exactly what teaches it. (4) The end-to-end test on a converted 30 fps video found
+  the silence rounding to the nearest frame left the start audible (-41 dBFS): now rounded outward. Page: `3 - Milwaukee vs DeWalt (open this one)/review/review.html`. 53 bleep-related tests. Not in `app/`.
