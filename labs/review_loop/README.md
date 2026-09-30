@@ -58,6 +58,16 @@ The interpreter only chooses. It never gets to invent a time:
 - `remove_range`, `trim_start`, `trim_end`: only when the note itself states the times
   or seconds. A note like "trim the end" is refused.
 - `drop_clip`: only when the note says to remove the clip.
+- `extend_end`: for "this word is cut off". Measured from how the sound decays after the cut
+  (loud at the cut, quiet a few hundredths later), capped at 1.5s. Word timing cannot see a
+  clipped tail, the audio level can. If the audio is already quiet at the cut, or keeps going
+  for more than the cap, nothing changes and it says so. Growing a clip into footage the
+  selects pool also holds takes that footage off the front of the pool clip, because the pool
+  must never repeat the cut.
+- `start_at_words`: for "the clean cut should be X to Y". Finds Y in the clip's opening seconds
+  with word timing (PreCut's own `Transcriber`, so its model and seeded decode carry over) and
+  starts the clip there, cutting at the quietest point just before the word. The words must be
+  in the note. If they are not heard there, it reports what the audio does say.
 - Anything else (swap to other footage, crop or reframe, graphics, music, colour, a
   drawing with no words) is `unsupported`. Drawings are not acted on yet.
 
@@ -66,13 +76,23 @@ land mid-clip; the selects pool is left exactly where it was. Output is
 `<name>_v2.xml`, `ops.json`, `changes.json` and a full V2 review folder whose page
 opens with a "Changes from V1" list (click one to jump to where it landed).
 
-It refuses to present V2 as ready unless all of these pass: the revised XML reloads with
-every range inside its real file, the length equals V1 minus what was removed, no seams,
-no footage that was not in V1, every lav piece keeps its V1 offset to camera, the pool is
-identical, `safety_net/verify_export.py` passes, and `verify_preview.py` passes on the V2
-render.
+Versions follow the input: give it a V2 XML and you get a V3 (`..._v3.xml`), and the page says
+"Changes from V2".
 
-Not verified: that Premiere imports `_v2.xml`. It is checked by re-reading it here and by
+It refuses to present the result as ready unless all of these pass: the revised XML reloads
+with every range inside its real file, the length equals the input plus what was added minus
+what was removed, no seams, no footage that was not in the input (except a measured
+extension), every lav piece keeps its offset to camera, the pool only lost footage the cut
+gained, `safety_net/verify_export.py` passes, and `verify_preview.py` passes on the new
+render. Then the measured edits are re-checked on the finished render: an extended cut must
+land at or below room level, and a `start_at_words` seam must read as the note asked when the
+render itself is transcribed.
+
+Word timing from Whisper is good to about a tenth of a second, so cuts snap to a quiet point
+and the seam check transcribes the finished render. The SEAM-TEXT check uses the same
+Whisper family as the edit, so it confirms the outcome but is not fully independent of it.
+
+Not verified: that Premiere imports the revised XML. It is checked by re-reading it here and by
 `verify_export.py`, never opened in Premiere. Open it there before relying on it.
 The pause detector calls a silence a pause at 3x the quiet level of that window (never
 above 0.2x its loud level), which is looser than a fixed -55 dB. On the real tiling cut it

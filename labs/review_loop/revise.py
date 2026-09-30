@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -24,7 +25,8 @@ sys.path.insert(0, str(HERE.parents[1] / "safety_net"))
 import verify_export  # noqa: E402
 from apply_ops import apply_ops  # noqa: E402
 from build_review import build  # noqa: E402
-from ops import interpret, validate  # noqa: E402
+import words as words_mod  # noqa: E402
+from ops import interpret, level_db, validate  # noqa: E402
 from timeline import Cut, TimelineError, _seq_for_cut, load_cut  # noqa: E402
 
 
@@ -35,20 +37,22 @@ def _video_items(xml: Path, zone_f: int, before: bool) -> list[tuple[int, int, i
     return sorted(r for r in rows if (r[0] < zone_f) == before)
 
 
-def verify(cut1: Cut, xml1: Path, xml2: Path, removed_sec: float) -> list[tuple[str, bool | None, str]]:
+def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float = 0.0) -> list[tuple[str, bool | None, str]]:
     rows: list[tuple[str, bool | None, str]] = []
     cut2 = load_cut(xml2)                                # bounds-checks every clip against real media
     rows.append(("RELOADS-AND-BOUNDS", True, f"{len(cut2.video)} clips, every range inside its real file"))
     tol = 2.0 / cut1.fps
-    rows.append(("RIPPLE-LENGTH", abs((cut1.zone_end - removed_sec) - cut2.zone_end) <= tol,
-                 f"V1 {cut1.zone_end:.2f}s - removed {removed_sec:.2f}s = {cut1.zone_end - removed_sec:.2f}s, V2 is {cut2.zone_end:.2f}s"))
+    rows.append(("RIPPLE-LENGTH", abs((cut1.zone_end + delta_sec) - cut2.zone_end) <= tol,
+                 f"V1 {cut1.zone_end:.2f}s {delta_sec:+.2f}s = {cut1.zone_end + delta_sec:.2f}s, V2 is {cut2.zone_end:.2f}s"))
     gaps = [abs(b.tl_start - a.tl_end) for a, b in zip(cut2.video, cut2.video[1:])]
     rows.append(("CONTIGUOUS", all(g < 1e-3 for g in gaps), f"largest seam {max(gaps or [0]) * 1000:.2f}ms"))
 
     slack = 2.0 / cut1.fps
     stray = [p for p in cut2.video
-             if not any(p.src_path == c.src_path and p.src_in >= c.src_in - slack and p.src_out <= c.src_out + slack for c in cut1.video)]
-    rows.append(("NO-NEW-FOOTAGE", not stray, "every V2 piece lies inside a V1 clip" if not stray else f"{len(stray)} piece(s) outside V1 ranges"))
+             if not any(p.src_path == c.src_path and p.src_in >= c.src_in - slack and p.src_out <= c.src_out + extra_out + slack for c in cut1.video)]
+    rows.append(("NO-NEW-FOOTAGE", not stray,
+                 ("every V2 piece lies inside a V1 clip" + (f" (plus the measured {extra_out:.2f}s extension)" if extra_out else ""))
+                 if not stray else f"{len(stray)} piece(s) outside V1 ranges"))
 
     v1_off: dict[str, list[float]] = {}
     for a in cut1.audio:
@@ -65,12 +69,40 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, removed_sec: float) -> list[tuple[
     rows.append(("LAV-SYNC-PRESERVED", not bad, "every lav piece keeps its V1 offset to camera" if not bad else f"{len(bad)} piece(s) drifted, first at {bad[0][0]:.2f}s"))
 
     z1 = round(cut1.zone_end * cut1.fps)
-    rows.append(("POOL-UNTOUCHED", _video_items(xml1, z1, False) == _video_items(xml2, z1, False), "selects pool identical to V1"))
+    p1, p2 = _video_items(xml1, z1, False), _video_items(xml2, z1, False)
+    lost, pool_ok = 0.0, len(p1) == len(p2)
+    for (s1, e1, i1, o1), (s2, e2, i2, o2) in zip(p1, p2):
+        k = (o1 - i1) / (e1 - s1)
+        if s1 != s2 or o1 != o2 or i2 < i1 or e2 > e1 or abs((i2 - i1) / k - (e1 - e2)) > 2:
+            pool_ok = False
+        lost = max(lost, (e1 - e2) / cut1.fps)
+    pool_ok = pool_ok and lost <= extra_out + 2.0 / cut1.fps
+    rows.append(("POOL-ONLY-LOST-WHAT-THE-CUT-GAINED", pool_ok,
+                 "selects pool identical to V1" if p1 == p2 else f"pool only lost footage the cut now holds (front-trimmed by up to {lost:.2f}s)"))
 
     rep = verify_export.Report()
     verify_export.check_xml(xml2, rep)
     for name, ok, detail in rep.rows:
         rows.append(("verify_export " + name, ok, detail))
+    return rows
+
+
+def verify_render(changes, preview: Path) -> list[tuple[str, bool | None, str]]:
+    """Re-check the measured edits on the finished V2 render and the source, not on the plan."""
+    rows: list[tuple[str, bool | None, str]] = []
+    for c in changes:
+        k = c.check
+        if not c.applied or not k:
+            continue
+        if k["kind"] == "quiet_at":
+            db = level_db(k["path"], k["t"] - 0.03, 0.03)
+            rows.append((f"note {c.note} CUT-IN-QUIET", db <= k["thresh_db"] + 1.0,
+                         f"level at the new cut point {db:.0f} dB, room-level threshold {k['thresh_db']:.0f} dB"))
+        elif k["kind"] == "seam_text":
+            after = [w for w in words_mod.words_in(str(preview), c.v2_time - 0.3, 4.0) if w.start >= c.v2_time - 0.1]
+            hit = words_mod.find_phrase(after, k["phrase"])
+            rows.append((f"note {c.note} SEAM-TEXT", hit is not None and hit[0] <= 1,
+                         f'V2 audio from the seam reads: "{words_mod.heard(after[:9])}"'))
     return rows
 
 
@@ -94,26 +126,30 @@ def main() -> int:
         ops = validate(json.loads(args.ops.read_text()), notes, cut1) if args.ops else interpret(cut1, notes)
         (args.out / "ops.json").write_text(json.dumps(ops, indent=2))
 
-        v2_xml = args.out / f"{args.xml.stem}_v2.xml"
-        changes, removed = apply_ops(args.xml, v2_xml, cut1, ops, notes)
+        m = re.match(r"^(.*)_v(\d+)$", args.xml.stem)
+        n_in = int(m.group(2)) if m else 1
+        lab_in, lab_out = f"V{n_in}", f"V{n_in + 1}"
+        v2_xml = args.out / f"{m.group(1) if m else args.xml.stem}_v{n_in + 1}.xml"
+        changes, delta = apply_ops(args.xml, v2_xml, cut1, ops, notes)
     except TimelineError as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
 
     items = [{"note": c.note, "note_time": notes[c.note - 1]["timeline_sec"], "note_text": notes[c.note - 1].get("text", ""),
               "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why} for c in changes]
-    print(f"\nV1 {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
+    print(f"\n{lab_in} {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
     for it in items:
         print(f"  note {it['note']} [{it['note_time']}s] {'APPLIED    ' if it['applied'] else 'NOT APPLIED'}  {it['summary']}")
-    if not removed:
+    if not any(c.applied and c.op != "unsupported" for c in changes):
         (args.out / "changes.json").write_text(json.dumps({"items": items}, indent=2))
         v2_xml.unlink(missing_ok=True)
-        print("\nNothing could be applied to the timeline, so no V2 was written.")
+        print(f"\nNothing could be applied to the timeline, so no {lab_out} was written.")
         return 0
 
     print("\nChecks on the revised XML:")
     try:
-        rows = verify(cut1, args.xml, v2_xml, removed)
+        extra_out = max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") == "quiet_at"] or [0.0])
+        rows = verify(cut1, args.xml, v2_xml, delta, extra_out)
     except TimelineError as e:
         print(f"REFUSING: revised XML does not load: {e}", file=sys.stderr)
         return 1
@@ -126,7 +162,8 @@ def main() -> int:
         return 1
 
     cut2 = load_cut(v2_xml)
-    changes_payload = {"v1_duration": round(cut1.zone_end, 2), "v2_duration": round(cut2.zone_end, 2), "items": items}
+    changes_payload = {"v1_duration": round(cut1.zone_end, 2), "v2_duration": round(cut2.zone_end, 2), "items": items,
+                       "from_label": lab_in, "to_label": lab_out}
     page = build(v2_xml, args.out, args.height, changes=changes_payload)
     (args.out / "changes.json").write_text(json.dumps(changes_payload, indent=2))
     pv = subprocess.run([sys.executable, str(HERE / "verify_preview.py"), str(args.out)], capture_output=True, text=True)
@@ -134,7 +171,15 @@ def main() -> int:
     if pv.returncode != 0:
         print("preview verification FAILED", file=sys.stderr)
         return 1
-    print(f"\nV2 {cut2.zone_end:.2f}s  ->  {page}")
+    render_rows = verify_render(changes, args.out / "preview.mp4")
+    if render_rows:
+        print("\nRe-checking the measured edits on the finished render:")
+        for name, ok, detail in render_rows:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name}  {detail}")
+        if any(ok is False for _n, ok, _d in render_rows):
+            print("\nA measured edit did not hold up on the render. Do not use this V2.", file=sys.stderr)
+            return 1
+    print(f"\n{lab_out} {cut2.zone_end:.2f}s  ->  {page}")
     if args.open:
         subprocess.run(["open", str(page)])
     return 0

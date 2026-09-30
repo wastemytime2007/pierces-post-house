@@ -87,6 +87,36 @@ because this session violated them once each.
   detector test caught a real bug (steady noise read as one long pause) that
   is fixed and covered.
 
+  **Then Ryan's own notes (left on the V2 page, exported to his Desktop).**
+  Three real notes; the loop as first built declined all three, with accurate
+  reasons (two needed word-level timing, one needs graphics). So two
+  measured operations were added, each checked against real audio before
+  being trusted: `extend_end` ("the last word is cut off", read from the
+  audio's decay, since the transcript ended at the cut and could not show a
+  clipped tail) and `start_at_words` ("the clean cut should be 'are me' to
+  'stepping the tile up...'", using PreCut's own Transcriber for word timing,
+  cut placed at the quietest point before the word). Result, V2 -> V3
+  (74.17s -> 74.24s): note 1 applied (clip 2 extended 0.27s), note 2 applied
+  (clip 4 now starts at "stepping", "and then" dropped), note 3 (arrow and
+  on-screen text) not applied, it needs a graphics overlay, which is the
+  HyperFrames spike. Output in `~/Documents/Post House Reviews/Runnells
+  Tiling v3 - v3 from Ryan's notes/`.
+
+  What verification caught along the way: extending clip 2 ran into footage
+  the selects pool also held, and `verify_export` failed
+  `XML-POOL-NOT-IN-CUT`. That is the contract working; the fix is that the
+  pool clip loses the front 0.27s (pool = complement of the cut), and the
+  pool check now allows exactly and only that. Independent evidence for
+  note 1: in V2 the level drops from -35 dB straight to -50 dB across the
+  cut; in V3 it decays -38, -44, -46 dB before the cut. For note 2, the V3
+  render itself, transcribed, reads "stepping the tile up with the spacer."
+  from the seam. 25 hermetic tests pass.
+
+  Caveats, only Ryan can settle: whether the extension sounds right (it stops
+  at the first point 3 frames below room-level threshold, not at absolute
+  silence, so a faint tail could remain); whether the "stepping" cut sounds
+  clean; and Premiere still has not opened any revised XML.
+
   **Not verified, only Ryan can:** (a) that Premiere imports the revised XML
   (never opened in Premiere); (b) whether the pause edit sounds right. The
   detector called that pause 1.38s where ffmpeg's stricter one saw 0.53s, so

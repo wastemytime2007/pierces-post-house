@@ -52,14 +52,17 @@ def _ci(cid, name, s, e, i, o, fid, body="", enabled="TRUE", audio=False):
             + (body or f'<file id="{fid}"/>') + st + "</clipitem>")
 
 
-def make_xml(path: Path, vid: Path, lav: Path) -> Path:
+def make_xml(path: Path, vid: Path, lav: Path, first_len: int = 600, pool_adjacent: bool = False) -> Path:
     vb = (f'<file id="f1"><name>a.mp4</name><pathurl>file://localhost{vid}</pathurl>'
           "<rate><timebase>30</timebase><ntsc>FALSE</ntsc></rate><duration>1650</duration></file>")
     lb = (f'<file id="f2"><name>lav.wav</name><pathurl>file://localhost{lav}</pathurl>'
           "<rate><timebase>30</timebase><ntsc>TRUE</ntsc></rate><duration>1798</duration></file>")
-    cut = [(0, 600, 0, 300), (600, 1200, 600, 900), (1200, 1800, 900, 1200)]
-    lavs = [(0, 600, 300, 900), (600, 1200, 1499, 2099), (1200, 1800, 2098, 2698)]
+    n = first_len
+    cut = [(0, n, 0, n // 2), (n, n + 600, 600, 900), (n + 600, n + 1200, 900, 1200)]
+    lavs = [(0, n, 300, 300 + n), (n, n + 600, 1499, 2099), (n + 600, n + 1200, 2098, 2698)]
     pool = [(4000, 4600, 1350, 1500), (4600, 5200, 1500, 1650)]
+    if pool_adjacent:                       # a leftover that begins exactly where clip 1 ends (src 4.5s)
+        pool = [(4000, 4600, n // 2, n // 2 + 300), (4600, 5200, 1500, 1650)]
     v = "".join(_ci(f"v{n}", "a.mp4", s, e, i, o, "f1", vb if n == 0 else "") for n, (s, e, i, o) in enumerate(cut + pool))
     cam = "".join(_ci(f"c{n}", "a.mp4", s, e, i, o, "f1", enabled="FALSE", audio=True) for n, (s, e, i, o) in enumerate(cut))
     la = "".join(_ci(f"s1-sync-lav.wav-{n}", "lav.wav", s, e, i, o, "f2", lb if n == 0 else "", audio=True) for n, (s, e, i, o) in enumerate(lavs))
@@ -102,7 +105,7 @@ def test_removing_the_middle_of_a_clip_splits_it_and_ripples(tmp_path, xml):
     assert lavs[0] == (0, r0, 300, 300 + r0)                                # lav is in sequence frames, k = 1
     assert lavs[1][2] == 300 + r1 and lavs[1][3] == 900
     assert _items(out, "video")[-2:] == _items(xml, "video")[-2:]           # selects pool untouched
-    assert removed == pytest.approx(2.0, abs=0.02)
+    assert removed == pytest.approx(-2.0, abs=0.02)
 
 
 def test_result_loads_with_unique_ids_and_one_file_body_each(tmp_path, xml):
@@ -133,7 +136,7 @@ def test_tighten_pause_removes_the_measured_silence(tmp_path, xml):
     assert changes[0].applied
     s, e = changes[0].removed
     assert 4.9 < s < 5.3 and 6.7 < e < 7.1          # silence is at 4.995-6.995 on the timeline, 0.15s kept
-    assert removed == pytest.approx(2.0 - 0.15, abs=0.15)
+    assert removed == pytest.approx(-(2.0 - 0.15), abs=0.15)
 
 
 def test_tighten_pause_where_there_is_no_pause_says_so_and_changes_nothing(tmp_path, xml):
@@ -149,7 +152,7 @@ def test_full_revise_checks_pass_and_v2_page_builds(tmp_path, xml):
     rows = revise.verify(cut, xml, out, removed)
     failed = [(n, d) for n, ok, d in rows if ok is False]
     assert not failed, failed
-    page = build(out, tmp_path / "review", 180, changes={"v1_duration": cut.zone_end, "v2_duration": cut.zone_end - removed,
+    page = build(out, tmp_path / "review", 180, changes={"v1_duration": cut.zone_end, "v2_duration": cut.zone_end + removed,
                                                           "items": [{"note": c.note, "note_time": 1, "note_text": "t", "applied": c.applied,
                                                                      "summary": c.summary, "v2_time": c.v2_time, "why": ""} for c in changes]})
     assert '"changes"' in page.read_text()
@@ -188,3 +191,97 @@ def test_interpreter_refuses_to_invent_times_and_accounts_for_every_note(xml):
 def test_interpreter_reply_that_is_not_json_raises(xml):
     with pytest.raises(ValueError):
         opsmod.interpret(timeline.load_cut(xml), [{"timeline_sec": 1, "text": "x"}], client=_fake("sorry, I can't"))
+
+
+# ---- measured operations: extend_end and start_at_words ------------------------------
+
+import words as words_mod  # noqa: E402
+
+
+def test_extend_end_measures_the_decay_and_grows_the_cut(tmp_path, media):
+    # clip 1's lav ends at 9.51s; the noise is loud until it goes silent at 10.0s
+    xml = make_xml(tmp_path / "short.xml", *media, first_len=270)
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "extend_end", "clip": 1, "max_sec": 1.0}])
+    assert changes[0].applied
+    g = round(delta * FPS)
+    assert 0.4 < delta < 0.7                                           # about 0.49s of sound left, plus a 0.04s pad
+    v, lavs = _items(out, "video"), _items(out, "audio", 1)
+    assert v[0] == (0, 270 + g, 0, 135 + round(g * 0.5))               # the clip grows at its end, video at k = 0.5
+    assert lavs[0] == (0, 270 + g, 300, 570 + g)                       # lav grows by the same amount
+    assert v[1][0] == 270 + g and lavs[1][0] == 270 + g                # everything after ripples right
+    assert timeline.load_cut(out).zone_end == pytest.approx(cut.zone_end + delta, abs=0.05)
+    rows = revise.verify(cut, xml, out, delta, extra_out=changes[0].check["ext"])
+    assert not [(n, d) for n, ok, d in rows if ok is False]
+    quiet = revise.verify_render(changes, out)
+    assert quiet and all(ok for _n, ok, _d in quiet)
+
+
+def test_extending_into_footage_the_pool_holds_trims_the_pool_so_it_never_repeats_the_cut(tmp_path, media):
+    xml = make_xml(tmp_path / "adj.xml", *media, first_len=270, pool_adjacent=True)
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "extend_end", "clip": 1, "max_sec": 1.0}])
+    g = round(delta * FPS)
+    before, after = _items(xml, "video")[-2], _items(out, "video")[-2]
+    assert after[0] == before[0] and after[3] == before[3]             # same place on the timeline, same source out
+    assert after[2] == before[2] + round(g * 0.5) and after[1] == before[1] - g   # front-trimmed by exactly what the cut gained
+    assert "selects-pool" in changes[0].summary
+    rows = revise.verify(cut, xml, out, delta, extra_out=changes[0].check["ext"])
+    assert not [(n, d) for n, ok, d in rows if ok is False], rows
+    # without the pool trim the same edit would have failed verify_export's XML-POOL-NOT-IN-CUT
+
+
+def test_extend_end_refuses_when_the_sound_never_stops(tmp_path, xml):
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "extend_end", "clip": 1, "max_sec": 1.0}])
+    assert not changes[0].applied and "keeps going" in changes[0].summary
+    assert delta == 0
+
+
+def test_extend_end_and_a_trim_of_the_same_clip_end_is_refused(tmp_path, media):
+    xml = make_xml(tmp_path / "short.xml", *media, first_len=270)
+    with pytest.raises(timeline.TimelineError, match="also being trimmed"):
+        _run(xml, tmp_path, [{"note": 1, "op": "extend_end", "clip": 1, "max_sec": 1.0},
+                              {"note": 2, "op": "trim_end", "clip": 1, "seconds": 0.5}])
+
+
+def _fake_words(monkeypatch, rows):
+    def fake(path, start, dur):
+        return [words_mod.W(t, start + a, start + b) for t, a, b in rows]
+    monkeypatch.setattr(words_mod, "words_in", fake)
+
+
+def test_start_at_words_trims_to_the_named_words_and_says_what_it_dropped(tmp_path, xml, monkeypatch):
+    # clip 2's lav starts at 25.007s; the window starts 0.6s earlier
+    rows = [("and", 0.2, 0.7), ("then", 0.7, 0.85), ("step", 0.85, 1.05), ("on", 1.05, 1.2), ("the", 1.2, 1.3),
+            ("tile", 1.3, 1.5), ("up", 1.5, 1.7), ("with", 1.7, 1.8), ("the", 1.8, 1.9), ("spacer.", 1.9, 2.4)]
+    _fake_words(monkeypatch, rows)
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "start_at_words", "clip": 2, "words": "stepping the tile up with the spacer"}])
+    c = changes[0]
+    assert c.applied and 'dropped "and then"' in c.summary
+    assert 0.13 < -delta < 0.26                      # 'step' starts 0.25s into the clip; the cut lands up to 0.12s before it
+    assert c.check["kind"] == "seam_text"
+    assert timeline.load_cut(out).video[1].src_in > cut.video[1].src_in + 0.13
+
+
+def test_start_at_words_reports_what_it_heard_when_the_words_are_not_there(tmp_path, xml, monkeypatch):
+    _fake_words(monkeypatch, [("completely", 0.2, 0.8), ("different", 0.8, 1.2), ("speech", 1.2, 1.6)])
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "start_at_words", "clip": 2, "words": "stepping the tile up"}])
+    assert not changes[0].applied and "completely different speech" in changes[0].summary
+    assert delta == 0
+
+
+def test_find_phrase_copes_with_whisper_splitting_a_word():
+    ws = [words_mod.W(t, i * 0.2, i * 0.2 + 0.2) for i, t in enumerate(
+        ["and", "then", "step", "on", "the", "tile", "up", "with", "the", "spacer."])]
+    assert words_mod.find_phrase(ws, "stepping the tile up with the spacer")[0] == 2
+    assert words_mod.find_phrase(ws, "something entirely unrelated here") is None
+
+
+def test_validate_refuses_target_words_not_in_the_note_and_clamps_max_sec(xml):
+    cut = timeline.load_cut(xml)
+    notes = [{"timeline_sec": 5, "clip": 1, "text": "start this clip at stepping the tile up"},
+             {"timeline_sec": 5, "clip": 1, "text": "the last word is cut off"}]
+    got = opsmod.validate([
+        {"note": 1, "op": "start_at_words", "clip": 2, "words": "invented words here"},
+        {"note": 2, "op": "extend_end", "max_sec": 9},
+    ], notes, cut)
+    assert got[0]["op"] == "unsupported" and "not in the note" in got[0]["reason"]
+    assert got[1]["op"] == "extend_end" and got[1]["clip"] == 1 and got[1]["max_sec"] == 1.5

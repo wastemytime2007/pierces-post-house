@@ -142,7 +142,9 @@ if (DATA.changes) {
   const C = DATA.changes;
   const applied = C.items.filter(i => i.applied).length;
   box.style.display = 'block';
-  box.innerHTML = '<h2>Changes from V1: ' + fmt(C.v1_duration) + ' → ' + fmt(C.v2_duration) + ' · ' + applied + ' applied, ' + (C.items.length - applied) + ' not applied</h2>';
+  const FROM = C.from_label || 'V1';
+  const dd = C.v2_duration - C.v1_duration;
+  box.innerHTML = '<h2>Changes from ' + FROM + ': ' + C.v1_duration.toFixed(2) + 's → ' + C.v2_duration.toFixed(2) + 's (' + (dd >= 0 ? '+' : '') + dd.toFixed(2) + 's) · ' + applied + ' applied, ' + (C.items.length - applied) + ' not applied</h2>';
   C.items.forEach(i => {
     const row = document.createElement('div');
     row.className = 'chg' + (i.applied ? '' : ' no');
@@ -153,7 +155,7 @@ if (DATA.changes) {
     const t = document.createElement('div');
     const q = document.createElement('div');
     q.className = 'q';
-    q.textContent = 'note ' + i.note + ' at ' + fmt(i.note_time) + ' on V1: "' + (i.note_text || '(drawing only)') + '"';
+    q.textContent = 'note ' + i.note + ' at ' + fmt(i.note_time) + ' on ' + FROM + ': "' + (i.note_text || '(drawing only)') + '"';
     t.append(document.createTextNode(i.summary), q);
     row.append(k, t);
     box.appendChild(row);

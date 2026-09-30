@@ -6,6 +6,8 @@ LLM) only chooses among them; it does not get to invent a time.
 
   tighten_pause {at}             find the real silence near `at` in the audio and
                                  shorten it. Measured, not guessed.
+  extend_end {clip}              a word is cut off; the amount is read from the audio's decay
+  start_at_words {clip, words}   start the clip at named words, found with word timing
   remove_range {start, end}      only when the note itself states the times
   trim_start / trim_end {clip, seconds}   only when the note states the amount
   drop_clip {clip}               only when the note says to remove the clip
@@ -22,6 +24,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import words as words_mod
 from timeline import Cut
 
 SR = 8000
@@ -38,6 +41,8 @@ Operations (times are seconds on the timeline the notes were left on):
 - tighten_pause {"at": t}            The note says a pause/gap/silence/dead air should be tighter or cut. Use the note's own time as "at". The pause is located later by measuring the audio, so never guess a duration.
 - remove_range {"start": s, "end": e}  ONLY if the note itself states both times.
 - trim_start {"clip": n, "seconds": x}, trim_end {"clip": n, "seconds": x}  ONLY if the note states how many seconds.
+- extend_end {"clip": n, "max_sec": 1.0}  The note says a word or sentence at the END of clip n is cut off too soon or needs more time to finish. "clip" is the note's own clip unless the note says otherwise. The amount is measured from how the sound decays, so never give a duration.
+- start_at_words {"clip": n, "words": "..."}  The note says clip n should START at specific words, dropping words before them (for example "the clean cut should be X to Y": the clip after the seam starts at Y). "words" must be copied from the note. The point is found by listening, so never give a time.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
 
@@ -109,6 +114,23 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if not HAS_NUMBER.search(text):
                     raise ValueError("note states no amount, refusing to invent one")
                 out.append({"note": note, "op": op, "clip": clip, "seconds": sec, "why": why})
+            elif op == "extend_end":
+                clip = int(raw.get("clip", notes[note - 1].get("clip", 0)))
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                mx = float(raw.get("max_sec", 1.0))
+                out.append({"note": note, "op": op, "clip": clip, "max_sec": min(max(mx, 0.2), 1.5), "why": why})
+            elif op == "start_at_words":
+                clip = int(raw["clip"])
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                phrase = str(raw["words"]).strip()
+                pt = words_mod.tokens(phrase)
+                if not pt or len(pt) > 14:
+                    raise ValueError("no usable words")
+                if " ".join(pt) not in " ".join(words_mod.tokens(text)):
+                    raise ValueError("those words are not in the note, refusing to invent a target")
+                out.append({"note": note, "op": op, "clip": clip, "words": phrase, "why": why})
             elif op == "drop_clip":
                 clip = int(raw["clip"])
                 if not 1 <= clip <= n_clips:
@@ -191,3 +213,75 @@ def detect_pause(cut: Cut, at: float, window: float = 3.0, max_distance: float =
     if dist(best) > max_distance:
         return None
     return Pause(best[0], best[1], 20 * np.log10(max(floor, 1e-9)))
+
+
+def _audio_for(cut: Cut, clip):
+    a = next((a for a in cut.audio if abs(a.tl_start - clip.tl_start) < 0.05), None)
+    return (a.src_path, a.src_in, a.src_out) if a else (clip.src_path, clip.src_in, clip.src_out)
+
+
+def _threshold(rms: np.ndarray) -> float:
+    floor, loud = float(np.percentile(rms, 10)), float(np.percentile(rms, 90))
+    return max(min(floor * 3.0, loud * 0.2), 10 ** (-60 / 20))
+
+
+def _rms10(pcm: np.ndarray) -> np.ndarray:
+    n = len(pcm) // 80
+    return np.sqrt((pcm[: n * 80].reshape(n, 80) ** 2).mean(axis=1)) if n else np.zeros(0)
+
+
+def level_db(path: str, t: float, dur: float = 0.03) -> float:
+    r = _rms10(_pcm(path, max(0.0, t), dur))
+    return 20 * float(np.log10(max(float(r.mean()) if len(r) else 1e-6, 1e-6)))
+
+
+def measure_tail(cut: Cut, clip_idx: int, max_sec: float) -> dict:
+    """How far past the cut the last sound keeps going, read from the audio's decay.
+
+    Returns {"ext": seconds, "path", "t_end" (source), "thresh_db", "at_cut_db"} or {"reason": ...}.
+    """
+    clip = cut.video[clip_idx - 1]
+    path, _src_in, src_out = _audio_for(cut, clip)
+    lo = max(0.0, src_out - 1.0)
+    pcm = _pcm(path, lo, 1.0 + max_sec + 0.3)
+    rms = _rms10(pcm)
+    if len(rms) < 30:
+        return {"reason": "not enough audio after the cut to measure"}
+    thresh = _threshold(rms)
+    cut_i = int(round((src_out - lo) * 100))
+    at_cut = float(rms[max(0, cut_i - 5):cut_i].mean())
+    if at_cut < thresh:
+        return {"reason": f"the audio is already quiet at the cut ({20 * np.log10(max(at_cut, 1e-6)):.0f} dB, room level), so nothing looks cut off"}
+    j = cut_i
+    while j + 3 <= len(rms) and not (rms[j:j + 3] < thresh).all():
+        j += 1
+    if j + 3 > len(rms) or (j - cut_i) * 0.01 > max_sec:
+        return {"reason": f"the sound keeps going for more than {max_sec:g}s after the cut, so it is not a single word finishing; give an explicit amount instead"}
+    ext = (j - cut_i) * 0.01 + 0.04
+    if ext < 0.05:
+        return {"reason": "the sound has already decayed at the cut"}
+    nxt = cut.video[clip_idx] if clip_idx < len(cut.video) else None
+    if nxt and nxt.src_path == clip.src_path and nxt.src_in < clip.src_out + ext + 0.02:
+        return {"reason": "extending would run into the next clip's footage"}
+    return {"ext": ext, "path": path, "t_end": src_out + ext, "thresh_db": 20 * float(np.log10(thresh)),
+            "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
+
+
+def locate_start(cut: Cut, clip_idx: int, phrase: str) -> dict:
+    """Where clip `clip_idx` should start so it begins at `phrase`. Returns {"trim": s, ...} or {"reason": ...}."""
+    clip = cut.video[clip_idx - 1]
+    path, src_in, _ = _audio_for(cut, clip)
+    ws = words_mod.words_in(path, src_in - 0.6, 6.6)
+    ws = [w for w in ws if w.end > src_in - 0.05]
+    hit = words_mod.find_phrase(ws, phrase)
+    if hit is None:
+        return {"reason": f"could not find \"{phrase}\" near the start of clip {clip_idx}; the audio there reads: \"{words_mod.heard(ws[:10])}\""}
+    idx = hit[0]
+    t = words_mod.valley(path, ws[idx].start - 0.12, ws[idx].start)
+    trim = t - src_in
+    dropped = words_mod.heard(ws[:idx])
+    if trim < 0.05:
+        return {"reason": f"clip {clip_idx} already starts at \"{ws[idx].text}\""}
+    if trim > 3.0:
+        return {"reason": f"starting at those words would remove {trim:.1f}s, which is too much to do without confirmation"}
+    return {"trim": trim, "dropped": dropped, "at_word": ws[idx].text, "heard": words_mod.heard(ws[:idx + 6])}
