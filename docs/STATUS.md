@@ -3067,3 +3067,33 @@ the Lead before any re-dispatch; empty so far)*
   (outside this repo, never modified — protected-repo rule).
 - Real venv for Tier-2 runs: `~/precut-venv-fresh/bin/python`
   (auto-detected by `safety_net/run_safety_net.sh`).
+
+
+  **Built, NOT yet tested by Ryan (2026-09-30, his feedback on the testing round): three changes.**
+  (1) *Click any box on the review page's timeline to leave a note on the whole element* (a sound effect,
+  clip, callout, image card, caption line, music bed, cut or edit), no playhead alignment. New "Clips" lane
+  (one box per clip); boxes named for a person ("sound effect", `callout "Cardboard spacer"`). The note
+  carries `target {lane, label, start, end, clip}`; its time is the middle of the element. The interpreter is
+  told which element a note is on; an op that does not act on that lane is refused with a reason (a note on
+  an image card, caption or music bed is reported: no tool changes those from notes yet); a note on a
+  Callout/SFX element needs no word naming it ("make this longer"); `replace_sfx`, `change_callout` and QA
+  find their object by the element's start, not by time proximity. Shift+click only seeks. Checked in real
+  Chrome on the real page (SFX, Callout, Clips, Cuts boxes; payload, "Copy all feedback" text and the list
+  all carry the target; plain playhead notes unchanged). A stray bracket had killed the whole page while
+  every Python test passed: a test now runs `node --check` on the page script. Page:
+  `Runnells Tiling v3 - review page (click any box to leave a note)/review.html`.
+  (2) *Reference music defaults to the reference video's own audio* (`reference_music.music_from_video`,
+  `make_audio --reference-video`, `reference_music.py --from-video`); a music file given explicitly wins.
+  Only the stretches with no speech (by Whisper word timing, English set) are measured; under 6 s of those,
+  the whole mix is measured and flagged as voice-included (REFERENCE-MATCH becomes information, not a gate).
+  Found on the real reel: only 1.4 s of it has no speech, so its music cannot be isolated without a
+  voice/music separation model (Demucs, not installed; a new dependency in PreCut's venv is not mine to add).
+  (3) *Emulate a reference video* (`labs/style/emulate.py`, `style_brief.html`): see `labs/style/README.md`.
+  Real run, Ryan's vertical wallpaper reel as the reference and the horizontal Tiling cut: vertical crop
+  EMULATED (measured 1080 high, vertical); pauses: 4 of 5 tightened, 5.52 s removed, through revise (73.44 s
+  to 67.9 s); colour EMULATED (gap shrank, measured from the graded file); music GENERATED, NOT CLOSE ENOUGH
+  (voice-included reference); text, graphics, sound effects MEASURED ONLY. Seen on the frames: the centre
+  crop cuts a face off and, in the frame I checked, the SoldFast logo on the shirt. A negative control (colour strength 0) caught a flaw in my first "closer" test
+  (re-encode noise counted as progress). Output: `Runnells Tiling v3 - emulate wallpaper reel (all aspects)/`.
+  Clarified: the reference reel is vertical (1080x1920), the Tiling cut Ryan edited is the horizontal one.
+  Captions left alone at Ryan's word. 209 tests pass across `labs/`. Not in `app/`.

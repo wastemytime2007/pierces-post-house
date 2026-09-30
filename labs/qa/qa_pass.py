@@ -156,9 +156,15 @@ def _callout_pair(op_name: str, o: dict, note: dict, layers: tuple | None):
         return Row(n, op_name, UNMEASURED, "no before-version XML with the callout was given (pass the layered XML the note was left on as --before-xml)"), None
     before, after = layers
     t = note["timeline_sec"]
-    live = [l for l in before if l.kind == "video" and ly.lane_name(l) == "Callout" and l.start <= t <= l.end]
+    tg = note.get("target")
+    if tg:                                              # left on a timeline element: that element's start names the callout
+        live = [l for l in before if l.kind == "video" and ly.lane_name(l) == "Callout" and tg.get("lane") == "Callout"
+                and abs(l.start - float(tg.get("start", -9))) <= 0.25]
+    else:
+        live = [l for l in before if l.kind == "video" and ly.lane_name(l) == "Callout" and l.start <= t <= l.end]
     if not live:
-        return Row(n, op_name, NOT_DONE, f"no callout was on screen at {t:.2f}s on the version the note was left on"), None
+        return Row(n, op_name, NOT_DONE, (f'the {tg["lane"]} element "{tg.get("label", "")}" is not a callout on the version the note was left on' if tg
+                                          else f"no callout was on screen at {t:.2f}s on the version the note was left on")), None
     b = min(live, key=lambda l: abs(t - (l.start + l.end) / 2))
     key = anchor_of(b)
     cand = [l for l in after if l.kind == "video" and ly.lane_name(l) == "Callout" and (key is None or anchor_of(l) == key)]

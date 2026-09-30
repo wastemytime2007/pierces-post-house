@@ -184,7 +184,8 @@ def main() -> int:
     ap.add_argument("--sfx-below-peak-db", type=float, default=6.0, help="effect peak below the speech's peak")
     ap.add_argument("--preview-video", type=Path, help="video to put the mixed audio under (default: --base)")
     ap.add_argument("--cache", type=Path, help="where generated audio is cached (default: <out>/generated); point it at an earlier folder's to reuse its audio")
-    ap.add_argument("--music-reference", type=Path, help="match the music to this track: it is measured, described in words, and the closest of a few generated takes is kept")
+    ap.add_argument("--music-reference", type=Path, help="match the music to this track: it is measured, described in words, and the closest of a few generated takes is kept. Wins over --reference-video")
+    ap.add_argument("--reference-video", type=Path, help="the default music reference: a reference video whose own audio (its music-only stretches) is measured; ignored when --music-reference is given")
     ap.add_argument("--reference-tries", type=int, default=3)
     ap.add_argument("--music-file", type=Path, help="use exactly this already-generated music file (a rebuild uses this so the music never changes)")
     ap.add_argument("--music-ms", type=int, help="length to request the music at; the same length and prompt as an earlier run finds it in the cache instead of generating new music")
@@ -205,6 +206,18 @@ def main() -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     dur = round(a.end - a.start, 3)
     cache = a.cache or a.out / "generated"
+    ref_src = None
+    try:
+        if a.music_reference and a.reference_video:
+            print(f"note: --music-reference was given, so it is used instead of the audio of {a.reference_video.name}")
+        elif a.reference_video and not a.music_file:
+            import reference_music as rm
+            ref_src = rm.music_from_video(a.reference_video, a.out / "reference")
+            a.music_reference = Path(ref_src["path"])
+            print(f"music reference: {ref_src['source']}\n  {ref_src['note']}")
+    except Exception as e:                                  # ReferenceError is defined in a module imported only here
+        print(f"REFUSING: {e}", file=sys.stderr)
+        return 1
     try:
         speech = a.out / "speech_window.wav"
         speech_wav(a.base, speech, a.start, dur)
@@ -220,7 +233,8 @@ def main() -> int:
                 import reference_music as rm
                 ref_feats, got = rm.analyze(a.music_reference), rm.analyze(a.music_file)
                 c = rm.closeness(ref_feats, got)
-                music_ref = {"path": str(a.music_reference.resolve()), "features": ref_feats, "passed": c["passed"], "chosen_take": None,
+                music_ref = {"path": str(a.music_reference.resolve()), "taken_from_video": ref_src, "voice_included": bool(ref_src and ref_src["voice_included"]),
+                             "features": ref_feats, "passed": c["passed"], "chosen_take": None,
                              "takes": [{"take": 1, "features": got, "closeness": c}]}
         elif a.music_reference:
             import reference_music as rm
@@ -232,7 +246,8 @@ def main() -> int:
             music_mp3, res = rm.pick_best(ref_feats, a.music_prompt, music_secs, cache, a.reference_tries)
             best = next(t for t in res["takes"] if t["take"] == res["chosen_take"])
             music_info = {**best["info"], "cached": all(t["info"]["cached"] for t in res["takes"])}
-            music_ref = {"path": str(a.music_reference.resolve()), "features": ref_feats, "passed": res["passed"], "chosen_take": res["chosen_take"],
+            music_ref = {"path": str(a.music_reference.resolve()), "taken_from_video": ref_src, "voice_included": bool(ref_src and ref_src["voice_included"]),
+                         "features": ref_feats, "passed": res["passed"], "chosen_take": res["chosen_take"],
                          "takes": [{"take": t["take"], "features": t["features"], "closeness": t["closeness"]} for t in res["takes"]]}
         else:
             music_mp3, music_info = generate("music", a.music_prompt, music_secs, cache)

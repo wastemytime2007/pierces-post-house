@@ -37,8 +37,17 @@ MIN_GAIN_SEC = 0.3
 KINDS = ("extend_graphic", "edit_callout")
 
 
-def callout_under(layers: list[ly.Layer], t: float) -> ly.Layer | None:
-    """The callout layer on screen at timeline time t (nearest by centre if several)."""
+TARGET_TOL_SEC = 0.25
+
+
+def callout_under(layers: list[ly.Layer], t: float, target: dict | None = None) -> ly.Layer | None:
+    """The callout layer on screen at timeline time t (nearest by centre if several). A note left on a timeline
+    element names its callout by where that element starts, so the playhead does not matter."""
+    if target:
+        if target.get("lane") != "Callout":
+            return None
+        near = [l for l in layers if l.kind == "video" and ly.lane_name(l) == "Callout" and abs(l.start - float(target.get("start", -9))) <= TARGET_TOL_SEC]
+        return min(near, key=lambda l: abs(l.start - float(target["start"]))) if near else None
     live = [l for l in layers if l.kind == "video" and ly.lane_name(l) == "Callout" and l.start <= t <= l.end]
     return min(live, key=lambda l: abs(t - (l.start + l.end) / 2)) if live else None
 
@@ -67,9 +76,11 @@ def apply(ops: list[dict], notes: list[dict], xml: Path, out: Path, default_extr
         t = notes[n - 1]["timeline_sec"]
         e = {"note": n, "op": o["op"], "note_time": t, "note_text": notes[n - 1].get("text", ""), "applied": False, "reason": ""}
         ledger.append(e)
-        lay = callout_under(layers, t)
+        tg = notes[n - 1].get("target")
+        lay = callout_under(layers, t, tg)
         if lay is None:
-            e["reason"] = f"no callout is on screen at {t:.2f}s on this cut"
+            e["reason"] = (f"the {tg['lane']} element \"{tg.get('label', '')}\" at {tg.get('start')}s is not a callout on this cut" if tg
+                           else f"no callout is on screen at {t:.2f}s on this cut")
             continue
         folder = Path(lay.path).parent
         if not (folder / "placement.json").exists():

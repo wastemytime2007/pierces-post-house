@@ -18,7 +18,8 @@ the workflow as a reusable skill (install: `cp -R labs/skill/post-house-review-l
 | Music like a reference track (or rank your library) | `audio/reference_music.py` | `audio/README.md` |
 | Put layers back after a revision | `reconform/reconform.py` | `reconform/README.md` |
 | QA every note against the new version | `qa/qa_pass.py` | `qa/README.md` |
-| Style from a reference video | `style/style_profile.py` | `style/README.md` |
+| Style from a reference video (measure and suggest) | `style/style_profile.py` | `style/README.md` |
+| Emulate a reference video (pick aspects, default all) | `style/emulate.py`, `style/style_brief.html` | `style/README.md` |
 | One place for every version and asset | `project/project.py` | `project/README.md` |
 
 Run all tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs -q`.

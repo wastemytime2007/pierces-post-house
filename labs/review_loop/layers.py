@@ -63,7 +63,7 @@ def find_layers(xml: Path) -> list[Layer]:
 
 
 LANE_OF = (("overlay", "Callout"), ("callout", "Callout"), ("card", "Card"), ("caption", "Captions"), ("music", "Music"), ("sfx", "SFX"))
-LANE_ORDER = ["Cuts", "Edits", "Callout", "Card", "Captions", "Music", "SFX"]
+LANE_ORDER = ["Clips", "Cuts", "Edits", "Callout", "Card", "Captions", "Music", "SFX"]
 
 
 def lane_name(l: Layer) -> str:
@@ -71,11 +71,30 @@ def lane_name(l: Layer) -> str:
     return next((lane for key, lane in LANE_OF if key in n), "Graphics" if l.kind == "video" else "Audio")
 
 
+PLAIN = {"SFX": "sound effect", "Music": "music bed", "Card": "image card", "Callout": "callout", "Captions": "captions"}
+
+
+def _label(l: Layer, lane: str) -> str:
+    """What a box on the map is called to a person: 'callout "Cardboard spacer"', 'sound effect', not the file name."""
+    plain = PLAIN.get(lane)
+    if plain is None:
+        return l.name.rsplit(".", 1)[0]
+    try:
+        import json
+        pl = json.loads((Path(l.path).parent / "placement.json").read_text())
+        title = str(pl.get("title") or pl.get("caption") or "").strip()
+    except (OSError, ValueError, AttributeError):
+        title = ""
+    return f'{plain} "{title[:40]}"' if title else plain
+
+
 def beatmap(cut, layers: list[Layer], items: list[dict] | None = None) -> list[dict]:
     """The edit decisions along the timeline, one lane per kind: cuts, the revision's edits, and each layer
     (captions expand to one block per line when the layer's captions.json sits beside its file)."""
     import json
     lanes: dict[str, list[dict]] = {"Cuts": [{"start": round(c.tl_start, 3), "end": round(c.tl_start, 3), "label": f"cut to clip {c.idx} ({c.name})"} for c in cut.video[1:]]}
+    if cut.video:
+        lanes["Clips"] = [{"start": round(c.tl_start, 3), "end": round(c.tl_end, 3), "label": f"clip {c.idx} ({c.name})", "clip": c.idx} for c in cut.video]
     for i in items or []:
         if i.get("applied") and i.get("v2_time") is not None:
             lanes.setdefault("Edits", []).append({"start": round(i["v2_time"], 3), "end": round(i["v2_time"], 3), "label": f"note {i['note']}: {i['summary'][:90]}"})
@@ -97,7 +116,7 @@ def beatmap(cut, layers: list[Layer], items: list[dict] | None = None) -> list[d
                 s, e = max(a, l.src_in), min(b, l.src_out)
                 blocks.append({"start": round(l.start + (s - l.src_in), 3), "end": round(l.start + (e - l.src_in), 3), "label": g["text"]})
         else:
-            blocks.append({"start": round(l.start, 3), "end": round(l.end, 3), "label": l.name.rsplit(".", 1)[0]})
+            blocks.append({"start": round(l.start, 3), "end": round(l.end, 3), "label": _label(l, lane)})
     order = LANE_ORDER + sorted(k for k in lanes if k not in LANE_ORDER)
     return [{"name": k, "kind": "ticks" if k in ("Cuts", "Edits") else "blocks", "items": sorted(lanes[k], key=lambda x: x["start"])} for k in order if k in lanes]
 

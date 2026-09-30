@@ -16,15 +16,17 @@ window) in Premiere; generated sound effect and music; layers on the page; recon
 | # | Piece | Open this | Look for |
 | --- | --- | --- | --- |
 | 1 | **The overview** | `Runnells Tiling - project index.html` | does it tell you what exists and what each round found? Are the stand-in rounds clearly marked? |
-| 2 | **Review page with everything on it** | `Runnells Tiling v3 - reconformed v4 E (image card)/review/review.html` | Layers on/off toggle; click beatmap blocks (Cuts, Callout, Card, Captions, Music, SFX); leave a note with a drawing; Download JSON |
+| 2 | **Review page: click any box to leave a note on it** (NEW) | `Runnells Tiling v3 - review page (click any box to leave a note)/review.html` | click a box on the timeline map (a sound effect, a clip, the callout, the image card, a caption line) and write a note on that whole element, no playhead needed; Shift+click only jumps there; Download JSON: does each note name its element? Layers on/off and drawing still work |
 | 3 | **Keep a graphic on screen longer** (stand-in note) | the callout at 12-18.7 s on that page; its preview `... longer callout (stand-in)/callout/overlay_preview.mp4`; QA `... QA pass (longer callout)/qa_report.html` | the callout now stays ~1.5 s longer; is 1.5 s the right default step when a note gives no amount? |
 | 4 | **Change a callout's words** (stand-in note) | the same callout; `... callout words (stand-in)/callout/overlay_preview.mp4`; `... QA pass (callout words)/qa_report.html` | it reads "Cardboard spacer", second line gone |
 | 5 | **Image card** (border + highlight a screenshot) | that page at 29.5-33.3 s (the card); source image `... image card (real frame)/screenshot.png` | whole image shown, blue border, orange box around the spacer, caption; does it look like what you want? |
 | 6 | **Replace a sound effect from a note** | `... sfx and music v2 (0-22s)/audio_preview.mp4` at 13.97 s (new effect) against `... sfx and music (0-22s)/audio_preview.mp4` (old) | does the new effect sound like "something being highlighted on a piece of paper"? |
 | 7 | **Music like a reference track** | `... reference music (Takin' a Walk)/chosen.mp3` (generated) next to the reference in your Artlist library (Barrell, Takin' a Walk); `... reference music on the cut/audio_preview.mp4`; `ranking.json` in that folder | the honest result: tempo and rhythm match, tone and dynamics did not; does the ranking of your own Artlist tracks look like a better route? |
 | 8 | **Style from a reference video** | `... style profile (wallpaper reel vs Tiling cut)/style_report.html` (your finished reel as reference) and `... (creator reel vs Tiling cut)` | are the measured differences and the five suggested notes useful? The preview sits at -30.6 LUFS against your reel's -12.5 |
-| 9 | **Premiere import of the newest XML** | `... reconformed v4 E (image card)/Runnells_Tiling_v3_layers_v4.xml` | V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 effect. Imports? Positions and timing right? (It carries the stand-in callout changes.) |
-| 10 | **Project index, skill, docs** | `labs/README.md`, `labs/skill/post-house-review-loop/SKILL.md` | is the map of tools clear? |
+| 9 | **Emulate a reference video** (NEW) | `... emulate wallpaper reel (all aspects)/emulation_report.html`, `emulated_preview.mp4`, `reference_look.cube`; the picker page `Style brief.html` | your vertical reel as the reference, the horizontal Tiling cut as ours, all aspects on: vertical crop, tightened pauses, colour look, music (made for real); text, graphics, sound effects (measured only). Is the preview anything like the reel? The crop cuts a face off in places |
+| 10 | **Reference music from the reference video** (NEW) | `... reference music from the wallpaper reel (measure only)/reference.json` | the music reference now comes from the reference video's own audio unless you give a track. Only 1.4 s of your reel has no speech, so the whole mix (voice in it) was measured and flagged: acceptable, or install a voice/music separation model? |
+| 11 | **Premiere import of the newest XML** | `... reconformed v4 E (image card)/Runnells_Tiling_v3_layers_v4.xml` | V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 effect. Imports? Positions and timing right? (It carries the stand-in callout changes.) |
+| 12 | **Project index, skill, docs** | `labs/README.md`, `labs/skill/post-house-review-loop/SKILL.md` | is the map of tools clear? |
 
 ## Try it on your own notes (the whole loop)
 1. Open review page #2, leave 3-4 notes (include one with a drawing, one about the text bubble staying longer, one about a pause, one
@@ -58,8 +60,10 @@ python3 labs/project/project.py --root "$R" --name "Runnells Tiling"
    Generated music matched a reference's tempo but not its tone; ranking your own tracks against a reference is free and licensed.
    ElevenLabs' commercial-use terms for generated *sound effects* are unconfirmed: nothing generated goes into published work until you check them.
 4. **When should reconform run?** Today you run it after `revise.py` when a layers warning appears. It could run automatically.
-5. **Integration into `app/`:** not done, by your rule (all skills finished, tested, then together). Say when.
-6. `docs/reference/WALLPAPER_REEL_ANATOMY.md` says 67.1 s; the file measures 66.03 s. I left the doc alone (it is the Lead's).
+5. **Separating voice from music (Demucs).** Voice-over reels like yours keep the music under every word, so their music cannot be isolated without it. It is a new dependency and a model download; I did not install it (least of all into PreCut's environment). Say if you want it in a separate one.
+5b. **Vertical reframe.** The crop is a centre crop and cuts faces off; Premiere's Auto Reframe follows the subject. Build a subject-following reframe, or use Auto Reframe on the result?
+6. **Integration into `app/`:** not done, by your rule (all skills finished, tested, then together). Say when.
+7. `docs/reference/WALLPAPER_REEL_ANATOMY.md` says 67.1 s; the file measures 66.03 s. I left the doc alone (it is the Lead's).
 
 ## What the checks cannot tell you
 Whether anything *sounds* or *looks* right (I can measure, not hear), whether the newest XML imports cleanly in Premiere (only the earlier

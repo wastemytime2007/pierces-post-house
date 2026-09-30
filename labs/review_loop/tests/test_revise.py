@@ -373,3 +373,64 @@ def test_validate_refuses_target_words_not_in_the_note_and_clamps_max_sec(xml):
     ], notes, cut)
     assert got[0]["op"] == "unsupported" and "not in the note" in got[0]["reason"]
     assert got[1]["op"] == "extend_end" and got[1]["clip"] == 1 and got[1]["max_sec"] == 1.5
+
+
+# ---- notes left on a whole timeline element (a box on the review page's map) ----
+
+def _on(lane, text, start=14.0, end=16.0, **extra):
+    return {"timeline_sec": round((start + end) / 2, 2), "text": text, "target": {"lane": lane, "label": "x", "start": start, "end": end, **extra}}
+
+
+def test_a_note_on_a_callout_or_sfx_element_needs_no_word_naming_it(xml):
+    cut = timeline.load_cut(xml)
+    notes = [_on("Callout", "make this longer"), _on("SFX", "something more like a soft paper rustle"), _on("Callout", "say Cardboard spacer instead")]
+    got = {o["note"]: o for o in opsmod.validate([
+        {"note": 1, "op": "extend_graphic", "seconds": None},
+        {"note": 2, "op": "replace_sfx", "sound": "soft paper rustle"},
+        {"note": 3, "op": "edit_callout", "title": "Cardboard spacer"}], notes, cut)}
+    assert [got[i]["op"] for i in (1, 2, 3)] == ["extend_graphic", "replace_sfx", "edit_callout"]
+    bare = {o["note"]: o for o in opsmod.validate([{"note": 1, "op": "extend_graphic", "seconds": None}], [{"timeline_sec": 15, "text": "make this longer"}], cut)}
+    assert bare[1]["op"] == "unsupported" and "does not talk about an on-screen graphic" in bare[1]["reason"]   # same words, no element: still refused
+
+
+def test_an_op_that_does_not_act_on_the_lane_the_note_was_left_on_is_reported(xml):
+    cut = timeline.load_cut(xml)
+    notes = [_on("SFX", "make this longer"), _on("Callout", "remove this"), _on("Card", "make this longer, the text bubble"),
+             _on("Captions", "tighten this pause"), _on("Music", "louder")]
+    got = {o["note"]: o for o in opsmod.validate([
+        {"note": 1, "op": "extend_graphic", "seconds": None}, {"note": 2, "op": "drop_clip", "clip": 1},
+        {"note": 3, "op": "extend_graphic", "seconds": None}, {"note": 4, "op": "tighten_pause", "at": 15}, {"note": 5, "op": "tighten_pause", "at": 15}], notes, cut)}
+    assert all(got[i]["op"] == "unsupported" for i in range(1, 6))
+    assert "left on a SFX element" in got[1]["reason"] and "left on a Callout element" in got[2]["reason"]
+    assert "image card" in got[3]["reason"] and "captions" in got[4]["reason"] and "music bed" in got[5]["reason"]
+
+
+def test_a_note_on_a_clip_is_about_that_clip_and_cannot_be_turned_on_another(xml):
+    cut = timeline.load_cut(xml)
+    notes = [_on("Clips", "the end is cut off", 10.0, 20.0, clip=2), _on("Clips", "remove this shot", 10.0, 20.0, clip=2)]
+    got = {o["note"]: o for o in opsmod.validate([{"note": 1, "op": "extend_end"}, {"note": 2, "op": "drop_clip", "clip": 3}], notes, cut)}
+    assert got[1]["op"] == "extend_end" and got[1]["clip"] == 2                     # the clip comes from the element, not the playhead
+    assert got[2]["op"] == "unsupported" and "left on clip 2, not clip 3" in got[2]["reason"]
+    assert opsmod.validate([{"note": 1, "op": "drop_clip", "clip": 2}], notes[1:], cut)[0]["op"] == "drop_clip"
+
+
+def test_the_interpreter_is_told_which_element_a_note_was_left_on(xml):
+    cut = timeline.load_cut(xml)
+    p = opsmod.build_prompt(cut, [_on("SFX", "different"), {"timeline_sec": 3, "text": "plain"}])
+    assert 'left ON the SFX element "x", 14.0-16.0s' in p and p.count("left ON") == 1
+
+
+def test_sfx_and_callout_are_found_by_the_element_not_the_playhead():
+    sys.path.insert(0, str(HERE.parent / "audio"))
+    sys.path.insert(0, str(HERE.parent / "overlay"))
+    import change_callout as cc
+    import layers as ly
+    import replace_sfx as rs
+    clips = [{"kind": "sfx", "name": "a", "start_sec": 4.0, "duration_sec": 1.0}, {"kind": "sfx", "name": "b", "start_sec": 4.6, "duration_sec": 1.0}]
+    assert rs.sfx_for_note(clips, 4.3)["name"] == "a"                                       # by time: nearest start
+    assert rs.sfx_for_note(clips, 4.3, {"lane": "SFX", "start": 4.6})["name"] == "b"        # by element: the one named
+    assert rs.sfx_for_note(clips, 4.6, {"lane": "Callout", "start": 4.6}) is None
+    layers = [ly.Layer("video", "overlay.mov", "/x/overlay.mov", 1.0, 5.0, 1), ly.Layer("video", "overlay2.mov", "/x/overlay2.mov", 3.0, 7.0, 1)]
+    assert cc.callout_under(layers, 4.0, {"lane": "Callout", "start": 3.0}).name == "overlay2.mov"
+    assert cc.callout_under(layers, 4.0, {"lane": "Callout", "start": 1.0}).name == "overlay.mov"
+    assert cc.callout_under(layers, 4.0, {"lane": "SFX", "start": 1.0}) is None

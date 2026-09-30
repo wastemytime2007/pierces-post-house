@@ -130,7 +130,9 @@ def main() -> int:
             c = rm.closeness(rm.analyze(Path(mr["path"])), rm.analyze(music), dynamics=False)
             detail = (f"the music stem vs the reference track: tempo {c['tempo_error']:.0%} off (half or double time counts), brightness x{c['brightness_ratio']}, "
                       f"rhythmic density x{c['density_ratio']}; checks {c['checks']}")
-            if mr.get("passed"):
+            if mr.get("voice_included"):
+                rows.append(("info: REFERENCE-MATCH", None, "the reference was a video's whole mix with the voice in it, so this closeness is not a reliable pass or fail. " + detail))
+            elif mr.get("passed"):
                 rows.append(("REFERENCE-MATCH", bool(c["passed"]), detail))                 # a take was accepted as close: the finished stem must still be
             else:
                 rows.append(("info: REFERENCE-MATCH", None, "NO take was close enough to the reference by measurement; the closest was used. " + detail))

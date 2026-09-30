@@ -31,10 +31,15 @@
   .lane .lb { position: absolute; left: 5px; top: 1px; font-size: 10px; line-height: 14px; color: var(--dim); pointer-events: none; z-index: 2; text-transform: uppercase; letter-spacing: .04em; background: rgba(13, 20, 32, .82); padding: 0 4px; border-radius: 3px; }
   .blk { position: absolute; top: 2px; bottom: 2px; min-width: 3px; border-radius: 3px; background: var(--accent); opacity: .7; cursor: pointer; }
   .lane.Captions .blk { background: #00ade1; } .lane.Music .blk { background: #38d66b; } .lane.SFX .blk { background: #ffd400; }
+  .lane.Clips .blk { background: #3b5a85; opacity: .85; box-shadow: inset -1px 0 0 var(--bg, #0d1420); }
   .lane.Callout .blk { background: var(--pin); } .lane.Card .blk { background: #b48cff; }
   .tk { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: #cfd9e8; cursor: pointer; }
   .lane.Edits .tk { background: #38d66b; width: 4px; }
   .blk.active, .tk.active { opacity: 1; box-shadow: 0 0 0 1px #fff; }
+  .tk::before { content: ""; position: absolute; top: 0; bottom: 0; left: -6px; right: -6px; }
+  .blk:hover, .tk:hover { opacity: 1; outline: 1px dashed #fff; }
+  .blk.picked, .tk.picked { opacity: 1; outline: 2px solid #fff; outline-offset: 1px; z-index: 2; }
+  .note .tgt { color: var(--pin); font-size: 12px; font-weight: 600; }
   #beatmap .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; z-index: 3; }
   .now { min-height: 22px; color: var(--dim); font-size: 13px; margin-bottom: 8px; }
   .now b { color: var(--text); font-weight: 600; }
@@ -185,7 +190,10 @@ const BEATS = [];
       el.style.left = (it.start / DATA.duration * 100) + '%';
       if (!tick) el.style.width = Math.max(0.25, (it.end - it.start) / DATA.duration * 100) + '%';
       el.title = L.name + ' · ' + fmt(it.start) + (tick ? '' : '-' + fmt(it.end)) + ' · ' + it.label;
-      el.onclick = () => { v.currentTime = Math.max(0, it.start - (tick ? 1 : 0.3)); };
+      el.onclick = e => {
+        if (e.shiftKey) { v.currentTime = Math.max(0, it.start - (tick ? 1 : 0.3)); return; }
+        openElementNote(L.name, tick, it, el);
+      };
       lane.appendChild(el);
       BEATS.push({ lane: L.name, tick, it, el });
     });
@@ -367,12 +375,12 @@ function esc(s) { return s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;',
 function drawNotes() {
   document.getElementById('count').textContent = 'Feedback (' + notes.length + ')';
   const box = document.getElementById('notes');
-  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Press n to leave a note, or d to draw on the frame.</div>';
+  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Click any box on the timeline map to leave a note on that whole element, or press n for a note at the playhead, d to draw on the frame.</div>';
   notes.forEach((n, i) => {
     const el = document.createElement('div');
     el.className = 'note';
     const hasDraw = n.shapes && n.shapes.length;
-    el.innerHTML = '<div class="t">' + fmt(n.timeline_sec) + '</div><div><div>' + esc(n.text || '(drawing only)') + '</div><div class="where">' + esc(n.where) + '</div>'
+    el.innerHTML = '<div class="t">' + fmt(n.timeline_sec) + '</div><div>' + (n.target ? '<div class="tgt">on ' + esc(n.target.lane) + ': ' + esc(n.target.label) + '</div>' : '') + '<div>' + esc(n.text || '(drawing only)') + '</div><div class="where">' + esc(n.where) + '</div>'
       + (hasDraw ? '<div class="drawn">drawn: ' + n.shapes.map(s => esc(describe(s))).join('; ') + '</div><div class="thumb"><video src="' + SRC() + '" muted preload="auto" playsinline></video><canvas></canvas></div>' : '')
       + '</div><button class="x" title="Delete">✕</button>';
     if (hasDraw) {
@@ -405,7 +413,7 @@ function tick() {
   document.getElementById('play').textContent = v.paused ? 'Play' : 'Pause';
   redraw();
 }
-function followPlayhead() { if (pending && v.paused) { pending.t = v.currentTime; updateEditorAt(); } }
+function followPlayhead() { if (pending && !pending.target && v.paused) { pending.t = v.currentTime; updateEditorAt(); } }
 v.addEventListener('timeupdate', tick); v.addEventListener('play', tick); v.addEventListener('pause', () => { followPlayhead(); tick(); });
 v.addEventListener('seeked', () => { followPlayhead(); tick(); }); v.addEventListener('loadedmetadata', tick);
 bar.addEventListener('click', e => { const r = bar.getBoundingClientRect(); v.currentTime = (e.clientX - r.left) / r.width * DATA.duration; });
@@ -417,7 +425,23 @@ document.getElementById('rate').onchange = e => { v.playbackRate = parseFloat(e.
 
 const editor = document.getElementById('editor'), ta = document.getElementById('text');
 function updateEditorAt() {
-  if (pending) document.getElementById('editorAt').textContent = 'Note at ' + fmt(pending.t) + ' · ' + where(pending.t).text;
+  if (!pending) return;
+  const T = pending.target;
+  document.getElementById('editorAt').textContent = T
+    ? 'Note on the whole ' + T.lane + ' element: ' + T.label + ' (' + fmt(T.start) + (T.end > T.start ? '-' + fmt(T.end) : '') + ') · ' + where(pending.t).text
+    : 'Note at ' + fmt(pending.t) + ' · ' + where(pending.t).text;
+}
+/* A click on a timeline box leaves a note on the entire element. timeline_sec is set inside the element (its middle), so nothing depends on the playhead. */
+function openElementNote(lane, tick, it, el) {
+  v.pause(); layoutCanvas();
+  const end = tick ? it.start : it.end, mid = tick ? it.start : (it.start + it.end) / 2;
+  v.currentTime = Math.min(DATA.duration - 0.05, mid);
+  pending = { t: mid, shapes: [], target: { lane, label: it.label, start: +it.start.toFixed(2), end: +end.toFixed(2), kind: tick ? 'tick' : 'block' } };
+  if (it.clip) pending.target.clip = it.clip;
+  BEATS.forEach(b => b.el.classList.toggle('picked', b.el === el));
+  updateEditorAt();
+  editor.style.display = 'block'; ta.value = '';
+  setDrawMode(false); ta.focus(); redraw();
 }
 function openEditor(withDraw) {
   v.pause(); layoutCanvas();
@@ -428,14 +452,16 @@ function openEditor(withDraw) {
   if (!withDraw) ta.focus();
   redraw();
 }
-function closeEditor() { pending = null; cur = null; setDrawMode(false); editor.style.display = 'none'; ta.blur(); redraw(); }
+function closeEditor() { BEATS.forEach(b => b.el.classList.remove('picked')); pending = null; cur = null; setDrawMode(false); editor.style.display = 'none'; ta.blur(); redraw(); }
 function commit() {
   if (!pending) return;
   const text = ta.value.trim();
   if (text || pending.shapes.length) {
     const w = where(pending.t);
     const shapes = pending.shapes.map(s => JSON.parse(JSON.stringify(s)));
-    notes.push({ timeline_sec: +pending.t.toFixed(2), clip: w.clip, source: w.source, source_sec: w.source_sec, where: w.text, text, shapes });
+    const n = { timeline_sec: +pending.t.toFixed(2), clip: w.clip, source: w.source, source_sec: w.source_sec, where: w.text, text, shapes };
+    if (pending.target) n.target = pending.target;
+    notes.push(n);
     notes.sort((a, b) => a.timeline_sec - b.timeline_sec);
     save();
   }
@@ -464,13 +490,13 @@ document.addEventListener('keydown', e => {
 function payload() {
   return { schema: 'review_notes.v0-draft', sequence: DATA.sequence, preview_duration_sec: DATA.duration,
     shape_coords: 'fractions of the video frame, 0..1, origin top-left',
-    notes: notes.map(n => ({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text,
+    notes: notes.map(n => Object.assign({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text }, n.target ? { target: n.target } : {}, {
       shapes: (n.shapes || []).map(exportShape) })) };
 }
 function feedbackText() {
   const lines = ['Review notes for "' + DATA.sequence + '" (' + notes.length + ' notes)', ''];
   notes.forEach((n, i) => {
-    lines.push((i + 1) + '. [' + fmt(n.timeline_sec) + '] ' + n.where + ' :: ' + (n.text || '(drawing only)'));
+    lines.push((i + 1) + '. [' + fmt(n.timeline_sec) + '] ' + (n.target ? 'ON ' + n.target.lane.toUpperCase() + ' "' + n.target.label + '" (' + fmt(n.target.start) + '-' + fmt(n.target.end) + ') ' : '') + n.where + ' :: ' + (n.text || '(drawing only)'));
     (n.shapes || []).forEach(s => lines.push('     drawn on frame: ' + describe(s)));
   });
   return lines.join('\n') + '\n\n```json\n' + JSON.stringify(payload(), null, 2) + '\n```\n';

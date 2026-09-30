@@ -32,8 +32,17 @@ REACH_SEC = 1.0                     # a note counts as "at" an effect from this 
 PROMPT_TAIL = ", short and subtle, a sound effect for a graphic appearing on screen"
 
 
-def sfx_for_note(clips: list[dict], t: float) -> dict | None:
-    """The effect clip a note at timeline time t is about: the nearest one whose start-1s .. end+1s covers t."""
+TARGET_TOL_SEC = 0.25
+
+
+def sfx_for_note(clips: list[dict], t: float, target: dict | None = None) -> dict | None:
+    """The effect clip a note at timeline time t is about: the nearest one whose start-1s .. end+1s covers t.
+    A note left on a timeline element names its effect by where that element starts (no playhead needed)."""
+    if target:
+        if target.get("lane") != "SFX":
+            return None
+        near = [c for c in clips if c["kind"] == "sfx" and abs(c["start_sec"] - float(target.get("start", -9))) <= TARGET_TOL_SEC]
+        return min(near, key=lambda c: abs(c["start_sec"] - float(target["start"]))) if near else None
     near = [c for c in clips if c["kind"] == "sfx" and c["start_sec"] - REACH_SEC <= t <= c["start_sec"] + c["duration_sec"] + REACH_SEC]
     return min(near, key=lambda c: abs(t - c["start_sec"])) if near else None
 
@@ -54,8 +63,11 @@ def replace(audio_dir: Path, ops: list[dict], notes: list[dict], out: Path, prev
         n = o["note"]
         t = notes[n - 1]["timeline_sec"]
         entry = {"note": n, "note_time": t, "note_text": notes[n - 1].get("text", ""), "sound": o["sound"], "applied": False, "reason": ""}
-        c = sfx_for_note(clips, t)
-        if c is None:
+        tg = notes[n - 1].get("target")
+        c = sfx_for_note(clips, t, tg)
+        if c is None and tg:
+            entry["reason"] = f"the {tg['lane']} element \"{tg.get('label', '')}\" at {tg.get('start')}s is not one of this project's sound effects"
+        elif c is None:
             entry["reason"] = f"no sound effect within {REACH_SEC:.0f}s of {t:.2f}s (the effect is at {[round(x['start_sec'], 2) for x in clips if x['kind'] == 'sfx']})"
         elif c["name"] in done:
             entry["reason"] = "another note already changed this effect; one change per effect per run"

@@ -166,8 +166,10 @@ def test_a_revision_that_ripples_the_cut_moves_the_layers_with_it_and_the_page_s
 def test_the_beatmap_has_a_lane_per_kind_of_decision_in_a_fixed_order(layered):
     _base, full = layered
     lanes = ly.beatmap(timeline.load_cut(full), ly.find_layers(full))
-    assert [l["name"] for l in lanes] == ["Cuts", "Callout", "Music", "SFX"]
+    assert [l["name"] for l in lanes] == ["Clips", "Cuts", "Callout", "Music", "SFX"]
     by = {l["name"]: l for l in lanes}
+    assert by["Clips"]["kind"] == "blocks" and [i["clip"] for i in by["Clips"]["items"]] == [1, 2, 3]       # every clip is a box you can leave a note on
+    assert all(i["end"] > i["start"] for i in by["Clips"]["items"])
     assert by["Cuts"]["kind"] == "ticks" and len(by["Cuts"]["items"]) == 2                   # three clips, two seams
     assert by["Callout"]["kind"] == "blocks" and by["Callout"]["items"][0]["end"] > by["Callout"]["items"][0]["start"]
     assert by["SFX"]["items"][0]["start"] == pytest.approx(9.0, abs=0.02)
@@ -191,7 +193,7 @@ def test_the_revisions_applied_edits_get_their_own_lane_and_unapplied_ones_do_no
     items = [{"note": 1, "applied": True, "v2_time": 4.0, "summary": "removed 2s of dead air"}, {"note": 2, "applied": False, "v2_time": None, "summary": "not done"}]
     lanes = ly.beatmap(timeline.load_cut(full), ly.find_layers(full), items)
     edits = next(l for l in lanes if l["name"] == "Edits")
-    assert [i["label"] for i in edits["items"]] == ["note 1: removed 2s of dead air"] and lanes[1]["name"] == "Edits"
+    assert [i["label"] for i in edits["items"]] == ["note 1: removed 2s of dead air"] and lanes[2]["name"] == "Edits"
 
 
 def test_an_image_card_gets_its_own_lane_between_the_callout_and_the_captions():
@@ -206,5 +208,31 @@ def test_a_cut_with_no_layers_still_gets_a_cuts_lane_and_the_page_carries_the_be
     base, _full = layered
     page = build(base, tmp_path / "plain", height=180)
     data = json.loads((tmp_path / "plain" / "timeline.json").read_text())
-    assert [l["name"] for l in data["beatmap"]] == ["Cuts"]
+    assert [l["name"] for l in data["beatmap"]] == ["Clips", "Cuts"]
     assert 'id="beatmap"' in page.read_text() and '"beatmap"' in page.read_text()
+
+
+def test_the_pages_script_parses(layered, tmp_path):
+    """A stray bracket once left the whole page dead (no DATA, no beatmap) while every Python test passed."""
+    import re
+    import shutil
+    import subprocess
+    if shutil.which("node") is None:
+        pytest.skip("node not installed")
+    _base, full = layered
+    page = build(full, tmp_path / "syn", height=180)
+    js = re.search(r"<script>(.*?)</script>", page.read_text(), re.S).group(1)
+    f = tmp_path / "page.js"
+    f.write_text(js)
+    r = subprocess.run(["node", "--check", str(f)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr[:400]
+
+
+def test_boxes_on_the_map_are_named_for_a_person_not_a_file(tmp_path):
+    (tmp_path / "placement.json").write_text(json.dumps({"title": "Cardboard spacer"}))
+    mk = lambda name: ly.Layer("video" if name.endswith(".mov") else "audio", name, str(tmp_path / name), 1.0, 4.0, 1)          # noqa: E731
+    cut = type("C", (), {"video": []})()
+    lanes = {l["name"]: l for l in ly.beatmap(cut, [mk("overlay.mov"), mk("card.mov"), mk("sfx_clip.wav"), mk("music_stem.wav")])}
+    assert lanes["Callout"]["items"][0]["label"] == 'callout "Cardboard spacer"'
+    assert lanes["SFX"]["items"][0]["label"] == "sound effect" or lanes["SFX"]["items"][0]["label"].startswith("sound effect")
+    assert lanes["Music"]["items"][0]["label"].startswith("music bed")

@@ -22,8 +22,8 @@ ART = Path("~/Downloads/Artlist Library/Music/Barrell - Takin' a Walk/Barrell - 
 TESTS = [
     ("1", "The overview", "Does it tell you what exists and what each round found? Are the stand-in rounds clearly marked?",
      [("Project index", "Runnells Tiling - project index.html")]),
-    ("2", "Review page with everything on it", "Layers on/off toggle; click beatmap blocks (Cuts, Callout, Card, Captions, Music, SFX); leave a note with a drawing; Download JSON.",
-     [("Review page", f"{E}/review/review.html")]),
+    ("2", "Review page: click any box to leave a note on it", "NEW. Click a box on the timeline map (a sound effect, a clip, the callout, the image card, a caption line) and write a note on that whole element, no playhead needed. Shift+click only jumps there. Download JSON: does each note name its element? Also still there: Layers on/off, drawing.",
+     [("Review page (new)", "Runnells Tiling v3 - review page (click any box to leave a note)/review.html"), ("Review page (before)", f"{E}/review/review.html")]),
     ("3", "Keep a graphic on screen longer (stand-in note)", "The callout (12.2-18.7 s on the page) now stays about 1.5 s longer. Is 1.5 s the right default step when a note gives no amount?",
      [("Callout preview", P + "longer callout (stand-in)/callout/overlay_preview.mp4"), ("QA report", P + "QA pass (longer callout)/qa_report.html")]),
     ("4", "Change a callout's words (stand-in note)", 'It should read "Cardboard spacer" with the small line gone.',
@@ -36,7 +36,11 @@ TESTS = [
      [("Generated take", P + "reference music (Takin' a Walk)/chosen.mp3"), ("On the cut", P + "reference music on the cut/audio_preview.mp4"), ("Library ranking", P + "reference music (Takin' a Walk)/ranking.json")]),
     ("8", "Style from a reference video", "Your finished wallpaper reel as the reference. Are the measured differences and the suggested notes useful? The preview sits at -30.6 LUFS against the reel's -12.5.",
      [("Wallpaper reel vs Tiling cut", P + "style profile (wallpaper reel vs Tiling cut)/style_report.html"), ("Creator reel vs Tiling cut", P + "style profile (creator reel vs Tiling cut)/style_report.html")]),
-    ("9", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
+    ("9", "Emulate a reference video", "NEW. Your vertical wallpaper reel as the reference, the horizontal Tiling cut as ours, every aspect on. Open the report: what was made for real (vertical crop, tightened pauses, colour look, music) and what was only measured (text, graphics, sound effects). Is the preview anything like the reel? The crop cuts a face off in places. Try the brief page to state what to take.",
+     [("Report", "Runnells Tiling v3 - emulate wallpaper reel (all aspects)/emulation_report.html"), ("Emulated preview", "Runnells Tiling v3 - emulate wallpaper reel (all aspects)/emulated_preview.mp4"), ("Colour look (.cube)", "Runnells Tiling v3 - emulate wallpaper reel (all aspects)/reference_look.cube"), ("Style brief page", "Style brief.html")]),
+    ("10", "Reference music from the reference video", "NEW. The music reference now comes from the reference video's own audio unless you give a track. On this reel only 1.4 s has no speech, so the whole mix (voice in it) was measured and flagged. Does that fallback seem acceptable, or should a voice/music separation model be installed?",
+     [("What was measured", "Runnells Tiling v3 - reference music from the wallpaper reel (measure only)/reference.json")]),
+    ("11", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
      [("XML", f"{E}/Runnells_Tiling_v3_layers_v4.xml")]),
 ]
 
@@ -45,6 +49,8 @@ DECISIONS = [
     "Captions style: white on a navy pill with a light-blue word highlight, in Inter because ITC Avant Garde is not installed. Say if you want the brand font installed.",
     "Music and sound effects: generate, or use your Artlist library? You already have it locally (44 music folders / 50 files, 35 sound effects). Ranking your own tracks against a reference is free and licensed; generated music matched tempo but not tone. ElevenLabs' commercial terms for generated sound effects are unconfirmed, so nothing generated goes into published work until you check them.",
     "When should reconform run? Today you run it after revise.py when a layers warning appears. It could run automatically.",
+    "Separating voice from music (Demucs). Voice-over reels like yours keep the music under every word, so their music cannot be isolated without it. It is a new dependency (and a model download), so I did not install it, least of all into PreCut's environment. Say if you want it in a separate one.",
+    "Vertical reframe: the crop is a centre crop and cuts faces off. Premiere's Auto Reframe follows the subject. Build a subject-following reframe, or use Auto Reframe on the result?",
     "Integration into app/: not done, by your rule (all skills finished and tested, then together). Say when.",
     "docs/reference/WALLPAPER_REEL_ANATOMY.md says 67.1 s; the file measures 66.03 s. I left the doc alone (it belongs to the Lead).",
 ]

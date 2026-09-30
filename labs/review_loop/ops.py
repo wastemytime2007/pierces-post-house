@@ -51,6 +51,20 @@ SAYS_EDIT = re.compile(r"\b(change|rename|reword|replace|instead|say(s)?|read(s)
 SAYS_SUBTITLE = re.compile(r"\b(subtitle|sub-title|second line|smaller text|small text|smaller line|description|underneath|line (below|under)|sub text|subtext)\b", re.I)
 SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that) out|cut (this|it|that)( out| clip| shot)?)\b", re.I)
 
+CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "start_at_words", "drop_clip"}
+# What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
+# has no note-driven tool yet, so such a note is reported rather than guessed at.
+LANE_OPS = {"Clips": CUT_OPS, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout"}}
+LANE_WHY = {"Card": "no tool changes an image card from a note yet", "Captions": "captions are changed with their own tool, not from review notes",
+            "Music": "no tool changes the music bed from a note yet"}
+
+
+def target_of(note: dict) -> dict | None:
+    """The timeline element a note was left on (lane, label, start, end, clip), or None for a note left at the playhead."""
+    t = note.get("target")
+    return t if isinstance(t, dict) and t.get("lane") else None
+
+
 SYSTEM = """You translate an editor's review notes on a rough cut into edit operations.
 Reply with ONLY a JSON array. Each item: {"note": <1-based note number>, "op": <name>, ...params, "why": <one short sentence>}.
 
@@ -65,6 +79,8 @@ Operations (times are seconds on the timeline the notes were left on):
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
 - edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
+
+A note may say it was left ON a named timeline element (its lane and label). Then it is about that whole element: "make this longer" on a Callout element means the callout, on an SFX element means that sound. Choose only an operation that acts on that lane (Clips/Cuts/Edits: the cut operations; SFX: replace_sfx; Callout: extend_graphic or edit_callout); otherwise unsupported.
 
 Rules: never invent a time or an amount that the note does not give. A note may produce more than one op. Every note must appear at least once. Prefer unsupported over guessing."""
 
@@ -81,7 +97,9 @@ def build_prompt(cut: Cut, notes: list[dict]) -> str:
     lines.append(f"\nCut length: {cut.zone_end:.2f}s\n\nNOTES:")
     for i, n in enumerate(notes, start=1):
         drawn = "; ".join(describe_shape(s) for s in n.get("shapes", []))
-        lines.append(f'note {i} at {n["timeline_sec"]}s (clip {n.get("clip")}): "{n.get("text", "")}"'
+        tg = target_of(n)
+        on = f' [left ON the {tg["lane"]} element "{tg.get("label", "")}", {tg.get("start")}-{tg.get("end")}s]' if tg else ""
+        lines.append(f'note {i} at {n["timeline_sec"]}s (clip {n.get("clip")}){on}: "{n.get("text", "")}"'
                      + (f"  [drawn on frame: {drawn}]" if drawn else ""))
     return "\n".join(lines)
 
@@ -111,7 +129,16 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
             continue
         text = notes[note - 1].get("text", "")
         op, why = raw.get("op"), str(raw.get("why", ""))[:200]
+        tg = target_of(notes[note - 1])
+        lane = tg["lane"] if tg else None
+        says_sound = lane == "SFX" or bool(SAYS_SOUND.search(text))                     # a note left on the element needs no word naming it
+        says_graphic = lane == "Callout" or bool(SAYS_GRAPHIC.search(text))
         try:
+            if tg and op != "unsupported":
+                if op not in LANE_OPS.get(lane, set()):
+                    raise ValueError(f"the note was left on a {lane} element: " + (LANE_WHY.get(lane) or f"{op} does not act on that"))
+                if tg.get("clip") is not None and raw.get("clip") is not None and int(raw["clip"]) != int(tg["clip"]):
+                    raise ValueError(f"the note was left on clip {tg['clip']}, not clip {raw['clip']}")
             if op == "tighten_pause":
                 at = float(raw.get("at", notes[note - 1]["timeline_sec"]))
                 if not 0 <= at <= zone:
@@ -135,7 +162,7 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("note states no amount, refusing to invent one")
                 out.append({"note": note, "op": op, "clip": clip, "seconds": sec, "why": why})
             elif op == "extend_end":
-                clip = int(raw.get("clip", notes[note - 1].get("clip", 0)))
+                clip = int(raw.get("clip", (tg or {}).get("clip") or notes[note - 1].get("clip", 0)))
                 if not 1 <= clip <= n_clips:
                     raise ValueError(f"clip {clip} does not exist")
                 mx = float(raw.get("max_sec", 1.0))
@@ -163,13 +190,13 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 st, nt = words_mod.tokens(sound), set(words_mod.tokens(text))
                 if not st or len(sound) > 200:
                     raise ValueError("no usable description of the wanted sound")
-                if not SAYS_SOUND.search(text):
+                if not says_sound:
                     raise ValueError("the note does not talk about a sound effect")
                 if sum(w in nt for w in st) < 0.7 * len(st):
                     raise ValueError("that description is not in the note, refusing to invent a sound")
                 out.append({"note": note, "op": op, "sound": sound, "why": why})
             elif op == "extend_graphic":
-                if not SAYS_GRAPHIC.search(text):
+                if not says_graphic:
                     raise ValueError("the note does not talk about an on-screen graphic")
                 if not SAYS_LONGER.search(text):
                     raise ValueError("the note does not ask for it to stay longer")
@@ -182,7 +209,7 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                         raise ValueError(f"{sec}s is not a believable extra time on screen")
                 out.append({"note": note, "op": op, "seconds": sec, "why": why})
             elif op == "edit_callout":
-                if not SAYS_GRAPHIC.search(text):
+                if not says_graphic:
                     raise ValueError("the note does not talk about an on-screen graphic")
                 if not SAYS_EDIT.search(text):
                     raise ValueError("the note does not ask to change or remove any words")

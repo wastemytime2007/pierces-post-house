@@ -12,6 +12,11 @@ The creator attaches a track he likes and has it generate one "very similar". He
   3. generate with ElevenLabs from that description (a few takes, each a few cents)
   4. re-measure each take and keep the closest; say plainly how close it is, and when it is not close enough
 
+The reference can be a VIDEO: by default the music is taken from the reference video's own audio (music_from_video).
+A finished video has a voice over its music, so the stretches where nobody speaks are found (by word timing) and only
+those are measured. If there are not enough of them, the whole mix is measured and that is reported as less reliable
+(the voice is in the numbers). A music file given explicitly always wins over the video.
+
 Closeness is measured, not judged: tempo within 8% (half or double time counts), brightness within a third,
 rhythmic density within 60%, dynamics within 4 dB. Whether it *sounds* like the reference is the ear's call.
 """
@@ -243,9 +248,68 @@ def rank_library(ref: dict, root: Path, cache_file: Path | None = None, analyse=
     return rows[:top] if top else rows
 
 
+MIN_GAP_SEC, SPEECH_PAD_SEC, NEED_MUSIC_ONLY_SEC = 1.0, 0.2, 6.0
+
+
+def transcribe_words(wav: Path) -> list[tuple[float, float]]:
+    """(start, end) of every spoken word, from the local Whisper base model. English is set rather than guessed:
+    language=None made Whisper invent text on this footage (see RUNNELLS_CONTENT_INVENTORY)."""
+    try:
+        import whisper
+    except ImportError as e:
+        raise ReferenceError(f"Whisper is not installed, so the stretches without speech cannot be found ({e})")
+    r = whisper.load_model("base").transcribe(str(wav), language="en", word_timestamps=True, condition_on_previous_text=False, fp16=False)
+    return [(float(w["start"]), float(w["end"])) for seg in r["segments"] for w in seg.get("words", [])]
+
+
+def music_only_windows(words: list[tuple[float, float]], total: float, min_gap: float = MIN_GAP_SEC, pad: float = SPEECH_PAD_SEC) -> list[tuple[float, float]]:
+    """Stretches of at least min_gap seconds with no speech, each trimmed by `pad` on both sides of every word."""
+    edges, cur = [], 0.0
+    for a, b in sorted(words):
+        if a - pad - cur >= min_gap:
+            edges.append((cur, a - pad))
+        cur = max(cur, b + pad)
+    if total - cur >= min_gap:
+        edges.append((cur, total))
+    return [(round(a, 3), round(b, 3)) for a, b in edges if b - a >= min_gap]
+
+
+def music_from_video(video: Path, out_dir: Path, words_of=transcribe_words) -> dict:
+    """The music reference taken from a video's own audio. Returns {path, source, voice_included, music_only_sec, windows, note}."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    whole = out_dir / "reference_audio.wav"
+    p = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(video), "-vn", "-ac", "1", "-ar", str(SR), str(whole)], capture_output=True, text=True)
+    if p.returncode != 0 or not whole.exists() or whole.stat().st_size < 1000:
+        raise ReferenceError(f"{Path(video).name} has no audio track to take music from ({p.stderr.strip()[:120] or 'nothing extracted'})")
+    x = load(whole)
+    total = len(x) / SR
+    words = words_of(whole)
+    wins = music_only_windows(words, total)
+    got = sum(b - a for a, b in wins)
+    if not words:
+        return {"path": str(whole), "source": "no speech found, so the whole audio is music", "voice_included": False, "music_only_sec": round(total, 1), "windows": [], "words": 0,
+                "note": "no spoken words were found in the reference video; all of its audio was measured as music"}
+    if got >= NEED_MUSIC_ONLY_SEC:
+        pieces, fade = [], int(0.03 * SR)
+        for a, b in wins:
+            seg = x[int(a * SR):int(b * SR)].copy()
+            seg[:fade] *= np.linspace(0, 1, fade)
+            seg[-fade:] *= np.linspace(1, 0, fade)
+            pieces.append(seg)
+        only = out_dir / "reference_music_only.wav"
+        pcm = (np.clip(np.concatenate(pieces), -1, 1) * 32767).astype("<i2").tobytes()
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", str(only)], input=pcm, check=True)
+        return {"path": str(only), "source": f"the {len(wins)} stretch(es) of the reference video with no speech", "voice_included": False, "music_only_sec": round(got, 1),
+                "windows": wins, "words": len(words), "note": f"measured {got:.1f}s of music-only audio out of {total:.1f}s; the voice was left out"}
+    return {"path": str(whole), "source": "the whole mix of the reference video (voice included)", "voice_included": True, "music_only_sec": round(got, 1), "windows": wins, "words": len(words),
+            "note": f"only {got:.1f}s of the reference video has no speech (need {NEED_MUSIC_ONLY_SEC:.0f}s), so its whole mix was measured: the speaker's voice is in the numbers, "
+                    "so tone and dynamics are unreliable. Give a music file with --reference to override."}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--reference", type=Path, required=True)
+    ap.add_argument("--reference", type=Path, help="a music file to match (overrides --from-video)")
+    ap.add_argument("--from-video", type=Path, help="take the music reference from this video's own audio (the default source when a reference video is used)")
     ap.add_argument("--seconds", type=float, default=23.0)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--tries", type=int, default=3)
@@ -253,14 +317,24 @@ def main() -> int:
     ap.add_argument("--rank-library", type=Path, help="instead of generating: rank the tracks in this folder (your licensed library) by how close they measure to the reference")
     ap.add_argument("--top", type=int, default=8)
     a = ap.parse_args()
+    if not a.reference and not a.from_video:
+        ap.error("give --reference <music file> or --from-video <reference video>")
+    src = None
     try:
+        if a.reference:
+            if a.from_video:
+                print(f"note: a music file was given, so it is used instead of the audio of {a.from_video.name}")
+        else:
+            src = music_from_video(a.from_video, a.out / "reference")
+            print(f"reference music: {src['source']}\n  {src['note']}")
+            a.reference = Path(src["path"])
         ref = analyze(a.reference)
     except ReferenceError as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
     prompt = build_prompt(ref)
     a.out.mkdir(parents=True, exist_ok=True)
-    (a.out / "reference.json").write_text(json.dumps({"reference": str(a.reference), "features": ref, "described_as": describe(ref), "prompt": prompt}, indent=2))
+    (a.out / "reference.json").write_text(json.dumps({"reference": str(a.reference), "taken_from_video": src, "features": ref, "described_as": describe(ref), "prompt": prompt}, indent=2))
     print("reference:", json.dumps(ref))
     print("prompt:   ", prompt)
     if a.show_only:

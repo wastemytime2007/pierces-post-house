@@ -41,6 +41,9 @@ README with its checks and real limits.
    with before and after frames and any change nobody asked for. Always run a negative control when adding a check.
 7. **Style.** `python3 labs/style/style_profile.py --reference <video> --ours <preview> --ours-timeline <timeline.json> --out <dir>`.
    Measures both the same way and suggests notes. It never edits.
+   **Emulate.** `python3 labs/style/emulate.py --reference <video> --ours-xml <layered xml> --ours-preview <preview.mp4> --out <dir>` (or `--brief`
+   from `labs/style/style_brief.html`) takes every aspect by default (vertical/horizontal, pauses, music, colour; text, graphics, sound
+   effects are measured only) and writes new files, each re-measured. The reference's music comes from the reference video unless `--music-file`.
 8. **Index.** `python3 labs/project/project.py --root "~/Documents/Post House Reviews" --name "<project>"`. Reads the folders in place.
 
 ## Rules that kept this honest (keep them)

@@ -201,3 +201,59 @@ def test_a_few_quiet_bright_moments_do_not_drag_the_tone_up(tmp_path):
 def test_the_tone_words_step_up_with_where_the_energy_sits():
     tone = lambda hz: rm.describe({**FEATS, "tone_centre_hz": hz})["tone"]                     # noqa: E731
     assert [tone(h) for h in (60, 150, 300, 900, 2000, 5000)] == ["very dark, bass-heavy tone", "warm, bass-weighted tone", "warm tone", "balanced tone", "bright, crisp tone", "very bright, airy tone"]
+
+
+# ---- the reference taken from a reference video's own audio ----
+
+def _video_with_voice(tmp_path, secs=20.0):
+    """Music (130 BPM, 440 Hz) all the way through, plus loud noise 'speech' at 5-8 s and 12-14 s. Returns an mp4 and the speech word times."""
+    music = _track(tmp_path / "m.wav", 130, secs=secs)
+    sp = tmp_path / "speech.wav"
+    rng = np.random.default_rng(1)
+    v = np.zeros(int(secs * SR))
+    for a, b in ((5.0, 8.0), (12.0, 14.0)):
+        v[int(a * SR):int(b * SR)] = rng.standard_normal(int((b - a) * SR)) * 0.4
+    with wave.open(str(sp), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((v * 32767).astype("<i2").tobytes())
+    mp4 = tmp_path / "ref.mp4"
+    import subprocess
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"color=c=black:s=160x90:d={secs}", "-i", str(music), "-i", str(sp),
+                    "-filter_complex", "[1:a][2:a]amix=inputs=2:normalize=0[a]", "-map", "0:v", "-map", "[a]", "-c:v", "libx264", "-c:a", "aac", "-shortest", str(mp4)], check=True)
+    return mp4, [(5.0 + i * 0.3, 5.0 + i * 0.3 + 0.25) for i in range(10)] + [(12.0 + i * 0.3, 12.0 + i * 0.3 + 0.25) for i in range(7)]
+
+
+def test_music_only_windows_keep_a_margin_around_every_word_and_drop_short_gaps():
+    words = [(5.0, 8.0), (8.4, 9.0), (12.0, 14.0)]
+    w = rm.music_only_windows(words, 20.0)
+    assert w == [(0.0, 4.8), (9.2, 11.8), (14.2, 20.0)]                      # the 0.4 s gap between two words is too short to be music
+    assert rm.music_only_windows([], 20.0) == [(0.0, 20.0)]
+
+
+def test_the_reference_video_is_measured_only_where_nobody_is_speaking(tmp_path):
+    mp4, words = _video_with_voice(tmp_path)
+    r = rm.music_from_video(mp4, tmp_path / "ref", words_of=lambda wav: [(5.0, 8.0), (12.0, 14.0)])
+    assert r["voice_included"] is False and r["music_only_sec"] > 12 and Path(r["path"]).name == "reference_music_only.wav"
+    f = rm.analyze(Path(r["path"]))
+    assert abs(f["bpm"] - 130) / 130 < 0.08, f                                # the music's own tempo, the noise left out
+    whole = rm.analyze(Path(r["path"]).parent / "reference_audio.wav")
+    assert f["tone_centre_hz"] < whole["tone_centre_hz"]                      # the voice's noise drags the whole mix brighter
+
+
+def test_a_reference_video_with_almost_no_quiet_stretches_is_measured_whole_and_flagged(tmp_path):
+    mp4, _ = _video_with_voice(tmp_path)
+    r = rm.music_from_video(mp4, tmp_path / "ref", words_of=lambda wav: [(0.5, 19.5)])
+    assert r["voice_included"] is True and Path(r["path"]).name == "reference_audio.wav" and "voice is in the numbers" in r["note"]
+
+
+def test_a_reference_video_with_no_speech_is_all_music(tmp_path):
+    mp4, _ = _video_with_voice(tmp_path)
+    r = rm.music_from_video(mp4, tmp_path / "ref", words_of=lambda wav: [])
+    assert r["voice_included"] is False and r["words"] == 0
+
+
+def test_a_video_with_no_audio_track_is_refused_with_a_reason(tmp_path):
+    import subprocess
+    mp4 = tmp_path / "silent.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=160x90:d=3", "-c:v", "libx264", str(mp4)], check=True)
+    with pytest.raises(rm.ReferenceError, match="no audio track"):
+        rm.music_from_video(mp4, tmp_path / "ref", words_of=lambda wav: [])
