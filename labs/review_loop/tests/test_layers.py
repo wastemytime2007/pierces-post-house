@@ -161,3 +161,42 @@ def test_a_revision_that_ripples_the_cut_moves_the_layers_with_it_and_the_page_s
     build(out, tmp_path / "rev2", height=180)
     text = capsys.readouterr().out
     assert "[FAIL]" not in text and "AUDIO-LAYER-IN-THE-MIX (music_stem.wav 0.0-2.0s)" in text and "AUDIO-LAYER-IN-THE-MIX (music_stem.wav 2.0-4.0s)" in text
+
+
+def test_the_beatmap_has_a_lane_per_kind_of_decision_in_a_fixed_order(layered):
+    _base, full = layered
+    lanes = ly.beatmap(timeline.load_cut(full), ly.find_layers(full))
+    assert [l["name"] for l in lanes] == ["Cuts", "Callout", "Music", "Effect"]
+    by = {l["name"]: l for l in lanes}
+    assert by["Cuts"]["kind"] == "ticks" and len(by["Cuts"]["items"]) == 2                   # three clips, two seams
+    assert by["Callout"]["kind"] == "blocks" and by["Callout"]["items"][0]["end"] > by["Callout"]["items"][0]["start"]
+    assert by["Effect"]["items"][0]["start"] == pytest.approx(9.0, abs=0.02)
+    starts = [i["start"] for i in by["Cuts"]["items"]]
+    assert starts == sorted(starts)
+
+
+def test_captions_expand_to_one_block_per_line_offset_for_a_split_piece(tmp_path):
+    (tmp_path / "captions.json").write_text(json.dumps({"groups": [
+        {"text": "early", "show_start": 0.5, "show_end": 1.5}, {"text": "kept one", "show_start": 4.0, "show_end": 5.0},
+        {"text": "kept two", "show_start": 6.0, "show_end": 7.0}, {"text": "past it", "show_start": 12.0, "show_end": 13.0}]}))
+    piece = ly.Layer("video", "captions.mov", str(tmp_path / "captions.mov"), start=2.0, end=7.0, track=1, src_in=3.0, src_out=8.0)
+    cut = type("C", (), {"video": []})()
+    (lane,) = ly.beatmap(cut, [piece])[1:] or [None]
+    assert lane["name"] == "Captions"
+    assert [(b["label"], b["start"], b["end"]) for b in lane["items"]] == [("kept one", 3.0, 4.0), ("kept two", 5.0, 6.0)]     # file time 4.0 sits at 3.0 on the timeline
+
+
+def test_the_revisions_applied_edits_get_their_own_lane_and_unapplied_ones_do_not(layered):
+    _base, full = layered
+    items = [{"note": 1, "applied": True, "v2_time": 4.0, "summary": "removed 2s of dead air"}, {"note": 2, "applied": False, "v2_time": None, "summary": "not done"}]
+    lanes = ly.beatmap(timeline.load_cut(full), ly.find_layers(full), items)
+    edits = next(l for l in lanes if l["name"] == "Edits")
+    assert [i["label"] for i in edits["items"]] == ["note 1: removed 2s of dead air"] and lanes[1]["name"] == "Edits"
+
+
+def test_a_cut_with_no_layers_still_gets_a_cuts_lane_and_the_page_carries_the_beatmap(layered, tmp_path):
+    base, _full = layered
+    page = build(base, tmp_path / "plain", height=180)
+    data = json.loads((tmp_path / "plain" / "timeline.json").read_text())
+    assert [l["name"] for l in data["beatmap"]] == ["Cuts"]
+    assert 'id="beatmap"' in page.read_text() and '"beatmap"' in page.read_text()

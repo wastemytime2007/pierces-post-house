@@ -206,6 +206,21 @@ because this session violated them once each.
   good (that stays with a person); older revise records must be re-run; it does not
   re-listen to music or captions (their own tools verify them). Not in `app/`.
 
+  **Built, NOT yet opened by Ryan: the beatmap on the review page.** Ryan said
+  "lets move forward" without picking, so this was my choice (item 8 of the video-skills
+  list). Under the timeline bar, one lane per kind of edit decision on the same time
+  axis (Cuts, Edits, Callout, Captions, Music, Effect); a playhead through all of them,
+  the active block lit, a line naming what is on now (with the caption text), click a
+  block to seek. Captions show one block per line. Checked in headless Chrome on the
+  real reconformed page: 12 cuts, 1 callout, 16 caption lines, music and effect; clicking
+  the callout block seeks to it; at 13.5s the page reports Callout, Music and Effect
+  on. 104 tests pass across `labs/` (data: lane order, caption offsets for a split
+  piece, the Edits lane). Fixed on the way: lane labels were hidden under the blocks.
+  Page: `Runnells Tiling v3 - reconformed v4 B/review/review.html`. Caveats: lane
+  names come from layer file names; the Edits lane shows only on a revised page built
+  by `revise.py`; captions expand only when their `captions.json` is beside the layer
+  file. Not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.

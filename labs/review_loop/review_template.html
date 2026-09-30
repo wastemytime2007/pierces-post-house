@@ -25,6 +25,17 @@
   .seg:nth-child(even) { background: var(--clipB); }
   .pin { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: var(--pin); }
   .head { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; }
+  #beatmap { position: relative; margin: 4px 0 2px; }
+  #beatmap:empty { display: none; }
+  .lane { position: relative; height: 18px; margin: 2px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  .lane .lb { position: absolute; left: 5px; top: 1px; font-size: 10px; line-height: 14px; color: var(--dim); pointer-events: none; z-index: 2; text-transform: uppercase; letter-spacing: .04em; background: rgba(13, 20, 32, .82); padding: 0 4px; border-radius: 3px; }
+  .blk { position: absolute; top: 2px; bottom: 2px; min-width: 3px; border-radius: 3px; background: var(--accent); opacity: .7; cursor: pointer; }
+  .lane.Captions .blk { background: #00ade1; } .lane.Music .blk { background: #38d66b; } .lane.Effect .blk { background: #ffd400; }
+  .lane.Callout .blk { background: var(--pin); }
+  .tk { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; background: #cfd9e8; cursor: pointer; }
+  .lane.Edits .tk { background: #38d66b; width: 4px; }
+  .blk.active, .tk.active { opacity: 1; box-shadow: 0 0 0 1px #fff; }
+  #beatmap .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; z-index: 3; }
   .now { min-height: 22px; color: var(--dim); font-size: 13px; margin-bottom: 8px; }
   .now b { color: var(--text); font-weight: 600; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
@@ -70,6 +81,7 @@
   </div>
   <div id="changes"></div>
   <div class="bar" id="bar"><div class="head" id="head"></div></div>
+  <div id="beatmap"></div>
   <div class="now" id="now"></div>
   <div class="row">
     <button id="play" class="primary">Play</button>
@@ -154,6 +166,36 @@ DATA.clips.forEach(c => {
   d.title = 'clip ' + c.idx + ' · ' + c.source;
   bar.insertBefore(d, head);
 });
+
+const BEATS = [];
+(function () {
+  const bm = document.getElementById('beatmap');
+  if (!DATA.beatmap || !DATA.beatmap.length || !bm) return;
+  DATA.beatmap.forEach(L => {
+    const lane = document.createElement('div');
+    lane.className = 'lane ' + L.name;
+    const lb = document.createElement('span');
+    lb.className = 'lb';
+    lb.textContent = L.name;
+    lane.appendChild(lb);
+    L.items.forEach(it => {
+      const tick = L.kind === 'ticks';
+      const el = document.createElement('div');
+      el.className = tick ? 'tk' : 'blk';
+      el.style.left = (it.start / DATA.duration * 100) + '%';
+      if (!tick) el.style.width = Math.max(0.25, (it.end - it.start) / DATA.duration * 100) + '%';
+      el.title = L.name + ' · ' + fmt(it.start) + (tick ? '' : '-' + fmt(it.end)) + ' · ' + it.label;
+      el.onclick = () => { v.currentTime = Math.max(0, it.start - (tick ? 1 : 0.3)); };
+      lane.appendChild(el);
+      BEATS.push({ lane: L.name, tick, it, el });
+    });
+    bm.appendChild(lane);
+  });
+  const ph = document.createElement('div');
+  ph.className = 'ph';
+  ph.id = 'ph';
+  bm.appendChild(ph);
+})();
 
 if (DATA.changes) {
   const box = document.getElementById('changes');
@@ -350,7 +392,16 @@ function tick() {
   head.style.left = (t / DATA.duration * 100) + '%';
   document.getElementById('time').textContent = fmt(t) + ' / ' + fmt(DATA.duration);
   const w = where(t);
-  document.getElementById('now').innerHTML = '<b>Clip ' + w.clip + '/' + w.of + '</b> · ' + esc(w.source) + ' · source ' + fmt(w.source_sec);
+  const ph = document.getElementById('ph');
+  if (ph) ph.style.left = (t / DATA.duration * 100) + '%';
+  const live = [];
+  BEATS.forEach(b => {
+    const on = b.tick ? Math.abs(t - b.it.start) < 0.3 : (t >= b.it.start && t < b.it.end);
+    b.el.classList.toggle('active', on);
+    if (on && !b.tick) live.push(b.lane + (b.lane === 'Captions' ? ': "' + b.it.label + '"' : ''));
+  });
+  document.getElementById('now').innerHTML = '<b>Clip ' + w.clip + '/' + w.of + '</b> · ' + esc(w.source) + ' · source ' + fmt(w.source_sec)
+    + (live.length ? ' · <b>on now</b>: ' + esc(live.join(' · ')) : '');
   document.getElementById('play').textContent = v.paused ? 'Play' : 'Pause';
   redraw();
 }

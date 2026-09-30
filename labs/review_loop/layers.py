@@ -62,6 +62,46 @@ def find_layers(xml: Path) -> list[Layer]:
     return sorted(out, key=lambda l: (l.kind != "video", l.track, l.start))
 
 
+LANE_OF = (("overlay", "Callout"), ("callout", "Callout"), ("caption", "Captions"), ("music", "Music"), ("sfx", "Effect"))
+LANE_ORDER = ["Cuts", "Edits", "Callout", "Captions", "Music", "Effect"]
+
+
+def lane_name(l: Layer) -> str:
+    n = l.name.lower()
+    return next((lane for key, lane in LANE_OF if key in n), "Graphics" if l.kind == "video" else "Audio")
+
+
+def beatmap(cut, layers: list[Layer], items: list[dict] | None = None) -> list[dict]:
+    """The edit decisions along the timeline, one lane per kind: cuts, the revision's edits, and each layer
+    (captions expand to one block per line when the layer's captions.json sits beside its file)."""
+    import json
+    lanes: dict[str, list[dict]] = {"Cuts": [{"start": round(c.tl_start, 3), "end": round(c.tl_start, 3), "label": f"cut to clip {c.idx} ({c.name})"} for c in cut.video[1:]]}
+    for i in items or []:
+        if i.get("applied") and i.get("v2_time") is not None:
+            lanes.setdefault("Edits", []).append({"start": round(i["v2_time"], 3), "end": round(i["v2_time"], 3), "label": f"note {i['note']}: {i['summary'][:90]}"})
+    for l in layers:
+        lane = lane_name(l)
+        blocks = lanes.setdefault(lane, [])
+        lines = None
+        cj = Path(l.path).parent / "captions.json"
+        if lane == "Captions" and cj.exists():
+            try:
+                lines = json.loads(cj.read_text()).get("groups")
+            except (OSError, ValueError):
+                lines = None
+        if lines:
+            for g in lines:
+                a, b = g.get("show_start"), g.get("show_end")
+                if a is None or b is None or b <= l.src_in or a >= l.src_out:
+                    continue
+                s, e = max(a, l.src_in), min(b, l.src_out)
+                blocks.append({"start": round(l.start + (s - l.src_in), 3), "end": round(l.start + (e - l.src_in), 3), "label": g["text"]})
+        else:
+            blocks.append({"start": round(l.start, 3), "end": round(l.end, 3), "label": l.name.rsplit(".", 1)[0]})
+    order = LANE_ORDER + sorted(k for k in lanes if k not in LANE_ORDER)
+    return [{"name": k, "kind": "ticks" if k in ("Cuts", "Edits") else "blocks", "items": sorted(lanes[k], key=lambda x: x["start"])} for k in order if k in lanes]
+
+
 def layer_warnings(before: list[Layer], after: list[Layer]) -> list[str]:
     """What a revision did to the layers: any layer that lost time was cut through by it. apply_ops ripples every
     track alike, which keeps captions with the speech but chops a callout or an effect anchored to a moment."""

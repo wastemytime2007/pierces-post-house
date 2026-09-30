@@ -111,6 +111,14 @@ audio layer in the mix (mix minus clean-plus-layers far below the layer), and th
 unchanged after the layers end. `timeline.py` skips the placed music and effects when reading the
 cut's speech, so they are never mistaken for it.
 
+**Beatmap.** Under the timeline bar the page draws one lane per kind of edit decision on the same
+time axis: **Cuts** (a tick at every seam), **Edits** (the revision's applied edits, on a revised
+page), **Callout**, **Captions** (one block per caption line when the layer's `captions.json` sits
+beside its file, offset correctly for a split layer piece), **Music** and **Effect**. A playhead runs
+through every lane, the block or tick under it lights up, and the line under the video names what is
+on now (including the caption text). Clicking a block seeks to it. Lane names come from the layer
+file names (`layers.lane_name`); anything unrecognised lands in a Graphics or Audio lane.
+
 **Name layered XMLs with the cut's version last** (`..._layers_v3.xml`): `revise.py` reads the
 version from a trailing `_vN`, so a name ending `_audio_v2` makes a V3 cut read as V2.
 
