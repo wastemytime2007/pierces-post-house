@@ -166,11 +166,11 @@ def test_a_revision_that_ripples_the_cut_moves_the_layers_with_it_and_the_page_s
 def test_the_beatmap_has_a_lane_per_kind_of_decision_in_a_fixed_order(layered):
     _base, full = layered
     lanes = ly.beatmap(timeline.load_cut(full), ly.find_layers(full))
-    assert [l["name"] for l in lanes] == ["Cuts", "Callout", "Music", "Effect"]
+    assert [l["name"] for l in lanes] == ["Cuts", "Callout", "Music", "SFX"]
     by = {l["name"]: l for l in lanes}
     assert by["Cuts"]["kind"] == "ticks" and len(by["Cuts"]["items"]) == 2                   # three clips, two seams
     assert by["Callout"]["kind"] == "blocks" and by["Callout"]["items"][0]["end"] > by["Callout"]["items"][0]["start"]
-    assert by["Effect"]["items"][0]["start"] == pytest.approx(9.0, abs=0.02)
+    assert by["SFX"]["items"][0]["start"] == pytest.approx(9.0, abs=0.02)
     starts = [i["start"] for i in by["Cuts"]["items"]]
     assert starts == sorted(starts)
 

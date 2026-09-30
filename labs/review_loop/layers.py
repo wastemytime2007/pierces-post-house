@@ -62,8 +62,8 @@ def find_layers(xml: Path) -> list[Layer]:
     return sorted(out, key=lambda l: (l.kind != "video", l.track, l.start))
 
 
-LANE_OF = (("overlay", "Callout"), ("callout", "Callout"), ("caption", "Captions"), ("music", "Music"), ("sfx", "Effect"))
-LANE_ORDER = ["Cuts", "Edits", "Callout", "Captions", "Music", "Effect"]
+LANE_OF = (("overlay", "Callout"), ("callout", "Callout"), ("caption", "Captions"), ("music", "Music"), ("sfx", "SFX"))
+LANE_ORDER = ["Cuts", "Edits", "Callout", "Captions", "Music", "SFX"]
 
 
 def lane_name(l: Layer) -> str:

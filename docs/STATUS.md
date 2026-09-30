@@ -206,7 +206,8 @@ because this session violated them once each.
   good (that stays with a person); older revise records must be re-run; it does not
   re-listen to music or captions (their own tools verify them). Not in `app/`.
 
-  **Built, NOT yet opened by Ryan: the beatmap on the review page.** Ryan said
+  **Beatmap on the review page: signed off by Ryan ("Everything looks good", with the
+  lane renamed Effect -> SFX, done; § Done). Details:** Ryan said
   "lets move forward" without picking, so this was my choice (item 8 of the video-skills
   list). Under the timeline bar, one lane per kind of edit decision on the same time
   axis (Cuts, Edits, Callout, Captions, Music, Effect); a playhead through all of them,
@@ -1056,6 +1057,16 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-30 — **Beatmap on the review page (`labs/review_loop/layers.py`,
+  `review_template.html`). Ryan, after opening the page: "Everything looks good. I'd
+  just change the 'effect' callout to read 'sfx'."** The lane is now named SFX
+  (code, styling, tests, README; the page rebuilt and its data confirmed:
+  Cuts, Callout, Captions, Music, SFX). Scope: the reconformed Tiling page with
+  cuts, callout, caption lines, music and effect lanes, a playhead, the "on now"
+  line and click-to-seek. Not in `app/`. Evidence: commit `1102962` plus the rename
+  commit; checked in headless Chrome (lanes, click-to-seek, active lanes at 13.5s),
+  104 tests across `labs/`.
 
 - 2026-09-30 — **Per-version QA pass (`labs/qa/`). Ryan, after opening the
   report: "It works."** Scope: the QA report on his real Tiling round (his three
