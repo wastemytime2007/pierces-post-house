@@ -122,3 +122,13 @@ def test_a_cut_with_no_bleeps_can_still_be_opened_for_editing_so_missed_ones_can
     (tmp_path / "bleep.json").write_text(json.dumps(before))                                           # the automatic scan found nothing; the bleep he adds is a missed word
     r = ae.apply(xml, edits, out, auto_json=tmp_path / "bleep.json")
     assert [x["kind"] for x in r["learned"]["records"]] == ["added"] and r["learned"]["records"][0]["context"]["in_loud_stretch"] is True
+
+
+def test_the_page_says_what_the_scan_did_so_no_bleeps_is_not_mistaken_for_a_failed_scan(xml, tmp_path):
+    scan = tmp_path / "bleep.json"
+    scan.write_text(json.dumps({"words_heard": 155, "spans": [], "hits": [], "words": [], "suspects": [{"word": "So,", "word_start": 28.3, "word_end": 28.84, "tier": "likely"}]}))
+    page = build(xml, tmp_path / "s", height=180, editable_bleeps=True, scan_json=scan)
+    d = json.loads(re.search(r"const DATA = (\{.*?\});\n", page.read_text(), re.S).group(1))
+    assert d["scan"] == {"words_heard": 155, "bleeped": 0, "listed_found": 0, "flagged": [{"start": 28.3, "end": 28.84, "word": "So,", "tier": "likely"}]}
+    assert "found no curse words, so there are no bleeps yet" in page.read_text()                              # the wording the page shows
+    assert "scan" not in json.loads(re.search(r"const DATA = (\{.*?\});\n", build(xml, tmp_path / "t", height=180, editable_bleeps=True).read_text(), re.S).group(1))   # no scan record, no note

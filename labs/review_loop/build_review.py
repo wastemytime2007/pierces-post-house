@@ -21,7 +21,7 @@ from render_preview import render_preview  # noqa: E402
 from timeline import TimelineError, load_cut  # noqa: E402
 
 
-def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, suspects: list[dict] | None = None, editable_bleeps: bool = False) -> Path:
+def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, suspects: list[dict] | None = None, editable_bleeps: bool = False, scan_json: Path | None = None) -> Path:
     cut = load_cut(xml)
     out.mkdir(parents=True, exist_ok=True)
     info = render_preview(cut, out / "preview.mp4", height=height)
@@ -87,6 +87,10 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
         data.update({"envelope": [int(round(x * 100)) for x in env], "envelope_hz": 100})
         data.update({"preview_live": "preview_live.mp4", "preview_live_clean": "preview_live_clean.mp4", "bleep_level": round(peak, 4),
                      "live_bleeps": [{"start": round(l.start, 3), "end": round(l.end, 3)} for l in sorted(bl_layers, key=lambda l: l.start)], "xml": str(xml)})
+    if scan_json and Path(scan_json).exists():       # what the automatic scan did, so "0 bleeps" is not mistaken for "the scan failed"
+        sj = json.loads(Path(scan_json).read_text())
+        data["scan"] = {"words_heard": sj.get("words_heard", len(sj.get("words", []))), "bleeped": len(sj.get("spans", [])), "listed_found": len(sj.get("hits", [])),
+                        "flagged": [{"start": x["word_start"], "end": x["word_end"], "word": x["word"], "tier": x.get("tier", "possible")} for x in sj.get("suspects", [])]}
     if changes:
         data["changes"] = changes
     data["beatmap"] = beatmap(cut, layers, changes["items"] if changes else None, suspects)
@@ -104,10 +108,11 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--height", type=int, default=540)
     ap.add_argument("--open", action="store_true")
+    ap.add_argument("--scan", type=Path, help="the automatic scan's bleep.json, so the page can say what the scan found (and did not)")
     ap.add_argument("--bleeps", action="store_true", help="make the bleeps editable on the page even if the cut has none yet (so ones the tool missed can be added)")
     args = ap.parse_args()
     try:
-        page = build(args.xml, args.out, args.height, editable_bleeps=args.bleeps)
+        page = build(args.xml, args.out, args.height, editable_bleeps=args.bleeps, scan_json=args.scan)
     except TimelineError as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1

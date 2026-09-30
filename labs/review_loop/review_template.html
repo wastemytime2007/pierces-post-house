@@ -42,6 +42,8 @@
   #bleepPanel { background: var(--panel); border: 1px solid #ff9f1c; border-radius: 8px; padding: 8px 12px; margin: 6px 0 10px; }
   #bleepPanel .bp-h { font-size: 13px; color: var(--dim); } #bleepPanel .bp-h b { color: var(--text); }
   #bleepPanel .hint { color: var(--dim); font-size: 12px; }
+  #bleepPanel .scan { font-size: 13px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  #bleepPanel button.mini { padding: 2px 8px; margin: 2px 3px 0 0; font-size: 12px; }
   #bz { position: relative; height: 96px; background: #0b111b; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; touch-action: none; cursor: crosshair; }
   #bz canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
   #bzb { position: absolute; inset: 0; }
@@ -254,6 +256,15 @@ const BL = { spans: [], auto: [], sel: -1, gate: false, stopAt: null, lead: 0.05
     + '<span id="blInfo" class="hint"></span><button id="blDl" class="primary">Download bleep edits</button></div>'
     + '<div class="hint">Alt + left/right arrow nudges the selected bleep by 0.02 s (Shift: 0.1 s). Delete removes it. Click in the close-up to move the playhead there.</div>';
   document.getElementById('now').parentNode.insertBefore(panel, document.getElementById('now'));
+  if (DATA.scan) {                                              /* say what the automatic scan did, so "no bleeps" is not read as "it failed" */
+    const sc = document.createElement('div');
+    sc.className = 'scan';
+    const n = DATA.scan.bleeped;
+    sc.innerHTML = '<b>Automatic scan:</b> heard ' + DATA.scan.words_heard + ' words, ' + (n ? 'bleeped ' + n + ' place' + (n === 1 ? '' : 's') + ' (they are the orange boxes).' : 'found no curse words, so there are no bleeps yet. If you hear one, add it with the button below and drag it over the word: that is how the tool learns.')
+      + (DATA.scan.flagged.length ? ' <span class="hint">Worth a listen (words it was unsure of or that were stretched; most are ordinary): </span>' : '');
+    DATA.scan.flagged.forEach(f => { const b = document.createElement('button'); b.className = 'mini'; b.textContent = f.start.toFixed(1) + ' s "' + f.word + '"'; b.onclick = () => { v.currentTime = Math.max(0, f.start - 1); }; sc.appendChild(b); });
+    panel.insertBefore(sc, panel.firstChild);
+  }
   const zwrap = panel.querySelector('#bz'), zc = panel.querySelector('#bzc'), zb = panel.querySelector('#bzb'), zph = panel.querySelector('#bzph');
 
   const save = () => { try { localStorage.setItem(KEY + ':bleeps', JSON.stringify(BL.spans)); } catch (e) {} };

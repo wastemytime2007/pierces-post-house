@@ -3252,3 +3252,9 @@ the Lead before any re-dispatch; empty so far)*
   smoke detectors (open this one)` holds the XML, the scan record (`bleep/bleep.json`, origin automatic, with the words Whisper heard and the loud stretches) and the page; `apply_edits.py` run on
   that folder compares his edits with that record. Scan: 155 words, no listed word, 6 stretches flagged (28.3, 32.0, 33.2, 33.5, 35.7, 47.2 s). Browser-checked on the empty page: add at the playhead, the
   close-up jumps to it and follows a seek (30 s -> 28-32 s), the download carries the XML path, no script errors. Whether this cut has any curse word is not known. Not in `app/`.
+
+
+  **"The page you opened says zero bleeps were found" (Ryan, 2026-09-30).** That is the scan's true result on the smoke detectors cut (155 words heard, none on the list; Whisper's text reads as
+  ordinary tutorial speech, no censored-looking tokens), but a bare "0 bleeps" read like a failure. The page now says what the scan did ("heard 155 words, found no curse words, so there are no bleeps
+  yet ... add it ... that is how the tool learns") and lists the six flagged stretches as buttons that jump there (`build_review.py --scan <bleep.json>`). Tested (DATA.scan, wording, no scan record no
+  note), screenshot checked, editor still works. Whether the cut has curse words the tool missed is unknown until he listens; if it does, those are exactly the missed words the learning needs. 282 tests.
