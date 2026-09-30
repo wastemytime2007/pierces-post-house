@@ -137,7 +137,9 @@ def main() -> int:
         return 1
 
     items = [{"note": c.note, "note_time": notes[c.note - 1]["timeline_sec"], "note_text": notes[c.note - 1].get("text", ""),
-              "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why} for c in changes]
+              "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why,
+              "op": c.op, "removed": [round(c.removed[0], 3), round(c.removed[1], 3)] if c.removed else None,
+              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") == "quiet_at" else None} for c in changes]
     print(f"\n{lab_in} {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
     for it in items:
         print(f"  note {it['note']} [{it['note_time']}s] {'APPLIED    ' if it['applied'] else 'NOT APPLIED'}  {it['summary']}")

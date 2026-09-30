@@ -187,6 +187,25 @@ because this session violated them once each.
   the music is the same file re-faded to the new length, not re-phrased; one
   captions layer and one audio folder per run. Moves to Done only when Ryan opens it.
 
+  **Built, NOT yet opened by Ryan: the QA pass (`labs/qa/`).** After a revision,
+  every note is re-measured on the finished new version (not taken from the revise
+  step's own report) and given VERIFIED / APPLIED-UNMEASURED / NOT DONE / FAILED, with
+  a before and after frame per note, whole-cut checks, and a list of anything that
+  changed in the cut that no note asked for. Proved on Ryan's real Tiling round (his
+  three notes on V2, V3 after, the note-3 callout): 3 of 3 VERIFIED (clip 2 runs
+  0.27s longer; a clip starts at the seam and the new audio reads "stepping the tile
+  up with the spacer"; a callout layer sits on note 3's frame, 37,925 pixels differ from
+  the clean picture), nothing changed that a note did not ask for. Control: fed the
+  unchanged V2 as the "new" version it failed note 1, failed note 2 and reported note
+  3 NOT DONE. That control first exposed a real weakness, note 2 still verifying on V2
+  because the words check accepted mid-sentence speech; a structural check that a cut
+  exists at the seam was added and the control now fails. `revise.py` records now keep
+  each note's operation, removed span and extension (needed for attribution).
+  100 tests pass across `labs/`. Report: `Runnells Tiling v3 - QA pass (V2 to V3)/
+  qa_report.html`. Caveats: VERIFIED means the change happened, not that it is
+  good (that stays with a person); older revise records must be re-run; it does not
+  re-listen to music or captions (their own tools verify them). Not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.
