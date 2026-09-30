@@ -305,6 +305,18 @@ because this session violated them once each.
   edited, it is the Lead's). 17 tests pass in `labs/style`, built on videos of known construction. Not
   measured: what the graphics look like, what the shots show, whether the style suits the piece. Not in `app/`.
 
+  **Built, NOT yet tested by Ryan (batch): the project index (`labs/project/project.py`).** The
+  creator's "one folder per project with every asset in one place", done without moving anything
+  (the XMLs point at layer files by absolute path, so moving folders would break them): it reads the
+  project's folders in place and writes one index page plus `project.json`: newest cut with layers,
+  newest QA pass, newest review page, then every folder grouped by kind with the facts its own records
+  give and links to its XML / page / report / preview. Notes written by Claude as stand-ins are flagged.
+  Real run over `~/Documents/Post House Reviews`: 29 folders indexed (6 revisions, 5 reconforms, 3 QA
+  passes, 3 review pages, 2 style profiles, 2 audio builds, 2 callout changes, reference music, image
+  card, sfx replacement, captions, callout, 1 other), stand-in notes flagged in 5; screenshot checked. It
+  cannot say whether anything was approved (that is this file). 8 tests; 184 pass across `labs/`.
+  Files: `~/Documents/Post House Reviews/Runnells Tiling - project index.html`. Not in `app/`.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
       and writes the ElevenLabs prompt), and more than one effect per cut.
