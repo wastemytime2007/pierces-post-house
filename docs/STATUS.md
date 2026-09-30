@@ -96,12 +96,36 @@ because this session violated them once each.
   `Runnells_Tiling_v3_v3_with_overlay_and_captions.xml`). Moves to Done only when
   Ryan opens it and says so; the rest of the cut waits for that (rule 7).
 
+  **Built, NOT yet heard by Ryan: generated sound effect and music bed (items 2
+  and 3, first proof unit).** `labs/audio/`, the same 0-22s window. ElevenLabs
+  (key at `~/.config/post-house/elevenlabs.env`, outside the repo) generated one
+  1.2s effect for the note-3 callout and one 23s music bed from two default prompts
+  Claude chose (inputs, Ryan's to change). The music is a stem with the ducking
+  baked in (measured in this window: about 21 dB under the speech while it plays,
+  about 12 dB under in the longer pauses, ducking 9.5 dB), the effect is its own
+  clip placed at the callout's frame, and the speech track is untouched. Evidence:
+  9 gating checks on the rendered files (`verify_audio.py`: format, music present
+  and not clipping, under speech, ducks, speech level in the mix within 0.15 dB of
+  the original, effect 9 dB under the speech peak, effect lands 0.0 ms from the
+  callout by correlating the mix, mix peak -9.7 dBFS, fades); `place_audio.py` puts
+  both on four new audio tracks with all 11 checks passing and `verify_export`
+  clean; 66 tests pass across `labs/`, ElevenLabs faked. While building, the
+  verifier caught two of my own mistakes: a near-silent music level (-60 dB) hidden
+  behind a meaningless "26.8 dB under speech" pass, and a 3 dB mismatch between how
+  I set and how I measured level (fixed). Caveats: nobody has listened to it, so
+  every check is a measurement, not a judgment; the pause-level check rests on
+  about 0.9s of qualifying pause; the source speech is quiet (about -33 dBFS RMS)
+  so levels are relative; ElevenLabs commercial terms for generated effects are
+  unconfirmed (nothing ships in published work until checked); costs a few cents per
+  new prompt, cached otherwise. Files: `Runnells Tiling v3 - sfx and music
+  (0-22s)/` (`audio_preview.mp4`,
+  `Runnells_Tiling_v3_v3_with_overlay_captions_and_audio.xml`). Moves to Done only
+  when Ryan listens and says so.
+
   **Still to build, none started:**
-  2. Background music: generated or picked, matched to a reference track's vibe
-     (he attaches a song he likes and has it write a similar one), and set in the
-     mix at the right level under the speech.
-  3. Sound effects generated for things coming on screen, and replaced by note
-     ("I don't like this sound, make it sound like highlighting on paper").
+  2b. Music matched to a reference track (he attaches a song, Claude analyses it
+      and writes the ElevenLabs prompt), and sound effects replaced by note ("make
+      it sound like highlighting on paper"), and more than one effect per cut.
   4. Editing style taken from a reference video: analyse a reel frame by frame and
      replicate its overlays, screens and B-roll treatment.
   5. Further note types the creator uses that the revise step does not cover yet:
