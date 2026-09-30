@@ -47,3 +47,19 @@ Flagged stretches appear on the review page as a **Suspects** lane. Two ways to 
 1. **Click a Suspects box** and leave any note ("yes"): that exact span is bleeped.
 2. **Click the clip's box at the word** (the click position is kept) and note "bleep this": the spoken stretch at that spot is bleeped, at
    most 0.3 s either side of the click. This needs no detection at all, so it is the reliable route when the detector has nothing.
+
+
+## Result of the detector on the real cut: it failed, three times
+Ryan labelled the cut himself (`ground_truth.json`; score with `evaluate.py`). The word he wanted bleeped, "fuck" at about 28.35 s, sat inside
+"don't know" (28.4 to 28.74 s): both Whisper models wrote those two words with probability 0.99 and agreed, nothing was stretched, nothing was
+loud. It left no trace. The strict detector flagged four stretches; Ryan judged three of them and **all three were wrong** ("by" 26.3 s, "The"
+31.5 s, "Yeah." 66.8 s; "Yeah," at 0.0 s was not judged). Precision 0 of 3, recall 0 of 1.
+That is three failed approaches to the same word: a burst inside a long word (wrong word), a curse-word prompt for Whisper (changed nothing),
+and the four-signal detector (missed it, three false leads). Per the rule "three failures means the approach is wrong", no more signals will be
+added. What stands:
+- **Words Whisper writes are bleeped automatically** (the standing rule; works).
+- **A word it does not write is bleeped where a person points:** click the clip's box at the word and write "bleep this" (the spoken stretch at
+  the click, at most 0.3 s either side). This is the route that worked. Covered by tests and verified on the real cut.
+- The Suspects lane is **off by default** (`reconform.py --show-suspects` turns it on). It is noisy and was wrong three times out of three.
+- What might change the picture, not done: a larger Whisper model (`medium` or `large`, a 1.5 GB or larger download) may write profanity it now
+  drops, and can be tried against `ground_truth.json` with `evaluate.py`. That is Ryan's call.

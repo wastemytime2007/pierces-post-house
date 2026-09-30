@@ -3160,3 +3160,16 @@ the Lead before any re-dispatch; empty so far)*
   confirming a Suspects box bleeps exactly that span; clicking a clip box at the word ("bleep this") bleeps the spoken stretch there
   (`snap_voiced`). 255 tests. Round 4 result: `... your round 4 result/` has no guess-bleep: the page shows the Suspects lane for him
   to click. **Still not known: where the curse word is.** That needs his ear (a timestamp or a click on the clip at the word).
+
+
+  **Ryan labelled the curse word (2026-09-30): the strict detector failed.** His notes (`review_notes (2).json`): he clicked clip 8 at
+  28.35 s and wrote `bleep this word "fuck"`, and answered "no" to three Suspects boxes ("by" 26.3 s, "The" 31.5 s, "Yeah." 66.8 s).
+  Result: 0 of 3 flags right, the real word missed (it sat in "don't know", both models 0.99 and in agreement). Three failed approaches
+  to the same word (burst guess, Whisper prompt, four-signal detector); no more signals will be added, the negative result and what I
+  would change are in `labs/bleep/README.md`, his labels in `labs/bleep/ground_truth.json`, scored by `labs/bleep/evaluate.py` (audio
+  is not committed; the footage stays local). Changed: a "no" on a Suspects box is never read as bleep (validator), a vague bleep
+  request that holds an exact one is dropped, the Suspects lane is off by default (`--show-suspects`). Round 5 (`... your round 5
+  result/`, QA `... your round 5 QA/`): the bleep is at 28.24-28.77 s (his click snapped to the spoken stretch, padded), measured in the
+  page's audio as a pure 1 kHz tone with the speech silent there; QA: 6 verified, the 3 "no" notes are rejections (nothing to apply), no
+  unrequested change. **Not known until he listens:** whether the span covers the curse word and only that word (it also covers
+  "don't know"). Options not taken: a larger Whisper model (`medium`/`large`, a 1.5 GB+ download) to see whether it writes the word.

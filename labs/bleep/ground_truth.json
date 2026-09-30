@@ -1,0 +1,17 @@
+{
+  "about": "Ryan's own labels from his review notes, used to score the suspect detector. Times are timeline seconds on the Tiling v3 cut (73.44 s). Audio is not stored here: the footage stays on his machine.",
+  "cut": "Runnells Tiling v3 (Something Went Drastically Wrong)",
+  "labelled": "2026-09-30",
+  "curse_words": [
+    {"at": 28.35, "word": "fuck", "how": "he clicked clip 8 at 28.35 s and wrote: bleep this word \"fuck\". Click precision is about one screen pixel (0.07 s) plus aim, so the word is within a few tenths of a second of this.",
+     "what_the_transcript_said_there": "both Whisper models wrote 'don't' 28.4 s and 'know' 28.54 s, probability 0.99 each, in agreement: the word left no trace"}
+  ],
+  "rejected_suspects": [
+    {"start": 26.3, "end": 26.54, "word": "by", "signals": ["unsure", "models disagree"]},
+    {"start": 31.5, "end": 31.98, "word": "The", "signals": ["stretched", "unsure"]},
+    {"start": 66.8, "end": 67.1, "word": "Yeah.", "signals": ["stretched", "burst", "models disagree"]}
+  ],
+  "not_judged": [
+    {"start": 0.0, "end": 0.44, "word": "Yeah,", "signals": ["stretched", "unsure"]}
+  ]
+}

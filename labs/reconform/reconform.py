@@ -257,6 +257,7 @@ def main() -> int:
     ap.add_argument("--no-bleep", action="store_true", help="do not bleep curse words (the default is to bleep them without being asked)")
     ap.add_argument("--suspects-in", action="append", default=[], metavar="START,END",
                     help="bleep a suspected untranscribed curse word found inside this stretch (seconds); a note pointed there")
+    ap.add_argument("--show-suspects", action="store_true", help="put the bleep scan's suspects on the review page as a lane (off by default: on Ryan's cut all 3 he judged were wrong)")
     ap.add_argument("--ops", type=Path, help="the ops.json from the notes; a bleep_word note points the bleep at its stretch")
     ap.add_argument("--notes", type=Path, help="the review notes those operations came from")
     a = ap.parse_args()
@@ -291,7 +292,7 @@ def main() -> int:
     from build_review import build
     print("\nBuilding the review page with the rebuilt layers:")
     bj = a.out / "bleep" / "bleep.json"
-    page = build(final, a.out / "review", a.height, suspects=json.loads(bj.read_text()).get("suspects", []) if bj.exists() else None)
+    page = build(final, a.out / "review", a.height, suspects=json.loads(bj.read_text()).get("suspects", []) if bj.exists() and a.show_suspects else None)
     (a.out / "reconform.json").write_text(json.dumps({"ledger": ledger, "xml": str(final)}, indent=2))
     print(f"\n{final}\n{page}")
     return 0

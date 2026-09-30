@@ -64,6 +64,7 @@ SAYS_LONGER = re.compile(r"\b(longer|more time|more seconds?|extra (time|seconds
 SAYS_END = re.compile(r"\b(fade(s|d)? out|fade(s|d)? away|end(s)? here|stop(s)? here|disappear|go(es)? away|come(s)? off|take (it|this|that) off|off the screen|off screen|shorter|less time)\b", re.I)
 SAYS_CAPTION = re.compile(r"\b(captions?|subtitles?)\b", re.I)
 SAYS_BLEEP = re.compile(r"\b(bleep|beep|censor|curse word|swear|profanity|cuss|expletive|f-?word|mute (that|the|this) word)", re.I)
+SAYS_NO = re.compile(r"^\s*(no|nope|nah|wrong|not (it|this|that|a curse word)|ignore|skip|false|that'?s not)\b|\b(not a curse word|isn'?t a curse word|is not a curse word|don'?t bleep|do not bleep|no bleep|leave (it|that|this) (alone|in))\b", re.I)
 SAYS_EDIT = re.compile(r"\b(change|rename|reword|replace|instead|say(s)?|read(s)?|wording|words|remove|delete|get rid|drop|without|shorten|simplify|no )\b", re.I)
 SAYS_SUBTITLE = re.compile(r"\b(subtitle|sub-title|second line|smaller text|small text|smaller line|description|underneath|line (below|under)|sub text|subtext)\b", re.I)
 SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that|the [a-z ]{1,30}?) (out|off)|cut (this|it|that)( out| clip| shot)?)\b", re.I)
@@ -96,6 +97,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - edit_caption {"text": "..."}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ..."). "text" must be copied from the note's own words (usually quoted); never write your own. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
 - remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
 - bleep_word {}  The note says to bleep, beep, censor or mute a curse word or swear word ("lets bleep the curse word here"). No parameters: the stretch is the note's clip or element, else its moment. Never give a time.
+- A note that says NO to something ("no", "that's not a curse word", "don't bleep it") is never a bleep_word: use unsupported with the reason "rejected".
 - end_graphic {}  The note says an on-screen GRAPHIC (callout, text bubble, label) should fade out, end or go away at the moment of the note ("have the graphic fade out here"). No parameters: the moment is the note's own time. Use it only when the note is about WHEN the graphic ends, not its words or how long it lasts in general.
 - edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
@@ -247,6 +249,8 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("the note does not ask for it to be removed")
                 out.append({"note": note, "op": op, "why": why})
             elif op == "bleep_word":
+                if SAYS_NO.search(text):
+                    raise ValueError("the note says no: this is not a curse word (recorded as a rejected suspect, nothing is bleeped)")
                 if lane != "Suspects" and not SAYS_BLEEP.search(text):
                     raise ValueError("the note does not ask for a word to be bleeped")
                 out.append({"note": note, "op": op, "why": why})

@@ -497,7 +497,11 @@ def requests_from_notes(ops: list[dict], notes: list[dict], around: float = 1.0)
             out.append({"kind": "window", "start": float(tg["start"]), "end": float(tg["end"])})
         else:
             out.append({"kind": "window", "start": max(0.0, n["timeline_sec"] - around), "end": n["timeline_sec"] + around})
-    return out
+    exact = [r for r in out if r["kind"] in ("span", "at")]
+    def holds(w, r):                                              # a vague request that contains a more exact one is the same ask, made loosely: the exact one wins
+        a, b = (r["start"], r["end"]) if r["kind"] == "span" else (r["t"], r["t"])
+        return w["start"] <= a and b <= w["end"]
+    return [r for r in out if r["kind"] != "window" or not any(holds(r, e) for e in exact)]
 
 
 def windows_from_notes(ops: list[dict], notes: list[dict], around: float = 1.0) -> list[tuple[float, float]]:

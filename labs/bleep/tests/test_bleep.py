@@ -259,7 +259,7 @@ def test_a_note_turns_into_the_most_exact_request_it_can():
              {"timeline_sec": 10.0, "text": "bleep the swear word"}]
     r = bl.requests_from_notes(ops, notes)
     assert r[0] == {"kind": "span", "start": 28.9, "end": 29.3, "label": "x"} and r[1] == {"kind": "at", "t": 27.5}
-    assert r[2] == {"kind": "window", "start": 26.4, "end": 33.3} and r[3] == {"kind": "window", "start": 9.0, "end": 11.0}
+    assert r[2] == {"kind": "window", "start": 9.0, "end": 11.0} and len(r) == 3           # the clip-wide request held the click, so it is the same ask made loosely and is dropped
 
 
 def test_a_confirmed_suspect_and_a_clicked_spot_are_bleeped_exactly_there(xml, tmp_path, monkeypatch):
@@ -284,3 +284,33 @@ def test_a_loud_stretched_word_the_transcript_is_sure_of_is_emphasis_not_a_suspe
     unsure = [(w, s_, e_, 0.2 if w == "what" else 0.96) for w, s_, e_ in words]
     got = bl.find_suspects(words, sp, details=unsure, other=words)
     assert [x["word"] for x in got] == ["what"] and got[0]["signals"] == ["stretched", "burst", "unsure"]   # the same word, once Whisper doubts it
+
+
+def test_a_vague_bleep_request_that_holds_an_exact_one_is_dropped_and_a_no_never_bleeps():
+    sys.path.insert(0, str(HERE.parent / "review_loop"))
+    import ops as opsmod
+    clip = {"lane": "Clips", "label": "c", "start": 26.43, "end": 33.3}
+    notes = [{"timeline_sec": 28.35, "text": "bleep this word", "target": dict(clip, clicked=True)},
+             {"timeline_sec": 29.86, "text": "Lets bleep the curse word here", "target": clip},
+             {"timeline_sec": 50.0, "text": "bleep the swear word", "target": {"lane": "Clips", "label": "d", "start": 46.0, "end": 54.0}}]
+    ops = [{"note": i, "op": "bleep_word"} for i in (1, 2, 3)]
+    assert bl.requests_from_notes(ops, notes) == [{"kind": "at", "t": 28.35}, {"kind": "window", "start": 46.0, "end": 54.0}]     # note 2 said the same thing loosely
+    cut = type("C", (), {"video": [object()], "zone_end": 70.0})()
+    sus = {"lane": "Suspects", "label": "possible curse word?", "start": 26.3, "end": 26.54, "clicked": True}
+    no = [{"timeline_sec": 26.49, "text": t_, "target": sus} for t_ in ("no", "No, that's not a curse word", "don't bleep it", "yes", "bleep it")]
+    got = opsmod.validate([{"note": i, "op": "bleep_word"} for i in range(1, 6)], no, cut)
+    assert [o["op"] for o in got] == ["unsupported", "unsupported", "unsupported", "bleep_word", "bleep_word"]
+    assert "the note says no" in got[0]["reason"] and "nothing is bleeped" in got[1]["reason"]
+
+
+def test_the_evaluation_scores_hits_false_alarms_and_misses_against_ryans_labels():
+    import json
+    import evaluate as ev
+    truth = json.loads((HERE / "ground_truth.json").read_text())
+    assert truth["curse_words"][0]["at"] == 28.35 and len(truth["rejected_suspects"]) == 3                    # his labels are in the repo and parse
+    flagged = [{"start": 26.3, "end": 26.54}, {"start": 31.5, "end": 31.98}, {"start": 66.8, "end": 67.1}]      # what the strict detector flagged on the real cut
+    r = ev.score(flagged, truth)
+    assert r["false_alarms"] == 3 and r["found"] == 0 and r["missed"] == ["fuck"] and r["recall"] == 0.0 and r["precision"] == 0.0   # the documented negative result
+    better = ev.score(flagged + [{"start": 28.2, "end": 28.7}], truth)
+    assert better["found"] == 1 and better["recall"] == 1.0 and better["precision"] == 0.25                     # a flag on the word counts; the three false alarms still count against it
+    assert ev.score([], truth)["precision"] is None                                                            # nothing flagged, nothing to be precise about
