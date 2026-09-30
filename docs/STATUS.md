@@ -62,16 +62,45 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-29 — Review loop: page signed off, everything after it is
-  open.** The standalone review page with on-frame drawing is in § Done.
-  Still open, none of it started: (1) turning a note or drawing into a
-  revised cut (the note format `review_notes.v0-draft` is a draft; the real
-  revision-operation schema is Phase 5); (2) HyperFrames captions and
-  graphics spike (Apache 2.0, untested on our footage); (3) music and SFX
-  generation, which would contradict the 2026-08-31 Artlist-local-library
-  decision and needs Ryan's ruling first (his own reference edit also has
-  no SFX stings, so SFX style is his taste call); (4) a screen in `app/`,
-  which is its own approved step and has not been asked for.
+- **2026-09-29 — Notes → revised cut built as a spike, NOT yet judged by
+  Ryan.** The review page itself is signed off (§ Done). `labs/review_loop/
+  revise.py` takes the page's exported notes and the export XML and writes a
+  revised XML plus a V2 review page with a "Changes from V1" list. A small
+  set of operations only: `tighten_pause` (a real silence detector runs on
+  the audio; if there is no pause it changes nothing and says so),
+  `remove_range` / `trim_start` / `trim_end` (only when the note states the
+  times or seconds), `drop_clip` (only when the note says remove). The LLM
+  (local `claude` CLI) chooses among them and may not invent a time; anything
+  else is reported "not applied" with a reason, and drawings are not acted on
+  yet.
+
+  Run on the real `Runnells_Tiling_v3.xml` with five SAMPLE notes written by
+  Claude (marked `[SAMPLE]`, not Ryan's feedback): 2 applied (a measured
+  pause, an explicit 1s trim), 3 correctly not applied. 76.39s -> 74.17s.
+  Output in `~/Documents/Post House Reviews/Runnells Tiling v3 - revision
+  demo/`. Checks passed: XML reloads with every range inside its real file,
+  length = V1 minus removed, no seams, no footage outside V1, lav offset to
+  camera preserved on every piece, selects pool identical, `verify_export.py`,
+  `verify_preview.py`. Independent check with ffmpeg's own silence detector:
+  V1 had a silence at 24.8-25.35s, V2 has none in 22-27s; the trimmed clip
+  starts exactly 1.000s later in the source. 17 hermetic tests pass; the
+  detector test caught a real bug (steady noise read as one long pause) that
+  is fixed and covered.
+
+  **Not verified, only Ryan can:** (a) that Premiere imports the revised XML
+  (never opened in Premiere); (b) whether the pause edit sounds right. The
+  detector called that pause 1.38s where ffmpeg's stricter one saw 0.53s, so
+  a quiet word could have been clipped, and the threshold is his ear's call;
+  (c) whether this small vocabulary is the right first set.
+
+  Still open, none started: HyperFrames captions/graphics spike (Apache 2.0,
+  untested on our footage); music and SFX generation, which would contradict
+  the 2026-08-31 Artlist-local-library decision and needs Ryan's ruling
+  first (his reference edit has no SFX stings, so style is his call);
+  acting on drawings (crop/reframe needs scale and position filters in the
+  XML); a screen in `app/`, its own approved step, not asked for. The note
+  format `review_notes.v0-draft` is still a draft; the real
+  revision-operation schema is Phase 5.
 
 - **2026-09-18 — Ryan's own organize pass + finished edit for the tiling
   day. Precision 9/9; the gap is recall, and its main cause is now
@@ -2548,7 +2577,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |
 | Audio Designer: loudness → clip gain | Not started — B |
 | Colorist: exposure/contrast QC report | Not started — C |
-| Supervisor loop (notes → revised cut) | Not started — B |
+| Supervisor loop (notes → revised cut) | **Review page signed off by Ryan (2026-09-29, § Done).** Notes → revised cut is built as a standalone spike (`labs/review_loop/revise.py`) and NOT yet judged by Ryan; see § In progress. Not wired into `app/`. |
 
 **Not yet decided: which skill to start on next.** Asked Ryan; awaiting
 his pick (or his go-ahead to propose an order).

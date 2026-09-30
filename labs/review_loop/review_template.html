@@ -51,6 +51,12 @@
   .thumb canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
   .note .x { color: var(--dim); background: none; border: none; padding: 0 4px; }
   .empty { color: var(--dim); font-size: 13px; }
+  #changes { display: none; background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  #changes h2 { margin: 0 0 8px; }
+  .chg { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .chg .k { font-variant-numeric: tabular-nums; font-weight: 600; cursor: pointer; color: #38d66b; }
+  .chg.no .k { color: var(--pin); cursor: default; }
+  .chg .q { color: var(--dim); }
   @media (max-width: 600px) { main { padding: 12px; } .note { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -62,6 +68,7 @@
     <video id="v" src="preview.mp4" preload="auto" playsinline></video>
     <canvas id="draw"></canvas>
   </div>
+  <div id="changes"></div>
   <div class="bar" id="bar"><div class="head" id="head"></div></div>
   <div class="now" id="now"></div>
   <div class="row">
@@ -129,6 +136,29 @@ DATA.clips.forEach(c => {
   d.title = 'clip ' + c.idx + ' · ' + c.source;
   bar.insertBefore(d, head);
 });
+
+if (DATA.changes) {
+  const box = document.getElementById('changes');
+  const C = DATA.changes;
+  const applied = C.items.filter(i => i.applied).length;
+  box.style.display = 'block';
+  box.innerHTML = '<h2>Changes from V1: ' + fmt(C.v1_duration) + ' → ' + fmt(C.v2_duration) + ' · ' + applied + ' applied, ' + (C.items.length - applied) + ' not applied</h2>';
+  C.items.forEach(i => {
+    const row = document.createElement('div');
+    row.className = 'chg' + (i.applied ? '' : ' no');
+    const k = document.createElement('div');
+    k.className = 'k';
+    k.textContent = i.applied ? fmt(i.v2_time) : 'not applied';
+    if (i.applied) k.onclick = () => { v.pause(); v.currentTime = Math.max(0, i.v2_time - 1.5); };
+    const t = document.createElement('div');
+    const q = document.createElement('div');
+    q.className = 'q';
+    q.textContent = 'note ' + i.note + ' at ' + fmt(i.note_time) + ' on V1: "' + (i.note_text || '(drawing only)') + '"';
+    t.append(document.createTextNode(i.summary), q);
+    row.append(k, t);
+    box.appendChild(row);
+  });
+}
 
 /* ---------- drawing: shapes are stored as fractions of the frame (0..1, top-left origin) ---------- */
 const COLORS = ['#f4690b', '#e5333d', '#ffd400', '#ffffff', '#00c8ff', '#38d66b'];

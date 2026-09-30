@@ -42,11 +42,47 @@ A flattened "frame with drawing" PNG cannot be exported from a page opened
 from disk (Chrome blocks reading video pixels there, confirmed by
 `tests/drive_page.js`), which is why the geometry is what gets handed back.
 
+## Revise: notes in, revised cut out (`revise.py`)
+```
+PRECUT_ROOT=~/precut-checkout python3 labs/review_loop/revise.py \
+    <export.xml> <review_notes.json> --out "<folder>" [--ops ops.json] [--open]
+```
+`review_notes.json` is the page's "Download JSON". The notes go to the local `claude`
+CLI (build-phase cost mode) which turns each one into an operation from a small
+vocabulary; `--ops` skips that step so a plan can be read, edited and re-run.
+Every note is accounted for: applied, or reported as not applied with the reason.
+
+The interpreter only chooses. It never gets to invent a time:
+- `tighten_pause`: a real silence detector runs on the audio at that spot. If there is
+  no pause there, nothing changes and it says so.
+- `remove_range`, `trim_start`, `trim_end`: only when the note itself states the times
+  or seconds. A note like "trim the end" is refused.
+- `drop_clip`: only when the note says to remove the clip.
+- Anything else (swap to other footage, crop or reframe, graphics, music, colour, a
+  drawing with no words) is `unsupported`. Drawings are not acted on yet.
+
+Only the cut zone changes: removals ripple-close inside it and split clips where they
+land mid-clip; the selects pool is left exactly where it was. Output is
+`<name>_v2.xml`, `ops.json`, `changes.json` and a full V2 review folder whose page
+opens with a "Changes from V1" list (click one to jump to where it landed).
+
+It refuses to present V2 as ready unless all of these pass: the revised XML reloads with
+every range inside its real file, the length equals V1 minus what was removed, no seams,
+no footage that was not in V1, every lav piece keeps its V1 offset to camera, the pool is
+identical, `safety_net/verify_export.py` passes, and `verify_preview.py` passes on the V2
+render.
+
+Not verified: that Premiere imports `_v2.xml`. It is checked by re-reading it here and by
+`verify_export.py`, never opened in Premiere. Open it there before relying on it.
+The pause detector calls a silence a pause at 3x the quiet level of that window (never
+above 0.2x its loud level), which is looser than a fixed -55 dB. On the real tiling cut it
+measured a 1.38s pause where ffmpeg's stricter detector saw 0.53s, so listen at the edit
+to check no quiet word was clipped, and tighten the threshold if one was.
+
 ## What it deliberately does not do
 - Only the **cut zone** (before the 20s gap that separates it from the selects
   pool). The pool is not previewed.
 - Proxy quality, not a grade or a final render.
-- Does not act on notes. Turning a note into a revised cut is the next slice.
 - No transcript text on the page yet. It would show what is being SAID next to
   the footage, which is what would have caught the Sink/Disposal wrong-footage
   bug on sight (`4513bc3`).

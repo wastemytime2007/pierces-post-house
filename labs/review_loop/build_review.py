@@ -19,7 +19,7 @@ from render_preview import render_preview  # noqa: E402
 from timeline import TimelineError, load_cut  # noqa: E402
 
 
-def build(xml: Path, out: Path, height: int = 540) -> Path:
+def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None) -> Path:
     cut = load_cut(xml)
     out.mkdir(parents=True, exist_ok=True)
     info = render_preview(cut, out / "preview.mp4", height=height)
@@ -41,6 +41,8 @@ def build(xml: Path, out: Path, height: int = 540) -> Path:
             for a in cut.audio
         ],
     }
+    if changes:
+        data["changes"] = changes
     (out / "timeline.json").write_text(json.dumps(data, indent=2))
     html = (HERE / "review_template.html").read_text().replace(
         "/*__DATA__*/null", json.dumps(data).replace("</", "<\\/"))
