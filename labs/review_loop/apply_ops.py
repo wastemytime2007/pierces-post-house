@@ -97,6 +97,8 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
             changes.append(Change(n, kind, False, "keeping the graphic on screen longer is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
+        elif kind == "end_graphic":
+            changes.append(Change(n, kind, False, "making the graphic fade out at this moment is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
         elif kind == "edit_callout":
             changes.append(Change(n, kind, False, "changing the callout's words is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
         elif kind == "replace_sfx":

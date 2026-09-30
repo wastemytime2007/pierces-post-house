@@ -34,7 +34,8 @@ import timeline  # noqa: E402
 
 DEFAULT_EXTRA_SEC = 1.5
 MIN_GAIN_SEC = 0.3
-KINDS = ("extend_graphic", "edit_callout")
+KINDS = ("extend_graphic", "edit_callout", "end_graphic")
+MIN_HOLD_SEC = 1.5                          # a callout ended earlier than this could not be read
 
 
 TARGET_TOL_SEC = 0.25
@@ -68,6 +69,7 @@ def apply(ops: list[dict], notes: list[dict], xml: Path, out: Path, default_extr
     cut = timeline.load_cut(xml)
     ledger: list[dict] = []
     target: Path | None = None
+    lay_of: dict = {}
     plan_ops: list[tuple[dict, dict]] = []
     for o in ops:
         if o.get("op") not in KINDS:
@@ -90,6 +92,7 @@ def apply(ops: list[dict], notes: list[dict], xml: Path, out: Path, default_extr
             e["reason"] = "this note is about a different callout; one callout per run, run again for it"
             continue
         target = folder
+        lay_of[id(e)] = lay
         plan_ops.append((o, e))
     if not plan_ops:
         return ledger
@@ -101,7 +104,21 @@ def apply(ops: list[dict], notes: list[dict], xml: Path, out: Path, default_extr
     used: set[str] = set()                                  # a field is changed by the first note that asks; a later note on it is reported
     live: list[tuple[dict, dict]] = []
     for o, e in plan_ops:
-        if o["op"] == "extend_graphic":
+        if o["op"] == "end_graphic":
+            if "hold" in used:
+                e["reason"] = "another note already changed how long this callout stays; one change to the hold per callout per run"
+                continue
+            want = e["note_time"] - lay_of[id(e)].start - g["t_in"]           # the fade starts at the note's moment
+            if want < MIN_HOLD_SEC:
+                e["reason"] = f"ending it at {e['note_time']:.2f}s would leave it up only {max(want, 0):.2f}s, under the {MIN_HOLD_SEC:.1f}s needed to read it"
+                continue
+            if want >= hold - 0.05:
+                e["reason"] = f"the callout already fades by {lay_of[id(e)].start + g['t_in'] + hold:.2f}s, before {e['note_time']:.2f}s"
+                continue
+            used.add("hold")
+            hold = want
+            e["end_at_sec"] = round(e["note_time"], 2)
+        elif o["op"] == "extend_graphic":
             if "hold" in used:
                 e["reason"] = "another note already made this callout stay longer; one extension per callout per run"
                 continue
@@ -137,7 +154,10 @@ def apply(ops: list[dict], notes: list[dict], xml: Path, out: Path, default_extr
 
     gained = p["hold"] - was_hold
     for o, e in plan_ops:
-        if o["op"] == "extend_graphic":
+        if o["op"] == "end_graphic":
+            e.update({"was_hold_sec": round(was_hold, 2), "now_hold_sec": p["hold"], "folder": str(out), "applied": True})
+            e["reason"] = f"the callout now fades out from {e['end_at_sec']:.2f}s (hold {was_hold:.2f}s -> {p['hold']:.2f}s)"
+        elif o["op"] == "extend_graphic":
             e.update({"was_hold_sec": round(was_hold, 2), "now_hold_sec": p["hold"], "gained_sec": round(gained, 2), "folder": str(out)})
             if gained < MIN_GAIN_SEC:
                 e["reason"] = f"only {gained:.2f}s fits before the shot ends, under the {MIN_GAIN_SEC:.1f}s minimum, so the hold was not changed"

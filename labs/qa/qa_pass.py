@@ -149,6 +149,19 @@ def check_extend_graphic(o: dict, note: dict, layers: tuple | None) -> Row:
     return Row(n, "extend_graphic", VERIFIED if ok else FAILED, f"the callout is on screen {now:.2f}s, was {was:.2f}s ({gained:+.2f}s; {asked})")
 
 
+def check_end_graphic(o: dict, note: dict, layers: tuple | None) -> Row:
+    n = o["note"]
+    row, pair = _callout_pair("end_graphic", o, note, layers)
+    if row:
+        return row
+    b, a = pair
+    t = note["timeline_sec"]
+    shorter = (b.end - b.start) - (a.end - a.start)
+    ok = shorter > 0.3 and t - 0.1 <= a.end <= t + 1.0               # the fade starts at t, so the layer ends within its fade of t
+    return Row(n, "end_graphic", VERIFIED if ok else FAILED,
+               f"the callout now ends at {a.end:.2f}s (asked to fade out at {t:.2f}s; it ended at {b.end:.2f}s, {shorter:+.2f}s shorter)")
+
+
 def _callout_pair(op_name: str, o: dict, note: dict, layers: tuple | None):
     """(row, None) when the pair cannot be found, else (None, (before layer, after layer))."""
     n = o["note"]
@@ -231,6 +244,8 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
         return check_replace_sfx(o, note, audio)
     if kind == "extend_graphic":
         return check_extend_graphic(o, note, layers)
+    if kind == "end_graphic":
+        return check_end_graphic(o, note, layers)
     if kind == "edit_callout":
         return check_edit_callout(o, note, layers)
     if not applied:

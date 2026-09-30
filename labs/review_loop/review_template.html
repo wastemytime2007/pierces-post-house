@@ -192,7 +192,7 @@ const BEATS = [];
       el.title = L.name + ' · ' + fmt(it.start) + (tick ? '' : '-' + fmt(it.end)) + ' · ' + it.label;
       el.onclick = e => {
         if (e.shiftKey) { v.currentTime = Math.max(0, it.start - (tick ? 1 : 0.3)); return; }
-        openElementNote(L.name, tick, it, el);
+        openElementNote(L.name, tick, it, el, e);
       };
       lane.appendChild(el);
       BEATS.push({ lane: L.name, tick, it, el });
@@ -432,9 +432,11 @@ function updateEditorAt() {
     : 'Note at ' + fmt(pending.t) + ' · ' + where(pending.t).text;
 }
 /* A click on a timeline box leaves a note on the entire element. timeline_sec is set inside the element (its middle), so nothing depends on the playhead. */
-function openElementNote(lane, tick, it, el) {
+function openElementNote(lane, tick, it, el, ev) {
   v.pause(); layoutCanvas();
-  const end = tick ? it.start : it.end, mid = tick ? it.start : (it.start + it.end) / 2;
+  /* "here" = where along the box you clicked (a real mouse click); a scripted click has no position, so it uses the middle */
+  const r = el.getBoundingClientRect(), f = (ev && ev.detail > 0 && r.width > 0) ? Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)) : 0.5;
+  const end = tick ? it.start : it.end, mid = tick ? it.start : it.start + f * (it.end - it.start);
   v.currentTime = Math.min(DATA.duration - 0.05, mid);
   pending = { t: mid, shapes: [], target: { lane, label: it.label, start: +it.start.toFixed(2), end: +end.toFixed(2), kind: tick ? 'tick' : 'block' } };
   if (it.clip) pending.target.clip = it.clip;

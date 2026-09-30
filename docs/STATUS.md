@@ -3113,3 +3113,17 @@ the Lead before any re-dispatch; empty so far)*
   dropped from the result (now matched by file name too, with a test); and `place_audio` onto an XML that already carries audio
   doubles it (not used; the wrong first attempt was deleted). The pairing of a replaced effect with a page that already has audio
   is worth a guard later. Not in `app/`.
+
+
+  **Ryan's round 1 continued (2026-09-30).** Ryan: "the sound is fine" (the bell ding, note 1) - confirmed by him.
+  Notes 2 and 5 done next: (2) new operation `end_graphic` (vocabulary, `change_callout.py`, QA check with a negative
+  control, 18 tests in `labs/overlay`): "have the graphic fade out here" ends the callout's hold so its fade starts at the
+  note's moment (hold 4.80 s -> 2.25 s; the callout is now 12.18-16.13 s, measured from the result's XML); refused with a
+  reason if it would leave the graphic up under 1.5 s or it already fades earlier. (5) the image card was removed by leaving
+  it out of the reconform (29.5-33.3 s layer gone from the XML; no layer at 31 s), done BY HAND for now, not yet an automated
+  operation. Still not built: a caption's words (3) and bleeping a word (4: needs the word's timing and a cut in the speech
+  audio, which the XML edit does not do yet). Files: `Runnells Tiling v3 - your round 2 result/` (XML + review page) and
+  `... your round 2 (callout fade)/`. Found while reading his notes: an element note's time was the middle of the box (15.43
+  = the middle of 12.18-18.68), which loses "here"; a real click now records the spot clicked along the box (one screen pixel,
+  about 0.07 s, of precision). I used 15.43 s for note 2, the frame the page showed when he clicked: if he meant another
+  moment he should click there and say so. Not in `app/`.

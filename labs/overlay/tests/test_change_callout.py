@@ -188,3 +188,75 @@ def test_the_timeline_handed_to_the_renderer_is_the_target_cuts_own(placed):
     td = hc.timeline_dict(timeline.load_cut(xml))
     assert [c["idx"] for c in td["clips"]] == [1, 2, 3] and set(td["clips"][0]) >= {"idx", "start", "end", "source", "source_path", "src_in", "src_out"}
     assert td["audio"] and set(td["audio"][0]) >= {"start", "end", "source_path", "src_in"}
+
+
+# ---- "have the graphic fade out here" ----
+
+def _long(f):
+    pl = json.loads((f / "placement.json").read_text())
+    pl["geometry"] = {"t_in": 0.5, "t_out": 5.5, "fade_out": 0.35, "total": 6.2}                  # a callout that holds 5.0 s
+    (f / "placement.json").write_text(json.dumps(pl))
+
+
+def _end_note(layer, t_after_start):
+    return {"timeline_sec": round(layer.start + t_after_start, 2), "text": "have the graphic fade out here",
+            "target": {"lane": "Callout", "label": "callout", "start": round(layer.start, 2), "end": round(layer.end, 2)}}
+
+
+def test_a_note_can_end_the_callout_at_its_moment(placed, tmp_path):
+    xml, f = placed
+    _long(f)
+    lay = ly.find_layers(xml)[0]
+    rec = Recorder()
+    led = _apply(xml, [{"note": 1, "op": "end_graphic"}], [_end_note(lay, 3.5)], tmp_path, build=rec)
+    assert led[0]["applied"] and led[0]["end_at_sec"] == round(lay.start + 3.5, 2)
+    assert rec.calls[0]["hold"] == pytest.approx(3.0, abs=0.02)                              # note moment - layer start - the 0.5 s lead-in
+    assert led[0]["now_hold_sec"] == pytest.approx(3.0, abs=0.02) and "fades out from" in led[0]["reason"]
+
+
+def test_ending_a_callout_too_early_or_after_it_already_ended_is_refused_with_the_reason(placed, tmp_path):
+    xml, f = placed
+    _long(f)
+    lay = ly.find_layers(xml)[0]
+    rec = Recorder()
+    early = _apply(xml, [{"note": 1, "op": "end_graphic"}], [_end_note(lay, 1.2)], tmp_path, build=rec)
+    assert not early[0]["applied"] and "needed to read it" in early[0]["reason"] and not rec.calls
+    late = _apply(xml, [{"note": 1, "op": "end_graphic"}], [_end_note(lay, 9.0)], tmp_path, build=rec)
+    assert not late[0]["applied"] and "already fades" in late[0]["reason"] and not rec.calls
+
+
+def test_ending_and_extending_the_same_callout_in_one_run_is_reported_not_guessed(placed, tmp_path):
+    xml, f = placed
+    _long(f)
+    lay = ly.find_layers(xml)[0]
+    n = _end_note(lay, 3.5)
+    led = _apply(xml, [{"note": 1, "op": "end_graphic"}, {"note": 2, "op": "extend_graphic", "seconds": 2}], [n, dict(n, text="keep it longer")], tmp_path, build=Recorder())
+    assert led[0]["applied"] and not led[1]["applied"] and "one change to the hold" in led[1]["reason"] or "another note" in led[1]["reason"]
+
+
+def test_the_vocabulary_ends_a_callout_only_for_a_note_about_ending_it():
+    sys.path.insert(0, str(HERE.parent / "review_loop"))
+    import ops as opsmod
+    cut = type("C", (), {"video": [object()], "zone_end": 70.0})()
+    target = {"lane": "Callout", "label": "callout", "start": 12.18, "end": 18.68}
+    notes = [{"timeline_sec": 15.43, "text": "have the graphic fade out here", "target": target},
+             {"timeline_sec": 15.43, "text": "make this bigger", "target": target},
+             {"timeline_sec": 15.43, "text": "fade out here", "target": dict(target, lane="SFX")},
+             {"timeline_sec": 15.43, "text": "let the text bubble disappear here"}]
+    got = {o["note"]: o for o in opsmod.validate([{"note": i, "op": "end_graphic"} for i in (1, 2, 3, 4)], notes, cut)}
+    assert got[1]["op"] == "end_graphic" and got[4]["op"] == "end_graphic"
+    assert got[2]["op"] == "unsupported" and "does not ask for the graphic to end" in got[2]["reason"]
+    assert got[3]["op"] == "unsupported" and "left on a SFX element" in got[3]["reason"]
+
+
+def test_qa_checks_the_callout_really_ends_at_the_notes_moment(monkeypatch):
+    sys.path.insert(0, str(HERE.parent / "qa"))
+    import qa_pass as qa
+    mk = lambda s, e: ly.Layer("video", "overlay.mov", "/x/overlay.mov", s, e, 1)                     # noqa: E731
+    note = {"timeline_sec": 15.43, "text": "fade out here"}
+    monkeypatch.setattr(qa, "_callout_pair", lambda *a: (None, (mk(12.18, 18.68), mk(12.18, 15.9))))
+    assert qa.check_end_graphic({"note": 1, "op": "end_graphic"}, note, ("b", "a")).status == qa.VERIFIED
+    monkeypatch.setattr(qa, "_callout_pair", lambda *a: (None, (mk(12.18, 18.68), mk(12.18, 18.68))))       # negative control: nothing changed
+    assert qa.check_end_graphic({"note": 1, "op": "end_graphic"}, note, ("b", "a")).status == qa.FAILED
+    monkeypatch.setattr(qa, "_callout_pair", lambda *a: (None, (mk(12.18, 18.68), mk(12.18, 14.0))))         # ended far too early
+    assert qa.check_end_graphic({"note": 1, "op": "end_graphic"}, note, ("b", "a")).status == qa.FAILED
