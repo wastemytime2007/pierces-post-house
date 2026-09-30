@@ -3268,3 +3268,5 @@ the Lead before any re-dispatch; empty so far)*
   36.3 s, in 38 s; its 1.3 s span (Whisper's word end was 0.8 s too late) is now 0.5 s (36.235-36.74) by trimming the end to where the sound stops; all checks pass including a listen check. He said
   "some curses", the tool found one of 91 words: whether more are there is unknown until he listens, and any he adds are exactly what teaches it. (4) The end-to-end test on a converted 30 fps video found
   the silence rounding to the nearest frame left the start audible (-41 dBFS): now rounded outward. Page: `3 - Milwaukee vs DeWalt (open this one)/review/review.html`. 53 bleep-related tests. Not in `app/`.
+
+  **Correction, same day:** the first DeWalt/Milwaukee scan was run on Ryan's already-bleeped finished export, so its one "hit" (36.3 s, bleep on "oh, look") was a wrong test: his own bleep tone, not a spoken word. Rescanned on the un-bleeped file `Milwaukee vs DeWalt Bit_1.mp4` (20.7 s): 64 words, listed "fuck" 11.38 s and "Dick" 11.48 s, one bleep 11.30-11.82 s, all checks pass, not yet judged by Ryan ("Dick" may be a name). The earlier export scan's folder was removed.
