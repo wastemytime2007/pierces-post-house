@@ -119,9 +119,10 @@ That keeps captions with the speech, and layers after the edit shift with the pi
 removal that runs through a callout, an effect or the music bed cuts through it, and each layer
 that lost time is listed as a `layers` warning in the Changes panel and the console. Proved on the
 real cut: tightening the 1.4s pause at 13.7-15.1s (inside the callout) applied and verified, and
-warned that the callout, captions, music and effect were each cut through. Re-conforming layers
-after a revision (re-placing the callout by its frame, rebuilding the music and captions on the
-new cut) is not built.
+warned that the callout, captions, music and effect were each cut through. **`labs/reconform`
+puts them back**: it strips the layers off the revised XML and re-places the callout by its frame
+and rebuilds the captions, music and effect on the revised cut (see its README). Run it after
+`revise.py` whenever a warning appears.
 
 ## What it deliberately does not do
 - Only the **cut zone** (before the 20s gap that separates it from the selects

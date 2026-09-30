@@ -181,6 +181,8 @@ def main() -> int:
     ap.add_argument("--duck-db", type=float, default=12.0, help="how much further the music drops while the speaker talks")
     ap.add_argument("--sfx-below-peak-db", type=float, default=6.0, help="effect peak below the speech's peak")
     ap.add_argument("--preview-video", type=Path, help="video to put the mixed audio under (default: --base)")
+    ap.add_argument("--cache", type=Path, help="where generated audio is cached (default: <out>/generated); point it at an earlier folder's to reuse its audio")
+    ap.add_argument("--music-ms", type=int, help="length to request the music at; the same length and prompt as an earlier run finds it in the cache instead of generating new music")
     a = ap.parse_args()
 
     try:
@@ -197,12 +199,12 @@ def main() -> int:
 
     a.out.mkdir(parents=True, exist_ok=True)
     dur = round(a.end - a.start, 3)
-    cache = a.out / "generated"
+    cache = a.cache or a.out / "generated"
     try:
         speech = a.out / "speech_window.wav"
         speech_wav(a.base, speech, a.start, dur)
         sfx_mp3, sfx_info = generate("sfx", a.sfx_prompt, 1.2, cache)
-        music_mp3, music_info = generate("music", a.music_prompt, max(dur + 1.0, 3.0), cache)
+        music_mp3, music_info = generate("music", a.music_prompt, a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0), cache)
         music_stem, sfx_clip = a.out / "music_stem.wav", a.out / "sfx_clip.wav"
         levels = build_music_stem(music_mp3, speech, music_stem, dur, a.music_db, a.duck_db)
         sfx_gain = build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db)

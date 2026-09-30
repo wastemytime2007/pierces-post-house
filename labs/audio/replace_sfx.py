@@ -74,6 +74,7 @@ def replace(audio_dir: Path, ops: list[dict], notes: list[dict], out: Path, prev
     dur = meta["window"]["end"] - meta["window"]["start"]
     prompt = new_prompt(entry["sound"])
     mp3, info = ma.generate("sfx", prompt, round(old_clip["duration_sec"], 2), audio_dir / "generated")
+    shutil.copytree(audio_dir / "generated", out / "generated", dirs_exist_ok=True)      # the new folder carries the cache, so a rebuild from it needs nothing else
     gain = ma.build_sfx_clip(mp3, out / "speech_window.wav", out / "sfx_clip.wav", meta["sfx_below_speech_peak_db"])
     pv = preview_video or (Path(meta["preview_video"]) if meta.get("preview_video") else None)
     if pv is None:

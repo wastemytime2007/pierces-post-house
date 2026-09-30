@@ -88,6 +88,7 @@ def test_the_effect_is_replaced_from_the_notes_words_and_nothing_else_changes(tm
     meta = json.loads((out / "audio.json").read_text())
     assert meta["replaced"]["was"] == "a soft pop" and "highlighted on a piece of paper" in meta["replaced"]["now"]
     assert all(str(out) in c["path"] for c in meta["clips"])                                            # the new folder is self-contained
+    assert {p.name for p in (old_folder / "generated").glob("*.mp3")} <= {p.name for p in (out / "generated").glob("*.mp3")}   # ...including its cache
     v = subprocess.run([sys.executable, str(HERE / "verify_audio.py"), str(out)], capture_output=True, text=True)
     assert v.returncode == 0, v.stdout
 

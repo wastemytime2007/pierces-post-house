@@ -161,8 +161,29 @@ because this session violated them once each.
   a layered cut with a real note (stand-in, not Ryan's: tighten the 1.4s pause at
   13.7-15.1s) applied and verified, and shows the known gap: `apply_ops` ripples all
   tracks alike, so a removal through the callout/effect/music cuts through them
-  (each listed as a `layers` warning on the page). Re-conforming layers after a
-  revision is not built. Not opened by Ryan; not in `app/`.
+  (each listed as a `layers` warning on the page). Not opened by Ryan; not in `app/`.
+
+  **Built, NOT yet opened by Ryan: layers re-placed after a revision
+  (`labs/reconform/`).** Closes that gap. After `revise.py`, it strips the layers
+  off the revised XML (the cut is checked identical) and puts them back: the callout
+  re-placed by the source frame it was drawn on; captions rebuilt from the revised
+  cut's own audio; the music and effect re-mixed from the same cached generations
+  (nothing regenerated, nothing spent) with the effect at the callout's new time.
+  Proved on the real cut with stand-in notes (mine, not Ryan's). Run B: tightening the
+  0.8s pause at 7.9-8.7s cut through the captions and music; reconform moved the
+  callout 12.97s -> 12.18s by its frame, rebuilt 16 caption lines (all 9 caption checks
+  pass, 94% agreement with an independent transcript), re-mixed the audio (all 8 audio
+  checks pass, effect 0.2 ms from the callout), every layer whole, effect 1 ms from its
+  callout, and the new page verifies. Run A (a removal that took out the very frame the
+  callout was drawn on, 13.9-14.4s): the callout was reported dropped ("the frame it
+  was made for is not in this cut"), the effect not rebuilt for lack of a callout, the
+  captions rebuilt: the drop path on real footage. Whether a callout should instead
+  slide to the nearest surviving frame is Ryan's call. 89 tests pass across `labs/`
+  (fake caption/audio builders). Files: `Runnells Tiling v3 - reconformed v4 B/`
+  (`review/review.html`, `Runnells_Tiling_v3_layers_v4.xml`) and `... reconformed v4/`.
+  Caveats: captions are re-transcribed so wording can differ from the earlier run;
+  the music is the same file re-faded to the new length, not re-phrased; one
+  captions layer and one audio folder per run. Moves to Done only when Ryan opens it.
 
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
