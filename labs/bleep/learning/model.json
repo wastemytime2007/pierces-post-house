@@ -1,14 +1,14 @@
 {
   "version": 1,
   "updated": "2026-09-30",
-  "n_records": 4,
+  "n_records": 6,
   "pads": {
     "transcript": {
-      "before": 0.08,
-      "after": 0.12,
-      "n": 0,
-      "observed_median_before": null,
-      "observed_median_after": null
+      "before": 0.035,
+      "after": 0.112,
+      "n": 1,
+      "observed_median_before": -0.1,
+      "observed_median_after": 0.09
     },
     "revealed": {
       "before": 0.045,
@@ -20,9 +20,9 @@
   },
   "sources": {
     "transcript": {
-      "kept": 0,
+      "kept": 1,
       "wrong": 0,
-      "precision": null
+      "precision": 1.0
     },
     "revealed": {
       "kept": 1,
@@ -36,10 +36,10 @@
     }
   },
   "detection": {
-    "misses": 0,
+    "misses": 1,
     "misses_needed": 3,
     "suspect_min_sec": null,
-    "misses_outside_loud_stretches": 0
+    "misses_outside_loud_stretches": 1
   },
   "words": {
     "skip": {},
