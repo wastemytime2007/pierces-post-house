@@ -73,8 +73,11 @@ because this session violated them once each.
   generation, which would contradict the 2026-08-31 Artlist-local-library
   decision and needs Ryan's ruling first; his own reference edit has no SFX
   stings, so SFX style is his call. (4) Premiere import of a revised XML is
-  confirmed, via the overlay-placed XML that carries the V3 cut. (5) A screen in `app/`, its own approved step, not
-  asked for. (6) The note format `review_notes.v0-draft` is still a draft;
+  confirmed, via the overlay-placed XML that carries the V3 cut. (5) Nothing
+  new goes into `app/` until all of the tasks are finished, then every new
+  skill goes in at once (Ryan, 2026-09-29; ROADMAP Decision Log). Until then
+  everything new stays standalone in `labs/`, and no screen is designed
+  per skill. (6) The note format `review_notes.v0-draft` is still a draft;
   the real revision-operation schema is Phase 5.
 
 - **2026-09-18 — Ryan's own organize pass + finished edit for the tiling

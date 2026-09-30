@@ -2462,3 +2462,17 @@ with Ryan touching only the intake and the checkpoints.
   via API would contradict the 2026-08-31 Artlist-local-library decision,
   so it stays unstarted until Ryan rules on it. First slice:
   `labs/review_loop/`.
+
+- **2026-09-29 — Nothing new goes into `app/` until all of the tasks are
+  finished; then every new skill is integrated at the same time.** Ryan:
+  "Lets not add anything into the actual app until we finish all of the
+  tasks then add all of the new skills in at the same time." This sets the
+  timing that the entry above left open ("integrated only when Ryan judges
+  them usable"): not skill by skill, but once, together, at the end. It
+  covers everything built standalone in `labs/` so far (the review page with
+  drawing, notes -> revised cut, the transparent overlay and its placement in
+  the XML) and every skill built after. Skills already in the app before this
+  date (Project Manager, sync, tagging, transcript flagging, the story
+  architect and its tab) are unaffected; fixes to them stay ordinary bug
+  fixes under the existing rules. Still to be settled with Ryan: which tasks
+  count as "all" (see `docs/STATUS.md` § In progress).
