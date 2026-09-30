@@ -2476,3 +2476,20 @@ with Ryan touching only the intake and the checkpoints.
   architect and its tab) are unaffected; fixes to them stay ordinary bug
   fixes under the existing rules. Still to be settled with Ryan: which tasks
   count as "all" (see `docs/STATUS.md` § In progress).
+
+- **2026-09-29 — "All of the tasks" means the skills from the TikTok and
+  YouTube video Ryan shared, not the whole skills checklist.** Ryan: "We're
+  still talking about the skills from the tik tok and youtube video i
+  shared...those are the things we're presently working on." Settles the
+  open question in the entry above. The set is the editing workflow shown by
+  the creator (@mr.paidsocial; YouTube "Forget Capcut: Claude Is the Only
+  Video Editing Stack You Need"): captions, generated background music and
+  sound effects, editing style taken from a reference video, the timecoded
+  review loop, note-driven revisions, motion-graphic overlays, a QA pass per
+  version and a per-project asset folder. Done so far: the review loop, the
+  revisions and the overlay (`labs/`). The rest, and the assumed-out items
+  (AI-generated footage, an AI clone, scripts from blog posts), are listed in
+  `docs/STATUS.md` § In progress. Roles from the older checklist (Audio
+  Designer, Colorist, cull, grouping, B-roll placement) are not part of this
+  set and are unchanged by this entry. Music and SFX generation still needs
+  Ryan's ruling against the 2026-08-31 Artlist-local-library decision.

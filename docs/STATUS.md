@@ -62,23 +62,59 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-29 — Review loop: what is still open after Ryan's sign-off on
-  the page, on the revisions, on the callout overlay and on its placement in
-  the XML (§ Done).** (1) Ryan's three real notes are all handled and the
-  result opens correctly in Premiere; what is left of this thread is calling
-  `place_overlay.py` from `revise.py` so one command does notes -> revised
-  cut -> overlay, and deciding how an overlay's wording is chosen when a note
-  does not state it. (2) Acting on drawings (a crop or
-  reframe needs scale and position filters in the XML). (3) Music and SFX
-  generation, which would contradict the 2026-08-31 Artlist-local-library
-  decision and needs Ryan's ruling first; his own reference edit has no SFX
-  stings, so SFX style is his call. (4) Premiere import of a revised XML is
-  confirmed, via the overlay-placed XML that carries the V3 cut. (5) Nothing
-  new goes into `app/` until all of the tasks are finished, then every new
-  skill goes in at once (Ryan, 2026-09-29; ROADMAP Decision Log). Until then
-  everything new stays standalone in `labs/`, and no screen is designed
-  per skill. (6) The note format `review_notes.v0-draft` is still a draft;
-  the real revision-operation schema is Phase 5.
+- **2026-09-29 — Scope of "all of the tasks": the skills from the TikTok and
+  the "Forget Capcut" YouTube video Ryan shared** (creator Caleb, @mr.paidsocial;
+  TikTok 2026-08-24, YouTube `79E75ZyOT2s`). Ryan, correcting an earlier over-broad
+  reading: "We're still talking about the skills from the tik tok and youtube video
+  i shared...those are the things we're presently working on." Not the whole
+  Post House skills checklist. Nothing goes into `app/` until all of these are
+  done, then all at once (ROADMAP Decision Log, 2026-09-29). The list is taken from
+  the creator's own recap (33:11-34:20) and the notes he leaves (22:00-27:00).
+
+  **Done, signed off by Ryan, standalone in `labs/` (§ Done):** a review page with
+  timecoded notes and on-frame drawing; notes -> revised cut (tighten a pause,
+  trim, extend a cut-off word, start a clip at named words, with a per-note
+  applied/not-applied ledger and checks); a motion-graphic callout from a note's
+  drawing rendered as a transparent layer and placed in the XML, confirmed in
+  Premiere.
+
+  **Still to build, none started:**
+  1. Captions generated from the speech and moved around the frame as the video
+     plays (HyperFrames; PreCut already produces the word timings).
+  2. Background music: generated or picked, matched to a reference track's vibe
+     (he attaches a song he likes and has it write a similar one), and set in the
+     mix at the right level under the speech.
+  3. Sound effects generated for things coming on screen, and replaced by note
+     ("I don't like this sound, make it sound like highlighting on paper").
+  4. Editing style taken from a reference video: analyse a reel frame by frame and
+     replicate its overlays, screens and B-roll treatment.
+  5. Further note types the creator uses that the revise step does not cover yet:
+     "keep that text bubble on screen longer", "remove the text behind the logo",
+     "make this cropped screenshot look better, give it a border and highlight
+     what matters".
+  6. A QA pass that re-checks every note against the new version ("make sure you
+     don't miss anything"), with frame grabs. The applied/not-applied ledger and
+     render checks are the start of this.
+  7. A per-project folder holding every version (V1, V2...), assets, music
+     variants, the SFX list and the QA frames.
+  8. His "beatmap": the review page highlighting each edit decision (graphic,
+     sound effect, music entry) as the video plays. Waits on items 1-3.
+  9. Packaging the workflow as a reusable skill once it works.
+
+  **Open decision, blocks 2 and 3:** where music and SFX come from. Generating
+  them (ElevenLabs API) would contradict the 2026-08-31 Artlist-local-library
+  decision (no public Artlist API). Ryan's ruling is needed; his own reference
+  edit has no SFX stings, so SFX style is also his call.
+
+  **Not from these videos, still his own ask:** acting on drawings that mean crop
+  or reframe (needs scale and position filters in the XML).
+
+  **Assumed out, to confirm:** the AI-generated parts of the creator's demo
+  (AI talking head via OpenArt/Seedance, an AI clone of himself, a script written
+  from a blog post, the hat change, the Spanish version), since Ryan works from
+  real footage; and grabbing screenshots or screen recordings of a website as
+  B-roll. The note format `review_notes.v0-draft` is still a draft (real
+  revision schema is Phase 5).
 
 - **2026-09-18 — Ryan's own organize pass + finished edit for the tiling
   day. Precision 9/9; the gap is recall, and its main cause is now
