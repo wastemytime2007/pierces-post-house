@@ -3213,3 +3213,14 @@ the Lead before any re-dispatch; empty so far)*
   span. Browser-tested in Chrome: move, both edges, the 0.05 s minimum, the mute gate inside/outside/just after a box, nudge, add, delete, reset, the payload, zoom drags (40 px on the
   2 s view moved an edge 0.076 s, predicted 0.077), no script errors. CURRENT now has a bleep at 28.85-29.40 s (a guess at "starts too early": his first number was 28.9; to be set
   by him in the editor). QA 6 verified, 3 rejections. 269 tests. Not in `app/`.
+
+
+  **Ryan set the bleep himself: 29.44-29.70 s (2026-09-30, `bleep_edits.json` from the editable-bleep editor; he confirmed the live tone works in his browser).** Every
+  time he had typed, and every bleep I placed from them or from my own reading of the sound, was earlier than the word (28.35, 28.9-29.2, 28.7-29.3, 28.85-29.4). My
+  spectrogram reading was wrong twice: the loud vowel at 28.92-29.26 s is a shouted "what the"; the "f" hiss of the curse word is 29.32-29.48 s, its vowel 29.50-29.60, its "k"
+  29.62-29.68 (I had called the hiss the "k" and said the word ended at 29.36). Applied exactly with `apply_edits.py --listen`: all checks pass, including that a second
+  transcription finds no listed word over sound; measured in the page's audio: "what the" before the bleep intact (-25.0 dBFS), a pure 1 kHz tone with the speech silent
+  inside, "just" after intact (-37.2). QA on the nine notes: 5 verified, 4 not done (the three "no" rejections, and note 5, his click at 28.35 s, which was 1.1 s before
+  the word, so its own spot has no bleep: superseded by his edit, not a defect). Also changed: `reveal` returns the word's own span (Whisper's timing on the partly
+  silenced audio, 29.38-29.58 s, was right to within about 0.1 s of his; joining it to the silenced stretch had dragged the start to 28.9 s); the automatic span is now
+  29.30-29.70 s, covering 100% of his span and starting 0.14 s early. Labels updated (`ground_truth.json` range 29.44-29.70). 269 tests. Not in `app/`.

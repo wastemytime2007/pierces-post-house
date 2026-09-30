@@ -184,8 +184,8 @@ REVEAL_PARTS = (0.85, 0.6, -0.6)                               # mask the first 
 def reveal(speech: np.ndarray, regions: list[tuple[float, float]], words_of, pats: list[re.Pattern], work: Path, sr: int = SR) -> list[dict]:
     """Find curse words Whisper folds into other words. Whisper can stretch a neighbouring word over a curse word it will not write; silence
     part of the loud stretch and it stops hiding the rest. Each region is tried ON ITS OWN (silencing several at once can leave nothing to
-    hear) with a few partial masks, on a short window around it, and any listed word that now appears is kept. The span returned joins the word to
-    the region it came from, because the word is usually longer than the burst.
+    hear) with a few partial masks, on a short window around it, and any listed word that now appears is kept. The span returned is the word's own, as
+    Whisper timed it on the partly silenced audio.
     On Ryan's cut: silencing 28.9-29.2 s turned "what just happened" into "what the fuck just happened" (fuck at 29.38-29.58 s); silencing 28.9-29.4
     as well hid the word completely, which is why the parts are tried separately."""
     out: list[dict] = []
@@ -208,7 +208,8 @@ def reveal(speech: np.ndarray, regions: list[tuple[float, float]], words_of, pat
                 hs, he = h["start"] + t0, h["end"] + t0
                 if any(abs(hs - o["word_start"]) < 0.25 for o in out):
                     continue
-                out.append({"word": h["word"], "start": round(min(hs, a), 3), "end": round(max(he, b), 3), "word_start": round(hs, 3), "word_end": round(he, 3),
+                # the span is the WORD's own (Whisper's timing, good to about 0.1 s); joining it to the silenced stretch dragged the start 0.5 s early on the real cut
+                out.append({"word": h["word"], "start": round(hs, 3), "end": round(he, 3), "word_start": round(hs, 3), "word_end": round(he, 3),
                             "revealed": True, "masked": [[round(ma, 3), round(mb, 3)]]})
     return out
 

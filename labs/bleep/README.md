@@ -71,19 +71,20 @@ word runs into the start of the next word ("just" here); Ryan's first click at 2
 Clicking the clip at the word, or naming exact times ("bleep 28.9-29.2", used as given, unpadded), remains the route for anything the tool misses.
 
 
-## Placing the bleep: Ryan's ear, the sound, and two checks that were wrong
-Ryan corrected the span three times (28.9-29.2, then "too long, only needs to be" 28.7-29.3; his digits are one key off, read as 28.x). The sound agrees
-with him to within 0.1 s. Energy and high-frequency hiss every 20 ms show the word's shape: a loud low-frequency vowel at 28.92-29.26 s, a closure
-at 29.28-29.30, the "k" release burst at 29.32-29.36, then the "j" of "just" from about 29.42 s and its "st" hiss at 29.82-29.90. Ending at 29.3 s left
-the "ck" audible, so the final bleep is **28.7-29.4 s** (0.7 s, against 0.88 s that was too long), 0.1 s past what he typed.
-- **Automatic placement is not that precise.** `reveal` finds that a listed word exists; its span came from Whisper's timing on partly silenced audio,
-  which is only good to a few tenths of a second (it gave 28.82-29.70 s). Times a person gives override it where they overlap (the tool's own hit is
-  removed, not merged back in). Improving the automatic span from the sound (vowel and burst edges) is possible and not done.
-- **NO-LISTED-WORD-LEFT counts only a word over sound.** Whisper `small` writes words into digital silence ("what the fuck" into 0.7 s of nothing), which
-  failed a correct bleep. A word now counts as left behind only if at least half of its time has sound (20 ms frames above -55 dBFS) in the bleeped audio.
-  On the real cut: the 28.7-29.3 s bleep leaves "fuck" at 29.38-29.58 s over 100% sound (counted, the real "ck"); the 28.7-29.4 s bleep leaves one over 31%
-  sound (a phantom, reported and not counted).
-
+## Placing the bleep: what Ryan's ear found, and what I got wrong
+Ryan corrected the span by typing times (28.35, then 28.9-29.2, then 28.7-29.3; his digits were one key off) and every one of them, and every bleep I placed from them or
+from my own analysis, was earlier than the word. When he could set it himself in the editor he put it at **29.44 to 29.70 s**. The earlier "it is at 28.9-29.2" reading of the
+sound was mine and it was wrong: the loud vowel at 28.92-29.26 s is a shouted "what the", the **"f" hiss** of the curse word runs 29.32-29.48 s, its vowel 29.50-29.60 s and its
+"k" 29.62-29.68 s, then "just". (I had read the hiss as the "k" of a word ending at 29.36 and recommended a bleep to 29.4; it did not cover the vowel and the "k".)
+- The tool's own pieces were closer than my analysis: with the loud stretch silenced Whisper timed the word at 29.38-29.58 s, within about 0.1 s of Ryan's. `reveal` now returns the
+  **word's own span** (it used to join it to the silenced stretch, which dragged the start to 28.9 s). Padded 0.08 s before and 0.12 s after, the automatic span is 29.30-29.70 s: it
+  covers 100% of Ryan's span and starts 0.14 s early. Good enough to start from; he trims it in the editor.
+- Times a person gives override the tool's hit where they overlap (removed, not merged back in). With Ryan's exact span the `--listen` check (a second transcription) finds
+  no listed word over sound.
+- **NO-LISTED-WORD-LEFT counts only a word over sound.** Whisper `small` writes words into digital silence ("what the fuck" into 0.7 s of nothing), which failed a correct bleep. A word
+  now counts as left behind only if at least half of its time has sound (20 ms frames above -55 dBFS) in the bleeped audio.
+- What this says about trusting my own analysis: two readings of the same spectrogram were confidently wrong, and a person dragging a box against the loudness trace and hearing
+  the result got it in one go. That is why the editor exists.
 
 ## Editable bleeps (Ryan's idea, 2026-09-30): "make the bleeps editable ... drag longer or shorter ... move them right or left"
 Automatic bleeps are only the starting positions. On the review page (any page built from a bleeped XML) the Bleeps lane holds one box per bleep:

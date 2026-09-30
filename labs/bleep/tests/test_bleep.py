@@ -320,11 +320,11 @@ def test_the_evaluation_scores_hits_false_alarms_and_misses_against_ryans_labels
     import json
     import evaluate as ev
     truth = json.loads((HERE / "ground_truth.json").read_text())
-    assert truth["curse_words"][0]["range"] == [28.7, 29.4] and len(truth["rejected_suspects"]) == 3         # his labels are in the repo and parse
+    assert truth["curse_words"][0]["range"] == [29.44, 29.70] and len(truth["rejected_suspects"]) == 3         # his labels are in the repo and parse
     flagged = [{"start": 26.3, "end": 26.54}, {"start": 31.5, "end": 31.98}, {"start": 66.8, "end": 67.1}]      # what the strict detector flagged on the real cut
     r = ev.score(flagged, truth)
     assert r["false_alarms"] == 3 and r["found"] == 0 and r["missed"] == ["fuck"] and r["recall"] == 0.0 and r["precision"] == 0.0   # the documented negative result
-    better = ev.score(flagged + [{"start": 28.9, "end": 29.25}], truth)
+    better = ev.score(flagged + [{"start": 29.30, "end": 29.70}], truth)
     assert better["found"] == 1 and better["recall"] == 1.0 and better["precision"] == 0.25                     # a flag on the word counts; the three false alarms still count against it
     assert ev.score([], truth)["precision"] is None                                                            # nothing flagged, nothing to be precise about
 
@@ -371,7 +371,8 @@ def test_a_curse_word_whisper_hides_is_revealed_by_silencing_part_of_the_loud_st
         return base + [("fuck", 2.05, 2.25)] if front_silent and tail_heard else base
     got = bl.reveal(sp, [(5.0, 5.3)], listen, PATS, tmp_path)
     assert len(got) == 1 and got[0]["word"] == "fuck" and got[0]["revealed"] is True
-    assert got[0]["word_start"] == pytest.approx(5.05, abs=0.01) and (got[0]["start"], got[0]["end"]) == (5.0, 5.3)    # joined to the stretch it hid behind
+    assert got[0]["word_start"] == pytest.approx(5.05, abs=0.01)
+    assert got[0]["start"] == pytest.approx(5.05, abs=0.01) and got[0]["end"] == pytest.approx(5.25, abs=0.01)      # the word's own span, not widened to the stretch it hid behind
     assert len(calls) == 3 and all(c < 5 for c in calls)                                             # three partial masks, each on a short window, not the whole file
     assert bl.reveal(sp, [(5.0, 5.3)], lambda wav: [("Hello", 0.2, 0.6)], PATS, tmp_path) == []     # silencing reveals nothing: nothing is added
     assert bl.reveal(sp, [], listen, PATS, tmp_path) == []
@@ -406,7 +407,7 @@ def test_a_whole_run_with_the_reveal_bleeps_the_hidden_word_and_every_check_pass
                                                                            "burst_db_over_speech": 12.0, "signals": ["stretched", "burst"], "score": 2, "tier": "possible"}])
     r = bl.bleep(xml, tmp_path / "x", words_of=listen, reveal_with=listen)
     assert [h["word"].split(" ")[0] for h in r["hits"]] == ["fuck"] and "was hidden" in r["hits"][0]["word"]
-    assert len(r["spans"]) == 1 and r["spans"][0][0] <= 12.6 and r["spans"][0][1] >= 13.25           # the burst that hid it and the word, both covered
+    assert len(r["spans"]) == 1 and r["spans"][0][0] <= 13.0 and r["spans"][0][1] >= 13.25           # the word, as Whisper timed it, is covered
     bad = [(n, d) for n, ok, d in r["rows"] if ok is False]
     assert not bad, bad
     assert any(n == "SPANS-SILENT" for n, _ok, _d in r["rows"])

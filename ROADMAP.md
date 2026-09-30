@@ -2545,3 +2545,9 @@ with Ryan touching only the intake and the checkpoints.
   found that one word and no false ones across 11 stretches (n = 1). The earlier "suspect, bleeped only when a note points there" rule stands for
   stretches it cannot settle; exact times a person gives are used as given. Corrects the same-day note that detection had failed: that was scored against
   a wrong label.
+
+- **2026-09-30 (second addendum to the automatic-bleep entry) — bleeps are editable, and a person's span replaces the tool's.** Ryan: "make the bleeps editable ... drag
+  longer or shorter ... move them right or left on the timeline". The review page has a Bleeps lane and a close-up strip (the speech's loudness drawn in): drag, resize, add,
+  delete; the page mutes the speech and plays a tone inside each box (close to live, not sample-exact); "Download bleep edits" is applied exactly by
+  `labs/bleep/apply_edits.py`, which replaces the automatic spans instead of merging with them. The automatic bleeps are starting positions. Reason: five rounds of typed
+  times and my own analysis all missed the word; he placed it in one go at 29.44-29.70 s. Also: one folder, `0 - CURRENT (open this one)`, is overwritten each round.
