@@ -62,37 +62,13 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-29 — Overlay auto-placed in the XML, NOT yet judged by Ryan**
-  (`labs/overlay/place_overlay.py`). Writes `Runnells_Tiling_v3_v3_with_overlay.xml`:
-  the V3 cut plus the note 3 callout as one clip on a new V2, in
-  `~/Documents/Post House Reviews/Runnells Tiling v3 - overlay note 3 (4K,
-  placed)/`. Prompted by a problem found before building it: the sequence is
-  3840x2160 at 59.94 and the first overlay was 1920x1080 at 30, so dropped in at
-  native size it would fill a quarter of the frame, with a frame rate to
-  conform. `make_overlay.py --xml` now renders the overlay at the sequence's
-  own size and rate (HyperFrames `--resolution landscape-4k`, `--fps 60000/1001`),
-  so it drops in at 100%, one frame per frame. Placement is anchored on the
-  note's source frame in the target XML, so it survives re-timing (tested).
-
-  Verified: overlay render 11 checks (3840x2160, 59.94, alpha, position 799px
-  vs the drawing's 800px); placement 7 checks on the output XML (everything
-  else structurally unchanged with whitespace ignored, one new clip, frame
-  counts agree at 300, callout enters at 13.981s vs the drawn frame at 13.972s,
-  inside the cut, file reachable, `verify_export` passes) and 7 hermetic tests
-  incl. refusals for a size mismatch, a rate mismatch, no alpha, a frame no
-  longer in the cut, and running past the cut. 42 tests across `labs/`.
-
-  **Not verified, only Ryan can:** that Premiere imports this XML with the
-  overlay on V2 at the right time and size. The clip is hand-written (no
-  `masterclipid`, `alphatype=straight`), which is the part most likely to need a
-  fix. `revise.py` does not call `place_overlay.py` yet.
-
 - **2026-09-29 — Review loop: what is still open after Ryan's sign-off on
-  the page, on the revisions and on the callout overlay (§ Done).** (1) Ryan's
-  note 3 (arrow and on-screen text) is done as a transparent layer and its
-  placement in the XML is built (previous entry); what is left is Ryan's
-  Premiere test of that XML and calling `place_overlay.py` from `revise.py`.
-  (2) Acting on drawings (a crop or
+  the page, on the revisions, on the callout overlay and on its placement in
+  the XML (§ Done).** (1) Ryan's three real notes are all handled and the
+  result opens correctly in Premiere; what is left of this thread is calling
+  `place_overlay.py` from `revise.py` so one command does notes -> revised
+  cut -> overlay, and deciding how an overlay's wording is chosen when a note
+  does not state it. (2) Acting on drawings (a crop or
   reframe needs scale and position filters in the XML). (3) Music and SFX
   generation, which would contradict the 2026-08-31 Artlist-local-library
   decision and needs Ryan's ruling first; his own reference edit has no SFX
@@ -903,6 +879,34 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Overlay auto-placed in the export XML
+  (`labs/overlay/place_overlay.py`). Ryan, after importing it into Premiere:
+  "It worked and looks good and is the right size."** The result of the whole
+  chain on his Tiling cut: his three real notes became two timeline edits and one
+  overlay layer, in one XML he opened in Premiere (`Runnells_Tiling_v3_v3_with_overlay.xml`
+  in `~/Documents/Post House Reviews/Runnells Tiling v3 - overlay note 3 (4K,
+  placed)/`). Not wired into `app/`; `revise.py` does not call `place_overlay.py`
+  yet, they run one after the other.
+
+  Why the overlay is rendered the way it is: a problem found before building it.
+  The sequence is 3840x2160 at 59.94 and the first overlay was 1920x1080 at 30, so
+  at native size it would have filled a quarter of the frame and its frame rate
+  would have needed conforming. `make_overlay.py --xml` now renders at the
+  sequence's own size and rate (HyperFrames `--resolution landscape-4k`, `--fps
+  60000/1001`), so it drops in at 100%, one frame per frame. The right size in
+  Premiere is that decision confirmed on the real thing.
+
+  Evidence: overlay render, 11 checks (3840x2160, 59.94, alpha, box centre 799px
+  vs the drawing's 800px); placement, 7 checks on the output XML (everything else
+  structurally unchanged with whitespace ignored, one new clip, frame counts agree
+  at 300, callout enters at 13.981s vs the drawn frame at 13.972s recomputed from
+  the output, inside the cut, file reachable, `verify_export` passes); 7 hermetic
+  tests incl. refusals (size mismatch, rate mismatch, no alpha, frame no longer in
+  the cut, running past the cut) and re-timing (placement follows the source
+  frame). 42 tests across `labs/`. Commit `eee5dc0` on
+  `worktree-review-loop-spike`. The hand-written clip (no `masterclipid`,
+  `alphatype=straight`) imported without a fix.
 
 - 2026-09-29 — **Transparent callout overlay from a note's drawing
   (standalone, `labs/overlay/`), built for Ryan's note 3. Ryan: "Perfect. All
