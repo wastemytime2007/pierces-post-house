@@ -23,6 +23,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "overlay"))
 sys.path.insert(0, str(HERE.parent / "review_loop"))
@@ -44,6 +46,11 @@ class CaptionError(Exception):
     pass
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "bleep"))
+import bleep as _bleep  # noqa: E402  (the word list: listed words are starred in the caption, because they are bleeped in the sound)
+_PATS = _bleep.load_patterns()
+
+
 @dataclass
 class Word:
     text: str
@@ -60,14 +67,46 @@ def sanitize(text: str) -> tuple[str, int]:
     return out, n
 
 
-def clean_words(ws) -> tuple[list[Word], int]:
+def clean_words(ws, censor: bool = True) -> tuple[list[Word], int]:
     out, dashes = [], 0
     for w in ws:
         t, n = sanitize(w.text)
         dashes += n
         if t:
-            out.append(Word(t, float(w.start), float(w.end)))
+            out.append(Word(_bleep.censor(t, _PATS) if censor else t, float(w.start), float(w.end)))
     return out, dashes
+
+
+def tidy_case(new: str, old: str) -> str:
+    """The wording comes from the note; the casing follows the line it replaces: a capital first letter if the old line had one,
+    a standalone 'i' written 'I', the old line's closing punctuation kept if the new one has none."""
+    t = re.sub(r"\s+", " ", new.strip().strip('"\u201c\u201d'))
+    t = re.sub(r"\bi\b", "I", t)
+    if old[:1].isupper():
+        t = t[:1].upper() + t[1:]
+    if old.rstrip()[-1:] in ".?!," and t[-1:] not in ".?!,":
+        t += old.rstrip()[-1]
+    return t
+
+
+def apply_fixes(groups: list[dict], fixes: list[dict], start: float) -> list[dict]:
+    """Replace the words of the caption line showing at each fix's time (window-relative `start` is subtracted). The new words are spread
+    over the old line's spoken span in proportion to their length, so the word-by-word highlight still runs from the first word to the last."""
+    for fx in fixes:
+        t = float(fx["at"]) - start
+        hit = [g for g in groups if g["show_start"] - 0.05 <= t <= g["show_end"] + 0.05]
+        if not hit:
+            raise CaptionError(f"no caption line is showing at {fx['at']:.2f}s, so \"{fx['text']}\" has no line to replace")
+        g = min(hit, key=lambda g: abs(t - (g["words"][0].start + g["words"][-1].end) / 2))
+        text = tidy_case(fx["text"], g["text"])
+        toks = text.split(" ")
+        a, b = g["words"][0].start, g["words"][-1].end
+        weights = np.array([max(len(x), 2) for x in toks], dtype=float)
+        edges = np.r_[0.0, np.cumsum(weights) / weights.sum()] * (b - a) + a
+        g["words"] = [Word(tok, float(edges[i]), float(edges[i + 1])) for i, tok in enumerate(toks)]
+        g["text"] = " ".join(tok for tok in toks)
+        g["fixed_from"] = fx.get("was") or ""
+    return groups
 
 
 def group_words(ws: list[Word], max_words: int = 6, max_chars: int = 34, max_dur: float = 2.8, gap: float = 0.4) -> list[dict]:
@@ -180,6 +219,7 @@ def main() -> int:
     ap.add_argument("--end", type=float, required=True)
     ap.add_argument("--avoid", type=Path, action="append", default=[], help="an overlay folder (placement.json) to keep clear of")
     ap.add_argument("--style", choices=list(STYLES), default="pill")
+    ap.add_argument("--fixes", type=Path, help="a JSON list of {at: timeline seconds, text: the wording the line should have}; kept across rebuilds")
     ap.add_argument("--open", action="store_true")
     a = ap.parse_args()
 
@@ -206,6 +246,14 @@ def main() -> int:
         print("REFUSING: no speech found in that window", file=sys.stderr)
         return 1
     groups = group_words(ws)
+    fixes = json.loads(a.fixes.read_text()) if a.fixes and a.fixes.exists() else []
+    try:
+        for g in groups:
+            g["was"] = g["text"]
+        groups = apply_fixes(groups, fixes, a.start)
+    except CaptionError as e:
+        print(f"REFUSING: {e}", file=sys.stderr)
+        return 1
     blocked = [blocked_from_overlay(pl) for pl in avoid]
     collisions = 0
     for g in groups:
@@ -243,7 +291,7 @@ def main() -> int:
                           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-t", f"{dur}", str(preview)], check=True)
 
     (a.out / "captions.json").write_text(json.dumps({
-        "window": {"start": a.start, "end": a.end}, "style": a.style,
+        "window": {"start": a.start, "end": a.end}, "style": a.style, "fixes": fixes,
         "groups": [{"text": g["text"], "pos": g["pos"], "show_start": g["show_start"], "show_end": g["show_end"],
                     "words": [{"text": w.text, "start": w.start, "end": w.end} for w in g["words"]]} for g in groups]}, indent=2))
     (a.out / "placement.json").write_text(json.dumps({

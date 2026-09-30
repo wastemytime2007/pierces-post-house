@@ -97,6 +97,12 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
             changes.append(Change(n, kind, False, "keeping the graphic on screen longer is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
+        elif kind == "bleep_word":
+            changes.append(Change(n, kind, False, "bleeping a word is made by the bleep step (labs/bleep/bleep.py, run by reconform), not on the timeline", o.get("why", "")))
+        elif kind == "remove_graphic":
+            changes.append(Change(n, kind, False, "taking the graphic out is made by the graphics step (labs/overlay/remove_graphic.py and reconform --drop), not on the timeline", o.get("why", "")))
+        elif kind == "edit_caption":
+            changes.append(Change(n, kind, False, f'changing the caption to "{o["text"]}" is made by the captions step (labs/captions/fix_caption.py), not on the timeline', o.get("why", "")))
         elif kind == "end_graphic":
             changes.append(Change(n, kind, False, "making the graphic fade out at this moment is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
         elif kind == "edit_callout":

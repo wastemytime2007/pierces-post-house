@@ -2518,3 +2518,23 @@ with Ryan touching only the intake and the checkpoints.
   has nothing to be timed to), and the captions and music are still rebuilt. The
   report says so plainly. Applies to labs/overlay callouts placed by their anchor
   frame; it does not decide how any other kind of layer behaves.
+
+- **2026-09-30 — Curse words are bleeped automatically, without being asked.**
+  Ryan: "we should build a rule that automatically bleeps curse words (Shit,
+  fuck, ass, bitch, dick, etc.) and adds the bleep sfx over those words without
+  me asking." `labs/bleep/bleep.py` scans every cut it is given for the words on
+  `labs/bleep/profanity.txt` (a plain list Ryan can edit; whole words only, mild
+  words such as damn, hell and crap are left off until he adds them), silences
+  the speech there and lays a 1 kHz bleep over each, and `labs/reconform` runs it
+  as its last step by default (`--no-bleep` turns it off). Caption text for a
+  bleeped word is starred (F******). Limit, found on his real cut: Whisper drops
+  or softens profanity, so a spoken curse word can be missing from the
+  transcript; such places are reported as suspects and are bleeped only when a
+  note points at them. The automatic rule covers what the transcript shows.
+  Not yet wired into anything outside reconform (`revise.py`, a fresh export):
+  a cut that never passes through reconform is not scanned until it does.
+
+- **2026-09-30 — For vertical versions of a cut, use Premiere's Auto Reframe for
+  now.** Ryan: "Use Auto Reframe for now." The centre crop in
+  `labs/style/emulate.py` stays a rough preview only (it can cut a face or the
+  logo off); no subject-following reframe is built.

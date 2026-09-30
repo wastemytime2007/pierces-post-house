@@ -111,3 +111,42 @@ def test_project_has_no_unfilled_placeholders(tmp_path, monkeypatch):
     assert 'data-duration="3.0"' in page
     with pytest.raises(KeyError):
         mc.write_project(tmp_path / "q", groups, 3.0, "no-such-style")
+
+
+# ---- a wording fix from a note, and starred curse words ----
+
+def test_a_fix_replaces_the_line_showing_at_the_moment_and_spreads_the_new_words_over_the_old_span():
+    ws = [mc.Word(t, 10.0 + i * 0.3, 10.0 + i * 0.3 + 0.25) for i, t in enumerate("And that's why I determined this".split())]
+    ws2 = [mc.Word(t, 14.0 + i * 0.3, 14.0 + i * 0.3 + 0.25) for i, t in enumerate("next line here".split())]
+    groups = [{"words": ws, "text": " ".join(w.text for w in ws), "show_start": 9.95, "show_end": 11.8, "pos": "bottom"},
+              {"words": ws2, "text": "next line here", "show_start": 13.95, "show_end": 15.0, "pos": "bottom"}]
+    out = mc.apply_fixes([dict(g) for g in groups], [{"at": 11.0, "text": "and that's how i determined"}], 0.0)
+    g = out[0]
+    assert g["text"] == "And that's how I determined" and [w.text for w in g["words"]] == ["And", "that's", "how", "I", "determined"]      # casing follows the old line
+    assert g["words"][0].start == pytest.approx(10.0) and g["words"][-1].end == pytest.approx(ws[-1].end)                                # the old spoken span
+    assert all(a.end <= b.start + 1e-9 for a, b in zip(g["words"], g["words"][1:])) and g["words"][-1].end > g["words"][0].start
+    assert out[1]["text"] == "next line here"                                                                                          # the other line is untouched
+
+
+def test_a_fix_for_a_moment_with_no_line_showing_is_refused_and_the_window_offset_is_respected():
+    w = [mc.Word("a", 1.0, 1.2)]
+    g = [{"words": w, "text": "a", "show_start": 0.95, "show_end": 1.5, "pos": "bottom"}]
+    with pytest.raises(mc.CaptionError, match="no caption line is showing at 9.00s"):
+        mc.apply_fixes([dict(g[0])], [{"at": 9.0, "text": "b"}], 0.0)
+    assert mc.apply_fixes([dict(g[0])], [{"at": 21.1, "text": "bee"}], 20.0)[0]["text"] == "bee"            # 21.1 s on the timeline is 1.1 s into a window that starts at 20 s
+
+
+def test_the_fixed_casing_keeps_punctuation_and_a_standalone_i():
+    assert mc.tidy_case("and i think so", "We did.") == "And I think so."
+    assert mc.tidy_case('"lowercase stays"', "all lower") == "lowercase stays"
+    assert mc.tidy_case("Kept.", "Old?") == "Kept."
+
+
+def test_listed_words_are_starred_in_the_caption_text_and_other_words_are_not():
+    class W:
+        def __init__(self, t, s, e):
+            self.text, self.start, self.end = t, s, e
+    out, _ = mc.clean_words([W("Fucking", 0, 0.3), W("class,", 0.3, 0.6), W("shit.", 0.6, 0.9)])
+    assert [w.text for w in out] == ["F******", "class,", "s***."]
+    kept, _ = mc.clean_words([W("Fucking", 0, 0.3)], censor=False)
+    assert kept[0].text == "Fucking"

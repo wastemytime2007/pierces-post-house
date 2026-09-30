@@ -40,7 +40,9 @@ TESTS = [
      [("Report", "Runnells Tiling v3 - emulate wallpaper reel (all aspects)/emulation_report.html"), ("Emulated preview", "Runnells Tiling v3 - emulate wallpaper reel (all aspects)/emulated_preview.mp4"), ("Colour look (.cube)", "Runnells Tiling v3 - emulate wallpaper reel (all aspects)/reference_look.cube"), ("Style brief page", "Style brief.html")]),
     ("10", "Reference music from the reference video", "NEW. The music reference now comes from the reference video's own audio unless you give a track. On this reel only 1.4 s has no speech, so the whole mix (voice in it) was measured and flagged. Does that fallback seem acceptable, or should a voice/music separation model be installed?",
      [("What was measured", "Runnells Tiling v3 - reference music from the wallpaper reel (measure only)/reference.json")]),
-    ("11", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
+    ("11", "Your five notes, all applied (round 3)", "NEW. Open the page and play: the bell ding at 13.2 s; the callout fading out from 15.4 s; the caption at 17.3-18.9 s reading 'And that's how I determined'; the image card gone at 29.5-33.3 s; and the bleep at 28.8-29.4 s. The QA report re-measured all five (5 verified). On the bleep: the tool measured the silence, the tone and the level, NOT the word: Whisper never wrote a curse word there, so it was inferred from a loud burst inside 'what'. Is that the curse word, and is the span right?",
+     [("Review page", "Runnells Tiling v3 - your round 3 result/review/review.html"), ("QA report", "Runnells Tiling v3 - your round 3 QA/qa_report.html"), ("Premiere XML", "Runnells Tiling v3 - your round 3 result/Runnells_Tiling_v3_layers_v4.xml")]),
+    ("12", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
      [("XML", f"{E}/Runnells_Tiling_v3_layers_v4.xml")]),
 ]
 
@@ -51,6 +53,7 @@ DECISIONS = [
     "When should reconform run? Today you run it after revise.py when a layers warning appears. It could run automatically.",
     "Separating voice from music (Demucs). Voice-over reels like yours keep the music under every word, so their music cannot be isolated without it. It is a new dependency (and a model download), so I did not install it, least of all into PreCut's environment. Say if you want it in a separate one.",
     "Vertical reframe: the crop is a centre crop and cuts faces off. Premiere's Auto Reframe follows the subject. Build a subject-following reframe, or use Auto Reframe on the result?",
+    "The bleep rule (every cut, automatic): the word list is labs/bleep/profanity.txt, edit it freely. I left damn, hell and crap off. Whisper drops some curse words from its transcript, so the automatic rule only catches words it wrote; on your cut it missed the one in clip 8 and I bleeped that only because your note pointed there. Want a stricter detector that also flags loud bursts in long words for you to confirm? It found 11 across the cut, mostly emphasis, so it is noisy.",
     "Integration into app/: not done, by your rule (all skills finished and tested, then together). Say when.",
     "docs/reference/WALLPAPER_REEL_ANATOMY.md says 67.1 s; the file measures 66.03 s. I left the doc alone (it belongs to the Lead).",
 ]

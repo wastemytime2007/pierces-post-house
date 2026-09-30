@@ -235,3 +235,59 @@ def test_a_replaced_effects_folder_is_found_by_file_name_when_its_path_is_new():
     assert rf.kept_end([layer, other], Path("/new/audio/music_stem.wav")) == 21.2              # same name, new folder
     assert rf.kept_end([layer, other], Path("/old/audio/music_stem.wav")) == 21.2              # exact path still wins
     assert rf.kept_end([layer, other], Path("/new/audio/nothing.wav")) is None                 # a file that is not there is still not there
+
+
+# ---- leave a graphic out, apply an earlier caption fix again, bleep by default from the command line ----
+
+def _fake_captions_fx(clean, out, start, end, style, avoid, fixes=None):
+    _fake_captions_fx.fixes.append(fixes)
+    _fake_captions(clean, out, start, end, style, avoid)
+
+
+_fake_captions_fx.fixes = []
+
+
+def test_a_graphic_named_to_be_dropped_is_left_out_and_said_so(world):
+    out = world["tmp"] / "dropped"
+    final, ledger = rf.reconform(world["layered"], [world["overlay"]], world["captions"], world["audio"], out, _fake_captions, _fake_audio, drop=[world["overlay"]])
+    assert any("left out on request" in e["detail"] for e in ledger)
+    assert sorted(l.name for l in ly.find_layers(final)) == ["captions.mov"]                          # no callout; with no callout to time it to, the effect and music are not rebuilt either
+
+
+def test_a_caption_fix_made_earlier_is_applied_again_to_the_rebuilt_captions(world):
+    cj = json.loads((world["captions"] / "captions.json").read_text())
+    cj["fixes"] = [{"at": 1.0, "text": "the fixed words", "was": "x", "note": 3}]
+    (world["captions"] / "captions.json").write_text(json.dumps(cj))
+    _fake_captions_fx.fixes.clear()
+    rf.reconform(world["layered"], [world["overlay"]], world["captions"], world["audio"], world["tmp"] / "fx", _fake_captions_fx, _fake_audio)
+    assert _fake_captions_fx.fixes == [[{"at": 1.0, "text": "the fixed words", "was": "x", "note": 3}]]
+    _fake_captions_fx.fixes.clear()
+    cj["fixes"] = []
+    (world["captions"] / "captions.json").write_text(json.dumps(cj))
+    rf.reconform(world["layered"], [world["overlay"]], world["captions"], world["audio"], world["tmp"] / "nofx", _fake_captions_fx, _fake_audio)
+    assert _fake_captions_fx.fixes == [None]                                                          # no fixes: the builder is called exactly as before
+
+
+def test_a_bleeped_cut_is_unbleeped_before_rebuilding_and_the_bleep_step_runs_last(world):
+    import bleep as bp
+    bleeped = world["tmp"] / "bleeped_v4.xml"
+    bp.mute_spans(world["layered"], bleeped, [(3.0, 3.5)])
+    before = timeline.load_cut(world["layered"])
+    assert sum(a.tl_end - a.tl_start for a in timeline.load_cut(bleeped).audio) < sum(a.tl_end - a.tl_start for a in before.audio) - 0.4
+    seen = {}
+
+    def fake_bleep(xml, out):
+        seen["audio"] = sum(a.tl_end - a.tl_start for a in timeline.load_cut(xml).audio)            # what the bleep step is handed: the speech, whole again
+        return {"xml": None, "spans": [], "hits": [], "suspects": [{"word": "what", "bleeped": False, "start": 1, "end": 2}], "words_heard": 12, "rows": []}
+    final, ledger = rf.reconform(bleeped, [world["overlay"]], world["captions"], world["audio"], world["tmp"] / "again", _fake_captions, _fake_audio, bleep_step=fake_bleep)
+    assert seen["audio"] == pytest.approx(sum(a.tl_end - a.tl_start for a in before.audio), abs=0.05)
+    b = next(e for e in ledger if e["layer"] == "bleep")
+    assert "nothing bleeped" in b["detail"] and "check by ear" in b["detail"] and ledger[-1] is b        # the last step, and it reports what it could not decide
+    assert sum(a.tl_end - a.tl_start for a in timeline.load_cut(final).audio) == pytest.approx(seen["audio"], abs=0.05)
+
+
+def test_a_bleep_that_fails_its_checks_stops_the_reconform(world):
+    def bad_bleep(xml, out):
+        return {"xml": str(xml), "spans": [(1, 2)], "hits": [{"word": "x", "start": 1}], "suspects": [], "words_heard": 1, "rows": [("SPANS-SILENT", False, "still loud")]}
+    with pytest.raises(rf.ReconformError, match="the bleep failed its checks"):
+        rf.reconform(world["layered"], [world["overlay"]], world["captions"], world["audio"], world["tmp"] / "bad", _fake_captions, _fake_audio, bleep_step=bad_bleep)

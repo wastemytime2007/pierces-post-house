@@ -3127,3 +3127,25 @@ the Lead before any re-dispatch; empty so far)*
   = the middle of 12.18-18.68), which loses "here"; a real click now records the spot clicked along the box (one screen pixel,
   about 0.07 s, of precision). I used 15.43 s for note 2, the frame the page showed when he clicked: if he meant another
   moment he should click there and say so. Not in `app/`.
+
+
+  **Ryan's round 1, all five notes applied (2026-09-30). Built, NOT yet judged by him except the bell ding.** He asked for the
+  rest ("do all of them") and for a standing rule that curse words are bleeped automatically. Built, each with tests and negative
+  controls: `remove_graphic` (+ `reconform --drop`; a graphic note can never become `drop_clip`, which would delete footage),
+  `edit_caption` (`labs/captions/fix_caption.py`; the fix is stored in captions.json and re-applied when reconform rebuilds the
+  captions), `bleep_word`, and `labs/bleep/bleep.py` (finds listed words by word timing, silences the speech by splitting and
+  disabling the clip piece, lays a 1 kHz bleep at speech peak -6 dB, re-measures, is idempotent; reconform runs it by default,
+  `--no-bleep` to skip; Decision Log entry added; caption text for a listed word is starred). Result: `Runnells Tiling v3 - your
+  round 3 result/` (XML, page), `... your round 3 QA/qa_report.html`: the QA pass re-measured all five notes from the files and
+  VERIFIED them (bell ding different from the old effect at 0.01 correlation and from the note's words; callout now ends 16.13 s;
+  caption line 14 reads "And that's how I determined" after a rebuild; the card layer is gone with the other graphics intact;
+  a bleep at 28.81-29.36 s; no change nobody asked for). **The bleep is the weak link, stated plainly:** Whisper (small and base,
+  and with a curse-word prompt) never wrote a curse word in clip 8, so the bleeped span was inferred from a 15 dB burst inside
+  "what" (28.74-29.22 s, long for one word). Measured: silence, tone, level, the rest of the speech unchanged. NOT measured:
+  that the word was a curse word, which only a listen can say. The same detector flags 11 "suspects" across the 73 s cut (emphasis
+  trips it), reported and never bleeped without a note. Mistakes of mine found and fixed on the way: the bleep's own "speech outside
+  is unchanged" check failed first on a 1-sample measurement offset (then a fractional one, which white noise exaggerates), and I
+  resisted just loosening it: it now compares the speech body under 800 Hz to within 2 samples at a -12 dB bar, and a wider-mute
+  control proves it still fails real damage; an empty-looking `or True` assertion I wrote was caught on re-read and replaced; the
+  interpreter's "remove it ... cards" could have dropped footage, now guarded; the QA sound-effect check gave a false FAIL on a
+  reconform-rebuilt folder (now reads the recorded prompt, with a test that a wrong prompt still fails). 243+ tests pass. Not in `app/`.

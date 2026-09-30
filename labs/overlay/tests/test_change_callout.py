@@ -260,3 +260,134 @@ def test_qa_checks_the_callout_really_ends_at_the_notes_moment(monkeypatch):
     assert qa.check_end_graphic({"note": 1, "op": "end_graphic"}, note, ("b", "a")).status == qa.FAILED
     monkeypatch.setattr(qa, "_callout_pair", lambda *a: (None, (mk(12.18, 18.68), mk(12.18, 14.0))))         # ended far too early
     assert qa.check_end_graphic({"note": 1, "op": "end_graphic"}, note, ("b", "a")).status == qa.FAILED
+
+
+# ---- taking a graphic out ----
+
+def test_remove_graphic_finds_the_callout_or_card_a_note_is_about_and_nothing_else(tmp_path):
+    sys.path.insert(0, str(HERE))
+    import remove_graphic as rg
+    mk = lambda name, s, e, folder: ly.Layer("video", name, str(tmp_path / folder / name), s, e, 1)             # noqa: E731
+    layers = [mk("overlay.mov", 12.0, 18.0, "c"), mk("card.mov", 29.5, 33.3, "k"), mk("captions.mov", 0.0, 21.0, "p")]
+    # by moment: the note says "remove it" at 30.54 and no box was clicked
+    lay, why = rg.find(layers, {"timeline_sec": 30.54})
+    assert lay.name == "card.mov" and why == ""
+    lay, why = rg.find(layers, {"timeline_sec": 5.0})
+    assert lay is None and "no callout or card is on screen" in why                                           # captions are on screen at 5 s; they are not removable this way
+    # by element: the box that was clicked names it, whatever the moment
+    lay, _ = rg.find(layers, {"timeline_sec": 15.0, "target": {"lane": "Callout", "start": 12.0}})
+    assert lay.name == "overlay.mov"
+    lay, why = rg.find(layers, {"timeline_sec": 10.0, "target": {"lane": "Captions", "start": 0.0}})
+    assert lay is None and "cannot remove" in why
+    # two graphics at once is ambiguous and is reported, not guessed
+    two = layers + [mk("card2.mov", 29.0, 31.0, "k2")]
+    lay, why = rg.find(two, {"timeline_sec": 30.54})
+    assert lay is None and "click the one to remove" in why
+
+
+def test_remove_graphic_writes_the_folder_to_leave_out_and_reports_the_rest(tmp_path, monkeypatch):
+    sys.path.insert(0, str(HERE))
+    import remove_graphic as rg
+    lay = ly.Layer("video", "card.mov", str(tmp_path / "card" / "card.mov"), 29.5, 33.3, 1)
+    monkeypatch.setattr(rg.ly, "find_layers", lambda x: [lay])
+    led = rg.apply([{"note": 1, "op": "remove_graphic"}, {"note": 2, "op": "remove_graphic"}, {"note": 3, "op": "tighten_pause"}],
+                   [{"timeline_sec": 30.5, "text": "remove it"}, {"timeline_sec": 30.6, "text": "remove it too"}, {"timeline_sec": 1, "text": "x"}], Path("x.xml"))
+    assert [e["applied"] for e in led] == [True, False] and led[0]["folder"] == str(tmp_path / "card") and "already removes" in led[1]["reason"]
+
+
+def test_qa_checks_the_graphic_is_really_gone_and_the_others_are_still_there():
+    sys.path.insert(0, str(HERE.parent / "qa"))
+    import qa_pass as qa
+    mk = lambda name, s, e: ly.Layer("video", name, "/x/" + name, s, e, 1)                                      # noqa: E731
+    before = [mk("overlay.mov", 12.0, 18.0), mk("card.mov", 29.5, 33.3)]
+    note = {"timeline_sec": 30.54, "text": "remove it"}
+    o = {"note": 1, "op": "remove_graphic"}
+    assert qa.check_remove_graphic(o, note, (before, [mk("overlay.mov", 12.0, 18.0)])).status == qa.VERIFIED
+    assert qa.check_remove_graphic(o, note, (before, before)).status == qa.FAILED                              # negative control: nothing was removed
+    assert qa.check_remove_graphic(o, note, (before, [])).status == qa.FAILED                                  # the callout was lost too
+    assert qa.check_remove_graphic(o, {"timeline_sec": 5.0, "text": "remove it"}, (before, before)).status == qa.NOT_DONE
+
+
+def test_qa_checks_the_caption_reads_the_new_words(tmp_path):
+    sys.path.insert(0, str(HERE.parent / "qa"))
+    import qa_pass as qa
+    cap = tmp_path / "captions"
+    cap.mkdir()
+    groups = [{"text": "And that's how I determined", "show_start": 17.25, "show_end": 18.93, "words": []}]
+    (cap / "captions.json").write_text(json.dumps({"groups": groups}))
+    layer = ly.Layer("video", "captions.mov", str(cap / "captions.mov"), 0.0, 21.0, 1)
+    note = {"timeline_sec": 18.09, "text": "fix the caption"}
+    o = {"note": 3, "op": "edit_caption", "text": "and that's how i determined"}
+    assert qa.check_edit_caption(o, note, ([layer], [layer])).status == qa.VERIFIED
+    groups[0]["text"] = "And that's why I determined this"                                                 # negative control: the line was not changed
+    (cap / "captions.json").write_text(json.dumps({"groups": groups}))
+    assert qa.check_edit_caption(o, note, ([layer], [layer])).status == qa.FAILED
+    assert qa.check_edit_caption(o, dict(note, timeline_sec=40.0), ([layer], [layer])).status == qa.FAILED      # no line at that moment
+    assert qa.check_edit_caption(o, note, ([layer], [])).status == qa.FAILED                                  # no captions layer at all
+
+
+def test_qa_checks_a_bleep_sits_where_the_note_pointed(tmp_path):
+    sys.path.insert(0, str(HERE.parent / "qa"))
+    import qa_pass as qa
+    (tmp_path / "bleeps").mkdir()
+    (tmp_path / "bleep.json").write_text("{}")
+    b = ly.Layer("audio", "bleep_1.wav", str(tmp_path / "bleeps" / "bleep_1.wav"), 28.8, 29.4, 3)
+    o = {"note": 4, "op": "bleep_word"}
+    clip = {"timeline_sec": 29.86, "text": "bleep the curse word", "target": {"lane": "Clips", "label": "clip 8", "start": 26.43, "end": 33.3, "clip": 8}}
+    assert qa.check_bleep_word(o, clip, ([], [b])).status == qa.VERIFIED
+    assert qa.check_bleep_word(o, clip, ([], [])).status == qa.NOT_DONE                                        # negative control: nothing was bleeped
+    far = dict(clip, target=dict(clip["target"], start=40.0, end=45.0), timeline_sec=42.0)
+    assert qa.check_bleep_word(o, far, ([], [b])).status == qa.NOT_DONE                                       # a bleep elsewhere does not count
+    (tmp_path / "bleep.json").unlink()
+    assert qa.check_bleep_word(o, clip, ([], [b])).status == qa.UNMEASURED
+
+
+def test_a_bleep_note_becomes_bleep_word_and_points_the_bleep_at_its_stretch():
+    sys.path.insert(0, str(HERE.parent / "review_loop"))
+    sys.path.insert(0, str(HERE.parent / "bleep"))
+    import bleep as bl
+    import ops as opsmod
+    cut = type("C", (), {"video": [object()], "zone_end": 70.0})()
+    clip = {"lane": "Clips", "label": "clip 8", "start": 26.43, "end": 33.3, "clip": 8}
+    notes = [{"timeline_sec": 29.86, "text": "Lets bleep the curse word here", "target": clip},
+             {"timeline_sec": 10.0, "text": "bleep the swear word there"},
+             {"timeline_sec": 12.0, "text": "make it louder", "target": clip},
+             {"timeline_sec": 12.0, "text": "bleep the curse word", "target": {"lane": "SFX", "label": "sound effect", "start": 13.18, "end": 14.38}}]
+    got = opsmod.validate([{"note": 1, "op": "bleep_word"}, {"note": 2, "op": "bleep_word"}, {"note": 3, "op": "bleep_word"}, {"note": 4, "op": "bleep_word"}], notes, cut)
+    assert [o["op"] for o in got] == ["bleep_word", "bleep_word", "unsupported", "unsupported"]
+    assert "does not ask for a word to be bleeped" in got[2]["reason"] and "left on a SFX element" in got[3]["reason"]
+    win = bl.windows_from_notes(got, notes)
+    assert win == [(26.43, 33.3), (9.0, 11.0)]                                                               # the clip's stretch; else a second either side of the moment
+
+
+def test_the_sound_effect_check_reads_the_recorded_prompt_when_the_folder_was_rebuilt_and_still_fails_a_wrong_one(tmp_path):
+    """A folder rebuilt by reconform carries no 'replaced by note N' block, only the prompt the effect was generated from."""
+    import wave
+    import numpy as np
+    sys.path.insert(0, str(HERE.parent / "qa"))
+    sys.path.insert(0, str(HERE.parent / "audio"))
+    import qa_pass as qa
+
+    def folder(name, hz, prompt, replaced=None):
+        d = tmp_path / name
+        d.mkdir()
+        x = (np.sin(2 * np.pi * hz * np.arange(48000) / 48000) * 9000).astype("<i2")
+        with wave.open(str(d / "sfx_clip.wav"), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(48000); w.writeframes(x.tobytes())
+        meta = {"generated": {"sfx": {"prompt": prompt}}}
+        if replaced:
+            meta["replaced"] = replaced
+        (d / "audio.json").write_text(json.dumps(meta))
+        return d
+    o = {"note": 1, "op": "replace_sfx", "sound": "a bell ding sound"}
+    old = folder("old", 300, "a soft pop")
+    rebuilt = folder("rebuilt", 2200, "a bell ding sound, short and subtle")
+    assert qa.check_replace_sfx(o, {}, {"before": old, "after": rebuilt}).status == qa.VERIFIED
+    wrong = folder("wrong", 2200, "a soft whoosh, short and subtle")                                         # a different sound, but not from this note's words
+    assert qa.check_replace_sfx(o, {}, {"before": old, "after": wrong}).status == qa.FAILED
+    same = folder("same", 300, "a bell ding sound")                                                          # the right words but the sound never changed
+    assert qa.check_replace_sfx(o, {}, {"before": old, "after": same}).status == qa.FAILED
+    other_note = folder("other", 2200, "a bell ding sound", replaced={"now": "a bell ding sound", "note": 4})
+    assert qa.check_replace_sfx(o, {}, {"before": old, "after": other_note}).status == qa.FAILED            # replace_sfx's own record still has to name this note
+    mine = folder("mine", 2200, "x", replaced={"now": "a bell ding sound, short", "note": 1})
+    assert qa.check_replace_sfx(o, {}, {"before": old, "after": mine}).status == qa.VERIFIED

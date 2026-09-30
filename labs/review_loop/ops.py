@@ -18,6 +18,16 @@ LLM) only chooses among them; it does not get to invent a time.
                                  longer. `seconds` only if the note states an amount, else null (the applier
                                  uses a stated default step and says so). Made by labs/overlay/change_callout.py,
                                  not on the timeline, so revise.py reports it as not applied here.
+  edit_caption {text}            the note gives the words a caption line should have. `text` is copied from the note (quoted or plainly
+                                 stated); the line at the note's moment is replaced, everything else is kept. Made by
+                                 labs/captions/fix_caption.py, not on the timeline, so revise.py reports it as not applied here.
+  remove_graphic {}              the note wants an on-screen graphic (a callout or an image card) taken out entirely. The graphic is
+                                 found from the note's element or its moment. Made by labs/overlay/remove_graphic.py plus reconform
+                                 --drop, not on the timeline, so revise.py reports it as not applied here.
+  bleep_word {}                  the note wants a word bleeped. Curse words on labs/bleep/profanity.txt are bleeped automatically anyway; this
+                                 points the bleep at a stretch (the clip or element the note is on, else about a second around its
+                                 moment) for a word the transcript did not show. Made by labs/bleep/bleep.py, not on the timeline, so
+                                 revise.py reports it as not applied here.
   end_graphic {}                 the note wants an on-screen graphic (callout) to fade out at the moment the note is about. The time
                                  is the note's own time, never the interpreter's. Made by labs/overlay/change_callout.py, not on the
                                  timeline, so revise.py reports it as not applied here.
@@ -48,19 +58,21 @@ MIN_SILENCE_SEC = 0.25
 NOTE_WORDS = r"one|two|three|four|five|six|seven|eight|nine|ten|half"
 HAS_NUMBER = re.compile(rf"\d|\b({NOTE_WORDS})\b", re.I)
 SAYS_SOUND = re.compile(r"\b(sfx|sound effects?|sound|noise|whoosh|swoosh|pop|click|ding|chime|beep|clap|thud)\b", re.I)
-SAYS_GRAPHIC = re.compile(r"\b(text|graphic|graphics|arrow|callout|call-out|bubble|label|title|caption box|highlight|overlay|box)\b", re.I)
+SAYS_GRAPHIC = re.compile(r"\b(text|graphic|graphics|arrow|callout|call-out|bubble|label|title|caption box|highlight|overlay|box|cards?|screenshot)\b", re.I)
+SAYS_FOOTAGE = re.compile(r"\b(clip|shot|footage|scene|take|b-?roll)\b", re.I)
 SAYS_LONGER = re.compile(r"\b(longer|more time|more seconds?|extra (time|seconds?)|linger|stay(s)?|sit|hold|too (short|fast|quick|brief)|only (shows?|appears?|lasts?)|half a second|barely)\b|\bkeep\b[^.]{0,40}\b(up|on)\b", re.I)
 SAYS_END = re.compile(r"\b(fade(s|d)? out|fade(s|d)? away|end(s)? here|stop(s)? here|disappear|go(es)? away|come(s)? off|take (it|this|that) off|off the screen|off screen|shorter|less time)\b", re.I)
+SAYS_CAPTION = re.compile(r"\b(captions?|subtitles?)\b", re.I)
+SAYS_BLEEP = re.compile(r"\b(bleep|beep|censor|curse word|swear|profanity|cuss|expletive|f-?word|mute (that|the|this) word)", re.I)
 SAYS_EDIT = re.compile(r"\b(change|rename|reword|replace|instead|say(s)?|read(s)?|wording|words|remove|delete|get rid|drop|without|shorten|simplify|no )\b", re.I)
 SAYS_SUBTITLE = re.compile(r"\b(subtitle|sub-title|second line|smaller text|small text|smaller line|description|underneath|line (below|under)|sub text|subtext)\b", re.I)
-SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that) out|cut (this|it|that)( out| clip| shot)?)\b", re.I)
+SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that|the [a-z ]{1,30}?) (out|off)|cut (this|it|that)( out| clip| shot)?)\b", re.I)
 
 CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "start_at_words", "drop_clip"}
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
-LANE_OPS = {"Clips": CUT_OPS, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic"}}
-LANE_WHY = {"Card": "no tool changes an image card from a note yet", "Captions": "captions are changed with their own tool, not from review notes",
-            "Music": "no tool changes the music bed from a note yet"}
+LANE_OPS = {"Card": {"remove_graphic"}, "Captions": {"edit_caption"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
+LANE_WHY = {"Music": "no tool changes the music bed from a note yet"}
 
 
 def target_of(note: dict) -> dict | None:
@@ -81,6 +93,9 @@ Operations (times are seconds on the timeline the notes were left on):
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
+- edit_caption {"text": "..."}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ..."). "text" must be copied from the note's own words (usually quoted); never write your own. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
+- remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
+- bleep_word {}  The note says to bleep, beep, censor or mute a curse word or swear word ("lets bleep the curse word here"). No parameters: the stretch is the note's clip or element, else its moment. Never give a time.
 - end_graphic {}  The note says an on-screen GRAPHIC (callout, text bubble, label) should fade out, end or go away at the moment of the note ("have the graphic fade out here"). No parameters: the moment is the note's own time. Use it only when the note is about WHEN the graphic ends, not its words or how long it lasts in general.
 - edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
@@ -189,6 +204,8 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"clip {clip} does not exist")
                 if not SAYS_REMOVE.search(text):
                     raise ValueError("note does not say to remove the clip")
+                if lane in ("Callout", "Card") or (SAYS_GRAPHIC.search(text) and not SAYS_FOOTAGE.search(text)):
+                    raise ValueError("the note is about a graphic, not the footage; dropping the clip would delete footage (remove_graphic takes a graphic out)")
                 out.append({"note": note, "op": op, "clip": clip, "why": why})
             elif op == "replace_sfx":
                 sound = str(raw.get("sound", "")).strip()
@@ -213,6 +230,26 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     if not 0.3 <= sec <= 10:
                         raise ValueError(f"{sec}s is not a believable extra time on screen")
                 out.append({"note": note, "op": op, "seconds": sec, "why": why})
+            elif op == "edit_caption":
+                if lane != "Captions" and not SAYS_CAPTION.search(text):
+                    raise ValueError("the note does not talk about a caption")
+                new = str(raw.get("text", "")).strip().strip('"\u201c\u201d')
+                toks, nt = words_mod.tokens(new), set(words_mod.tokens(text))
+                if not toks or len(new) > 90:
+                    raise ValueError("no usable caption wording")
+                if sum(w in nt for w in toks) < 0.9 * len(toks):
+                    raise ValueError("that wording is not in the note, refusing to write words the note did not give")
+                out.append({"note": note, "op": op, "text": new, "why": why})
+            elif op == "remove_graphic":
+                if not says_graphic:
+                    raise ValueError("the note does not talk about an on-screen graphic")
+                if not SAYS_REMOVE.search(text):
+                    raise ValueError("the note does not ask for it to be removed")
+                out.append({"note": note, "op": op, "why": why})
+            elif op == "bleep_word":
+                if not SAYS_BLEEP.search(text):
+                    raise ValueError("the note does not ask for a word to be bleeped")
+                out.append({"note": note, "op": op, "why": why})
             elif op == "end_graphic":
                 if not says_graphic:
                     raise ValueError("the note does not talk about an on-screen graphic")

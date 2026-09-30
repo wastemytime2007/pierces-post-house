@@ -1,0 +1,27 @@
+# Words that are bleeped automatically, one per line. Whole words only ("ass" never matches "class" or "assume").
+# A trailing * allows endings: fuck* matches fuck, fucking, fucked, fucker, fucks. Lines starting with # are ignored.
+# Edit this file to add or remove words; nothing else needs to change.
+# Left out on purpose (mild): damn, hell, crap. Add them here if you want them bleeped.
+shit*
+bullshit*
+fuck*
+motherfuck*
+ass
+asses
+asshole*
+jackass*
+dumbass*
+bitch*
+dick
+dicks
+dickhead*
+cock
+cocks
+pussy
+pussies
+cunt*
+bastard*
+piss
+pissed
+pissing
+goddamn*

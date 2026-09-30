@@ -16,6 +16,8 @@ the workflow as a reusable skill (install: `cp -R labs/skill/post-house-review-l
 | Generated music and sound effects under speech | `audio/make_audio.py`, `place_audio.py` | `audio/README.md` |
 | Replace a sound effect from a note | `audio/replace_sfx.py` | `audio/README.md` |
 | Music like a reference track (or rank your library) | `audio/reference_music.py` | `audio/README.md` |
+| Bleep curse words (automatic, every cut) | `bleep/bleep.py` | `bleep/README.md` |
+| Change a caption's words / take a graphic out / fade a callout out | `captions/fix_caption.py`, `overlay/remove_graphic.py`, `overlay/change_callout.py` | `captions/README.md`, `overlay/README.md` |
 | Put layers back after a revision | `reconform/reconform.py` | `reconform/README.md` |
 | QA every note against the new version | `qa/qa_pass.py` | `qa/README.md` |
 | Style from a reference video (measure and suggest) | `style/style_profile.py` | `style/README.md` |

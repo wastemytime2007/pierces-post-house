@@ -35,7 +35,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 LABS = HERE.parent
-for sub in ("review_loop", "overlay", "audio"):
+for sub in ("review_loop", "overlay", "audio", "captions", "bleep"):
     sys.path.insert(0, str(LABS / sub))
 sys.path.insert(0, str(LABS.parent / "safety_net"))
 
@@ -162,6 +162,67 @@ def check_end_graphic(o: dict, note: dict, layers: tuple | None) -> Row:
                f"the callout now ends at {a.end:.2f}s (asked to fade out at {t:.2f}s; it ended at {b.end:.2f}s, {shorter:+.2f}s shorter)")
 
 
+def check_remove_graphic(o: dict, note: dict, layers: tuple | None) -> Row:
+    n = o["note"]
+    if not layers or layers[0] is None:
+        return Row(n, "remove_graphic", UNMEASURED, "no before-version XML was given (pass the layered XML the note was left on as --before-xml)")
+    before, after = layers
+    t, tg = note["timeline_sec"], note.get("target")
+    gl = [l for l in before if l.kind == "video" and ly.lane_name(l) in ("Callout", "Card")]
+    if tg:
+        was = [l for l in gl if ly.lane_name(l) == tg.get("lane") and abs(l.start - float(tg.get("start", -9))) <= 0.25]
+    else:
+        was = [l for l in gl if l.start <= t <= l.end]
+    if not was:
+        return Row(n, "remove_graphic", NOT_DONE, f"no callout or card was on screen at {t:.2f}s on the version the note was left on")
+    b = was[0]
+    still = [l for l in after if l.kind == "video" and ly.lane_name(l) == ly.lane_name(b) and abs(l.start - b.start) <= 0.25]
+    others = sum(1 for l in gl if l is not b) == sum(1 for l in after if l.kind == "video" and ly.lane_name(l) in ("Callout", "Card"))
+    ok = not still and others
+    return Row(n, "remove_graphic", VERIFIED if ok else FAILED,
+               f"the {ly.lane_name(b).lower()} at {b.start:.2f}-{b.end:.2f}s is {'gone' if not still else 'still there'}; "
+               + ("the other graphics are all still there" if others else "a different graphic was lost or added too"))
+
+
+def check_edit_caption(o: dict, note: dict, layers: tuple | None) -> Row:
+    n = o["note"]
+    if not layers or layers[0] is None:
+        return Row(n, "edit_caption", UNMEASURED, "no before-version XML was given")
+    before, after = layers
+    cap = [l for l in after if l.kind == "video" and ly.lane_name(l) == "Captions"]
+    if not cap:
+        return Row(n, "edit_caption", FAILED, "there is no captions layer on the new version")
+    try:
+        groups = json.loads((Path(cap[0].path).parent / "captions.json").read_text())["groups"]
+    except (OSError, ValueError, KeyError):
+        return Row(n, "edit_caption", UNMEASURED, "the captions layer has no captions.json beside it to read the lines from")
+    import make_captions as mc
+    t = note["timeline_sec"] - cap[0].start
+    line = next((g for g in groups if g["show_start"] - 0.05 <= t <= g["show_end"] + 0.05), None)
+    if line is None:
+        return Row(n, "edit_caption", FAILED, f"no caption line is showing at {note['timeline_sec']:.2f}s on the new version")
+    want = mc.tidy_case(o["text"], line["text"])
+    ok = line["text"] == want
+    return Row(n, "edit_caption", VERIFIED if ok else FAILED, f'the caption at {note["timeline_sec"]:.2f}s reads "{line["text"]}"' + ("" if ok else f', not "{want}"'))
+
+
+def check_bleep_word(o: dict, note: dict, layers: tuple | None) -> Row:
+    n = o["note"]
+    if not layers or layers[0] is None:
+        return Row(n, "bleep_word", UNMEASURED, "no before-version XML was given")
+    _before, after = layers
+    t, tg = note["timeline_sec"], note.get("target")
+    lo, hi = (float(tg["start"]), float(tg["end"])) if tg and tg.get("lane") in ("Clips", "Captions", "Cuts") and tg.get("end", 0) > tg.get("start", 0) else (t - 1.0, t + 1.0)
+    got = [l for l in after if l.kind == "audio" and ly.lane_name(l) == "Bleep" and l.start < hi and l.end > lo]
+    if not got:
+        return Row(n, "bleep_word", NOT_DONE, f"no bleep sits in {lo:.2f}-{hi:.2f}s on the new version (nothing in that stretch was found to bleep; see bleep.json for the suspects)")
+    folder = Path(got[0].path).parent.parent
+    ok_file = (folder / "bleep.json").exists()
+    return Row(n, "bleep_word", VERIFIED if ok_file else UNMEASURED, f"a bleep sits at {got[0].start:.2f}-{got[0].end:.2f}s"
+               + ("; its own checks (silence, tone, level) are in that folder's bleep run" if ok_file else "; its bleep.json is missing, so the silence was not re-measured")
+               + ". Whether the bleeped word is the curse word is for your ear")
+
+
 def _callout_pair(op_name: str, o: dict, note: dict, layers: tuple | None):
     """(row, None) when the pair cannot be found, else (None, (before layer, after layer))."""
     n = o["note"]
@@ -246,6 +307,12 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
         return check_extend_graphic(o, note, layers)
     if kind == "end_graphic":
         return check_end_graphic(o, note, layers)
+    if kind == "remove_graphic":
+        return check_remove_graphic(o, note, layers)
+    if kind == "edit_caption":
+        return check_edit_caption(o, note, layers)
+    if kind == "bleep_word":
+        return check_bleep_word(o, note, layers)
     if kind == "edit_callout":
         return check_edit_callout(o, note, layers)
     if not applied:
@@ -338,8 +405,11 @@ def check_replace_sfx(o: dict, note: dict, audio: dict) -> Row:
     cc = np.fft.irfft(np.fft.rfft(a, 2 * m) * np.conj(np.fft.rfft(b, 2 * m)), 2 * m)
     corr = float(np.max(np.abs(cc)) / max(np.linalg.norm(a) * np.linalg.norm(b), 1e-9))
     rep = meta.get("replaced") or {}
-    asked = o["sound"].lower() in str(rep.get("now", "")).lower()
-    ok = corr < 0.6 and asked and rep.get("note") == n
+    # replace_sfx's own folder records which note it came from; a folder rebuilt by reconform does not, but it records the prompt the effect was
+    # generated from, and that prompt is built from the note's words
+    prompt = str((meta.get("generated", {}).get("sfx") or {}).get("prompt", ""))
+    asked = o["sound"].lower() in (str(rep.get("now", "")) or prompt).lower()
+    ok = bool(corr < 0.6 and asked and rep.get("note", n) == n)
     return Row(n, "replace_sfx", VERIFIED if ok else FAILED,
                f'the effect is now a different sound (waveform match {corr:.2f}, limit 0.60); generated from "{rep.get("now", "?")}"' if ok
                else f"the effect matches the old one at {corr:.2f} or was not generated from this note's words")

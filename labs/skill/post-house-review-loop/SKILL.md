@@ -44,6 +44,10 @@ README with its checks and real limits.
    **Emulate.** `python3 labs/style/emulate.py --reference <video> --ours-xml <layered xml> --ours-preview <preview.mp4> --out <dir>` (or `--brief`
    from `labs/style/style_brief.html`) takes every aspect by default (vertical/horizontal, pauses, music, colour; text, graphics, sound
    effects are measured only) and writes new files, each re-measured. The reference's music comes from the reference video unless `--music-file`.
+   **Bleep (standing rule).** `labs/bleep/bleep.py` bleeps every word on `labs/bleep/profanity.txt` and silences it in the speech; reconform runs it by default.
+   Whisper drops some profanity: suspects are reported, bleeped only when a note points there, and the bleeped word is never claimed to be a curse word without a listen.
+   **More note operations:** `end_graphic` (fade a callout out at the note's moment), `remove_graphic` (+ `reconform --drop`), `edit_caption`
+   (`captions/fix_caption.py`; the fix survives rebuilds), `bleep_word`. A note on a graphic never becomes `drop_clip` (that deletes footage).
 8. **Index.** `python3 labs/project/project.py --root "~/Documents/Post House Reviews" --name "<project>"`. Reads the folders in place.
 
 ## Rules that kept this honest (keep them)

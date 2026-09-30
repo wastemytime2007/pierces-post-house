@@ -402,7 +402,7 @@ def test_an_op_that_does_not_act_on_the_lane_the_note_was_left_on_is_reported(xm
         {"note": 3, "op": "extend_graphic", "seconds": None}, {"note": 4, "op": "tighten_pause", "at": 15}, {"note": 5, "op": "tighten_pause", "at": 15}], notes, cut)}
     assert all(got[i]["op"] == "unsupported" for i in range(1, 6))
     assert "left on a SFX element" in got[1]["reason"] and "left on a Callout element" in got[2]["reason"]
-    assert "image card" in got[3]["reason"] and "captions" in got[4]["reason"] and "music bed" in got[5]["reason"]
+    assert "left on a Card element" in got[3]["reason"] and "left on a Captions element" in got[4]["reason"] and "music bed" in got[5]["reason"]
 
 
 def test_a_note_on_a_clip_is_about_that_clip_and_cannot_be_turned_on_another(xml):
@@ -434,3 +434,45 @@ def test_sfx_and_callout_are_found_by_the_element_not_the_playhead():
     assert cc.callout_under(layers, 4.0, {"lane": "Callout", "start": 3.0}).name == "overlay2.mov"
     assert cc.callout_under(layers, 4.0, {"lane": "Callout", "start": 1.0}).name == "overlay.mov"
     assert cc.callout_under(layers, 4.0, {"lane": "SFX", "start": 1.0}) is None
+
+
+# ---- remove a graphic, change a caption, and never turn a graphic note into deleting footage ----
+
+def test_a_note_about_a_card_becomes_remove_graphic_and_never_drops_the_footage_under_it(xml):
+    cut = timeline.load_cut(xml)
+    note5 = "why is this here? Go ahead and remove it. I like the idea of cards when appropriate but this makes no sense"
+    notes = [{"timeline_sec": 30.54, "text": note5},
+             {"timeline_sec": 14, "text": "remove this shot", "target": {"lane": "Clips", "label": "clip 2", "start": 10.0, "end": 20.0, "clip": 2}},
+             {"timeline_sec": 14, "text": "take the text bubble out", "target": {"lane": "Callout", "label": "callout", "start": 12.0, "end": 16.0}},
+             {"timeline_sec": 14, "text": "remove it", "target": {"lane": "Clips", "label": "clip 2", "start": 10.0, "end": 20.0, "clip": 2}}]
+    got = opsmod.validate([{"note": 1, "op": "remove_graphic"}, {"note": 1, "op": "drop_clip", "clip": 1}, {"note": 2, "op": "drop_clip", "clip": 2},
+                           {"note": 3, "op": "remove_graphic"}, {"note": 4, "op": "remove_graphic"}], notes, cut)
+    by = [(o["note"], o["op"]) for o in got]
+    assert (1, "remove_graphic") in by and (2, "drop_clip") in by and (3, "remove_graphic") in by              # the graphic note, the footage note (clip shot), the callout note
+    drop1 = next(o for o in got if o["note"] == 1 and o["op"] != "remove_graphic")
+    assert drop1["op"] == "unsupported" and "would delete footage" in drop1["reason"]                           # "remove it ... cards" never drops clip 1
+    bad = next(o for o in got if o["note"] == 4)
+    assert bad["op"] == "unsupported" and "left on a Clips element" in bad["reason"]                            # a clip box is not a graphic
+    plain = opsmod.validate([{"note": 1, "op": "remove_graphic"}], [{"timeline_sec": 5, "text": "tighten the pause"}], cut)
+    assert plain[0]["op"] == "unsupported" and "does not talk about an on-screen graphic" in plain[0]["reason"]
+
+
+def test_a_caption_fix_takes_its_words_only_from_the_note_and_only_for_a_captions_note(xml):
+    cut = timeline.load_cut(xml)
+    cap = {"lane": "Captions", "label": "And that's why I determined this", "start": 17.25, "end": 18.93}
+    notes = [{"timeline_sec": 18.09, "text": 'Fix the caption to say "and that\'s how i determined"', "target": cap},
+             {"timeline_sec": 18.09, "text": "the caption is wrong", "target": cap},
+             {"timeline_sec": 5.0, "text": 'change the subtitle to "totally different words"'},
+             {"timeline_sec": 6.0, "text": 'say "hello there"'},
+             {"timeline_sec": 18.09, "text": 'Fix the caption to say "and that\'s how i determined"', "target": dict(cap, lane="Callout")}]
+    got = {o["note"]: o for o in opsmod.validate([
+        {"note": 1, "op": "edit_caption", "text": "and that's how i determined"},
+        {"note": 2, "op": "edit_caption", "text": "something I invented"},
+        {"note": 3, "op": "edit_caption", "text": "totally different words"},
+        {"note": 4, "op": "edit_caption", "text": "hello there"},
+        {"note": 5, "op": "edit_caption", "text": "and that's how i determined"}], notes, cut)}
+    assert got[1]["op"] == "edit_caption" and got[1]["text"] == "and that's how i determined"
+    assert got[2]["op"] == "unsupported" and "not in the note" in got[2]["reason"]
+    assert got[3]["op"] == "edit_caption"                                                                      # no element, but the note says subtitle
+    assert got[4]["op"] == "unsupported" and "does not talk about a caption" in got[4]["reason"]
+    assert got[5]["op"] == "unsupported" and "left on a Callout element" in got[5]["reason"]

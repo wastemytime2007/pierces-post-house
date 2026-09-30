@@ -13,6 +13,10 @@ cut) and puts them back the way each one is anchored:
   captions  rebuilt from the revised cut's own audio, so they match every new seam
   music     the same generated music, mixed and ducked again under the revised speech (nothing regenerated)
   effect    the same generated effect, at the callout's new time
+  bleep     (by default, from the command line) every curse word on labs/bleep/profanity.txt is silenced and bleeped, without being
+            asked; `--no-bleep` turns it off. A previous bleep is undone first, so running this again never doubles it.
+  --drop    a callout or card folder to leave out (a note said to remove it)
+  captions  a wording fix made earlier (captions.json "fixes") is applied again to the rebuilt lines
 
 Each layer keeps the settings it was built with. Every step is verified by its own tool, and the
 result is checked as a whole. Then the review page is built from the new XML.
@@ -28,6 +32,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 LABS = HERE.parent
+sys.path.insert(0, str(LABS / "bleep"))
+import bleep as bp  # noqa: E402
 for sub in ("review_loop", "overlay", "audio", "captions"):
     sys.path.insert(0, str(LABS / sub))
 sys.path.insert(0, str(LABS.parent / "safety_net"))
@@ -87,9 +93,13 @@ def replace_callout(xml_in: Path, xml_out: Path, folder: Path, out_dir: Path) ->
     return {"was_sec": was, "now_sec": new["place_overlay_on_timeline_at_sec"], "folder": str(out_dir)}
 
 
-def run_captions(clean_xml: Path, out: Path, start: float, end: float, style: str, avoid: list[Path]) -> None:
+def run_captions(clean_xml: Path, out: Path, start: float, end: float, style: str, avoid: list[Path], fixes: list[dict] | None = None) -> None:
     cmd = [sys.executable, str(LABS / "captions" / "make_captions.py"), "--xml", str(clean_xml), "--out", str(out),
            "--start", f"{start:.3f}", "--end", f"{end:.3f}", "--style", style]
+    if fixes:
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "fixes.json").write_text(json.dumps(fixes, indent=2))
+        cmd += ["--fixes", str(out / "fixes.json")]
     for a in avoid:
         cmd += ["--avoid", str(a)]
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -112,15 +122,22 @@ def run_audio(clean_xml: Path, out: Path, meta: dict, base: Path, preview: Path,
         raise ReconformError("rebuilding the music and effect failed:\n" + (p.stderr or p.stdout)[-800:])
 
 
+def run_bleep(xml: Path, out: Path, suspect_windows=None) -> dict:
+    return bp.bleep(xml, out, suspect_windows=suspect_windows)
+
+
 def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio: Path | None, out: Path,
-              captions_step=run_captions, audio_step=run_audio) -> tuple[Path, list[dict]]:
-    """Returns (the new XML, a ledger with one entry per layer)."""
+              captions_step=run_captions, audio_step=run_audio, drop: list[Path] | None = None, bleep_step=None) -> tuple[Path, list[dict]]:
+    """Returns (the new XML, a ledger with one entry per layer). `bleep_step` is off here and on from the command line."""
     out.mkdir(parents=True, exist_ok=True)
     ledger: list[dict] = []
     after = ly.find_layers(revised)
+    eff = revised
+    if bp.strip_previous(revised, out / "_unbleeped.xml") != (0, 0):            # a bleeped cut: look at the speech as it was, then bleep it again at the end
+        eff = out / "_unbleeped.xml"
     clean = out / "_clean.xml"
-    n = strip_layers(revised, clean)
-    cut_before, cut_clean = timeline.load_cut(revised), timeline.load_cut(clean)
+    n = strip_layers(eff, clean)
+    cut_before, cut_clean = timeline.load_cut(eff), timeline.load_cut(clean)
     same = ([(round(c.tl_start, 4), round(c.tl_end, 4), c.src_path, round(c.src_in, 3), round(c.src_out, 3)) for c in cut_before.video]
             == [(round(c.tl_start, 4), round(c.tl_end, 4), c.src_path, round(c.src_in, 3), round(c.src_out, 3)) for c in cut_clean.video]
             and len(cut_before.audio) == len(cut_clean.audio))
@@ -130,7 +147,11 @@ def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio:
 
     cur = clean
     placed_dirs: list[Path] = []
+    drop_set = {Path(d).resolve() for d in (drop or [])}
     for i, folder in enumerate(overlays, start=1):
+        if Path(folder).resolve() in drop_set:
+            ledger.append({"layer": f"callout {i}", "ok": True, "detail": f"left out on request ({Path(folder).name})"})
+            continue
         nxt = out / f"_step_overlay{i}.xml"
         try:
             r = replace_callout(cur, nxt, folder, out / f"overlay_{i}")
@@ -149,7 +170,8 @@ def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio:
             ledger.append({"layer": "captions", "ok": False, "detail": "the revision left less than a second of the captions' window; not rebuilt"})
         else:
             cdir = out / "captions"
-            captions_step(clean, cdir, cj["window"]["start"], end, cj["style"], placed_dirs)
+            fx = cj.get("fixes") or []
+            captions_step(clean, cdir, cj["window"]["start"], end, cj["style"], placed_dirs, **({"fixes": fx} if fx else {}))
             nxt = out / "_step_captions.xml"
             info = po.place(cur, nxt, cdir)
             bad = [n_ for n_, ok, _d in po.verify_placed(cur, nxt, info, cdir) if ok is False]
@@ -180,6 +202,20 @@ def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio:
                 raise ReconformError(f"the rebuilt audio failed placement checks: {', '.join(bad)}")
             cur = nxt
             ledger.append({"layer": "music and effect", "ok": True, "detail": f"same generated audio, mixed under the revised speech for {aj['window']['start']:.1f}-{end:.1f}s; effect at the callout's new time", "folder": str(adir)})
+
+    if bleep_step is not None:
+        res = bleep_step(cur, out / "bleep")
+        sus = [x for x in res.get("suspects", []) if not x.get("bleeped")]
+        note = (f"; {len(sus)} stretch(es) may hold a curse word Whisper did not write (see bleep/bleep.json), not bleeped: check by ear" if sus else "")
+        if res.get("xml"):
+            bad = [n_ for n_, ok, _d in res["rows"] if ok is False]
+            if bad:
+                raise ReconformError(f"the bleep failed its checks ({', '.join(bad)}); see {out / 'bleep'}")
+            cur = Path(res["xml"])
+            ledger.append({"layer": "bleep", "ok": True, "detail": f"{len(res['spans'])} span(s) silenced and bleeped: " + ", ".join(f"{h['word']} at {h['start']:.2f}s" for h in res["hits"]) + note,
+                           "folder": str(out / "bleep")})
+        else:
+            ledger.append({"layer": "bleep", "ok": True, "detail": f"no listed word heard in {res.get('words_heard', 0)} words; nothing bleeped" + note})
 
     final = out / revised.name
     final.write_text(cur.read_text())
@@ -216,9 +252,19 @@ def main() -> int:
     ap.add_argument("--audio", type=Path)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--height", type=int, default=540)
+    ap.add_argument("--drop", type=Path, action="append", default=[], help="a callout or card folder to leave out (a note said to remove it); repeatable")
+    ap.add_argument("--no-bleep", action="store_true", help="do not bleep curse words (the default is to bleep them without being asked)")
+    ap.add_argument("--suspects-in", action="append", default=[], metavar="START,END",
+                    help="bleep a suspected untranscribed curse word found inside this stretch (seconds); a note pointed there")
+    ap.add_argument("--ops", type=Path, help="the ops.json from the notes; a bleep_word note points the bleep at its stretch")
+    ap.add_argument("--notes", type=Path, help="the review notes those operations came from")
     a = ap.parse_args()
+    windows = [tuple(float(x) for x in w.split(",")) for w in a.suspects_in]
+    if a.ops and a.notes:
+        windows += bp.windows_from_notes(json.loads(a.ops.read_text()), json.loads(a.notes.read_text())["notes"])
     try:
-        final, ledger = reconform(a.revised, a.overlay, a.captions, a.audio, a.out)
+        final, ledger = reconform(a.revised, a.overlay, a.captions, a.audio, a.out, drop=a.drop,
+                                  bleep_step=None if a.no_bleep else (lambda x, o: run_bleep(x, o, windows)))
     except (ReconformError, po.PlaceError, pa.PlaceError, timeline.TimelineError, OSError, KeyError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
