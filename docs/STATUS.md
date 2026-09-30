@@ -62,40 +62,12 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-29 — HyperFrames overlay spike built for Ryan's note 3, NOT yet
-  judged by Ryan** (`labs/overlay/`). His drawn box, turned into an animated
-  callout (orange box, arrow, navy label) rendered by HyperFrames 0.8.93
-  (Apache 2.0) as a transparent ProRes 4444 `.mov`: a separate layer over the
-  untouched footage, not a re-render of it. A preview `.mp4` is that layer
-  composited over the clip. On the real Tiling cut (V3, 12.97s for 5s, in
-  clip 4) the box lands on the cardboard piece, 798px vs the drawing's 800px.
-  Output in `~/Documents/Post House Reviews/Runnells Tiling v3 - overlay
-  spike (note 3)/`.
-
-  Verified on the rendered files by `verify_overlay.py` (11 checks): real
-  alpha, fully transparent before and after the callout, box/label/arrow each
-  present with a hollow box, position within 2px, preview audio bit-identical
-  to the plain clip, footage unchanged away from the callout. 10 planner
-  tests; the suite (35 with `review_loop`) passes. A test caught a timing bug
-  (near a shot's end the excerpt would have run past the clip into other
-  footage); fixed. Frames inspected by eye: entrance, settled, fade-out.
-
-  **Not verified, only Ryan can:** whether the design, timing and wording are
-  right (the text, "The spacer / A piece of cardboard pulled off the box", is
-  Claude's, drawn from his note); whether the `.mov` imports with alpha in
-  Premiere (never opened there). Real limits: the callout is fixed in frame
-  (right for this steady shot, would drift on a moving one, no tracking); the
-  label font is Inter, not ITC Avant Garde (HyperFrames swaps in a fixed web
-  font, the brand font is licensed and not installed); the overlay is not
-  inserted into the revised XML. HyperFrames added no skills or plugins to
-  `~/.claude`; it keeps config in `~/.hyperframes/` (telemetry disabled) and
-  downloaded a ~197MB rendering Chrome and a font cache to
-  `~/.cache/hyperframes/`.
-
 - **2026-09-29 — Review loop: what is still open after Ryan's sign-off on
-  the page and on the revisions (§ Done).** (1) Ryan's note 3, an arrow and
-  on-screen text pointing at the spacer, needs a graphics overlay: built as a
-  HyperFrames spike, see the next entry. (2) Acting on drawings (a crop or
+  the page, on the revisions and on the callout overlay (§ Done).** (1) Ryan's
+  note 3 (arrow and on-screen text) is done as a separate transparent layer;
+  what is left is placing overlays automatically (into the revised XML on a
+  track above the cut) and confirming a `.mov` imports with alpha in
+  Premiere. (2) Acting on drawings (a crop or
   reframe needs scale and position filters in the XML). (3) Music and SFX
   generation, which would contradict the 2026-08-31 Artlist-local-library
   decision and needs Ryan's ruling first; his own reference edit has no SFX
@@ -906,6 +878,42 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Transparent callout overlay from a note's drawing
+  (standalone, `labs/overlay/`), built for Ryan's note 3. Ryan: "Perfect. All
+  worked."** Scope: the callout he watched (box on the spacer, arrow, label,
+  timing, wording) and the overlay layer. His words did not say whether he
+  imported the `.mov` into Premiere, so that stays unconfirmed. Not wired into
+  `app/`; the overlay is a separate file, not inserted into the revised XML.
+
+  What it does: his drawn box becomes an animated orange box, arrow and navy
+  label, rendered by HyperFrames 0.8.93 (Apache 2.0) to a transparent ProRes
+  4444 `.mov`, a separate layer over untouched footage. A preview `.mp4` is
+  that layer composited over the clip with the clip's own audio. The note is
+  placed by source position, so it works whichever version it was left on.
+  Wording is an input (`--title`, `--subtitle`); the defaults were Claude's,
+  drawn from his note.
+
+  Evidence, on the real Tiling cut (V3, 12.97s for 5s, in clip 4):
+  * `verify_overlay.py`, 11 checks on the rendered files: ProRes with real
+    alpha at 1920x1080 and the right length; fully transparent before and after
+    the callout; box (hollow), label and arrow each present; box centre 798px
+    vs the drawing's 800px; preview audio bit-identical to the plain clip;
+    footage unchanged away from the callout; strong difference over the label.
+  * Frames inspected by eye: entrance, settled, fade-out. Steady camera and a
+    static spacer confirmed frame by frame across the hold (13.0s-18.0s).
+  * 10 planner tests (35 with `review_loop`) pass. One caught a real timing bug:
+    near a shot's end the excerpt would have run past the clip into other
+    footage; fixed. Commits `f301b5f` on `worktree-review-loop-spike`.
+    Output: `~/Documents/Post House Reviews/Runnells Tiling v3 - overlay spike
+    (note 3)/`.
+  * Known limits: the callout is fixed in frame (right for a steady shot,
+    would drift on a moving one, no tracking); the label font is Inter, not ITC
+    Avant Garde (HyperFrames swaps in a fixed web font; the brand font is
+    licensed and not installed). HyperFrames added no skills or plugins to
+    `~/.claude`; its config is `~/.hyperframes/` (telemetry disabled) and it
+    downloaded a ~197MB rendering Chrome and a font cache to
+    `~/.cache/hyperframes/`.
 
 - 2026-09-29 — **Notes -> revised cut (standalone, `labs/review_loop/revise.py`),
   proven on Ryan's own notes. Ryan: "The cuts/revisions were implemented
