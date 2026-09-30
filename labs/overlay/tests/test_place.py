@@ -86,6 +86,23 @@ def test_placement_follows_the_frame_when_the_cut_is_re_timed(tmp_path, cut_medi
     assert (ia["start"] - ib["start"]) / ia["fps"] == pytest.approx(shift_sec, abs=0.03)
 
 
+def test_a_layer_without_an_anchor_is_placed_at_the_time_it_was_made_for(tmp_path, cut_media):
+    _d, vid, lav = cut_media
+    xml = rl.make_xml(tmp_path / "cut.xml", vid, lav)
+    folder = _folder(tmp_path, anchor_source_sec=22.0)
+    pl = json.loads((folder / "placement.json").read_text())
+    del pl["anchor"]
+    pl["place_overlay_on_timeline_at_sec"] = 3.0                      # captions: a stretch of the cut, not one frame
+    (folder / "placement.json").write_text(json.dumps(pl))
+    out = tmp_path / "placed.xml"
+    info = po.place(xml, out, folder)
+    rows = po.verify_placed(xml, out, info, folder)
+    assert not [(n, d) for n, ok, d in rows if ok is False], rows
+    assert any(n == "PLACED-AT-REQUESTED-TIME" for n, _ok, _d in rows)
+    ci = timeline._seq_for_cut(ET.parse(out).getroot()).findall("media/video/track")[1].find("clipitem")
+    assert int(ci.findtext("start")) == round(3.0 * info["fps"])
+
+
 def test_refuses_an_overlay_that_is_not_the_sequences_size(tmp_path, cut_media):
     _d, vid, lav = cut_media
     xml = rl.make_xml(tmp_path / "cut.xml", vid, lav)

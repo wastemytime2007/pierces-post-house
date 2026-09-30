@@ -84,8 +84,13 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
         raise PlaceError("the overlay has no alpha channel")
 
     cut = timeline.load_cut(xml_in)
-    t_anchor = anchor_time(cut, pl["anchor"])
-    start = round((t_anchor - pl["anchor"]["lead_sec"]) * sp["fps"])
+    anchor = pl.get("anchor")
+    if anchor:                                       # a callout for one frame: follow that frame
+        t_anchor = anchor_time(cut, anchor)
+        start = round((t_anchor - anchor["lead_sec"]) * sp["fps"])
+    else:                                            # a layer for a stretch of the cut (captions): the time it was made for
+        t_anchor = None
+        start = round(pl["place_overlay_on_timeline_at_sec"] * sp["fps"])
     n = mv["frames"]
     if start < 0 or start + n > round(cut.zone_end * sp["fps"]):
         raise PlaceError("the overlay would run outside the cut")
@@ -116,7 +121,8 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
 
     ET.indent(root, space="\t")
     xml_out.write_text(HEADER + ET.tostring(root, encoding="unicode") + "\n")
-    return {"start": start, "frames": n, "fps": sp["fps"], "anchor_sec": t_anchor, "lead": pl["anchor"]["lead_sec"], "mov": mov}
+    return {"start": start, "frames": n, "fps": sp["fps"], "anchor_sec": t_anchor, "lead": anchor["lead_sec"] if anchor else None, "mov": mov,
+            "requested_sec": pl.get("place_overlay_on_timeline_at_sec")}
 
 
 def _canon(e: ET.Element):
@@ -146,10 +152,15 @@ def verify_placed(xml_in: Path, xml_out: Path, info: dict, folder: Path) -> list
     rows.append(("FRAME-EXACT", (e - s) == (o - i) == fdur == info["frames"] and i == 0, f"start {s}, {e - s} frames on the timeline = {o - i} in the file = {fdur} in its definition"))
 
     cut2 = timeline.load_cut(xml_out)
-    t2 = anchor_time(cut2, json.loads((folder / "placement.json").read_text())["anchor"])
     fps = info["fps"]
-    lands = (s + round(info["lead"] * fps)) / fps
-    rows.append(("ANCHOR-LINES-UP", abs(lands - t2) <= 1.5 / fps, f"the callout enters at {lands:.3f}s; the frame it was drawn on is at {t2:.3f}s in the output"))
+    anchor = json.loads((folder / "placement.json").read_text()).get("anchor")
+    if anchor:
+        t2 = anchor_time(cut2, anchor)
+        lands = (s + round(info["lead"] * fps)) / fps
+        rows.append(("ANCHOR-LINES-UP", abs(lands - t2) <= 1.5 / fps, f"the callout enters at {lands:.3f}s; the frame it was drawn on is at {t2:.3f}s in the output"))
+    else:
+        rows.append(("PLACED-AT-REQUESTED-TIME", abs(s / fps - info["requested_sec"]) <= 1.0 / fps,
+                     f"starts at {s / fps:.3f}s; it was made for {info['requested_sec']:.3f}s"))
     rows.append(("INSIDE-THE-CUT", e <= round(cut2.zone_end * fps), f"ends at {e / fps:.2f}s; the cut ends at {cut2.zone_end:.2f}s"))
     path = _decode_pathurl(ci.find("file").findtext("pathurl"))[0]
     rows.append(("FILE-REACHABLE", Path(path) == info["mov"].resolve() and Path(path).exists(), path))

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="./gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; background: transparent; font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
+      .cap { position: absolute; left: 0; right: 0; margin-left: auto; margin-right: auto; width: max-content; max-width: __MAXW__px; opacity: 0;
+             text-align: center; font-size: __FONT__px; font-weight: 700; line-height: 1.22; letter-spacing: -0.005em;
+             padding: __PADY__px __PADX__px; border-radius: 18px; color: #ffffff; __PILL__ }
+      .cap.bottom { bottom: __MARGIN__px; }
+      .cap.top { top: __MARGIN__px; }
+      .w { position: relative; display: inline-block; margin: 0 0.14em; }
+      .w .b { color: #ffffff; }
+      .w .h { position: absolute; left: 0; top: 0; color: #00ade1; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="__DUR__" data-width="1920" data-height="1080">
+__GROUPS__
+    </div>
+    <script>
+      const CFG = /*__CFG__*/null;
+      const tl = gsap.timeline({ paused: true });
+      CFG.groups.forEach((g, i) => {
+        const id = "#g" + i;
+        tl.fromTo(id, { opacity: 0, y: g.pos === "top" ? -10 : 10 }, { opacity: 1, y: 0, duration: 0.14, ease: "power2.out" }, g.show_start);
+        g.words.forEach((w, j) => {
+          const hi = id + " .w:nth-child(" + (j + 1) + ") .h";
+          tl.set(hi, { opacity: 1 }, w.start);
+          tl.set(hi, { opacity: 0 }, w.end);
+        });
+        tl.to(id, { opacity: 0, duration: 0.12, ease: "power1.in" }, g.show_end - 0.12);
+      });
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

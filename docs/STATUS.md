@@ -78,9 +78,25 @@ because this session violated them once each.
   drawing rendered as a transparent layer and placed in the XML, confirmed in
   Premiere.
 
+  **Built, NOT yet judged by Ryan:** captions (`labs/captions/`, first window
+  0-22s of the Tiling V3 cut, 4K). Words come from transcribing the cut's own
+  audio with PreCut's Transcriber (60 words -> 16 lines), verbatim, no dashes;
+  the word being spoken is highlighted light blue; a line moves to the top when
+  the note-3 callout would cover it (3 lines did). Evidence: 9 gating checks pass
+  on the rendered files (`verify_captions.py`: alpha/size/rate, transparent gaps,
+  all 16 lines appear, placement, word-by-word highlight, 0 pixels overlapping the
+  callout across 5 moments, no loops, and a second Whisper model (base) agrees on
+  92% of words with a 20ms median timing difference); 54 tests pass across `labs/`;
+  `place_overlay.py` puts it on V3 with all 7 checks passing and `verify_export`
+  clean. Caveats: only 1 of 16 lines matches the second model verbatim (the models
+  word phrases differently), so the lines need reading by a person; it never looks
+  at the picture, so it can cover a face; font is Inter, not ITC Avant Garde (not
+  installed); English only. Style, size and colour are Ryan's call. Files:
+  `Runnells Tiling v3 - captions (0-22s)/` (`captions_preview.mp4`,
+  `Runnells_Tiling_v3_v3_with_overlay_and_captions.xml`). Moves to Done only when
+  Ryan opens it and says so; the rest of the cut waits for that (rule 7).
+
   **Still to build, none started:**
-  1. Captions generated from the speech and moved around the frame as the video
-     plays (HyperFrames; PreCut already produces the word timings).
   2. Background music: generated or picked, matched to a reference track's vibe
      (he attaches a song he likes and has it write a similar one), and set in the
      mix at the right level under the speech.
