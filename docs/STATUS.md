@@ -62,75 +62,18 @@ because this session violated them once each.
 
 ## In progress
 
-- **2026-09-29 — Notes → revised cut built as a spike, NOT yet judged by
-  Ryan.** The review page itself is signed off (§ Done). `labs/review_loop/
-  revise.py` takes the page's exported notes and the export XML and writes a
-  revised XML plus a V2 review page with a "Changes from V1" list. A small
-  set of operations only: `tighten_pause` (a real silence detector runs on
-  the audio; if there is no pause it changes nothing and says so),
-  `remove_range` / `trim_start` / `trim_end` (only when the note states the
-  times or seconds), `drop_clip` (only when the note says remove). The LLM
-  (local `claude` CLI) chooses among them and may not invent a time; anything
-  else is reported "not applied" with a reason, and drawings are not acted on
-  yet.
-
-  Run on the real `Runnells_Tiling_v3.xml` with five SAMPLE notes written by
-  Claude (marked `[SAMPLE]`, not Ryan's feedback): 2 applied (a measured
-  pause, an explicit 1s trim), 3 correctly not applied. 76.39s -> 74.17s.
-  Output in `~/Documents/Post House Reviews/Runnells Tiling v3 - revision
-  demo/`. Checks passed: XML reloads with every range inside its real file,
-  length = V1 minus removed, no seams, no footage outside V1, lav offset to
-  camera preserved on every piece, selects pool identical, `verify_export.py`,
-  `verify_preview.py`. Independent check with ffmpeg's own silence detector:
-  V1 had a silence at 24.8-25.35s, V2 has none in 22-27s; the trimmed clip
-  starts exactly 1.000s later in the source. 17 hermetic tests pass; the
-  detector test caught a real bug (steady noise read as one long pause) that
-  is fixed and covered.
-
-  **Then Ryan's own notes (left on the V2 page, exported to his Desktop).**
-  Three real notes; the loop as first built declined all three, with accurate
-  reasons (two needed word-level timing, one needs graphics). So two
-  measured operations were added, each checked against real audio before
-  being trusted: `extend_end` ("the last word is cut off", read from the
-  audio's decay, since the transcript ended at the cut and could not show a
-  clipped tail) and `start_at_words` ("the clean cut should be 'are me' to
-  'stepping the tile up...'", using PreCut's own Transcriber for word timing,
-  cut placed at the quietest point before the word). Result, V2 -> V3
-  (74.17s -> 74.24s): note 1 applied (clip 2 extended 0.27s), note 2 applied
-  (clip 4 now starts at "stepping", "and then" dropped), note 3 (arrow and
-  on-screen text) not applied, it needs a graphics overlay, which is the
-  HyperFrames spike. Output in `~/Documents/Post House Reviews/Runnells
-  Tiling v3 - v3 from Ryan's notes/`.
-
-  What verification caught along the way: extending clip 2 ran into footage
-  the selects pool also held, and `verify_export` failed
-  `XML-POOL-NOT-IN-CUT`. That is the contract working; the fix is that the
-  pool clip loses the front 0.27s (pool = complement of the cut), and the
-  pool check now allows exactly and only that. Independent evidence for
-  note 1: in V2 the level drops from -35 dB straight to -50 dB across the
-  cut; in V3 it decays -38, -44, -46 dB before the cut. For note 2, the V3
-  render itself, transcribed, reads "stepping the tile up with the spacer."
-  from the seam. 25 hermetic tests pass.
-
-  Caveats, only Ryan can settle: whether the extension sounds right (it stops
-  at the first point 3 frames below room-level threshold, not at absolute
-  silence, so a faint tail could remain); whether the "stepping" cut sounds
-  clean; and Premiere still has not opened any revised XML.
-
-  **Not verified, only Ryan can:** (a) that Premiere imports the revised XML
-  (never opened in Premiere); (b) whether the pause edit sounds right. The
-  detector called that pause 1.38s where ffmpeg's stricter one saw 0.53s, so
-  a quiet word could have been clipped, and the threshold is his ear's call;
-  (c) whether this small vocabulary is the right first set.
-
-  Still open, none started: HyperFrames captions/graphics spike (Apache 2.0,
-  untested on our footage); music and SFX generation, which would contradict
-  the 2026-08-31 Artlist-local-library decision and needs Ryan's ruling
-  first (his reference edit has no SFX stings, so style is his call);
-  acting on drawings (crop/reframe needs scale and position filters in the
-  XML); a screen in `app/`, its own approved step, not asked for. The note
-  format `review_notes.v0-draft` is still a draft; the real
-  revision-operation schema is Phase 5.
+- **2026-09-29 — Review loop: what is still open after Ryan's sign-off on
+  the page and on the revisions (§ Done).** (1) Ryan's note 3, an arrow and
+  on-screen text pointing at the spacer, needs a graphics overlay: the
+  HyperFrames spike (Apache 2.0, installs as a Claude Code plugin, untested on
+  our footage) and the natural next slice. (2) Acting on drawings (a crop or
+  reframe needs scale and position filters in the XML). (3) Music and SFX
+  generation, which would contradict the 2026-08-31 Artlist-local-library
+  decision and needs Ryan's ruling first; his own reference edit has no SFX
+  stings, so SFX style is his call. (4) Premiere import of a revised XML has
+  not been confirmed. (5) A screen in `app/`, its own approved step, not
+  asked for. (6) The note format `review_notes.v0-draft` is still a draft;
+  the real revision-operation schema is Phase 5.
 
 - **2026-09-18 — Ryan's own organize pass + finished edit for the tiling
   day. Precision 9/9; the gap is recall, and its main cause is now
@@ -934,6 +877,50 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-29 — **Notes -> revised cut (standalone, `labs/review_loop/revise.py`),
+  proven on Ryan's own notes. Ryan: "The cuts/revisions were implemented
+  perfectly."** Scope of that sign-off: the two edits it made from his real
+  notes on the Tiling cut (V2 -> V3, 74.17s -> 74.24s). It is not wired into
+  `app/`, Premiere import of the revised XML has not been confirmed, and his
+  third note (arrow and on-screen text) was correctly not applied.
+
+  How it works: the page's exported notes go to the local `claude` CLI, which
+  may only choose from a small vocabulary of operations and may not invent a
+  time (`tighten_pause`, `extend_end`, `start_at_words`, `remove_range`,
+  `trim_start`/`trim_end`, `drop_clip`, else `unsupported`). Measured
+  operations read the audio (silence, decay, word timing via PreCut's own
+  `Transcriber`). Only the cut zone changes; everything not applied is
+  reported with its reason. It refuses to present a result unless the XML
+  reloads inside real file bounds, length matches, no seams, lav offsets to
+  camera are preserved, the pool only lost footage the cut gained,
+  `verify_export.py` and `verify_preview.py` pass, and the measured edits hold
+  on the finished render.
+
+  Evidence:
+  * Ryan's notes, V2 -> V3: note 1 ("the last word is cut off") extended clip
+    2 by 0.27s; note 2 ("are me" to "stepping the tile up...") started clip 4
+    at "stepping" and dropped "and then"; note 3 not applied (needs graphics).
+    The first build declined all three with accurate reasons, which is what
+    drove the two new operations.
+  * Independent checks: across the clip 2 cut the level fell -35 dB to -50 dB
+    in V2 and decays -38, -44, -46 dB in V3; the V3 render, transcribed from
+    the seam, reads "stepping the tile up with the spacer."
+  * `verify_export` correctly failed the first attempt
+    (`XML-POOL-NOT-IN-CUT`: the extension ran into footage the pool also
+    held). Fixed by front-trimming that pool clip; the pool check allows
+    exactly that and nothing else.
+  * Earlier sample-notes run: a measured pause (independent ffmpeg detector
+    agrees: silence present in V1, absent in V2) and an explicit trim
+    (starts exactly 1.000s later in source). A detector bug (steady noise
+    read as one long pause) was caught by a test and fixed.
+  * 25 hermetic tests. Commits `ed69277`, `bec3bb2` on
+    `worktree-review-loop-spike`. Output: `~/Documents/Post House Reviews/
+    Runnells Tiling v3 - v3 from Ryan's notes/`.
+  * Known limits: cut zone only; a small vocabulary (each new kind of note so
+    far has needed a new measured operation); drawings are not acted on; the
+    extension stops at the first point below room level, not at absolute
+    silence.
 
 - 2026-09-29 — **Review page with timecoded notes and on-frame drawing
   (standalone, `labs/review_loop/`). Ryan: "That feels good."** Scope of
@@ -2607,7 +2594,7 @@ Status, from `ROADMAP.md` §3's Role → skill map:
 | Creative Editor: B-roll placement (real clips, not markers) | Gated on benchmark precision |
 | Audio Designer: loudness → clip gain | Not started — B |
 | Colorist: exposure/contrast QC report | Not started — C |
-| Supervisor loop (notes → revised cut) | **Review page signed off by Ryan (2026-09-29, § Done).** Notes → revised cut is built as a standalone spike (`labs/review_loop/revise.py`) and NOT yet judged by Ryan; see § In progress. Not wired into `app/`. |
+| Supervisor loop (notes → revised cut) | **Review page and notes -> revised cut both signed off by Ryan (2026-09-29, § Done), as standalone modules in `labs/review_loop/`.** Not wired into `app/`; Premiere import of a revised XML unconfirmed; graphics/drawing-driven edits and a screen in the app still open (§ In progress). |
 
 **Not yet decided: which skill to start on next.** Asked Ryan; awaiting
 his pick (or his go-ahead to propose an order).
