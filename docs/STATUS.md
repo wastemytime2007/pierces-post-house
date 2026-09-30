@@ -3200,3 +3200,16 @@ the Lead before any re-dispatch; empty so far)*
   after identical to the original (-34.4, -35.9, -36.5 dBFS); QA 6 verified, 3 rejections, no unrequested change. **Not known until he listens:** that it covers the
   word and leaves the neighbours clear. Labels updated (`ground_truth.json` range 28.7-29.4). 264 tests. A records script of mine stopped halfway once (a search string
   did not match) and a commit went out with only part of the notes; fixed in the next commit. Not in `app/`.
+
+
+  **Editable bleeps (2026-09-30, Ryan: "make the bleeps editable ... drag longer or shorter ... move them right or left on the timeline").** After the round-11 bleep
+  (measured 28.70-29.40 s, 0.7 s) Ryan reported one "in the exact same spot", over a second long, starting too early: not what round 11 is, so probably another round's file
+  (the folder names sort confusingly) or something I cannot see; he said he doubted this could be done reliably. Built instead of another tweak: (1) one folder, always
+  `0 - CURRENT (open this one)`, overwritten each round, with a build stamp and every layer's times in the page header; (2) `check_clip.py`, a clip with a burned-in clock and a
+  BLEEP badge (verified: tone 28.70-29.39 s, badge 28.70-29.40 s); (3) **drag-to-edit bleeps on the review page**: a Bleeps lane plus a close-up strip that draws the speech's loudness;
+  move, resize from either edge, add, delete, nudge, reset; the speech mutes and a tone plays inside each box while playing (close to live, about 0.05 s; not sample-exact; the
+  tone itself was not auditioned, the headless test checked the gate and mute); (4) `apply_edits.py` applies the downloaded list exactly (frame-exact, unpadded, measured), an empty
+  list removes every bleep; (5) re-enabling silenced speech pieces now renames them back so a bleeped cut is recognisably bleeped or not, and touching silenced pieces read as one
+  span. Browser-tested in Chrome: move, both edges, the 0.05 s minimum, the mute gate inside/outside/just after a box, nudge, add, delete, reset, the payload, zoom drags (40 px on the
+  2 s view moved an edge 0.076 s, predicted 0.077), no script errors. CURRENT now has a bleep at 28.85-29.40 s (a guess at "starts too early": his first number was 28.9; to be set
+  by him in the editor). QA 6 verified, 3 rejections. 269 tests. Not in `app/`.

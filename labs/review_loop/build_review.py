@@ -14,6 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "bleep"))
 
 from layers import beatmap, composite, find_layers, verify as verify_layers  # noqa: E402
 from render_preview import render_preview  # noqa: E402
@@ -27,6 +28,7 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
 
     data = {
         "schema": "review_timeline.v0-draft",
+        "built": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M"),
         "sequence": cut.sequence_name,
         "duration": round(info["duration"], 3),
         "audio_source": info["audio_source"],
@@ -52,6 +54,30 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
             raise TimelineError("the preview with layers does not match the layers in the XML")
         data["preview_full"] = "preview_full.mp4"
         data["layers"] = [{"kind": l.kind, "name": l.name, "start": round(l.start, 2), "end": round(l.end, 2)} for l in layers]
+    bl_layers = [l for l in layers if l.kind == "audio" and Path(l.path).name.startswith("bleep_")]
+    if bl_layers:                                   # bleeps are editable on the page: a second preview with the speech whole and no bleep baked in, so they can be heard live
+        import wave
+        import bleep as bp
+        live_xml = out / "_live.xml"
+        bp.strip_previous(xml, live_xml)
+        live_cut = load_cut(live_xml)
+        render_preview(live_cut, out / "preview_live_clean.mp4", height=height)
+        live_layers = find_layers(live_xml)
+        if live_layers:
+            composite(out / "preview_live_clean.mp4", live_layers, out / "preview_live.mp4")
+        else:
+            (out / "preview_live.mp4").write_bytes((out / "preview_live_clean.mp4").read_bytes())
+        live_xml.unlink(missing_ok=True)
+        import numpy as np
+        with wave.open(bl_layers[0].path) as w:
+            peak = float(np.abs(np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")).max()) / 32767
+        sp = bp.cut_audio(live_cut)                 # the speech as it is without bleeps: its loudness every 10 ms, for the close-up
+        n = int(0.01 * bp.SR)
+        rms = np.sqrt((sp[:len(sp) // n * n].reshape(-1, n) ** 2).mean(axis=1))
+        env = np.clip((20 * np.log10(np.maximum(rms, 1e-6)) + 60) / 55, 0, 1)
+        data.update({"envelope": [int(round(x * 100)) for x in env], "envelope_hz": 100})
+        data.update({"preview_live": "preview_live.mp4", "preview_live_clean": "preview_live_clean.mp4", "bleep_level": round(peak, 4),
+                     "live_bleeps": [{"start": round(l.start, 3), "end": round(l.end, 3)} for l in sorted(bl_layers, key=lambda l: l.start)], "xml": str(xml)})
     if changes:
         data["changes"] = changes
     data["beatmap"] = beatmap(cut, layers, changes["items"] if changes else None, suspects)

@@ -337,6 +337,7 @@ def unmute(xml_in: Path, xml_out: Path) -> int:
     for c in tree.getroot().iter("clipitem"):
         if (c.get("id") or "").endswith(MUTED_SUFFIX) and c.find("enabled") is not None:
             c.find("enabled").text = "TRUE"
+            c.set("id", c.get("id")[:-len(MUTED_SUFFIX)])
             n += 1
     if n:
         ET.indent(tree.getroot(), space="\t")
@@ -353,6 +354,7 @@ def strip_previous(xml_in: Path, xml_out: Path) -> tuple[int, int]:
     for c in root.iter("clipitem"):
         if (c.get("id") or "").endswith(MUTED_SUFFIX) and c.find("enabled") is not None:
             c.find("enabled").text = "TRUE"
+            c.set("id", c.get("id")[:-len(MUTED_SUFFIX)])        # no longer a silenced piece, so it no longer looks like one
             pieces += 1
     layers = 0
     for track in seq.findall("media/audio/track"):
@@ -373,7 +375,13 @@ def muted_spans_in(xml: Path) -> list[tuple[float, float]]:
     for c in root.iter("clipitem"):
         if (c.get("id") or "").endswith(MUTED_SUFFIX):
             out.add((int(c.findtext("start")), int(c.findtext("end"))))
-    return sorted((a / cut_fps, b / cut_fps) for a, b in out)
+    merged: list[list[float]] = []
+    for a, b in sorted((a / cut_fps, b / cut_fps) for a, b in out):      # a span that crosses a seam between two speech clips is silenced as two touching pieces: one span
+        if merged and a <= merged[-1][1] + 1.5 / cut_fps:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return [(a, b) for a, b in merged]
 
 
 # ---------------------------------------------------------------- the bleeps
@@ -479,7 +487,7 @@ def verify(before: Path, after: Path, spans: list[tuple[float, float]], clips: l
 # ---------------------------------------------------------------- the whole job
 def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Pattern] | None = None, check_transcript: bool = True,
           suspect_windows: list[tuple[float, float]] | None = None, requests: list[dict] | None = None, detail_of=None, other_of=None,
-          min_signals: int = MIN_SIGNALS, reveal_with=None) -> dict:
+          min_signals: int = MIN_SIGNALS, reveal_with=None, detect: bool = True) -> dict:
     """Returns {hits, spans, xml, clips, rows}. If nothing is found, xml is None and nothing is written but bleep.json."""
     import place_audio as pa
     pats = pats or load_patterns()
@@ -492,9 +500,12 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     speech = cut_audio(cut)
     wav = out / "speech.wav"
     write_wav(wav, speech, SR)
-    detail = detail_of(wav) if detail_of else None
-    words = [(w, s, e) for w, s, e, _p in detail] if detail else words_of(wav)
-    other = other_of(wav) if other_of else None
+    if detect:
+        detail = detail_of(wav) if detail_of else None
+        words = [(w, s, e) for w, s, e, _p in detail] if detail else words_of(wav)
+        other = other_of(wav) if other_of else None
+    else:                                                         # the spans are given (Ryan's edits): nothing is scanned or transcribed
+        detail, words, other, reveal_with = None, [], None, None
     hits = find_hits(words, pats)
     suspects = find_suspects(words, speech, details=detail, other=other, min_signals=min_signals)
     revealed = []

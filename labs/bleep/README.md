@@ -83,3 +83,24 @@ the "ck" audible, so the final bleep is **28.7-29.4 s** (0.7 s, against 0.88 s t
   failed a correct bleep. A word now counts as left behind only if at least half of its time has sound (20 ms frames above -55 dBFS) in the bleeped audio.
   On the real cut: the 28.7-29.3 s bleep leaves "fuck" at 29.38-29.58 s over 100% sound (counted, the real "ck"); the 28.7-29.4 s bleep leaves one over 31%
   sound (a phantom, reported and not counted).
+
+
+## Editable bleeps (Ryan's idea, 2026-09-30): "make the bleeps editable ... drag longer or shorter ... move them right or left"
+Automatic bleeps are only the starting positions. On the review page (any page built from a bleeped XML) the Bleeps lane holds one box per bleep:
+drag a box to move it, pull its left or right edge to resize it, **+ Bleep at the playhead** adds one, **Delete** (or the button) removes the selected one, **Back to
+automatic** undoes every edit, Alt+arrow nudges by 0.02 s (Shift 0.1 s). Because a 0.7 s box on a 73 s timeline is about 10 pixels wide, a **close-up strip** under it
+(2, 4 or 8 seconds wide, about 500 px a second at 2 s) draws the speech's loudness every 10 ms, so the edges can be lined up with the vowel and the "k".
+- **What you hear while editing:** the page plays a preview with the speech whole and no bleep baked in (`preview_live.mp4`); while the playhead is inside a box it mutes the
+  speech and plays a 1 kHz tone at the automatic bleep's level. That is close to live, about a twentieth of a second, not sample-exact: a browser will not route a local
+  video file through its audio engine, so the gate is the video's own mute plus a separate tone. The download is what is exact.
+- **Applying:** "Download bleep edits" saves `bleep_edits.json`; `apply_edits.py --xml <cut> --edits <file> [--out <folder>]` silences the speech and lays a bleep at exactly
+  those spans (frame-exact, no padding, nothing scanned or guessed, no transcription unless `--listen`), measures the result from files (silent, tone, level, the speech beside
+  it unchanged), and rebuilds the page. An empty list takes every bleep out. The edits replace the automatic ones; they are not merged with them.
+- **One folder to open:** `0 - CURRENT (open this one)` in Post House Reviews is overwritten each round (page, XML, check clip, QA), and the page header shows when it was built
+  and each layer's times. Earlier rounds were separate folders whose names sort confusingly (round 10 and 11 above round 2), which is a likely reason a bleep "in the exact same
+  spot" was reported twice.
+- **`check_clip.py`** makes a short clip of the cut's own audio with a large timeline clock and a red BLEEP badge on screen exactly while the tone sounds, verified: the tone
+  (measured) and the badge start and stop together.
+Limits: the live preview mutes everything in a box (music and effects too, which is moot at a bleep); the preview's timing depends on the browser's audio latency (the lead
+is 0.05 s while playing); the tone itself could not be auditioned by the tool that built it (the browser test ran without a user click, so it checked the gate's decisions
+and the mute, not the sound).
