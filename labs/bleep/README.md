@@ -49,17 +49,23 @@ Flagged stretches appear on the review page as a **Suspects** lane. Two ways to 
    most 0.3 s either side of the click. This needs no detection at all, so it is the reliable route when the detector has nothing.
 
 
-## Result of the detector on the real cut: it failed, three times
-Ryan labelled the cut himself (`ground_truth.json`; score with `evaluate.py`). The word he wanted bleeped, "fuck" at about 28.35 s, sat inside
-"don't know" (28.4 to 28.74 s): both Whisper models wrote those two words with probability 0.99 and agreed, nothing was stretched, nothing was
-loud. It left no trace. The strict detector flagged four stretches; Ryan judged three of them and **all three were wrong** ("by" 26.3 s, "The"
-31.5 s, "Yeah." 66.8 s; "Yeah," at 0.0 s was not judged). Precision 0 of 3, recall 0 of 1.
-That is three failed approaches to the same word: a burst inside a long word (wrong word), a curse-word prompt for Whisper (changed nothing),
-and the four-signal detector (missed it, three false leads). Per the rule "three failures means the approach is wrong", no more signals will be
-added. What stands:
-- **Words Whisper writes are bleeped automatically** (the standing rule; works).
-- **A word it does not write is bleeped where a person points:** click the clip's box at the word and write "bleep this" (the spoken stretch at
-  the click, at most 0.3 s either side). This is the route that worked. Covered by tests and verified on the real cut.
-- The Suspects lane is **off by default** (`reconform.py --show-suspects` turns it on). It is noisy and was wrong three times out of three.
-- What might change the picture, not done: a larger Whisper model (`medium` or `large`, a 1.5 GB or larger download) may write profanity it now
-  drops, and can be tried against `ground_truth.json` with `evaluate.py`. That is Ryan's call.
+## What finally worked on the real cut, and what I got wrong on the way
+Ryan's curse word ("what the **fuck** just happened", clip 8) was not in either Whisper transcript: both models wrote "what" (28.74 to 29.22 s,
+probability 0.96, stretched) and "just", folding the word into them. Four things were tried, honestly scored against his labels
+(`ground_truth.json`, `evaluate.py`):
+1. **A burst guess** (bleep the loud stretch inside "what"): this was the right place. I called it a guess, Ryan said the sound was not at the
+   curse word, and I dropped it. Measured afterwards, the bleep was in the page's audio exactly there; he had since pointed at 28.9 to 29.2 s (he typed 18.9 to 39.2), the same stretch.
+2. **A curse-word prompt for Whisper**: changed nothing.
+3. **The "strict" four-signal detector**: wrong, and worse than the plain burst rule. It required a transcript doubt (Whisper unsure, or the two models
+   disagreeing) and so threw away the one stretch that was right: on the real cut it flagged 4 (Ryan judged 3 of them: all wrong) and found 0 of 1. The
+   plain acoustic rule flagged 11 and found the word (recall 1 of 1, precision 1 of 3 judged). Kept as `--min-signals` but it is not the route.
+4. **Silence, then listen again** (`reveal`): what works. Silence the first part of each loud stretch on its own, transcribe a short window around it, and
+   keep any listed word that appears. With 28.9 to 29.2 s silenced Whisper wrote "what the fuck just happened" (fuck at 29.38 to 29.58 s); the span is the
+   word joined to the stretch that hid it, 28.90 to 29.58 s, padded to 28.82 to 29.70 s. Across all 11 loud stretches on the 73 s cut it revealed that one
+   word and nothing else (79 s). Two details that matter: each stretch is tried alone (silencing "what" and "just" together left Whisper nothing to hear:
+   "don't know if it just happened") and with partial masks (85% and 60% of the front, 60% of the tail).
+   It runs by default inside `bleep.py` and reconform (`--no-reveal` skips it); the result is checked by a further transcription of the bleeped audio
+   (NO-LISTED-WORD-LEFT), which is also what caught a bleep that stopped short of the word's end.
+Limits, plainly: n = 1 real word; it only finds words hiding behind a loud stretch; it costs about 80 s of transcription per cut; the 0.12 s pad after the
+word runs into the start of the next word ("just" here); Ryan's first click at 28.35 s was about 0.5 s early, which is how a careful click can still miss.
+Clicking the clip at the word, or naming exact times ("bleep 28.9-29.2", used as given, unpadded), remains the route for anything the tool misses.

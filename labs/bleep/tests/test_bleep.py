@@ -307,10 +307,93 @@ def test_the_evaluation_scores_hits_false_alarms_and_misses_against_ryans_labels
     import json
     import evaluate as ev
     truth = json.loads((HERE / "ground_truth.json").read_text())
-    assert truth["curse_words"][0]["at"] == 28.35 and len(truth["rejected_suspects"]) == 3                    # his labels are in the repo and parse
+    assert truth["curse_words"][0]["range"] == [28.9, 29.58] and len(truth["rejected_suspects"]) == 3         # his labels are in the repo and parse
     flagged = [{"start": 26.3, "end": 26.54}, {"start": 31.5, "end": 31.98}, {"start": 66.8, "end": 67.1}]      # what the strict detector flagged on the real cut
     r = ev.score(flagged, truth)
     assert r["false_alarms"] == 3 and r["found"] == 0 and r["missed"] == ["fuck"] and r["recall"] == 0.0 and r["precision"] == 0.0   # the documented negative result
-    better = ev.score(flagged + [{"start": 28.2, "end": 28.7}], truth)
+    better = ev.score(flagged + [{"start": 28.9, "end": 29.25}], truth)
     assert better["found"] == 1 and better["recall"] == 1.0 and better["precision"] == 0.25                     # a flag on the word counts; the three false alarms still count against it
     assert ev.score([], truth)["precision"] is None                                                            # nothing flagged, nothing to be precise about
+
+
+# ---- times a person gives are used exactly; a hidden curse word is revealed by silencing the loud stretch ----
+
+def test_times_a_person_gives_are_used_exactly_with_no_padding(xml, tmp_path):
+    none = lambda w: [("Hello", 1.0, 1.4)]                                                         # noqa: E731
+    r = bl.bleep(xml, tmp_path / "x", words_of=none, check_transcript=False, requests=[{"kind": "exact", "start": 12.9, "end": 13.2}])
+    assert len(r["spans"]) == 1 and r["spans"][0] == pytest.approx((12.9, 13.2), abs=0.001)           # a transcript hit would have been padded 0.08 before and 0.12 after
+    bad = [(n, d) for n, ok, d in r["rows"] if ok is False]
+    assert not bad, bad
+    both = bl.bleep(xml, tmp_path / "y", words_of=lambda w: [("Shit,", 20.0, 20.4)], check_transcript=False, requests=[{"kind": "exact", "start": 12.9, "end": 13.2}])
+    assert both["spans"][0] == pytest.approx((12.9, 13.2), abs=0.001) and both["spans"][1] == pytest.approx((19.92, 20.52), abs=0.01)   # exact stays exact next to a padded hit
+
+
+def test_a_bleep_note_that_states_times_is_taken_at_its_word():
+    ops = [{"note": i, "op": "bleep_word"} for i in (1, 2, 3)]
+    notes = [{"timeline_sec": 10.0, "text": "bleep 28.9-29.2 please"}, {"timeline_sec": 5.0, "text": "bleep the swear at 12 to 12.4 s"},
+             {"timeline_sec": 7.0, "text": "bleep the curse word from 10 to 30"}]                                 # 20 s is not a word: ignored, falls back to the moment
+    r = bl.requests_from_notes(ops, notes)
+    assert r[0] == {"kind": "exact", "start": 28.9, "end": 29.2} and r[1] == {"kind": "exact", "start": 12.0, "end": 12.4}
+    assert r[2] == {"kind": "window", "start": 6.0, "end": 8.0}
+
+
+def _read16k(wav):
+    import wave
+    with wave.open(str(wav)) as w:
+        return np.frombuffer(w.readframes(w.getnframes()), dtype="<i2").astype(float) / 32767
+
+
+def test_a_curse_word_whisper_hides_is_revealed_by_silencing_part_of_the_loud_stretch_and_listening_again(tmp_path):
+    """The fake listener behaves like Whisper did on the real cut, on the short window reveal gives it: the curse word is written only when the front
+    of the loud stretch is silent and its tail is still audible. (Times in the window are relative to its start, 2 s before the stretch.)"""
+    sp = _speech_with_burst()                                                                        # a 12 dB burst at 5.0-5.3 s in a synthetic room
+    calls = []
+
+    def listen(wav):
+        x = _read16k(wav)
+        calls.append(len(x) / 16000)
+        base = [("Hello", 0.2, 0.6), ("what", 1.8, 2.3), ("just", 2.3, 2.6)]
+        front_silent = np.abs(x[int(2.0 * 16000):int(2.2 * 16000)]).max() < 1e-3
+        tail_heard = np.abs(x[int(2.26 * 16000):int(2.3 * 16000)]).max() >= 1e-3
+        return base + [("fuck", 2.05, 2.25)] if front_silent and tail_heard else base
+    got = bl.reveal(sp, [(5.0, 5.3)], listen, PATS, tmp_path)
+    assert len(got) == 1 and got[0]["word"] == "fuck" and got[0]["revealed"] is True
+    assert got[0]["word_start"] == pytest.approx(5.05, abs=0.01) and (got[0]["start"], got[0]["end"]) == (5.0, 5.3)    # joined to the stretch it hid behind
+    assert len(calls) == 3 and all(c < 5 for c in calls)                                             # three partial masks, each on a short window, not the whole file
+    assert bl.reveal(sp, [(5.0, 5.3)], lambda wav: [("Hello", 0.2, 0.6)], PATS, tmp_path) == []     # silencing reveals nothing: nothing is added
+    assert bl.reveal(sp, [], listen, PATS, tmp_path) == []
+
+
+def test_each_stretch_is_tried_alone_because_silencing_two_together_can_hide_the_word_completely(tmp_path):
+    sp = _speech_with_burst()
+    seen = []
+
+    def listen(wav):
+        x = _read16k(wav)
+        zero_runs = int((x == 0.0).sum())                                                          # only masked samples are exactly zero
+        seen.append(zero_runs)
+        return [("Hello", 0.2, 0.6)]
+    bl.reveal(sp, [(5.0, 5.3), (7.0, 7.3)], listen, PATS, tmp_path)
+    assert len(seen) == 6 and max(seen) < int(0.3 * 16000)                                           # never more than one stretch silenced in any one listen
+
+
+def test_a_whole_run_with_the_reveal_bleeps_the_hidden_word_and_every_check_passes(xml, tmp_path, monkeypatch):
+    words = [("Hello", 1.0, 1.4), ("what", 12.4, 13.2), ("just", 13.2, 13.7), ("ok", 20.0, 20.3)]
+
+    def listen(wav):
+        """Full file: the words as written. Short window (before the stretch at 12.6, so 2 s earlier): the curse word appears only when its front is silent and its tail audible."""
+        x = _read16k(wav)
+        if len(x) / 16000 > 10:
+            return words
+        silent = lambda a, b: np.abs(x[int(a * 16000):int(b * 16000)]).max() < 1e-3                # noqa: E731
+        t0 = 12.6 - 2.0
+        front = silent(12.6 - t0, 12.85 - t0) and not silent(13.1 - t0, 13.25 - t0)
+        return [("what", 12.4 - t0, 13.2 - t0), ("fuck", 13.0 - t0, 13.25 - t0)] if front else [("what", 12.4 - t0, 13.2 - t0)]
+    monkeypatch.setattr(bl, "find_suspects", lambda w, s, sr=bl.SR, **kw: [{"word": "what", "word_start": 12.4, "word_end": 13.2, "start": 12.6, "end": 12.95,
+                                                                           "burst_db_over_speech": 12.0, "signals": ["stretched", "burst"], "score": 2, "tier": "possible"}])
+    r = bl.bleep(xml, tmp_path / "x", words_of=listen, reveal_with=listen)
+    assert [h["word"].split(" ")[0] for h in r["hits"]] == ["fuck"] and "was hidden" in r["hits"][0]["word"]
+    assert len(r["spans"]) == 1 and r["spans"][0][0] <= 12.6 and r["spans"][0][1] >= 13.25           # the burst that hid it and the word, both covered
+    bad = [(n, d) for n, ok, d in r["rows"] if ok is False]
+    assert not bad, bad
+    assert any(n == "SPANS-SILENT" for n, _ok, _d in r["rows"])

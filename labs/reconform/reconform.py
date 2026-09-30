@@ -124,7 +124,7 @@ def run_audio(clean_xml: Path, out: Path, meta: dict, base: Path, preview: Path,
 
 def run_bleep(xml: Path, out: Path, suspect_windows=None, requests=None) -> dict:
     return bp.bleep(xml, out, suspect_windows=suspect_windows, requests=requests, detail_of=bp.transcribe_detail,
-                    other_of=lambda wav: bp.transcribe_timed(wav, "base"))
+                    other_of=lambda wav: bp.transcribe_timed(wav, "base"), reveal_with=bp.transcribe_timed)
 
 
 def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio: Path | None, out: Path,
@@ -257,14 +257,15 @@ def main() -> int:
     ap.add_argument("--no-bleep", action="store_true", help="do not bleep curse words (the default is to bleep them without being asked)")
     ap.add_argument("--suspects-in", action="append", default=[], metavar="START,END",
                     help="bleep a suspected untranscribed curse word found inside this stretch (seconds); a note pointed there")
+    ap.add_argument("--bleep-at", action="append", default=[], metavar="START,END", help="bleep exactly these timeline seconds, unpadded (the times a person gave); repeatable")
     ap.add_argument("--show-suspects", action="store_true", help="put the bleep scan's suspects on the review page as a lane (off by default: on Ryan's cut all 3 he judged were wrong)")
     ap.add_argument("--ops", type=Path, help="the ops.json from the notes; a bleep_word note points the bleep at its stretch")
     ap.add_argument("--notes", type=Path, help="the review notes those operations came from")
     a = ap.parse_args()
     windows = [tuple(float(x) for x in w.split(",")) for w in a.suspects_in]
-    requests: list[dict] = []
+    requests: list[dict] = [{"kind": "exact", "start": float(w.split(",")[0]), "end": float(w.split(",")[1])} for w in a.bleep_at]
     if a.ops and a.notes:
-        requests = bp.requests_from_notes(json.loads(a.ops.read_text()), json.loads(a.notes.read_text())["notes"])
+        requests += bp.requests_from_notes(json.loads(a.ops.read_text()), json.loads(a.notes.read_text())["notes"])
     try:
         final, ledger = reconform(a.revised, a.overlay, a.captions, a.audio, a.out, drop=a.drop,
                                   bleep_step=None if a.no_bleep else (lambda x, o: run_bleep(x, o, windows, requests)))

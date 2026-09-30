@@ -3173,3 +3173,17 @@ the Lead before any re-dispatch; empty so far)*
   page's audio as a pure 1 kHz tone with the speech silent there; QA: 6 verified, the 3 "no" notes are rejections (nothing to apply), no
   unrequested change. **Not known until he listens:** whether the span covers the curse word and only that word (it also covers
   "don't know"). Options not taken: a larger Whisper model (`medium`/`large`, a 1.5 GB+ download) to see whether it writes the word.
+
+
+  **The curse word was found (2026-09-30, Ryan: "The bleep is in the wrong spot. It should be at the 18.9-39.2 point", read as 28.9-29.2).** My
+  conclusions two entries up ("the strict detector failed", "three failed approaches") were partly wrong and are corrected here. The stretch he named
+  is the burst my very first guess bleeped; he had told me it was not at the curse word, and the "strict" detector I built afterwards removed that stretch
+  (it required a transcript doubt), so it scored 0 of 1 while the plain burst rule scored 1 of 1. What worked: silence part of a loud stretch, listen again.
+  With 28.9-29.2 s silenced Whisper wrote "what the fuck just happened" (fuck 29.38-29.58 s). Reconform's own NO-LISTED-WORD-LEFT check is what showed the
+  exact 28.9-29.2 bleep stopped short of the word: it refused to finish (worth keeping: that gate did its job). Built: `reveal` (per-stretch partial masks on a
+  short window), exact unpadded times (`--bleep-at`, or "bleep 28.9-29.2" in a note), on by default in `bleep.py` and reconform (`--no-reveal`). Round 8
+  (`... your round 8 result/`, QA `... your round 8 QA/`): no times given, the tool found it, bleep at 28.82-29.70 s, measured in the page's audio as a pure
+  1 kHz tone with the speech silent and the speech just before and after unchanged; revealed one word across all 11 loud stretches (79 s); QA: 6 verified, 3
+  rejections, no unrequested change. **Not known until he listens:** that the bleep fully covers the word and that the 0.12 s pad after it does not clip "just".
+  n = 1. The earlier evaluation labels were updated (`ground_truth.json`: range 28.9-29.58). A test-file corruption of mine (a patch that duplicated a block)
+  was caught by a stricter fake listener and fixed from the last commit. 267+ tests. Not in `app/`.

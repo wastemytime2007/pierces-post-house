@@ -2538,3 +2538,10 @@ with Ryan touching only the intake and the checkpoints.
   now.** Ryan: "Use Auto Reframe for now." The centre crop in
   `labs/style/emulate.py` stays a rough preview only (it can cut a face or the
   logo off); no subject-following reframe is built.
+
+- **2026-09-30 (addendum to the automatic-bleep entry) — the bleep also finds curse words Whisper folds into other words, by silencing the loud
+  stretch and listening again.** On Ryan's cut Whisper wrote "what ... just" for "what the fuck just happened". `labs/bleep` now tries each loud stretch
+  alone with a partial silence, transcribes a short window, and bleeps any listed word that appears (`--no-reveal` skips it), about 80 s more per cut. It
+  found that one word and no false ones across 11 stretches (n = 1). The earlier "suspect, bleeped only when a note points there" rule stands for
+  stretches it cannot settle; exact times a person gives are used as given. Corrects the same-day note that detection had failed: that was scored against
+  a wrong label.

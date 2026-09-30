@@ -3,15 +3,56 @@
   "cut": "Runnells Tiling v3 (Something Went Drastically Wrong)",
   "labelled": "2026-09-30",
   "curse_words": [
-    {"at": 28.35, "word": "fuck", "how": "he clicked clip 8 at 28.35 s and wrote: bleep this word \"fuck\". Click precision is about one screen pixel (0.07 s) plus aim, so the word is within a few tenths of a second of this.",
-     "what_the_transcript_said_there": "both Whisper models wrote 'don't' 28.4 s and 'know' 28.54 s, probability 0.99 each, in agreement: the word left no trace"}
+    {
+      "at": 29.05,
+      "range": [
+        28.9,
+        29.58
+      ],
+      "word": "fuck",
+      "how": "Ryan first clicked clip 8 at 28.35 s (note: bleep this word fuck), then said the word is at 28.9 to 29.2 s (he typed 18.9-39.2, read as 28.9-29.2). The 28.9-29.2 s stretch is the loud onset. Whisper, with that stretch silenced, writes 'what the fuck just happened' with fuck at 29.38-29.58 s, so the word runs from 28.9 to about 29.58 s. The 28.35 s click was about 0.5 s early.",
+      "what_the_transcript_said_there": "unmasked, both Whisper models wrote 'what' (28.74-29.22 s, probability 0.96, stretched) then 'just' (29.22 s): the word was folded into them"
+    }
   ],
   "rejected_suspects": [
-    {"start": 26.3, "end": 26.54, "word": "by", "signals": ["unsure", "models disagree"]},
-    {"start": 31.5, "end": 31.98, "word": "The", "signals": ["stretched", "unsure"]},
-    {"start": 66.8, "end": 67.1, "word": "Yeah.", "signals": ["stretched", "burst", "models disagree"]}
+    {
+      "start": 26.3,
+      "end": 26.54,
+      "word": "by",
+      "signals": [
+        "unsure",
+        "models disagree"
+      ]
+    },
+    {
+      "start": 31.5,
+      "end": 31.98,
+      "word": "The",
+      "signals": [
+        "stretched",
+        "unsure"
+      ]
+    },
+    {
+      "start": 66.8,
+      "end": 67.1,
+      "word": "Yeah.",
+      "signals": [
+        "stretched",
+        "burst",
+        "models disagree"
+      ]
+    }
   ],
   "not_judged": [
-    {"start": 0.0, "end": 0.44, "word": "Yeah,", "signals": ["stretched", "unsure"]}
+    {
+      "start": 0.0,
+      "end": 0.44,
+      "word": "Yeah,",
+      "signals": [
+        "stretched",
+        "unsure"
+      ]
+    }
   ]
 }
