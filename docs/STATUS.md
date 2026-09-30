@@ -3187,3 +3187,16 @@ the Lead before any re-dispatch; empty so far)*
   rejections, no unrequested change. **Not known until he listens:** that the bleep fully covers the word and that the 0.12 s pad after it does not clip "just".
   n = 1. The earlier evaluation labels were updated (`ground_truth.json`: range 28.9-29.58). A test-file corruption of mine (a patch that duplicated a block)
   was caught by a stricter fake listener and fixed from the last commit. 267+ tests. Not in `app/`.
+
+
+  **Bleep placement, three more rounds (2026-09-30, Ryan: "too long ... only needs to be" 28.7-29.3, read as 28.x).** Round 8's automatic span (28.82-29.70 s)
+  was 0.4 s too long at the end and started 0.12 s late: `reveal` finds that a listed word exists but its Whisper timing from partly silenced audio is only
+  good to a few tenths of a second. Ryan's times now override the tool's hit where they overlap. Round 9 (exactly his 28.7-29.3) was refused by the
+  tool's own NO-LISTED-WORD-LEFT gate: the sound shows why (loud vowel 28.92-29.26 s, closure 29.28, the "k" release burst 29.32-29.36, "just" from ~29.42 s), so ending at 29.3
+  leaves the "ck" audible (Whisper wrote "fuck" at 29.38-29.58 over 100% sound). Round 10 at 28.7-29.4 was refused wrongly: Whisper `small` wrote "what the fuck" into the
+  0.7 s of digital silence. The gate now counts a word only if at least half of its time has sound (audible_share; 100% for the real remnant, 31% for the phantom), with
+  tests that a real remnant still fails and a phantom passes. **Round 11 (`... your round 11 result/`, QA `... your round 11 QA/`): bleep at 28.70-29.40 s, 0.1 s
+  past what he typed, stated to him.** Measured from the page's audio: a pure 1 kHz tone with the speech silent inside, "don't know" before and "just" / "happened"
+  after identical to the original (-34.4, -35.9, -36.5 dBFS); QA 6 verified, 3 rejections, no unrequested change. **Not known until he listens:** that it covers the
+  word and leaves the neighbours clear. Labels updated (`ground_truth.json` range 28.7-29.4). 264 tests. A records script of mine stopped halfway once (a search string
+  did not match) and a commit went out with only part of the notes; fixed in the next commit. Not in `app/`.
