@@ -3244,3 +3244,11 @@ the Lead before any re-dispatch; empty so far)*
   taught the padding. Now removals and additions teach words: a word whose bleep he removes twice (never keeping it) is skipped and reported each time; an ordinary-length word he adds a bleep over
   twice is bleeped in future; `learn.py forget WORD` undoes either; `profanity.txt` is never written to. 45 bleep tests (the rule needs 2, a keep blocks a skip, a stretched hiding word is never
   learned as a word, the tool honours and reports both, forgetting removes what taught it). Nothing learned about words yet (no word has been removed or added twice). Not in `app/`.
+
+
+  **Next cut opened for bleep fixing (2026-09-30, Ryan: "open the next cut for me to fix bleeps on").** The cut is smoke detectors (61 s; chosen because it had the most flagged stretches). The
+  editor previously appeared only when a cut already had bleeps, which would have left nothing to drag on a cut where the tool found none; `build_review.py --bleeps` (or `editable_bleeps=True`) now makes
+  the Bleeps lane available on any cut so a missed word can be ADDED, which is what teaches the tool. The close-up follows the playhead while nothing is selected (and on seeks). Folder `2 - NEXT CUT -
+  smoke detectors (open this one)` holds the XML, the scan record (`bleep/bleep.json`, origin automatic, with the words Whisper heard and the loud stretches) and the page; `apply_edits.py` run on
+  that folder compares his edits with that record. Scan: 155 words, no listed word, 6 stretches flagged (28.3, 32.0, 33.2, 33.5, 35.7, 47.2 s). Browser-checked on the empty page: add at the playhead, the
+  close-up jumps to it and follows a seek (30 s -> 28-32 s), the download carries the XML path, no script errors. Whether this cut has any curse word is not known. Not in `app/`.

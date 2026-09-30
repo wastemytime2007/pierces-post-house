@@ -267,7 +267,7 @@ const BL = { spans: [], auto: [], sel: -1, gate: false, stopAt: null, lead: 0.05
   }
   /* the close-up window: BL.zw seconds wide, centred on BL.zc (or on the selected bleep, or the first one, or the playhead) */
   function zrange() {
-    const c = BL.zc != null ? BL.zc : (BL.sel >= 0 && BL.spans[BL.sel] ? mid(BL.spans[BL.sel]) : (BL.spans[0] ? mid(BL.spans[0]) : v.currentTime));
+    const c = BL.zc != null ? BL.zc : (BL.sel >= 0 && BL.spans[BL.sel] ? mid(BL.spans[BL.sel]) : v.currentTime);
     let t0 = Math.max(0, c - BL.zw / 2), t1 = t0 + BL.zw;
     if (t1 > DATA.duration) { t1 = DATA.duration; t0 = Math.max(0, t1 - BL.zw); }
     return [t0, t1];
@@ -275,6 +275,7 @@ const BL = { spans: [], auto: [], sel: -1, gate: false, stopAt: null, lead: 0.05
   function zdraw() {
     const [t0, t1] = zrange(), W = zwrap.clientWidth, H = zwrap.clientHeight, dpr = window.devicePixelRatio || 1;
     if (!W) return;
+    BL.win = [t0, t1];
     zc.width = W * dpr; zc.height = H * dpr;
     const g = zc.getContext('2d');
     g.scale(dpr, dpr);
@@ -403,13 +404,16 @@ const BL = { spans: [], auto: [], sel: -1, gate: false, stopAt: null, lead: 0.05
   function loop() {
     gate();
     if (BL.stopAt !== null && v.currentTime >= BL.stopAt) { BL.stopAt = null; v.pause(); }
-    const [t0, t1] = zrange();
+    let [t0, t1] = BL.win || zrange();
+    /* nothing selected: the close-up follows the playhead, re-centring when it gets near either edge, so it scrolls along with the speech as it plays */
+    if (BL.sel < 0 && BL.zc == null && BL.win && (v.currentTime < t0 + 0.15 * (t1 - t0) || v.currentTime > t1 - 0.15 * (t1 - t0))) { zdraw(); [t0, t1] = BL.win; }
     zph.style.display = (v.currentTime >= t0 && v.currentTime <= t1) ? 'block' : 'none';
     zph.style.left = ((v.currentTime - t0) / (t1 - t0) * 100) + '%';
     requestAnimationFrame(loop);
   }
   v.addEventListener('pause', () => { BL.gate = !BL.gate; gate(); });
   v.addEventListener('seeked', gate);
+  v.addEventListener('seeked', () => { if (BL.sel < 0 && BL.zc == null && BL.win && (v.currentTime < BL.win[0] || v.currentTime > BL.win[1])) zdraw(); });     /* a jump: the close-up goes with it */
   requestAnimationFrame(loop);
   window.__bleepGate = () => ({ gate: BL.gate, muted: v.muted, tonePlaying: !!tone && !tone.paused });
   draw();

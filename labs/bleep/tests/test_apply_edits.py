@@ -107,3 +107,18 @@ def test_a_page_with_no_bleeps_has_no_editor_and_no_extra_preview(xml, tmp_path)
     page = build(xml, tmp_path / "plain", height=180)
     d = json.loads(re.search(r"const DATA = (\{.*?\});\n", page.read_text(), re.S).group(1))
     assert "preview_live" not in d and "live_bleeps" not in d and not (tmp_path / "plain" / "preview_live.mp4").exists()
+
+
+def test_a_cut_with_no_bleeps_can_still_be_opened_for_editing_so_missed_ones_can_be_added(xml, tmp_path):
+    page = build(xml, tmp_path / "e", height=180, editable_bleeps=True)
+    d = json.loads(re.search(r"const DATA = (\{.*?\});\n", page.read_text(), re.S).group(1))
+    assert d["live_bleeps"] == [] and d["preview_live"] == "preview_live.mp4" and (tmp_path / "e" / "preview_live.mp4").exists()
+    assert d["envelope_hz"] == 100 and d["bleep_level"] > 0.02 and d["xml"] == str(xml)               # the level an automatic bleep would have had, and the path apply_edits needs
+    edits = tmp_path / "e.json"
+    edits.write_text(json.dumps({"sequence": "Cut A", "spans": [{"start": 12.7, "end": 13.3}]}))
+    out = tmp_path / "out"
+    out.mkdir()
+    before = {"origin": "automatic", "spans": [], "hits": [], "words": [["what", 12.4, 13.1, 0.9]], "loud": [[12.5, 12.9]]}
+    (tmp_path / "bleep.json").write_text(json.dumps(before))                                           # the automatic scan found nothing; the bleep he adds is a missed word
+    r = ae.apply(xml, edits, out, auto_json=tmp_path / "bleep.json")
+    assert [x["kind"] for x in r["learned"]["records"]] == ["added"] and r["learned"]["records"][0]["context"]["in_loud_stretch"] is True

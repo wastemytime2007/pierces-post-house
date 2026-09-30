@@ -21,7 +21,7 @@ from render_preview import render_preview  # noqa: E402
 from timeline import TimelineError, load_cut  # noqa: E402
 
 
-def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, suspects: list[dict] | None = None) -> Path:
+def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, suspects: list[dict] | None = None, editable_bleeps: bool = False) -> Path:
     cut = load_cut(xml)
     out.mkdir(parents=True, exist_ok=True)
     info = render_preview(cut, out / "preview.mp4", height=height)
@@ -55,23 +55,32 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
         data["preview_full"] = "preview_full.mp4"
         data["layers"] = [{"kind": l.kind, "name": l.name, "start": round(l.start, 2), "end": round(l.end, 2)} for l in layers]
     bl_layers = [l for l in layers if l.kind == "audio" and Path(l.path).name.startswith("bleep_")]
-    if bl_layers:                                   # bleeps are editable on the page: a second preview with the speech whole and no bleep baked in, so they can be heard live
+    if bl_layers or editable_bleeps:                # bleeps are editable on the page: a second preview with the speech whole and no bleep baked in, so they can be heard live
+        import shutil
         import wave
-        import bleep as bp
-        live_xml = out / "_live.xml"
-        bp.strip_previous(xml, live_xml)
-        live_cut = load_cut(live_xml)
-        render_preview(live_cut, out / "preview_live_clean.mp4", height=height)
-        live_layers = find_layers(live_xml)
-        if live_layers:
-            composite(out / "preview_live_clean.mp4", live_layers, out / "preview_live.mp4")
-        else:
-            (out / "preview_live.mp4").write_bytes((out / "preview_live_clean.mp4").read_bytes())
-        live_xml.unlink(missing_ok=True)
         import numpy as np
-        with wave.open(bl_layers[0].path) as w:
-            peak = float(np.abs(np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")).max()) / 32767
+        import bleep as bp
+        if bl_layers:
+            live_xml = out / "_live.xml"
+            bp.strip_previous(xml, live_xml)
+            live_cut = load_cut(live_xml)
+            render_preview(live_cut, out / "preview_live_clean.mp4", height=height)
+            live_layers = find_layers(live_xml)
+            if live_layers:
+                composite(out / "preview_live_clean.mp4", live_layers, out / "preview_live.mp4")
+            else:
+                shutil.copy2(out / "preview_live_clean.mp4", out / "preview_live.mp4")
+            live_xml.unlink(missing_ok=True)
+        else:                                       # nothing bleeped yet: the ordinary previews already have the speech whole, so they are the live ones; bleeps can still be ADDED
+            live_cut = cut
+            shutil.copy2(out / "preview.mp4", out / "preview_live_clean.mp4")
+            shutil.copy2(out / ("preview_full.mp4" if layers else "preview.mp4"), out / "preview_live.mp4")
         sp = bp.cut_audio(live_cut)                 # the speech as it is without bleeps: its loudness every 10 ms, for the close-up
+        if bl_layers:
+            with wave.open(bl_layers[0].path) as w:
+                peak = float(np.abs(np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")).max()) / 32767
+        else:
+            peak = float(np.percentile(np.abs(sp), 99.9)) * 10 ** (-bp.BELOW_PEAK_DB / 20)          # the level an automatic bleep would have had
         n = int(0.01 * bp.SR)
         rms = np.sqrt((sp[:len(sp) // n * n].reshape(-1, n) ** 2).mean(axis=1))
         env = np.clip((20 * np.log10(np.maximum(rms, 1e-6)) + 60) / 55, 0, 1)
@@ -95,9 +104,10 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--height", type=int, default=540)
     ap.add_argument("--open", action="store_true")
+    ap.add_argument("--bleeps", action="store_true", help="make the bleeps editable on the page even if the cut has none yet (so ones the tool missed can be added)")
     args = ap.parse_args()
     try:
-        page = build(args.xml, args.out, args.height)
+        page = build(args.xml, args.out, args.height, editable_bleeps=args.bleeps)
     except TimelineError as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
