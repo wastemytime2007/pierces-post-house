@@ -187,7 +187,7 @@ because this session violated them once each.
   the music is the same file re-faded to the new length, not re-phrased; one
   captions layer and one audio folder per run. Moves to Done only when Ryan opens it.
 
-  **Built, NOT yet opened by Ryan: the QA pass (`labs/qa/`).** After a revision,
+  **QA pass: signed off by Ryan ("It works", § Done). Details:** After a revision,
   every note is re-measured on the finished new version (not taken from the revise
   step's own report) and given VERIFIED / APPLIED-UNMEASURED / NOT DONE / FAILED, with
   a before and after frame per note, whole-cut checks, and a list of anything that
@@ -1041,6 +1041,15 @@ because this session violated them once each.
   field/logging work correctly in real Premiere.
 
 ## Done
+
+- 2026-09-30 — **Per-version QA pass (`labs/qa/`). Ryan, after opening the
+  report: "It works."** Scope: the QA report on his real Tiling round (his three
+  notes on V2, V3 after, the note-3 callout): each note re-measured on the new
+  version's files, before and after frames, whole-cut checks, and a list of
+  unrequested changes. He confirmed it works; "verified" still means the change
+  happened, not that it is good, which stays his call. Not in `app/`. Evidence:
+  commit `2a713d1`; 3 of 3 notes VERIFIED, a negative control (the unchanged V2 as
+  the "new" version) verified nothing, 100 tests across `labs/`.
 
 - 2026-09-29 — **Layers on the review page, and layers re-placed after a
   revision (`labs/review_loop/layers.py`, `labs/reconform/`). Ryan, after opening
