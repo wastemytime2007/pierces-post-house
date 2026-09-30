@@ -95,6 +95,8 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         n, kind = o["note"], o["op"]
         if kind == "unsupported":
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
+        elif kind == "replace_sfx":
+            changes.append(Change(n, kind, False, f'sound effect change to "{o["sound"]}" is made by the audio step (labs/audio/replace_sfx.py), not on the timeline', o.get("why", "")))
         elif kind == "tighten_pause":
             p = detect_pause(cut, o["at"])
             keep = o.get("keep_sec", KEEP_SEC_DEFAULT)

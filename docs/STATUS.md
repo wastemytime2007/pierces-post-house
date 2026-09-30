@@ -123,10 +123,29 @@ because this session violated them once each.
   `Runnells_Tiling_v3_v3_with_overlay_captions_and_audio.xml`). Moves to Done only
   when Ryan listens and says so.
 
+  **Built, NOT yet heard by Ryan: sound effect replaced by a note.**
+  `labs/audio/replace_sfx.py` plus a new `replace_sfx` operation in
+  `labs/review_loop/ops.py` (the description must come from the note's own words;
+  an invented sound is refused; `revise.py` reports it as not applied on the
+  timeline, made by the audio step). Proved on the real window with a STAND-IN
+  note, NOT one Ryan wrote: the creator's own example ("...generate a new sound
+  that sounds more like something being highlighted on a piece of paper") placed
+  at the callout effect's moment. The interpreter chose `replace_sfx` and copied
+  "something being highlighted on a piece of paper"; the effect was regenerated
+  from it (a few cents); music and speech byte-identical, the effect still at
+  13.972s, and the new effect a different sound (0.03 waveform match against a
+  0.60 limit); all 9 audio checks pass again; placed XML 11 checks. 76 tests pass
+  across `labs/` (2 new for the operation, 8 for the replacement). Caveats: nobody
+  has listened to the new effect, so "sounds like highlighting on paper" is
+  unjudged; the wording I add after the note's description is mine and shown in
+  the ledger; one effect per run. Files: `Runnells Tiling v3 - sfx and music v2
+  (0-22s)/` (`audio_preview.mp4`,
+  `Runnells_Tiling_v3_v3_with_overlay_captions_and_audio_v2.xml`) and `... - sfx
+  note (stand-in)/`. Moves to Done only when Ryan listens and says so.
+
   **Still to build, none started:**
   2b. Music matched to a reference track (he attaches a song, Claude analyses it
-      and writes the ElevenLabs prompt), and sound effects replaced by note ("make
-      it sound like highlighting on paper"), and more than one effect per cut.
+      and writes the ElevenLabs prompt), and more than one effect per cut.
   4. Editing style taken from a reference video: analyse a reel frame by frame and
      replicate its overlays, screens and B-roll treatment.
   5. Further note types the creator uses that the revise step does not cover yet:

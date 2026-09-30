@@ -155,6 +155,13 @@ def build_sfx_clip(raw_mp3: Path, speech: Path, out: Path, below_speech_peak_db:
     return gain
 
 
+def mix_preview(video: Path, music_stem: Path, sfx_clip: Path, out: Path, start: float, dur: float, t_sfx: float) -> None:
+    off_ms = int(round((t_sfx - start) * 1000))
+    run("-ss", start, "-t", dur, "-i", video, "-i", music_stem, "-i", sfx_clip,
+        "-filter_complex", f"[2:a]adelay={off_ms}|{off_ms}[s];[0:a][1:a][s]amix=inputs=3:normalize=0:duration=first[a]",
+        "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", dur, out)
+
+
 def callout_time(folder: Path) -> float:
     p = json.loads((folder / "placement.json").read_text())
     return p["place_overlay_on_timeline_at_sec"] + p["geometry"]["t_in"]
@@ -199,12 +206,8 @@ def main() -> int:
         music_stem, sfx_clip = a.out / "music_stem.wav", a.out / "sfx_clip.wav"
         levels = build_music_stem(music_mp3, speech, music_stem, dur, a.music_db, a.duck_db)
         sfx_gain = build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db)
-        pv = a.preview_video or a.base
         preview = a.out / "audio_preview.mp4"
-        off_ms = int(round((t_sfx - a.start) * 1000))
-        run("-ss", a.start, "-t", dur, "-i", pv, "-i", music_stem, "-i", sfx_clip,
-            "-filter_complex", f"[2:a]adelay={off_ms}|{off_ms}[s];[0:a][1:a][s]amix=inputs=3:normalize=0:duration=first[a]",
-            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", dur, preview)
+        mix_preview(a.preview_video or a.base, music_stem, sfx_clip, preview, a.start, dur, t_sfx)
     except AudioError as e:
         print(f"FAILED: {e}", file=sys.stderr)
         return 1
@@ -215,7 +218,7 @@ def main() -> int:
         "generated": {"sfx": sfx_info, "music": music_info},
         "clips": [{"kind": "music", "name": "music_stem.wav", "path": str(music_stem.resolve()), "start_sec": a.start, "duration_sec": probe_dur(music_stem)},
                   {"kind": "sfx", "name": "sfx_clip.wav", "path": str(sfx_clip.resolve()), "start_sec": t_sfx, "duration_sec": probe_dur(sfx_clip)}],
-        "speech_wav": str(speech.resolve())}, indent=2))
+        "speech_wav": str(speech.resolve()), "preview_video": str((a.preview_video or a.base).resolve())}, indent=2))
     (a.out / "placement.json").write_text(json.dumps({"kind": "audio", "clips": json.loads((a.out / "audio.json").read_text())["clips"]}, indent=2))
 
     v = subprocess.run([sys.executable, str(HERE / "verify_audio.py"), str(a.out)], capture_output=True, text=True)

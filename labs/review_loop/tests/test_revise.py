@@ -275,6 +275,31 @@ def test_find_phrase_copes_with_whisper_splitting_a_word():
     assert words_mod.find_phrase(ws, "something entirely unrelated here") is None
 
 
+def test_replace_sfx_takes_its_sound_from_the_note_and_refuses_an_invented_one(xml):
+    cut = timeline.load_cut(xml)
+    notes = [{"timeline_sec": 14, "text": "I don't like the sound effect here, make it sound more like something being highlighted on a piece of paper"},
+             {"timeline_sec": 14, "text": "I don't like the sound effect here, make it sound different"},
+             {"timeline_sec": 14, "text": "make the shot look more like a movie"},
+             {"timeline_sec": 14, "text": "the sound effect is too loud"}]
+    got = {o["note"]: o for o in opsmod.validate([
+        {"note": 1, "op": "replace_sfx", "sound": "something being highlighted on a piece of paper"},
+        {"note": 2, "op": "replace_sfx", "sound": "a deep cinematic boom with reverb"},          # not in the note
+        {"note": 3, "op": "replace_sfx", "sound": "a movie"},                                     # note is not about a sound
+        {"note": 4, "op": "replace_sfx", "sound": ""},
+    ], notes, cut)}
+    assert got[1]["op"] == "replace_sfx" and got[1]["sound"] == "something being highlighted on a piece of paper"
+    assert got[2]["op"] == "unsupported" and "refusing to invent a sound" in got[2]["reason"]
+    assert got[3]["op"] == "unsupported" and "does not talk about a sound effect" in got[3]["reason"]
+    assert got[4]["op"] == "unsupported" and "no usable description" in got[4]["reason"]
+
+
+def test_a_sound_effect_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
+    cut = timeline.load_cut(xml)
+    notes = [{"timeline_sec": 14, "text": "make the sound effect sound like a paper tap"}]
+    changes, _spans, _ins = apply_ops.plan(cut, [{"note": 1, "op": "replace_sfx", "sound": "a paper tap"}], notes)
+    assert len(changes) == 1 and changes[0].applied is False and "audio step" in changes[0].summary
+
+
 def test_validate_refuses_target_words_not_in_the_note_and_clamps_max_sec(xml):
     cut = timeline.load_cut(xml)
     notes = [{"timeline_sec": 5, "clip": 1, "text": "start this clip at stepping the tile up"},

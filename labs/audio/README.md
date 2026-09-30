@@ -20,6 +20,23 @@ python3 labs/audio/place_audio.py "<export.xml>" "<folder>" --out "<new.xml>"
 python3 -m pytest labs/audio/tests -q
 ```
 
+## Replacing an effect from a note (`replace_sfx.py`)
+A note like "make this sound effect sound like something being highlighted on a piece of paper" goes
+through `revise.py`: the interpreter chooses the `replace_sfx` operation and must copy the wanted sound
+from the note's own words (an invented sound is refused, like an invented time). `revise.py` changes
+nothing on the timeline for it and reports it as "not applied here, made by the audio step". Then:
+
+```
+python3 labs/audio/replace_sfx.py --audio "<audio folder>" --ops "<revise's ops.json>" \
+    --notes "<review_notes.json>" --out "<new folder>" [--preview-video "<video>"]
+```
+The note is matched to the effect nearest its moment (from 1 s before it starts to 1 s after it ends, or
+it is reported as not applied). That one effect is generated again from the note's description plus
+", short and subtle, a sound effect for a graphic appearing on screen" (visible in the ledger). The music,
+the speech and the effect's time are left as they were, and the old folder is not touched. It is
+re-verified with everything above plus: music and speech byte-identical, the effect at the same time, and
+the new effect a measurably different sound (waveform match under 0.60). One change per effect per run.
+
 ## How it works
 - **Key.** Read from `~/.config/post-house/elevenlabs.env` (mode 600, outside the repo). Never printed,
   logged or written to any output. Needs the Sound Effects and Music permissions.

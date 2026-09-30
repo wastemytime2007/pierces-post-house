@@ -11,6 +11,9 @@ LLM) only chooses among them; it does not get to invent a time.
   remove_range {start, end}      only when the note itself states the times
   trim_start / trim_end {clip, seconds}   only when the note states the amount
   drop_clip {clip}               only when the note says to remove the clip
+  replace_sfx {sound}            the note wants a sound EFFECT at this moment to sound different; the
+                                 description is the note's own words. Made by labs/audio/replace_sfx.py,
+                                 not on the timeline, so revise.py reports it as not applied here.
   unsupported {reason}           everything else, reported and never silently dropped
 
 All times are on the timeline the notes were left on (V1).
@@ -32,6 +35,7 @@ KEEP_SEC_DEFAULT = 0.15
 MIN_SILENCE_SEC = 0.25
 NOTE_WORDS = r"one|two|three|four|five|six|seven|eight|nine|ten|half"
 HAS_NUMBER = re.compile(rf"\d|\b({NOTE_WORDS})\b", re.I)
+SAYS_SOUND = re.compile(r"\b(sfx|sound effects?|sound|noise|whoosh|swoosh|pop|click|ding|chime|beep|clap|thud)\b", re.I)
 SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that) out|cut (this|it|that)( out| clip| shot)?)\b", re.I)
 
 SYSTEM = """You translate an editor's review notes on a rough cut into edit operations.
@@ -44,6 +48,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - extend_end {"clip": n, "max_sec": 1.0}  The note says a word or sentence at the END of clip n is cut off too soon or needs more time to finish. "clip" is the note's own clip unless the note says otherwise. The amount is measured from how the sound decays, so never give a duration.
 - start_at_words {"clip": n, "words": "..."}  The note says clip n should START at specific words, dropping words before them (for example "the clean cut should be X to Y": the clip after the seam starts at Y). "words" must be copied from the note. The point is found by listening, so never give a time.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
+- replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
 
 Rules: never invent a time or an amount that the note does not give. A note may produce more than one op. Every note must appear at least once. Prefer unsupported over guessing."""
@@ -138,6 +143,16 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if not SAYS_REMOVE.search(text):
                     raise ValueError("note does not say to remove the clip")
                 out.append({"note": note, "op": op, "clip": clip, "why": why})
+            elif op == "replace_sfx":
+                sound = str(raw.get("sound", "")).strip()
+                st, nt = words_mod.tokens(sound), set(words_mod.tokens(text))
+                if not st or len(sound) > 200:
+                    raise ValueError("no usable description of the wanted sound")
+                if not SAYS_SOUND.search(text):
+                    raise ValueError("the note does not talk about a sound effect")
+                if sum(w in nt for w in st) < 0.7 * len(st):
+                    raise ValueError("that description is not in the note, refusing to invent a sound")
+                out.append({"note": note, "op": op, "sound": sound, "why": why})
             elif op == "unsupported":
                 out.append(_unsupported(note, str(raw.get("reason", "not supported"))[:300], why))
             else:
