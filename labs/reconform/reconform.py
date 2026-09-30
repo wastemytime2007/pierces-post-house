@@ -66,6 +66,8 @@ def strip_layers(xml_in: Path, xml_out: Path) -> int:
 def kept_end(layers: list[ly.Layer], mov_or_wav: Path) -> float | None:
     """Where the (ripple-shifted) pieces of one layer file end on the revised timeline: the new length of its window."""
     ends = [l.end for l in layers if Path(l.path).resolve() == mov_or_wav.resolve()]
+    if not ends:                                        # a rebuilt audio folder (a replaced effect) keeps the file name but not the path the XML holds
+        ends = [l.end for l in layers if Path(l.path).name == mov_or_wav.name]
     return max(ends) if ends else None
 
 

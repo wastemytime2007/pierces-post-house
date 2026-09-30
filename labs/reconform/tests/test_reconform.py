@@ -225,3 +225,13 @@ def test_stripping_that_would_change_the_cut_is_refused(world, monkeypatch):
     monkeypatch.setattr(rf, "strip_layers", damaging)
     with pytest.raises(rf.ReconformError, match="stripping the layers changed the cut"):
         rf.reconform(revised, [world["overlay"]], world["captions"], world["audio"], world["tmp"] / "rebuilt", _fake_captions, _fake_audio)
+
+
+def test_a_replaced_effects_folder_is_found_by_file_name_when_its_path_is_new():
+    """replace_sfx writes a new folder holding music_stem.wav at a new path; the XML still points at the old one.
+    Matching by path alone said the audio window was gone and dropped the music and effect from the result."""
+    layer = ly.Layer("audio", "music_stem.wav", "/old/audio/music_stem.wav", 0.0, 21.2, 3)
+    other = ly.Layer("audio", "sfx_clip.wav", "/old/audio/sfx_clip.wav", 13.2, 14.4, 5)
+    assert rf.kept_end([layer, other], Path("/new/audio/music_stem.wav")) == 21.2              # same name, new folder
+    assert rf.kept_end([layer, other], Path("/old/audio/music_stem.wav")) == 21.2              # exact path still wins
+    assert rf.kept_end([layer, other], Path("/new/audio/nothing.wav")) is None                 # a file that is not there is still not there

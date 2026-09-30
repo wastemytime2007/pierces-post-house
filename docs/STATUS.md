@@ -3097,3 +3097,19 @@ the Lead before any re-dispatch; empty so far)*
   (re-encode noise counted as progress). Output: `Runnells Tiling v3 - emulate wallpaper reel (all aspects)/`.
   Clarified: the reference reel is vertical (1080x1920), the Tiling cut Ryan edited is the horizontal one.
   Captions left alone at Ryan's word. 209 tests pass across `labs/`. Not in `app/`.
+
+
+  **Ryan's first real round on the click-to-note page (2026-09-30), 5 notes: 1 applied, 4 reported unsupported. Built, NOT yet judged by him.**
+  His notes (`~/Desktop/review_notes (1).json`, saved beside the result as `your_notes.json`; real, not stand-ins): (1) on the
+  SFX element, "more of a bell ding ... just something to make the graphic feel more dimensional"; (2) on the callout, "have
+  the graphic fade out here" (15.43 s); (3) on a caption line, change it to "and that's how i determined"; (4) on clip 8,
+  "bleep the curse word here"; (5) at 30.54 s, no target: "why is this here? ... remove it" (the image card). The interpreter's
+  operations were read before anything was applied (note 5 could have been misread as dropping clip 8; it was not). Applied:
+  note 1, by `replace_sfx` (new effect generated, 14 checks pass, it lands 0.2 ms from the callout), then reconform; the result's
+  effect is byte-identical to the new one and the music stem unchanged. NOT applied, no tool exists yet: a callout fade or early
+  end (2), a caption's words (3), bleeping a word (4), removing an image card (5). Files: `Runnells Tiling v3 - your round 1
+  (bell ding)/` and `... your round 1 result/` (XML + review page). Two defects of mine found on the way: reconform matched the
+  audio window by full path, so a replaced effect's new folder was treated as "gone" and the music and effect were silently
+  dropped from the result (now matched by file name too, with a test); and `place_audio` onto an XML that already carries audio
+  doubles it (not used; the wrong first attempt was deleted). The pairing of a replaced effect with a page that already has audio
+  is worth a guard later. Not in `app/`.
