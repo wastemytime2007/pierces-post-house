@@ -134,11 +134,24 @@ def test_the_checks_fail_when_the_speech_was_not_really_silenced(xml, tmp_path):
     assert rows["SPANS-SILENT"] is False and rows["ONLY-THE-SPANS-LOST"] is False
 
 
-def test_the_checks_fail_when_a_word_is_still_heard_after_bleeping(xml, tmp_path):
-    r = bl.bleep(xml, tmp_path / "out", words_of=lambda w: WORDS)                                      # the second listen still hears both
-    left = [(n, d) for n, ok, d in r["rows"] if n == "NO-LISTED-WORD-LEFT" and ok is False]
-    assert left and "Shit," in left[0][1]
+def test_the_checks_fail_when_a_word_is_still_audible_after_bleeping_and_ignore_one_written_over_silence(xml, tmp_path):
+    calls = []
 
+    def still_audible(wav):                                                                          # first listen: the real hit; second listen: the word again, over sound at 5 s
+        calls.append(1)
+        return [("Shit,", 12.5, 12.9)] if len(calls) == 1 else [("Shit,", 5.0, 5.4)]
+    r = bl.bleep(xml, tmp_path / "a", words_of=still_audible)
+    left = [(n, d) for n, ok, d in r["rows"] if n == "NO-LISTED-WORD-LEFT" and ok is False]
+    assert left and "Shit," in left[0][1] and "audible" in left[0][1]
+    over_silence = []
+
+    def phantom(wav):                                                                                # the second listen writes the word over the silenced stretch itself
+        over_silence.append(1)
+        return [("Shit,", 12.5, 12.9)]
+    r2 = bl.bleep(xml, tmp_path / "b", words_of=phantom)
+    row = next((n, ok, d) for n, ok, d in r2["rows"] if n == "NO-LISTED-WORD-LEFT")
+    assert row[1] is True and "written over silence" in row[2] and "0% audible" in row[2]
+    assert bl.audible_share(np.zeros(16000 * 3), 1.0, 2.0) == 0.0 and bl.audible_share(_flat(3), 1.0, 2.0) == 1.0
 
 def test_a_bleep_that_is_the_wrong_tone_or_level_is_caught(tmp_path, xml):
     spans = [(12.42, 13.02)]
@@ -307,7 +320,7 @@ def test_the_evaluation_scores_hits_false_alarms_and_misses_against_ryans_labels
     import json
     import evaluate as ev
     truth = json.loads((HERE / "ground_truth.json").read_text())
-    assert truth["curse_words"][0]["range"] == [28.9, 29.58] and len(truth["rejected_suspects"]) == 3         # his labels are in the repo and parse
+    assert truth["curse_words"][0]["range"] == [28.7, 29.4] and len(truth["rejected_suspects"]) == 3         # his labels are in the repo and parse
     flagged = [{"start": 26.3, "end": 26.54}, {"start": 31.5, "end": 31.98}, {"start": 66.8, "end": 67.1}]      # what the strict detector flagged on the real cut
     r = ev.score(flagged, truth)
     assert r["false_alarms"] == 3 and r["found"] == 0 and r["missed"] == ["fuck"] and r["recall"] == 0.0 and r["precision"] == 0.0   # the documented negative result
@@ -397,3 +410,15 @@ def test_a_whole_run_with_the_reveal_bleeps_the_hidden_word_and_every_check_pass
     bad = [(n, d) for n, ok, d in r["rows"] if ok is False]
     assert not bad, bad
     assert any(n == "SPANS-SILENT" for n, _ok, _d in r["rows"])
+
+
+def test_times_a_person_gives_override_the_tools_own_hit_where_they_overlap(xml, tmp_path):
+    """Ryan: the bleep 'is too long, it only needs to be' a shorter stretch. His times replace the tool's span there instead of being merged back into it."""
+    listen = lambda w: [("Hello", 1.0, 1.4), ("Shit,", 12.4, 13.2), ("Fuck", 20.0, 20.4)]                # noqa: E731
+    r = bl.bleep(xml, tmp_path / "x", words_of=listen, check_transcript=False, requests=[{"kind": "exact", "start": 12.7, "end": 13.3}])
+    assert r["spans"][0] == pytest.approx((12.7, 13.3), abs=0.001)                                      # not (12.32, 13.32): the tool's padded hit is gone
+    assert [h["word"] for h in r["overridden"]] == ["Shit,"] and r["spans"][1] == pytest.approx((19.92, 20.52), abs=0.01)   # a hit elsewhere is untouched
+    bad = [(n, d) for n, ok, d in r["rows"] if ok is False]
+    assert not bad, bad
+    far = bl.bleep(xml, tmp_path / "y", words_of=listen, check_transcript=False, requests=[{"kind": "exact", "start": 5.0, "end": 5.4}])
+    assert far["overridden"] == [] and len(far["spans"]) == 3                                           # times that overlap nothing the tool found simply add a bleep

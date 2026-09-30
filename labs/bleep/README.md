@@ -69,3 +69,17 @@ probability 0.96, stretched) and "just", folding the word into them. Four things
 Limits, plainly: n = 1 real word; it only finds words hiding behind a loud stretch; it costs about 80 s of transcription per cut; the 0.12 s pad after the
 word runs into the start of the next word ("just" here); Ryan's first click at 28.35 s was about 0.5 s early, which is how a careful click can still miss.
 Clicking the clip at the word, or naming exact times ("bleep 28.9-29.2", used as given, unpadded), remains the route for anything the tool misses.
+
+
+## Placing the bleep: Ryan's ear, the sound, and two checks that were wrong
+Ryan corrected the span three times (28.9-29.2, then "too long, only needs to be" 28.7-29.3; his digits are one key off, read as 28.x). The sound agrees
+with him to within 0.1 s. Energy and high-frequency hiss every 20 ms show the word's shape: a loud low-frequency vowel at 28.92-29.26 s, a closure
+at 29.28-29.30, the "k" release burst at 29.32-29.36, then the "j" of "just" from about 29.42 s and its "st" hiss at 29.82-29.90. Ending at 29.3 s left
+the "ck" audible, so the final bleep is **28.7-29.4 s** (0.7 s, against 0.88 s that was too long), 0.1 s past what he typed.
+- **Automatic placement is not that precise.** `reveal` finds that a listed word exists; its span came from Whisper's timing on partly silenced audio,
+  which is only good to a few tenths of a second (it gave 28.82-29.70 s). Times a person gives override it where they overlap (the tool's own hit is
+  removed, not merged back in). Improving the automatic span from the sound (vowel and burst edges) is possible and not done.
+- **NO-LISTED-WORD-LEFT counts only a word over sound.** Whisper `small` writes words into digital silence ("what the fuck" into 0.7 s of nothing), which
+  failed a correct bleep. A word now counts as left behind only if at least half of its time has sound (20 ms frames above -55 dBFS) in the bleeped audio.
+  On the real cut: the 28.7-29.3 s bleep leaves "fuck" at 29.38-29.58 s over 100% sound (counted, the real "ck"); the 28.7-29.4 s bleep leaves one over 31%
+  sound (a phantom, reported and not counted).

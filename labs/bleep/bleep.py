@@ -390,6 +390,20 @@ def lowpass(x: np.ndarray, hz: float, sr: int = SR) -> np.ndarray:
 BODY_HZ, OUTSIDE_BAR_DB = 800.0, -12.0
 
 
+AUDIBLE_DB, AUDIBLE_SHARE = -55.0, 0.5
+
+
+def audible_share(x: np.ndarray, a: float, b: float, sr: int = SR) -> float:
+    """The fraction of the stretch a-b (seconds) that has sound in it: 20 ms frames above -55 dBFS."""
+    n = int(0.02 * sr)
+    seg = x[int(a * sr):int(b * sr)]
+    k = len(seg) // n
+    if k == 0:
+        return 0.0
+    rms = 20 * np.log10(np.maximum(np.sqrt((seg[:k * n].reshape(k, n) ** 2).mean(axis=1)), 1e-9))
+    return float((rms > AUDIBLE_DB).mean())
+
+
 def make_bleeps(spans: list[tuple[float, float]], speech_peak: float, out: Path) -> list[dict]:
     out.mkdir(parents=True, exist_ok=True)
     peak = speech_peak * 10 ** (-BELOW_PEAK_DB / 20)
@@ -451,9 +465,14 @@ def verify(before: Path, after: Path, spans: list[tuple[float, float]], clips: l
     if words_of is not None and pats is not None and work is not None:
         wav = work / "after_speech.wav"
         write_wav(wav, a1, SR)
-        left = find_hits(words_of(wav), pats)
-        rows.append(("NO-LISTED-WORD-LEFT", not left, "a second transcription of the result finds no listed word" if not left else
-                     "still heard after bleeping: " + ", ".join(f"{h['word']} at {h['start']:.2f}s" for h in left)))
+        heard = find_hits(words_of(wav), pats)
+        # Whisper writes words over digital silence (its language model fills the gap: "what the fuck" into 0.7 s of nothing). A word counts as left
+        # behind only if at least half of its time has sound in the bleeped audio; one written over silence is reported, not failed.
+        left = [h for h in heard if audible_share(a1, h["start"], h["end"]) >= AUDIBLE_SHARE]
+        phantom = [h for h in heard if h not in left]
+        note = ("; written over silence, so not counted: " + ", ".join(f"{h['word']} at {h['start']:.2f}-{h['end']:.2f}s ({audible_share(a1, h['start'], h['end']):.0%} audible)" for h in phantom)) if phantom else ""
+        rows.append(("NO-LISTED-WORD-LEFT", not left, ("a second transcription of the result finds no listed word over sound" + note) if not left else
+                     "still heard after bleeping: " + ", ".join(f"{h['word']} at {h['start']:.2f}s ({audible_share(a1, h['start'], h['end']):.0%} audible)" for h in left) + note))
     return rows
 
 
@@ -504,9 +523,13 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
                 top["bleeped"] = True
                 hits.append({"word": f"(not transcribed; heard as '{top['word']}')", "start": top["start"], "end": top["end"]})
     exact = [(float(r["start"]), float(r["end"])) for r in reqs if r["kind"] == "exact"]
+    # a person who gives times is correcting the tool: where the tool's own hits overlap those times (within 0.15 s) the person's times win, unmerged
+    overridden = [h for h in hits if any(h["start"] < b_ + 0.15 and h["end"] > a_ - 0.15 for a_, b_ in exact)]
+    hits = [h for h in hits if h not in overridden]
+    auto_hits = list(hits)
     for a_, b_ in exact:
         hits.append({"word": f"(the times you gave: {a_:.2f}-{b_:.2f}s)", "start": a_, "end": b_})
-    spans = spans_of([h for h in hits if not h["word"].startswith("(the times you gave")], cut.zone_end)
+    spans = spans_of(auto_hits, cut.zone_end)
     for a_, b_ in exact:                                          # times a person gave are used as given: no padding
         spans.append((round(a_, 3), round(min(b_, cut.zone_end), 3)))
     merged: list[list[float]] = []
@@ -516,7 +539,7 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
         else:
             merged.append([a_, b_])
     spans = [(a_, b_) for a_, b_ in merged if b_ - a_ > 0.05]
-    res = {"hits": hits, "revealed": revealed, "suspects": suspects, "spans": spans, "words_heard": len(words), "xml": None, "clips": [], "rows": []}
+    res = {"hits": hits, "overridden": overridden, "revealed": revealed, "suspects": suspects, "spans": spans, "words_heard": len(words), "xml": None, "clips": [], "rows": []}
     (out / "bleep.json").write_text(json.dumps({k: v for k, v in res.items() if k != "rows"}, indent=2))
     if not spans:
         return res

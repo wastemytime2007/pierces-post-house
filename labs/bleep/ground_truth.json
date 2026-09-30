@@ -6,11 +6,11 @@
     {
       "at": 29.05,
       "range": [
-        28.9,
-        29.58
+        28.7,
+        29.4
       ],
       "word": "fuck",
-      "how": "Ryan first clicked clip 8 at 28.35 s (note: bleep this word fuck), then said the word is at 28.9 to 29.2 s (he typed 18.9-39.2, read as 28.9-29.2). The 28.9-29.2 s stretch is the loud onset. Whisper, with that stretch silenced, writes 'what the fuck just happened' with fuck at 29.38-29.58 s, so the word runs from 28.9 to about 29.58 s. The 28.35 s click was about 0.5 s early.",
+      "how": "Ryan: first a click at 28.35 s, then 28.9-29.2 s, then 'too long ... only needs to be' 28.7-29.3 s (his digits are one key off: 18.9-39.2, 38.3-39.3, 38.7-39.3). The sound agrees with him to within 0.1 s: a loud vowel at 28.92-29.26 s, a closure at 29.28-29.30, the 'k' release burst at 29.32-29.36, and 'just' starting at about 29.42 s. Ending at 29.3 leaves the 'ck' audible (Whisper then writes 'fuck' over 100% audible sound at 29.38-29.58), so the bleep used 28.7-29.4 s.",
       "what_the_transcript_said_there": "unmasked, both Whisper models wrote 'what' (28.74-29.22 s, probability 0.96, stretched) then 'just' (29.22 s): the word was folded into them"
     }
   ],
