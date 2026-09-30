@@ -62,11 +62,40 @@ because this session violated them once each.
 
 ## In progress
 
+- **2026-09-29 — HyperFrames overlay spike built for Ryan's note 3, NOT yet
+  judged by Ryan** (`labs/overlay/`). His drawn box, turned into an animated
+  callout (orange box, arrow, navy label) rendered by HyperFrames 0.8.93
+  (Apache 2.0) as a transparent ProRes 4444 `.mov`: a separate layer over the
+  untouched footage, not a re-render of it. A preview `.mp4` is that layer
+  composited over the clip. On the real Tiling cut (V3, 12.97s for 5s, in
+  clip 4) the box lands on the cardboard piece, 798px vs the drawing's 800px.
+  Output in `~/Documents/Post House Reviews/Runnells Tiling v3 - overlay
+  spike (note 3)/`.
+
+  Verified on the rendered files by `verify_overlay.py` (11 checks): real
+  alpha, fully transparent before and after the callout, box/label/arrow each
+  present with a hollow box, position within 2px, preview audio bit-identical
+  to the plain clip, footage unchanged away from the callout. 10 planner
+  tests; the suite (35 with `review_loop`) passes. A test caught a timing bug
+  (near a shot's end the excerpt would have run past the clip into other
+  footage); fixed. Frames inspected by eye: entrance, settled, fade-out.
+
+  **Not verified, only Ryan can:** whether the design, timing and wording are
+  right (the text, "The spacer / A piece of cardboard pulled off the box", is
+  Claude's, drawn from his note); whether the `.mov` imports with alpha in
+  Premiere (never opened there). Real limits: the callout is fixed in frame
+  (right for this steady shot, would drift on a moving one, no tracking); the
+  label font is Inter, not ITC Avant Garde (HyperFrames swaps in a fixed web
+  font, the brand font is licensed and not installed); the overlay is not
+  inserted into the revised XML. HyperFrames added no skills or plugins to
+  `~/.claude`; it keeps config in `~/.hyperframes/` (telemetry disabled) and
+  downloaded a ~197MB rendering Chrome and a font cache to
+  `~/.cache/hyperframes/`.
+
 - **2026-09-29 — Review loop: what is still open after Ryan's sign-off on
   the page and on the revisions (§ Done).** (1) Ryan's note 3, an arrow and
-  on-screen text pointing at the spacer, needs a graphics overlay: the
-  HyperFrames spike (Apache 2.0, installs as a Claude Code plugin, untested on
-  our footage) and the natural next slice. (2) Acting on drawings (a crop or
+  on-screen text pointing at the spacer, needs a graphics overlay: built as a
+  HyperFrames spike, see the next entry. (2) Acting on drawings (a crop or
   reframe needs scale and position filters in the XML). (3) Music and SFX
   generation, which would contradict the 2026-08-31 Artlist-local-library
   decision and needs Ryan's ruling first; his own reference edit has no SFX
