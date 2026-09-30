@@ -2493,3 +2493,19 @@ with Ryan touching only the intake and the checkpoints.
   Designer, Colorist, cull, grouping, B-roll placement) are not part of this
   set and are unchanged by this entry. Music and SFX generation still needs
   Ryan's ruling against the 2026-08-31 Artlist-local-library decision.
+
+- **2026-09-29 — Generated music and sound effects (ElevenLabs API) are being
+  explored as a standalone spike alongside, not instead of, the 2026-08-31
+  Artlist-local-library decision.** Ryan: "I would like to look into sfx and
+  music like he does them" (the creator generates both with ElevenLabs), and he
+  supplied an API key, kept outside the repo at
+  `~/.config/post-house/elevenlabs.env` (mode 600, never committed or printed).
+  Scope: one proof unit only (the 0-22s window of the Tiling V3 cut, one SFX for
+  the callout and one music bed), standalone in `labs/audio/`, nothing in `app/`.
+  The Artlist decision is not overturned: whether generated audio replaces or
+  sits beside a local library is still Ryan's call after he hears the result.
+  Open: ElevenLabs commercial-use terms for sound effects were not confirmed
+  (pricing page: music "commercial use licensing on Starter+ plans", SFX silent),
+  so nothing generated ships in published work until that is checked. Verified
+  2026-09-29: the key has sound-generation and music permissions (a 1s SFX and a
+  3s music clip both returned real audio).
