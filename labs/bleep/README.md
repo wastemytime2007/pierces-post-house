@@ -143,3 +143,12 @@ loud stretch and listening again. Anything else that was missed, he adds on the 
 **Finished videos work too** (`labs/review_loop/xml_from_media.py` makes a one-clip XML from an exported video, size and frame rate unchanged): the export check's coarse-slab rule (CUT-GRANULARITY)
 does not apply to a single finished file and is skipped only for an XML carrying the converter's marker (`export_gate.py`); a single-clip XML without the marker still fails it (tested).
 **Silence is rounded outward to whole frames**: at 30 fps a frame is 33 ms and rounding to the nearest frame left the start of a bleep audible (-41 dBFS); found by the end-to-end test on a converted video.
+
+## Hidden words under low-confidence words (2026-09-30, from Ryan's DeWalt/Milwaukee edits)
+Ryan added a bleep at 18.20-18.43 s that the tool had missed: Whisper heard "you're acting looking fine" and the word was folded into "acting" (0.18 s, probability 0.48). The listen-again pass only
+tried loud-and-stretched words, so it never tried that one. Measured on the real audio: silencing the word makes Whisper write "ass" at 18.24-18.44 s (his bleep: 18.20-18.43 s).
+Now words Whisper was unsure of (probability under 0.5, at least 0.10 s, not already listed, not inside a loud stretch) are also silenced and listened to again (`unsure_regions`). Nothing is shown or
+bleeped unless a listed word appears. Whisper also invents curse words over silenced audio now and then (it wrote "f***ing" and "fuck" over "How do you go off?", which Ryan left alone), so a word found
+this way is kept only when it appears under 2 of the 3 ways of silencing the stretch (`votes`); the loud-stretch path is unchanged. Rescanned the three real cuts: Milwaukee gives both of his bleeps and nothing
+else, Tiling still gives only its one, smoke detectors still none. Caveat: the 2-vote rule was chosen after seeing those same cuts and rests on ONE real hidden word; it can still miss a hidden word or
+invent one. Cost: Milwaukee 11 s to 55 s for a 20 s clip, Tiling about 180 s, smoke detectors 133 s (the extra work is the repeated listening).

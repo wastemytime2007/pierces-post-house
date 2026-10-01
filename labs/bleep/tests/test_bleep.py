@@ -447,3 +447,29 @@ def test_a_word_end_stretched_over_a_pause_is_pulled_back_to_where_the_sound_sto
     assert bl.trim_to_sound(x, 36.28, 36.4) == (36.28, 36.4)                                                     # a very short span is never trimmed
     a2, b2 = bl.trim_to_sound(x, 36.28, 37.42)
     assert b2 <= 37.42 and a2 >= 36.28                                                                           # never extends
+
+
+def test_unsure_words_become_places_to_listen_again_but_listed_confident_short_and_already_loud_ones_do_not():
+    """Ryan's DeWalt/Milwaukee cut: a hidden 'ass' sat under 'acting' (0.18 s, probability 0.48), which the loud-and-stretched rule never tried."""
+    pats = bl.load_patterns()
+    detail = [("acting", 18.28, 18.46, 0.48), ("fine", 18.74, 19.1, 1.00), ("um", 19.2, 19.25, 0.2), ("fuck", 20.0, 20.3, 0.3), ("so", 21.0, 21.2, 0.4), ("hmm", 22.0, 22.4, 0.3)]
+    got = bl.unsure_regions(detail, pats, loud=[(21.0, 21.5)])
+    assert got == [(18.28, 18.46), (22.0, 22.4)]                 # unsure and long enough; not 'fine' (sure), 'um' (0.05 s), 'fuck' (listed already), or 'so' (inside a loud stretch)
+    assert bl.unsure_regions(None, pats, []) == []
+
+
+def test_a_word_revealed_under_only_one_way_of_silencing_is_not_kept_for_an_unsure_word_but_is_kept_when_two_agree(tmp_path):
+    pats = bl.load_patterns()
+    speech = np.zeros(16000 * 6)
+
+    def words_after(n_hits):
+        calls = {"n": 0}
+
+        def words_of(_wav):
+            calls["n"] += 1
+            return [("ass", 2.2, 2.4)] if calls["n"] <= n_hits else [("acting", 2.2, 2.4)]
+        return words_of
+    one = bl.reveal(speech, [(2.28, 2.43)], words_after(1), pats, tmp_path)
+    two = bl.reveal(speech, [(2.28, 2.43)], words_after(2), pats, tmp_path)
+    assert [r["votes"] for r in one] == [1] and [r["votes"] for r in two] == [2]
+    assert bl.REVEAL_UNSURE_VOTES == 2

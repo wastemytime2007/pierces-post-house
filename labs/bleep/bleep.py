@@ -195,6 +195,18 @@ def find_suspects(words: list[tuple[str, float, float]], speech: np.ndarray, sr:
 
 
 REVEAL_CONTEXT_SEC = 2.0
+REVEAL_UNSURE_P, REVEAL_UNSURE_MIN_SEC, REVEAL_UNSURE_VOTES = 0.5, 0.10, 2
+
+
+def unsure_regions(detail: list | None, pats: list[re.Pattern], loud: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Where Whisper was not confident of a word (probability under 0.5) is where a curse word it would not write can be hiding: on Ryan's DeWalt/Milwaukee cut the
+    hidden "ass" sat under "acting" (0.18 s, probability 0.48), which the loud-and-stretched rule never tried and masking it revealed. These are only places to LISTEN AGAIN:
+    nothing is shown or bleeped unless a listed word appears when the stretch is silenced. Words already listed, and stretches inside a loud one, are skipped."""
+    out = []
+    for w, st, en, pr in (detail or []):
+        if pr < REVEAL_UNSURE_P and en - st >= REVEAL_UNSURE_MIN_SEC and not is_profane(w, pats) and not any(st < lb and en > la for la, lb in loud):
+            out.append((round(st, 3), round(en, 3)))
+    return out
 REVEAL_PARTS = (0.85, 0.6, -0.6)                               # mask the first 85% of the stretch, the first 60%, the last 60% (negative = from the end)
 
 
@@ -223,11 +235,13 @@ def reveal(speech: np.ndarray, regions: list[tuple[float, float]], words_of, pat
             write_wav(wav, x, sr)
             for h in find_hits(words_of(wav), pats):
                 hs, he = h["start"] + t0, h["end"] + t0
-                if any(abs(hs - o["word_start"]) < 0.25 for o in out):
+                dup = next((o for o in out if abs(hs - o["word_start"]) < 0.25), None)
+                if dup is not None:
+                    dup["votes"] += 1                                # the same word heard again under another way of silencing the stretch
                     continue
                 # the span is the WORD's own (Whisper's timing, good to about 0.1 s); joining it to the silenced stretch dragged the start 0.5 s early on the real cut
                 out.append({"word": h["word"], "start": round(hs, 3), "end": round(he, 3), "word_start": round(hs, 3), "word_end": round(he, 3),
-                            "revealed": True, "masked": [[round(ma, 3), round(mb, 3)]]})
+                            "revealed": True, "votes": 1, "masked": [[round(ma, 3), round(mb, 3)]]})
     return out
 
 
@@ -561,6 +575,9 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     loud = [(x_["start"], x_["end"]) for x_ in find_suspects(words, speech, min_signals=2, require_doubt=False) if "burst" in x_.get("signals", [])] if detect else []
     if reveal_with is not None:                                   # loud stretches Whisper may be hiding a curse word behind: silence them and listen again
         revealed = reveal(speech, loud, reveal_with, pats, out)
+        for r_ in reveal(speech, unsure_regions(detail, pats, loud), reveal_with, pats, out):    # a word heard under just one way of silencing is usually Whisper inventing it: wants two
+            if r_["votes"] >= REVEAL_UNSURE_VOTES and not any(abs(r_["word_start"] - o["word_start"]) < 0.25 for o in revealed):
+                revealed.append(r_)
         hits += [{"word": f"{h['word']} (was hidden; revealed by silencing {h['masked'][0][0]:.2f}-{h['masked'][0][1]:.2f}s)" if h["masked"] else f"{h['word']} (revealed)",
                   "start": h["start"], "end": h["end"], "source": "revealed"} for h in revealed if not any(abs(h["word_start"] - q["start"]) < 0.3 for q in hits)]
     for h in hits:                                                # Whisper's word ends stretch over pauses: pull each automatic hit's end back to where the sound stops
