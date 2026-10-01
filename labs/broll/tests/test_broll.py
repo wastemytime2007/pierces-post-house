@@ -88,3 +88,33 @@ def test_a_line_that_names_a_page_gets_that_page_and_the_most_specific_one():
     assert got("Visit our website") == ["home.png"]
     assert got("I tore this piece off of here") == [] and got("Okay.") == []
     assert sg.named_pages("reviews", [frames[3]]) == []                                  # only a capture from a captures folder counts, not any file called reviews.png
+
+
+def test_a_tree_is_walked_for_videos_only_and_named_and_cache_folders_are_left_out_and_reported(tmp_path, monkeypatch):
+    monkeypatch.setattr(pl, "probe_duration", lambda p: 30.0)
+    top = tmp_path / "SOLDFAST"
+    for rel in ("REELS/a.mp4", "REELS/qr.png", "Testimony Videos/t.mp4", "TRAININGS 6:25/long.mp4", "SoldFast 2026/Adobe Premiere Pro Auto-Save/x.mp4",
+                "SoldFast 2026/deep/b.mov", "SoldFast 2026/proxies/p.mp4", "House Reel.mp4", "layers.psd"):
+        f = top / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x")
+    keep, left = pl.list_sources([], [top], ("Testimony", "TRAININGS"))
+    assert sorted(str(Path(k["file"]).relative_to(top)) for k in keep) == ["House Reel.mp4", "REELS/a.mp4", "SoldFast 2026/deep/b.mov"]
+    assert all(k["kind"] == "video" for k in keep)                                             # the png and psd are not B-roll in a tree
+    skipped = sorted(Path(x["file"]).name for x in left if "skipped on purpose" in x["why"])
+    assert skipped == ["TRAININGS 6:25", "Testimony Videos"]                                    # said, not silently dropped
+    keep2, _ = pl.list_sources([], [top], ())
+    assert any("Testimony" in k["file"] for k in keep2)                                         # without --skip-folder it is read
+
+
+def test_excluded_files_never_appear_among_a_lines_candidates(tmp_path, monkeypatch):
+    pool_dir = tmp_path / "pool"
+    pool_dir.mkdir()
+    frames = [{"file": "/x/How To - Tile A Bathroom.mp4", "time": 0, "frame": "a.jpg", "kind": "video"}, {"file": "/x/Other.mp4", "time": 0, "frame": "b.jpg", "kind": "video"}]
+    (pool_dir / "pool.json").write_text(json.dumps({"frames": frames}))
+    np.save(pool_dir / "embeddings.npy", np.eye(2, dtype="float32"))
+    monkeypatch.setattr(sg.pl, "embed_texts", lambda texts: np.array([[1.0, 0.0]] * len(texts), dtype="float32"))        # the line looks exactly like the first frame
+    row = sg.suggest(pool_dir, [{"text": "tile a bathroom", "start": 0, "end": 1}], 3, exclude=("Tile A Bathroom",))[0]
+    assert [Path(c["file"]).name for c in row["candidates"]] == ["Other.mp4"]
+    row = sg.suggest(pool_dir, [{"text": "tile a bathroom", "start": 0, "end": 1}], 3)[0]
+    assert Path(row["candidates"][0]["file"]).name == "How To - Tile A Bathroom.mp4"            # and without it, the cut finds itself

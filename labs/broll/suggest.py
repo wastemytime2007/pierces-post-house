@@ -95,10 +95,14 @@ def judge(best: float, median: float) -> bool:
     return best >= SCORE_MIN and (best - median) >= MARGIN_MIN
 
 
-def suggest(pool_dir: Path, lines: list[dict], top: int = 3) -> list[dict]:
+def suggest(pool_dir: Path, lines: list[dict], top: int = 3, exclude: tuple[str, ...] = ()) -> list[dict]:
+    """`exclude`: file-name fragments left out of the candidates (a cut's own finished export would otherwise 'match' itself)."""
     meta = json.loads((pool_dir / "pool.json").read_text())
     emb = np.load(pool_dir / "embeddings.npy")
     frames = meta["frames"]
+    if exclude:
+        keep = [i for i, f in enumerate(frames) if not any(x.lower() in Path(f["file"]).name.lower() for x in exclude)]
+        emb, frames = emb[keep], [frames[i] for i in keep]
     qs = pl.embed_texts([l["text"] for l in lines])
     out = []
     for l, q in zip(lines, qs):
@@ -168,11 +172,12 @@ def main(argv=None) -> int:
     ap.add_argument("--captions", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--top", type=int, default=3)
+    ap.add_argument("--exclude", action="append", default=[], help="leave out pool files whose name contains this (the cut's own finished export)")
     ap.add_argument("--check", action="append", default=[], help='"query=expected file-name fragment", e.g. "aerial drone footage=DRONE|Rio Cibolo" (any fragment after | also counts)')
     a = ap.parse_args(argv)
     try:
         pool_dir, out = Path(a.pool).expanduser(), Path(a.out).expanduser()
-        rows = suggest(pool_dir, load_lines(Path(a.captions).expanduser()), a.top)
+        rows = suggest(pool_dir, load_lines(Path(a.captions).expanduser()), a.top, tuple(a.exclude))
         checks = run_checks(pool_dir, [tuple(c.rsplit("=", 1)) for c in a.check], a.top) if a.check else []
     except (pl.PoolError, FileNotFoundError) as e:
         print(f"B-roll suggestions: {e}", file=sys.stderr)
