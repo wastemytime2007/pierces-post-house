@@ -46,7 +46,9 @@ TESTS = [
      [("Fix bleeps on the smoke detectors cut (open this)", "2 - NEXT CUT - smoke detectors (open this one)/review/review.html"), ("Second cuts: results", "Second real cuts - bleep test results.txt"), ("What it has learned", "What the bleep tool has learned.txt")]),
     ("13", "The DeWalt / Milwaukee video: bleeps to fix", "NEW. Open the page in '3 - Milwaukee vs DeWalt RAW (open this one)' (the un-bleeped file, Bit_1, 20.7 s). The tool heard 64 words and bleeped one stretch, 11.30-11.83 s, covering 'fuck' and 'Dick'. Listen: is 'Dick' a name or a curse here, and does the bleep fit? Drag it to fit, add any the tool missed with '+ Bleep at the playhead', Download bleep edits and send me the file.",
      [("Review page (open this)", "3 - Milwaukee vs DeWalt RAW (open this one)/review/review.html")]),
-    ("14", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
+    ("14", "B-roll suggestions from soldfast.com and your portfolio videos", "NEW, suggestions only, nothing is placed. Open the stand-in sheet in 'B-roll pool (proof)/Stand-in script (not a real cut)': seven made-up lines, five get a suggestion (a website page when the line names one, a reel frame when it looks like the words). Do the pictures make sense? Then open 'Tiling window': your real cut gets no suggestions, which I think is right for a tiling tutorial. Tell me which cut should draw on the website or the reels.",
+     [("Stand-in sheet (open this)", "B-roll pool (proof)/Stand-in script (not a real cut)/suggestions.html"), ("Real Tiling window", "B-roll pool (proof)/Tiling window/suggestions.html")]),
+    ("15", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
      [("XML", f"{E}/Runnells_Tiling_v3_layers_v4.xml")]),
 ]
 
