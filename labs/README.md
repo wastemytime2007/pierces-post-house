@@ -22,7 +22,7 @@ the workflow as a reusable skill (install: `cp -R labs/skill/post-house-review-l
 | QA every note against the new version | `qa/qa_pass.py` | `qa/README.md` |
 | Style from a reference video (measure and suggest) | `style/style_profile.py` | `style/README.md` |
 | Emulate a reference video (pick aspects, default all) | `style/emulate.py`, `style/style_brief.html` | `style/README.md` |
-| B-roll from the website and from past work (suggestions only, nothing placed) | `broll/capture_site.py`, `pool.py`, `suggest.py` | `broll/README.md` |
+| B-roll from the website, SoldFast exports and raw footage (suggestions only, nothing placed; optional vision check) | `broll/capture_site.py`, `pool.py`, `lines.py`, `suggest.py`, `judge.py` | `broll/README.md` |
 | One place for every version and asset | `project/project.py` | `project/README.md` |
 
 Run all tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs -q`.

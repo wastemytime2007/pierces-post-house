@@ -55,12 +55,60 @@ run. Value ported to four global skills (`soldfast-content-funnels`,
 Creative Editor role loads. `studio.py` and the vault are dead, left alone,
 not revived.
 
+**Current work (2026-10-01): the creator-workflow build in `labs/`** (review loop, overlays, captions, audio, bleeps, B-roll). It is standalone and not in `app/`; the checkpoint at the top of
+§ In progress says what is signed off, what is built but unjudged, what is left, and what Ryan tests next.
+
 **New non-negotiable rules, `CLAUDE.md` §7-8**: prove every new capability
 on one clip/transcript/interview before scaling, and one role in flight at a
 time with Ryan's tested sign-off as the only valid "done." Both exist
 because this session violated them once each.
 
 ## In progress
+
+### CHECKPOINT 2026-10-01: the creator-workflow build in `labs/` (paused by Ryan; read this first)
+
+Scope (Ryan, 2026-09-29): the skills from the creator's TikTok and "Forget Capcut" YouTube video, built standalone in `labs/`, **nothing in `app/` until all of them are finished and tested, then all at once**
+(ROADMAP Decision Log, 2026-09-29). State on the branch `worktree-review-loop-spike` (pushed): 10 tool folders under `labs/`, **303 tests pass** (`PRECUT_ROOT=~/precut-checkout python3 -m pytest labs -q`; audio 44,
+bleep 51, broll 14, captions 15, overlay 59, project 10, qa 15, reconform 11, review_loop 56, style 28), 57 commits ahead of the main line. Tests passing proves the code runs; "done" below means Ryan said so.
+
+**A. Signed off by Ryan.** Review page with timecoded notes and drawing on the frame; notes to a revised cut; the callout (motion graphic) layer and its placement in the XML, confirmed in Premiere; captions (first
+window); generated sound effect and music bed; layers shown on the page; reconform (layers kept through a revision); the per-version QA pass; the beatmap. Also his own words on the bleep: "yes it works" (the live tone)
+and his hand-placed bleep at 29.44-29.70 s on the Tiling cut (applied exactly).
+
+**B. Built, NOT yet judged by Ryan** (the folder to open is in the testing guide, `~/Documents/Post House Reviews/TESTING - creator workflow.html`, entries 2-14):
+- click any timeline box to note the whole element (2); keep a callout longer (3); change a callout's words (4); image card, border and highlight a screenshot (5); replace a sound effect from a note (6)
+- music like a reference track and ranking his library (7); style from a reference video (8); emulate a reference on chosen aspects, default all (9); reference music taken from the reference video (10)
+- **bleeps**: the automatic tool (listed words Whisper writes, curse words Whisper hides found by silencing and listening again, low-confidence words re-listened to and kept only if two tries agree), end-of-word trimming,
+  silence rounded outward to whole frames, drag-to-edit bleeps on the page, `apply_edits.py`, and the learning from his edits (6 judged bleeps from 2 real cuts); finished videos accepted through `xml_from_media.py` (11-13)
+- **B-roll from soldfast.com and his SoldFast work** (14): `labs/broll/` (site capture, pool of finished exports and of raw-clip proxies, speech lines from a video, suggestions with a vision check), suggestions only
+- the project index, the skill (`labs/skill/post-house-review-loop`, not installed into `~/.claude/skills`, his global config) and the testing guide
+
+**C. Still to do** (nothing below is started unless it says so):
+- multiple sound effects per cut (today one); this is the largest gap in the creator's audio workflow
+- B-roll: make it repeatable (judge frames one at a time, keep a frame only when two asks agree; the model's picks differed between runs), place accepted suggestions as a layer on the review page, prove it on a real
+  cut whose speech calls for it (the Tiling window gets 1 of 16 lines, the faucet video about 6 of 23 per run), and settle clearance (below)
+- bleeps: scan speed (a 20 s clip takes about 55 s, a 38 s cut 130-180 s, because of the repeated listening); more real cuts with curses so the learning has more than 2 cuts; a larger Whisper model and voice/music
+  separation (Demucs) are untried; the smoke detectors cut ("2 - NEXT CUT") has no curse words found yet
+- "remove the text behind the logo" as such (no on-screen text in the footage to test it on); crop or reframe from a drawing (Premiere's Auto Reframe for now, ROADMAP 2026-09-30)
+- the assumed-out parts of the creator's demo, still awaiting Ryan's confirmation: an AI talking head, an AI clone, a script from a blog post, the hat change, the Spanish version
+- integration into `app/`: only when every item here is finished and tested
+
+**D. Testing next, in this order** (his, on real material; the guide has the links):
+1. Entry 15, **Premiere import of the newest XML**: V1 cut, V2 callout, V3 image card, V4 captions, audio tracks. The one export-level fact not yet confirmed; everything else rests on it.
+2. Entry 13, **DeWalt / Milwaukee bleeps**: his edits are applied (11.58-11.79 s and 18.20-18.43 s); listen and confirm. Also, was "Dick" at 11.48 s a name or a curse?
+3. Entry 14, **B-roll sheets** (faucet video, Tiling window): would he use suggestions like the pull-down faucet and the soap dispenser, and is a pick-from list the right shape or should it place them?
+4. Entries 2-10, **the built-not-judged tools**, in the guide's order (click-to-note first, since it changes how every other note is made).
+5. Entry 12, the **smoke detectors** cut: any curse words there for him to add (so the tool can learn)?
+
+**E. Waiting on Ryan.** Where music and SFX come from (generated, or his local Artlist library at `~/Downloads/Artlist Library`); ElevenLabs commercial terms for generated sound effects (unconfirmed, nothing generated
+ships until checked); the 1.5 s default for "keep longer"; **B-roll clearance**: the pool leaves out `SOLDFAST TRAININGS`, `SoldFast Enhancements`, the testimony folders (customers on camera, releases unknown) and the
+Agent Trainings project folders on purpose, and the `Portfolio Videos` folder (he said it is unrelated; it also holds full movies) was dropped; whether a customer's name and quote on a captured soldfast.com page may appear.
+
+**F. Limits worth remembering.** Hidden-curse-word recall rests on two real examples, and the 2-vote rule was chosen after seeing those cuts. The vision check is a model's judgement, not a measurement, and is not repeatable
+between runs. A raw clip returned for a line may be footage the cut already uses (cannot be told from a finished export). Finished exports carry burned-in captions, so they make poor B-roll; raw proxies do not.
+The `labs/bleep` learning folder holds Ryan's real edits (times only, never audio); the tests run against an empty learning folder so it cannot change what they expect.
+
+---- older entries, newest work appended below this point in date order ----
 
 - **2026-09-29 — Scope of "all of the tasks": the skills from the TikTok and
   the "Forget Capcut" YouTube video Ryan shared** (creator Caleb, @mr.paidsocial;
@@ -2935,6 +2983,9 @@ because this session violated them once each.
 
 ## Next — skills checklist (role-sequencing gate lifted 2026-09-03)
 
+> **2026-10-01: for the current push, the checkpoint at the top of § In progress (sections C and D) supersedes this list.** What follows is the older per-skill grading of the five roles; it is not
+> retired, and the roles are not part of the creator-workflow set unless that checkpoint says so.
+
 Per `CLAUDE.md` rule 8 (amended 2026-09-03): Ryan directed building every
 role's skills in parallel — "handle all of the skills across the board" —
 rather than gating the next role on the current one's full sign-off. Role
@@ -3278,4 +3329,4 @@ the Lead before any re-dispatch; empty so far)*
 
   **Correction, B-roll pool (2026-09-30):** Ryan: "The portfolio videos are unrelated. The SoldFast Exports is the folder that you'd pull from" and the main SoldFast folder. The Portfolio Videos pool and its sheets were deleted; `labs/broll` now builds the pool from `~/Desktop/SoldFast Exports` and `/Users/ryandossey/Documents/ACTIVE PROJECTS/SOLDFAST` (428 frames, 30 files; training, testimony and Enhancements folders skipped on purpose and reported). **Result, looked at frame by frame: about 2 of 5 suggestions are usable.** Faucet export (23 lines): 3 suggested, 2 plausible, 1 wrong (matched the word "lines" in a burned-in caption); Tiling window: 2 suggested, both wrong. Two causes found: finished exports carry burned-in captions that CLIP reads and that would travel into a new video, and a score cannot tell "nothing fits" from "a weak fit". Not good enough to place automatically; nothing is placed. Options (not built): pool from raw clips instead of finished exports; a vision-model yes/no check per candidate. Built, NOT yet judged by Ryan.
 
-  **B-roll: raw clips and a vision check added (Ryan: "do both"), NOT yet judged by him (2026-09-30).** A raw pool (8,005 frames, 87 raw clips via their proxies on `RDOSS_2025`) and `suggest.py --vision` (a model, via the free `claude` CLI, says whether a frame clearly shows what a line is about and has no burned-in text). Result, frames opened: the vision check removes the earlier failures (caption-word matches, wrong frames for conversation), raw frames are clean, and the best matches are right (a black pull-down faucet for "chef faucets", a soap dispenser for "soap dispenser", a torn drywall patch for "tore this piece off"). But the model's answers are NOT repeatable: five versus eight candidates per line gave different lines (only 2 of 6 in common), so any one run finds about 6 of the faucet video's 23 lines and the union over runs is about 10. It is a proposal list for a person to pick from; nothing is placed, nothing is in `app/`. 17 tests in `labs/broll`. Open: judge frames one at a time with two agreeing asks; whether the raw clip returned is already the cut's own A-roll (cannot be told from a finished export).
+  **B-roll: raw clips and a vision check added (Ryan: "do both"), NOT yet judged by him (2026-09-30).** A raw pool (8,005 frames, 87 raw clips via their proxies on `RDOSS_2025`) and `suggest.py --vision` (a model, via the free `claude` CLI, says whether a frame clearly shows what a line is about and has no burned-in text). Result, frames opened: the vision check removes the earlier failures (caption-word matches, wrong frames for conversation), raw frames are clean, and the best matches are right (a black pull-down faucet for "chef faucets", a soap dispenser for "soap dispenser", a torn drywall patch for "tore this piece off"). But the model's answers are NOT repeatable: five versus eight candidates per line gave different lines (only 2 of 6 in common), so any one run finds about 6 of the faucet video's 23 lines and the union over runs is about 10. It is a proposal list for a person to pick from; nothing is placed, nothing is in `app/`. 14 tests in `labs/broll`. Open: judge frames one at a time with two agreeing asks; whether the raw clip returned is already the cut's own A-roll (cannot be told from a finished export).

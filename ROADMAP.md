@@ -2558,3 +2558,23 @@ with Ryan touching only the intake and the checkpoints.
   `bleep.py` reads on every run: padding per kind of hit, shrunk toward the defaults as (n x median + 3 x default) / (n + 3) and bounded; the reach for hidden words, lowered
   (never raised) only after three or more added bleeps. It never turns a detector off or edits the word list; reliability counts are only reported. Seeded from his one real edit
   and three "no" answers. Also: the pipeline ran on four more real cuts (about 660 words): no false alarms; recall on hidden words there is unknown.
+
+- **2026-09-30 (fourth addendum to the automatic-bleep entry) — only definitive curse words are bleeped; ordinary words are never flagged.** Ryan: "Why is it pulling normal words like so, real, now, because,
+  just, when, that's a massive waste. Just apply bleeps to definitive curse words and let me add to any that may be missed." The "suspect" stretches (stretched, unsure or disagreed-on ordinary words) are off by default
+  (`--flag-suspects` keeps them for debugging) and the second Whisper pass that produced them is gone. A curse word is "definitive" when it is on `profanity.txt` (or learned from his edits) and Whisper wrote it, or when it is
+  revealed by silencing a stretch and listening again. 2026-09-30, after his edits on the DeWalt/Milwaukee cut: words Whisper was unsure of (probability under 0.5) are also silenced and re-listened to, because the hidden
+  "ass" there sat under a 0.18 s word the loud-and-stretched rule never tried; a word found that way is kept only if it appears under 2 of the 3 ways of silencing (Whisper also invents curse words over silenced audio).
+  Evidence: re-scored on three real cuts, his two bleeps found and nothing extra; chosen after seeing those cuts and resting on one real hidden word. Cost: scans take 55-180 s.
+
+- **2026-09-30 — A finished video can go through the bleep pipeline, and `verify_export`'s CUT-GRANULARITY check is skipped for that one shape only.** Ryan's DeWalt/Milwaukee video exists only as a finished
+  mp4, so `labs/review_loop/xml_from_media.py` writes a one-clip XML from it (size and frame rate unchanged) carrying the marker `posthouse: whole video file`. CUT-GRANULARITY (rule 10: no coarse slabs of footage) cannot apply
+  to a single finished file, and `labs/review_loop/export_gate.py` skips it only for an XML with that marker; every other check still runs. A single-clip XML WITHOUT the marker still fails it (test with a negative control).
+  This is a narrow exception to the export safety net, logged here because rule 10 is Ryan's.
+
+- **2026-09-30 / 2026-10-01 — B-roll from soldfast.com and his own SoldFast work, as suggestions only.** Ryan: "it could be valuable for the app to pull content from the website or any of our previously built assets as
+  b-roll when appropriate." Website: soldfast.com (menu pages captured as stills with headless Chrome). Sources, after he corrected the first choice ("the portfolio videos are unrelated"): the finished exports in
+  `~/Desktop/SoldFast Exports` and the main SoldFast folder (`/Users/ryandossey/Documents/ACTIVE PROJECTS/SOLDFAST`, read only), and raw project footage through its proxy copies on `RDOSS_2025`. Left out on purpose:
+  `SOLDFAST TRAININGS`, `SoldFast Enhancements`, the testimony folders (customers on camera, releases unknown), the Agent Trainings project folders, and the Portfolio Videos folder (unrelated; holds full movies). The tool
+  PROPOSES a contact sheet per cut and places nothing; a page the speaker names ("our reviews") gets that page; a vision check (the local `claude` CLI, free, no API key) filters candidates and rejects frames with burned-in
+  text. Reasons: finished exports carry burned-in captions that travel into a new video, and a similarity score cannot tell a weak fit from no fit. Not decided: placement in a cut, and clearance of customer and client material.
+  Built and measured in `labs/broll/README.md`; the vision check is not repeatable run to run, so it is a pick-from list for now.

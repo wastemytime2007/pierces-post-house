@@ -32,4 +32,4 @@ Not checked: whether a raw clip returned for a line is footage the cut already u
 
 **Limits.** Stills only (no scrolling recordings of the site). A site capture shows today's page, including a chat bubble and a customer's name and quote. A still every 3 s stands in for a clip. No placement, timing or in/out points.
 
-Tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs/broll -q` (17).
+Tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs/broll -q` (14).
