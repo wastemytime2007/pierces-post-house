@@ -41,7 +41,7 @@ def probe_duration(path: Path) -> float:
         return 0.0
 
 
-def classify(path: Path, duration: float | None = None) -> tuple[str, str]:
+def classify(path: Path, duration: float | None = None, movie_max: float = MOVIE_MAX_SEC) -> tuple[str, str]:
     """('video'|'image'|'skip', reason). Pure apart from the optional duration probe, so it is testable."""
     ext = path.suffix.lower()
     if ext in IMAGE_EXT:
@@ -51,7 +51,7 @@ def classify(path: Path, duration: float | None = None) -> tuple[str, str]:
     if FILM_NAME.search(path.stem):
         return "skip", "named like a film release (not footage Ryan made)"
     d = probe_duration(path) if duration is None else duration
-    if d > MOVIE_MAX_SEC:
+    if movie_max and d > movie_max:
         return "skip", f"{d / 60:.0f} minutes long: a full-length movie, not B-roll"
     if d <= 0:
         return "skip", "could not read its duration"
@@ -61,20 +61,21 @@ def classify(path: Path, duration: float | None = None) -> tuple[str, str]:
 CACHE_DIRS = ("Adobe Premiere Pro", "proxies", "Proxies", "Auto-Save", "Audio Previews", "Captured and Generated")
 
 
-def tree_files(root: Path, skip: tuple[str, ...] = ()) -> list[Path]:
+def tree_files(root: Path, skip: tuple[str, ...] = (), keep_proxies: bool = False) -> list[Path]:
     """Every file under `root`, depth first, except hidden files and folders, editor cache folders, and folders whose name matches one of `skip` (case-insensitive substring)."""
     out = []
     for dp, dn, fn in os.walk(root):
-        dn[:] = sorted(d for d in dn if not d.startswith(".") and not any(c in d for c in CACHE_DIRS) and not any(k.lower() in d.lower() for k in skip))
+        caches = tuple(c for c in CACHE_DIRS if not (keep_proxies and c.lower() == "proxies"))
+        dn[:] = sorted(d for d in dn if not d.startswith(".") and not any(c in d for c in caches) and not any(k.lower() in d.lower() for k in skip))
         out += [Path(dp) / f for f in sorted(fn)]
     return out
 
 
-def list_sources(srcs: list[Path], trees: list[Path] | None = None, skip: tuple[str, ...] = ()) -> tuple[list[dict], list[dict]]:
+def list_sources(srcs: list[Path], trees: list[Path] | None = None, skip: tuple[str, ...] = (), keep_proxies: bool = False, movie_max: float = MOVIE_MAX_SEC) -> tuple[list[dict], list[dict]]:
     """`srcs` are read one level deep (videos and images); `trees` are walked all the way down but only VIDEOS are taken (a folder tree of a business holds
     QR codes, banners and layered files that are not B-roll). `skip` names folders left out of a tree, and each is reported."""
     keep, left_out, seen = [], [], set()
-    work = [(src, sorted(q for q in src.iterdir() if q.is_file()), False) for src in srcs] + [(t, tree_files(t, skip), True) for t in (trees or [])]
+    work = [(src, sorted(q for q in src.iterdir() if q.is_file()), False) for src in srcs] + [(t, tree_files(t, skip, keep_proxies), True) for t in (trees or [])]
     for t in trees or []:
         for dp, dn, _fn in os.walk(t):
             for d in dn:
@@ -86,7 +87,9 @@ def list_sources(srcs: list[Path], trees: list[Path] | None = None, skip: tuple[
                 continue
             if videos_only and p.suffix.lower() not in VIDEO_EXT:
                 continue
-            kind, why = classify(p)
+            if videos_only and keep_proxies and "proxies" not in [x.lower() for x in p.relative_to(src).parts[:-1]]:
+                continue                                          # --proxies: the small working copies only, never the originals beside them (same footage twice)
+            kind, why = classify(p, movie_max=movie_max)
             if kind == "skip":
                 if p.suffix.lower() in VIDEO_EXT | IMAGE_EXT or why.startswith(("named", "could")):
                     left_out.append({"file": str(p), "why": why})
@@ -158,14 +161,14 @@ def embed_texts(texts: list[str]) -> np.ndarray:
     return (e / e.norm(dim=-1, keepdim=True)).numpy()
 
 
-def build(srcs: list[Path], out: Path, every: float = 3.0, trees: list[Path] | None = None, skip: tuple[str, ...] = ()) -> dict:
+def build(srcs: list[Path], out: Path, every: float = 3.0, trees: list[Path] | None = None, skip: tuple[str, ...] = (), keep_proxies: bool = False, movie_max: float = MOVIE_MAX_SEC) -> dict:
     for s in list(srcs) + list(trees or []):
         if not s.is_dir():
             raise PoolError(f"{s} is not a folder")
     out.mkdir(parents=True, exist_ok=True)
     frames = out / "frames"
     frames.mkdir(exist_ok=True)
-    keep, left_out = list_sources(srcs, trees, skip)
+    keep, left_out = list_sources(srcs, trees, skip, keep_proxies, movie_max)
     if not keep:
         raise PoolError("nothing usable in those folders (every file was left out)")
     rows = []
@@ -184,6 +187,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--src", action="append", default=[], help="a folder of videos / images, read one level deep (repeat for more)")
     ap.add_argument("--tree", action="append", default=[], help="a folder walked all the way down, videos only (repeat for more)")
+    ap.add_argument("--proxies", action="store_true", help="in a --tree read ONLY the `proxies` folders (small working copies of raw footage, named like the raw clips), not the originals beside them")
+    ap.add_argument("--any-length", action="store_true", help="no 20-minute limit (raw camera clips run that long; the limit exists to catch full-length movies)")
     ap.add_argument("--skip-folder", action="append", default=[], help="leave out any folder in a --tree whose name contains this (repeat for more)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--every", type=float, default=3.0, help="seconds between frames (default 3)")
@@ -191,7 +196,7 @@ def main(argv=None) -> int:
     try:
         if not (a.src or a.tree):
             raise PoolError("give at least one --src or --tree folder")
-        meta = build([Path(s).expanduser() for s in a.src], Path(a.out).expanduser(), a.every, [Path(t).expanduser() for t in a.tree], tuple(a.skip_folder))
+        meta = build([Path(s).expanduser() for s in a.src], Path(a.out).expanduser(), a.every, [Path(t).expanduser() for t in a.tree], tuple(a.skip_folder), a.proxies, 0 if a.any_length else MOVIE_MAX_SEC)
     except PoolError as e:
         print(f"B-roll pool: {e}", file=sys.stderr)
         return 1

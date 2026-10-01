@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import capture_site as cs
+import judge as jg
 import pool as pl
 import suggest as sg
 
@@ -118,3 +119,78 @@ def test_excluded_files_never_appear_among_a_lines_candidates(tmp_path, monkeypa
     assert [Path(c["file"]).name for c in row["candidates"]] == ["Other.mp4"]
     row = sg.suggest(pool_dir, [{"text": "tile a bathroom", "start": 0, "end": 1}], 3)[0]
     assert Path(row["candidates"][0]["file"]).name == "How To - Tile A Bathroom.mp4"            # and without it, the cut finds itself
+
+
+def test_proxies_mode_takes_only_the_proxy_copies_and_never_the_originals_beside_them(tmp_path, monkeypatch):
+    monkeypatch.setattr(pl, "probe_duration", lambda p: 30.0)
+    top = tmp_path / "Shoot"
+    for rel in ("Day 1/Osmo/DJI_0001_D.MP4", "Day 1/Osmo/proxies/DJI_0001_D.mp4", "Day 1/Osmo/proxies/._DJI_0001_D.mp4", "Day 2/Osmo/DJI_0002_D.MP4"):
+        f = top / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x")
+    keep, _ = pl.list_sources([], [top], (), keep_proxies=True)
+    assert [str(Path(k["file"]).relative_to(top)) for k in keep] == ["Day 1/Osmo/proxies/DJI_0001_D.mp4"]          # not the originals, not the ._ AppleDouble file
+    keep_default, _ = pl.list_sources([], [top], ())
+    assert sorted(Path(k["file"]).name for k in keep_default) == ["DJI_0001_D.MP4", "DJI_0002_D.MP4"]            # by default proxies are cache and skipped
+
+
+def test_a_missing_short_or_garbled_vision_reply_is_a_no_for_that_frame_never_a_yes():
+    ok = '[{"n":1,"fits":true,"text_overlay":false,"why":"valve under sink"},{"n":2,"fits":false,"text_overlay":true,"why":"caption"}]'
+    v = jg.parse("Here you go:\n" + ok + "\nDone.", 2)
+    assert [(x["fits"], x["text_overlay"]) for x in v] == [(True, False), (False, True)]
+    short = jg.parse(ok, 3)
+    assert short[2] == {"fits": False, "text_overlay": False, "why": "no verdict returned"}          # the model skipped frame 3
+    assert all(not x["fits"] for x in jg.parse("I could not read the images", 2)) and all(not x["fits"] for x in jg.parse("[not json]", 2))
+    assert jg.parse('[{"n":1,"fits":"yes"}]', 1)[0]["fits"] is False                                   # only a real true counts
+    assert jg.parse('[{"n":9,"fits":true}]', 2)[0]["fits"] is False                                    # an out-of-range number is ignored
+
+
+def test_judge_line_caches_by_line_and_frames_and_refuses_frames_that_are_not_there(tmp_path):
+    f1, f2 = tmp_path / "a.jpg", tmp_path / "b.jpg"
+    f1.write_bytes(b"x")
+    f2.write_bytes(b"x")
+    calls = []
+    ask = lambda prompt: (calls.append(prompt), '[{"n":1,"fits":true,"text_overlay":false,"why":"ok"},{"n":2,"fits":false,"text_overlay":false,"why":"no"}]')[1]
+    cache = {}
+    a = jg.judge_line("a valve", [f1, f2], ask, cache)
+    b = jg.judge_line("a valve", [f1, f2], ask, cache)
+    assert a == b and len(calls) == 1                                                                   # the second call is free
+    jg.judge_line("another line", [f1, f2], ask, cache)
+    assert len(calls) == 2                                                                              # a different line is a different question
+    assert "a valve" in calls[0] and str(f1) in calls[0] and "text_overlay" in calls[0]
+    with pytest.raises(jg.JudgeError):
+        jg.judge_line("x", [tmp_path / "missing.jpg"], ask, {})
+    assert jg.judge_line("x", [], ask, {}) == []
+
+
+def test_with_vision_a_line_matches_only_when_a_frame_fits_and_has_no_text_and_a_failed_check_is_none_and_says_so(tmp_path, monkeypatch):
+    pool_dir = tmp_path / "pool"
+    (pool_dir / "frames").mkdir(parents=True)
+    names = ["valve", "caption", "wrong"]
+    frames = []
+    for i, n in enumerate(names):
+        (pool_dir / "frames" / f"{n}.jpg").write_bytes(b"x")
+        frames.append({"file": f"/x/{n}.mp4", "time": 1.5, "frame": f"{n}.jpg", "kind": "video"})
+    (pool_dir / "pool.json").write_text(json.dumps({"frames": frames}))
+    np.save(pool_dir / "embeddings.npy", np.array([[1, 0, 0], [0.9, 0.1, 0], [0.8, 0.2, 0]], dtype="float32"))
+    monkeypatch.setattr(sg.pl, "embed_texts", lambda texts: np.array([[1.0, 0.0, 0.0]] * len(texts), dtype="float32"))
+    reply = '[{"n":1,"fits":true,"text_overlay":false,"why":"valve"},{"n":2,"fits":true,"text_overlay":true,"why":"caption on it"},{"n":3,"fits":false,"text_overlay":false,"why":"unrelated"}]'
+    row = sg.suggest(pool_dir, [{"text": "the shut-off valve", "start": 0, "end": 1}], vision=True, ask=lambda p: reply, vision_floor=0.0)[0]
+    assert row["match"] and row["how"] == "confirmed by vision"
+    assert [Path(c["file"]).name for c in row["candidates"]] == ["valve.mp4"]                          # the captioned frame "fits" but is refused
+    none = '[{"n":1,"fits":false,"text_overlay":false,"why":"x"},{"n":2,"fits":false,"text_overlay":false,"why":"y"},{"n":3,"fits":false,"text_overlay":false,"why":"z"}]'
+    row = sg.suggest(pool_dir, [{"text": "it is always on the left", "start": 0, "end": 1}], vision=True, ask=lambda p: none, vision_floor=0.0)[0]
+    assert not row["match"] and row["how"] == "none" and len(row["candidates"]) == 3 and row["candidates"][0]["verdict"]["why"] == "x"   # rejected ones are shown with the reason
+
+    def boom(prompt):
+        raise jg.JudgeError("claude CLI exited 1: not logged in")
+    row = sg.suggest(pool_dir, [{"text": "the shut-off valve", "start": 0, "end": 1}], vision=True, ask=boom, vision_floor=0.0)[0]
+    assert not row["match"] and "not logged in" in row["vision_error"]                                  # an error is never read as a yes
+    row = sg.suggest(pool_dir, [{"text": "the shut-off valve", "start": 0, "end": 1}], vision=True, ask=lambda p: reply, vision_floor=1.5)[0]
+    assert not row["match"] and row["checked"] == 0                                                      # below the floor: no model call at all
+
+
+def test_any_length_keeps_long_raw_clips_but_a_film_release_name_is_still_left_out():
+    assert pl.classify(Path("DJI_0001_D.mp4"), duration=1800)[0] == "skip"                                       # default: 30 minutes reads as a movie
+    assert pl.classify(Path("DJI_0001_D.mp4"), duration=1800, movie_max=0)[0] == "video"                         # --any-length: a raw clip
+    assert pl.classify(Path("Big.Film.2014.BluRay.x264.YIFY.mp4"), duration=60, movie_max=0)[0] == "skip"       # a film release is not footage Ryan shot, whatever its length
