@@ -142,7 +142,9 @@ def main() -> int:
         rows.append(("REFERENCE-MATCH", False, f"the reference track {mr['path']} is no longer there to measure against"))
 
     g = meta["generated"]
-    rows.append(("info: GENERATED", None, f"effect: \"{g['sfx']['prompt']}\" ({'reused from cache' if g['sfx']['cached'] else 'newly generated'}); music: \"{g['music']['prompt']}\" ({'reused from cache' if g['music']['cached'] else 'newly generated'})"))
+    sfx_how = (f"from your library: {g['sfx']['library_file']}" if g["sfx"].get("source") == "library" else
+               f"{'reused from cache' if g['sfx']['cached'] else 'newly generated, none in the library fit'}")
+    rows.append(("info: GENERATED", None, f"effect: \"{g['sfx']['prompt']}\" ({sfx_how}); music: \"{g['music']['prompt']}\" ({'reused from cache' if g['music']['cached'] else 'newly generated'})"))
 
     gating = {"REFERENCE-MATCH", "STEM-FORMAT", "MUSIC-AUDIBLE", "MUSIC-UNDER-SPEECH", "DUCKS", "SPEECH-LEVEL-KEPT", "SFX-QUIETER-THAN-SPEECH", "SFX-AT-CALLOUT", "MIX-NOT-CLIPPING", "FADES"}
     wd = max(len(r[0]) for r in rows)

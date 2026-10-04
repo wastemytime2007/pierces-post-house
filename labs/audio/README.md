@@ -106,3 +106,17 @@ placement adds frame-exact checks, that nothing else in the XML changed, and `ve
   in one cut, or the whole cut (one 22 s window only, rule 7).
 - ElevenLabs commercial-use terms for generated sound effects were not confirmed. Nothing generated ships
   in published work until they are.
+
+## Library first for sound effects; music is generated (Ryan, 2026-10-03)
+"Generate music and sfx from eleven labs. Only generate sfx for things that a sound doesn't already exist for in our library."
+- **Music** is generated with ElevenLabs (or reuses an exact earlier file); the Artlist music library is only ranked against a reference when asked (`reference_music.py --rank-library`).
+- **A sound effect** goes through `get_sfx` (make_audio.py; `replace_sfx.py` uses it too): `sfx_library.py` first asks the local `claude` CLI (free, text only) whether ONE file in the library is the same kind of
+  sound; a hit is used as it is (cut to 4 s with a short fade if longer), and only with no hit is one generated. The library is his Artlist sound-effects folder (`POSTHOUSE_SFX_LIBRARY` to change it) plus a store of
+  effects generated before (`~/Library/Application Support/Post House/generated_sfx`), so a sound is paid for once: a generated effect is saved there and the next request for it is a library hit.
+- **If the library cannot be checked the run refuses** instead of generating ("could not check" is not "nothing there"); a model answer naming a file that is not in the library also refuses.
+- `audio.json` records `source` (`library` or `elevenlabs`) and which file or why nothing fit; `verify_audio` shows it on its info line.
+- **Dry run, free:** `python3 labs/audio/sfx_library.py "a doorknob opening" "a record scratch"` says, per sound, `LIBRARY <file>` or `GENERATE`.
+- **Measured** on the real library (31 sounds): of 12 plausible sounds, 8 resolve to a library file and 4 would be generated (cash register, record scratch, applause, small explosion). One generated live (applause, 2.00 s,
+  peak -1.6 dBFS) and the second request for it was a library hit. Not heard by the author. The model's yes/no is a judgement: it first picked crowd cheering for "applause" and the question was tightened; the hammer-on-metal
+  and concrete-drill picks are borderline. The library check is cached by (question version, sound, library listing).
+- The bleep tool is separate: it lays a 1 kHz tone, not a library sound (his library has "Explainer Video - Censorship Tone Beep" and he has a "Censor Bleep Sound Effect.mp3"; whether the bleep should use one of those instead is his call).

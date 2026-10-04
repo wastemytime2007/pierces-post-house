@@ -77,6 +77,29 @@ def generate(kind: str, prompt: str, seconds: float, cache: Path, salt: str = ""
     return out, {"cached": False, "prompt": prompt, "ms": ms, "salt": salt, "file": out.name}
 
 
+def get_sfx(prompt: str, seconds: float, cache: Path, roots: list[Path] | None = None, ask=None) -> tuple[Path, dict]:
+    """A sound effect, LIBRARY FIRST (Ryan, 2026-10-03: "only generate sfx for things that a sound doesn't already exist for in our library"). The library (sfx_library.py) is checked for the
+    same kind of sound; a hit is used as it is (cut to 4 s at most) and costs nothing. Only with no hit is one generated with ElevenLabs, and it is then kept in the store so the next request
+    for that sound is a library hit. If the library cannot be checked this REFUSES rather than generating: "could not check" is not "nothing there"."""
+    import sfx_library as sl
+    try:
+        hit = sl.find(prompt, roots, ask or sl.ask_cli, cache / "library_check.json")
+    except sl.LibraryError as e:
+        raise AudioError(f"not generating a sound effect: the library could not be checked ({e})")
+    if hit["item"]:
+        it = hit["item"]
+        slug = re.sub(r"[^A-Za-z0-9]+", "_", Path(it["name"]).stem)[:60]
+        try:
+            path = sl.shorten(Path(it["file"]), cache / f"library_{slug}.wav")
+        except sl.LibraryError as e:
+            raise AudioError(str(e))
+        return path, {"source": "library", "library_file": it["name"], "library_path": it["file"], "why": hit["why"], "prompt": prompt, "cached": True, "ms": 0,
+                      "salt": "", "file": path.name, "library_checked": hit["checked"]}
+    mp3, info = generate("sfx", prompt, seconds, cache)
+    kept = sl.save_generated(mp3, prompt)
+    return mp3, {**info, "source": "elevenlabs", "library_checked": hit["checked"], "library_why": hit["why"], "kept_in_library_as": kept.name}
+
+
 def run(*args) -> str:
     p = subprocess.run(["ffmpeg", "-v", "error", "-y", *map(str, args)], capture_output=True, text=True)
     if p.returncode:
@@ -221,7 +244,7 @@ def main() -> int:
     try:
         speech = a.out / "speech_window.wav"
         speech_wav(a.base, speech, a.start, dur)
-        sfx_mp3, sfx_info = generate("sfx", a.sfx_prompt, 1.2, cache)
+        sfx_mp3, sfx_info = get_sfx(a.sfx_prompt, 1.2, cache)
         music_secs = a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0)
         music_ref = None
         if a.music_file:

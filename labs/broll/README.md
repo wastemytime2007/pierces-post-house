@@ -1,5 +1,7 @@
 # labs/broll: B-roll from the website and from past SoldFast videos (standalone, not in app/)
 
+> **On request only (Ryan, 2026-10-03): "Only use b-roll for things that I ask you to."** Nothing here runs on its own or is offered unprompted; it is used only for a moment or topic he names.
+
 Ryan (2026-09-30): "it could be valuable for the app to pull content from the website or any of our previously built assets as b-roll when appropriate." Website: soldfast.com. Pools, after he corrected the first choice
 ("the portfolio videos are unrelated"): the finished exports in `~/Desktop/SoldFast Exports` plus the main SoldFast folder, and the raw project footage (`/Users/ryandossey/Documents/ACTIVE PROJECTS/SOLDFAST`, read only).
 **Nothing is placed in any XML**: the thing Ryan can judge is a contact sheet of suggestions (rule 7: one unit, his review, then broaden).

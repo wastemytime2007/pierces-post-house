@@ -2578,3 +2578,10 @@ with Ryan touching only the intake and the checkpoints.
   PROPOSES a contact sheet per cut and places nothing; a page the speaker names ("our reviews") gets that page; a vision check (the local `claude` CLI, free, no API key) filters candidates and rejects frames with burned-in
   text. Reasons: finished exports carry burned-in captions that travel into a new video, and a similarity score cannot tell a weak fit from no fit. Not decided: placement in a cut, and clearance of customer and client material.
   Built and measured in `labs/broll/README.md`; the vision check is not repeatable run to run, so it is a pick-from list for now.
+
+- **2026-10-03 — Music and sound effects are generated with ElevenLabs; an effect only when his library has no such sound; B-roll only when he asks for it.** Ryan: "generate music and sfx from eleven labs. Only generate sfx for
+  things that a sound doesn't already exist for in our library. Only use b-roll for things that i ask you to." This settles the open question left by the 2026-09-29 spike and the 2026-08-31 Artlist decision: **music** is generated
+  (the Artlist music folder is only ranked against a reference on request); **sound effects are library first**: his Artlist sound-effects folder and the store of effects generated earlier are checked for the same kind of sound
+  (`labs/audio/sfx_library.py`, the free local `claude` CLI), a hit is used, and only with no hit is one generated and then kept in the store so it is paid for once. A failed library check refuses, it does not generate.
+  **B-roll** (`labs/broll`, ROADMAP 2026-09-30) is never applied on its own: it is used only for something Ryan asks for. Still open: ElevenLabs commercial terms for generated sound effects (unconfirmed); whether the bleep should use
+  a library sound instead of its 1 kHz tone.

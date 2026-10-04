@@ -50,12 +50,14 @@ TESTS = [
      [("Faucet video, exports + raw (open this)", "B-roll pool (proof)/Faucet video (vision, exports + raw)/suggestions.html"), ("Faucet video, 8 candidates", "B-roll pool (proof)/Faucet video (vision top 8)/suggestions.html"), ("Tiling window", "B-roll pool (proof)/Tiling window (vision, exports + raw)/suggestions.html")]),
     ("15", "Premiere import of the newest XML", "V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 sound effect. Does it import, and are positions and timing right? (It carries the stand-in callout changes.)",
      [("XML", f"{E}/Runnells_Tiling_v3_layers_v4.xml")]),
+    ("16", "Sound effects: library first, music generated", "NEW. Open 'library check - 12 sounds.txt': for twelve plausible sounds, which come from your Artlist library and which would be generated (8 and 4). Then listen to applause_generated.mp3, the one sound I generated for real because the library had no applause: does it sound like applause? Two library matches are judgement calls (a hammer-on-metal for a nail, a concrete drill for a power drill): are they acceptable? Also: should the bleep use your library's 'Censorship Tone Beep' instead of my 1 kHz tone?",
+     [("What the library has and lacks", "Audio library check (proof)/library check - 12 sounds.txt"), ("Generated applause (listen)", "Audio library check (proof)/applause_generated.mp3")]),
 ]
 
 DECISIONS = [
     "Default extra time when a note says \"longer\" with no amount: 1.5 s (I chose it; change with --default-extra).",
     "Captions style: white on a navy pill with a light-blue word highlight, in Inter because ITC Avant Garde is not installed. Say if you want the brand font installed.",
-    "Music and sound effects: generate, or use your Artlist library? You already have it locally (44 music folders / 50 files, 35 sound effects). Ranking your own tracks against a reference is free and licensed; generated music matched tempo but not tone. ElevenLabs' commercial terms for generated sound effects are unconfirmed, so nothing generated goes into published work until you check them.",
+    "Music and sound effects: SETTLED 2026-10-03 (yours): music is generated with ElevenLabs, and a sound effect is generated only when your Artlist library has no such sound. Still open: ElevenLabs' commercial terms for generated sound effects are unconfirmed, so nothing generated goes into published work until you check them.",
     "When should reconform run? Today you run it after revise.py when a layers warning appears. It could run automatically.",
     "Separating voice from music (Demucs). Voice-over reels like yours keep the music under every word, so their music cannot be isolated without it. It is a new dependency (and a model download), so I did not install it, least of all into PreCut's environment. Say if you want it in a separate one.",
     "Vertical reframe: the crop is a centre crop and cuts faces off. Premiere's Auto Reframe follows the subject. Build a subject-following reframe, or use Auto Reframe on the result?",
