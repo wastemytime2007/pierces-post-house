@@ -76,3 +76,55 @@ def test_a_moment_is_marked_used_only_when_the_finished_video_really_says_it(tmp
     assert bs.used_in(final, "nothing like it", "well we never have a rain day i am looking for people that are looking for") == "the finished video uses a passage from this moment"
     assert bs.used_in(final, "an unrelated headline", "completely different words about weather and lunch and other things entirely") is None
     assert bs.used_in(None, "x", "y") is None
+
+
+def test_a_moment_synced_to_a_camera_is_cut_from_that_camera_at_the_matched_time_and_otherwise_from_its_own_recording():
+    r = {"id": "W9", "clip": "wknd_Mitch4", "start": 645.0, "end": 671.0, "speech_start": 646.5, "speech_end": 669.5}
+    sources = {"DJI_cam": "/cams/DJI_cam.MP4", "wknd_Mitch4": "/mics/wknd_Mitch4.WAV"}
+    synced = {"W9": {"id": "W9", "synced": True, "camera": "DJI_cam", "camera_start": 424.9, "score": 89.9}}
+    src, a, b, audio_only, how = bs.choose_media(r, sources, synced)
+    assert src == Path("/cams/DJI_cam.MP4") and audio_only is False and "synced by audio" in how
+    assert a == pytest.approx(424.9 - 1.5) and b - a == pytest.approx(26.0)                          # same length as the transcript clip, the 1.5 s of padding kept
+    src, a, b, audio_only, how = bs.choose_media(r, sources, {"W9": {"id": "W9", "synced": False}})
+    assert src == Path("/mics/wknd_Mitch4.WAV") and audio_only is True and (a, b) == (645.0, 671.0) and "no camera match" in how
+    assert bs.choose_media(r, {}, synced)[0] is None                                                   # no source file known: nothing is cut
+    assert bs.choose_media(r, {"wknd_Mitch4": "/mics/x.WAV"}, None)[4] == ""                         # no sync step run at all: no claim about a camera match
+
+
+def test_the_speaker_clue_is_worded_as_a_clue_and_unclear_is_said_plainly():
+    assert bs.mic_note({"mic": "unclear"}).startswith("Speaker unclear")
+    n = bs.mic_note({"mic": "Bob", "mic_gap": 0.33})
+    assert "Likely Bob" in n and "0.33" in n and "A clue, not a fact" in n
+    assert "only their microphone had it" in bs.mic_note({"mic": "Mitch", "mic_gap": None})
+    assert bs.mic_note({}) == ""
+
+
+def test_the_speaker_clue_names_a_person_only_when_one_microphone_is_clearly_more_confident():
+    import pick_mic as pm
+    who, gap = pm.choose({"Bob": {"conf": -0.25}, "Mitch": {"conf": -0.61}})
+    assert who == "Bob" and gap == pytest.approx(0.36)
+    who, gap = pm.choose({"Bob": {"conf": -0.20}, "Mitch": {"conf": -0.21}})
+    assert who == "unclear" and gap == pytest.approx(0.01)                                             # too close to call
+    assert pm.choose({"Mitch": {"conf": -0.2}}) == ("Mitch", None)                                      # only one person's mic had it
+    assert pm.choose({"Bob": {"conf": None}}) == ("unclear", None)
+
+
+def test_clean_transcription_drops_silence_hallucinations_and_third_repeats_but_keeps_real_speech(tmp_path):
+    import json
+    import transcribe_clean as tc
+    segs = [
+        {"start": 0, "end": 2, "text": " Real words here.", "no_speech_prob": 0.05, "avg_logprob": -0.3},
+        {"start": 2, "end": 4, "text": " Thank you.", "no_speech_prob": 0.9, "avg_logprob": -1.5},                 # Whisper itself thinks this was silence
+        {"start": 4, "end": 6, "text": " Quiet but real.", "no_speech_prob": 0.7, "avg_logprob": -0.4},              # unsure it is speech but confident in the words: kept
+        {"start": 6, "end": 8, "text": " Same line.", "no_speech_prob": 0.1, "avg_logprob": -0.3},
+        {"start": 8, "end": 10, "text": " Same line.", "no_speech_prob": 0.1, "avg_logprob": -0.3},
+        {"start": 10, "end": 12, "text": " Same line.", "no_speech_prob": 0.1, "avg_logprob": -0.3},                  # the third time in a row: a loop
+        {"start": 12, "end": 14, "text": "   ", "no_speech_prob": 0.1, "avg_logprob": -0.3},
+    ]
+    kept, dropped = tc.filter_segments(segs)
+    assert [s["text"].strip() for s in kept] == ["Real words here.", "Quiet but real.", "Same line.", "Same line."] and dropped == 2
+    tc.write_outputs(tmp_path, "clip", "/x/clip.wav", kept, dropped)
+    j = json.loads((tmp_path / "clip.json").read_text())
+    assert j["dropped_as_silence_or_loop"] == 2 and j["segments"][0]["avg_logprob"] == -0.3                       # the confidence pick_mic.py reads is kept
+    srt = (tmp_path / "clip.srt").read_text()
+    assert srt.startswith("1\n00:00:00,000 --> 00:00:02,000\nReal words here.")

@@ -47,6 +47,41 @@ def claim_lines(clip: str, t: float, headline: str) -> list[str]:
     return [f"Sources: `{clip}.srt`", f'- [{tc(t)}] "{headline}"']
 
 
+def choose_media(r: dict, sources: dict, synced: dict | None) -> tuple[Path | None, float, float, bool, str]:
+    """(file, start, end, audio_only, how) to cut for one moment. A moment synced to a camera is cut from that camera clip at the matched time (same length as the transcript clip, padding kept);
+    otherwise it is cut from the file its transcript came from (audio only when that is a sound file); nothing is cut when no source file is known."""
+    sy = (synced or {}).get(r["id"])
+    if sy and sy.get("synced") and sources.get(sy["camera"]):
+        pad = r["speech_start"] - r["start"]
+        cs = max(0.0, sy["camera_start"] - pad)
+        return Path(sources[sy["camera"]]), cs, cs + (r["end"] - r["start"]), False, f"picture from camera clip {sy['camera']}, synced by audio (score {sy['score']})"
+    src = sources.get(r["clip"])
+    if not src:
+        return None, r["start"], r["end"], False, "no source file known"
+    audio = Path(src).suffix.lower() in (".wav", ".mp3", ".m4a")
+    return Path(src), r["start"], r["end"], audio, ("audio only: no camera match found" if audio and synced is not None else "")
+
+
+def where_text(r: dict, synced: dict | None) -> str:
+    """Where to find the moment: the camera clip and time when it is synced, else the clip its words came from."""
+    dur = r["speech_end"] - r["speech_start"]
+    sy = (synced or {}).get(r["id"])
+    if sy and sy.get("synced"):
+        return f"{sy['camera']} {tc(sy['camera_start'])} to {tc(sy['camera_start'] + dur)} (heard on {r['clip']})"
+    return f"{r['clip']} {tc(r['speech_start'])} to {tc(r['speech_end'])}"
+
+
+def mic_note(r: dict) -> str:
+    """The speaker clue as a sentence, hedged the way the evidence allows."""
+    who = r.get("mic")
+    if who in (None, ""):
+        return ""
+    if who == "unclear":
+        return "Speaker unclear: both people's microphones heard this about equally."
+    gap = r.get("mic_gap")
+    return f"Likely {who}: their own microphone was the clearer one" + (f" (confidence gap {gap})" if gap is not None else " (only their microphone had it)") + ". A clue, not a fact: listen."
+
+
 def cut(src: Path, start: float, end: float, dst: Path, audio_only: bool) -> bool:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if audio_only:
@@ -80,6 +115,10 @@ def main(argv=None) -> int:
     ap.add_argument("--sources", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--used", help="the finished video's .srt, to mark what it already used")
+    ap.add_argument("--title", default="Recruitment selects", help="the page's heading")
+    ap.add_argument("--intro", default="", help="one or two sentences saying which footage this page is about")
+    ap.add_argument("--reuse", action="store_true", help="keep clips already cut in <out>/clips instead of cutting them again (to change a note or a headline without waiting for 4K video)")
+    ap.add_argument("--synced", help="synced.json from sync_audio.py: moments matched to a camera clip get their picture from it")
     ap.add_argument("--notes", help="json {id: {heard: '...', speakers: '...'}} written by hand from reading the sequence transcript")
     a = ap.parse_args(argv)
     out, srt_dir = Path(a.out).expanduser(), Path(a.srt).expanduser()
@@ -89,6 +128,7 @@ def main(argv=None) -> int:
     heads = json.loads(Path(a.headlines).read_text())
     sources = json.loads(Path(a.sources).read_text())
     notes = json.loads(Path(a.notes).read_text()) if a.notes else {}
+    synced = {d["id"]: d for d in json.loads(Path(a.synced).read_text())} if a.synced else None
 
     log, rows = ["# Recruitment selects: quotes to verify", ""], []
     for m in located:
@@ -120,17 +160,18 @@ def main(argv=None) -> int:
 
     used = Path(a.used).expanduser() if a.used else None
     for r in rows:
-        src = sources.get(r["clip"])
-        r["clip_file"] = None
-        if src and Path(src).exists():
-            audio = Path(src).suffix.lower() in (".wav", ".mp3", ".m4a")
+        src, c0, c1, audio, how = choose_media(r, sources, synced)
+        r["clip_file"], r["media_note"], r["where"] = None, how, where_text(r, synced)
+        if src and src.exists():
             dst = out / "clips" / f"{r['id']}{'.m4a' if audio else '.mp4'}"
-            if cut(Path(src), r["start"], r["end"], dst, audio):
+            if (a.reuse and dst.exists() and dst.stat().st_size > 0) or cut(src, c0, c1, dst, audio):
                 r["clip_file"] = f"clips/{dst.name}"
                 r["audio_only"] = audio
         r["used"] = used_in(used, r["headline"], r["text"])
         r["status"] = status.get(r["id"], "NOT_CHECKED")
         r.update(notes.get(r["id"], {}))
+        if not r.get("speakers") and mic_note(r):
+            r["speakers"] = mic_note(r)
     (out / "selects.json").write_text(json.dumps(rows, indent=1))
 
     esc = html.escape
@@ -141,11 +182,12 @@ def main(argv=None) -> int:
            ".tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:9px;color:#fff;margin-right:6px}.t-sub{background:#0391d8}.t-fr{background:#033459}.t-both{background:#00ade1}"
            ".ok{color:#0a7d2c;font-weight:600}.warn{background:#fff3e8;border-left:4px solid #f4690b;padding:4px 8px;margin:6px 0;font-size:13px}.used{background:#eef;border-left:4px solid #888;padding:4px 8px;margin:6px 0;font-size:13px}"
            ".meta{font-size:12px;color:#555}details{margin-top:6px}summary{cursor:pointer;color:#0391d8}.no{opacity:.8}")
-    groups = [("subcontractors", "Hiring subcontractors (Bob)", "t-sub"), ("franchisees", "Recruiting franchisees and partners", "t-fr"), ("both", "Works for both", "t-both")]
-    parts = [f"<!doctype html><meta charset=utf-8><title>Recruitment selects</title><style>{css}</style><header><h1>Recruitment selects: one interview</h1>"
-             f"<div class=sub>Moments from the Bob and Mitch recruitment interview (May 15) that could help recruit franchisees and hire subcontractors. This is ONE interview, the first unit: nothing is cut into a project, "
-             f"and nothing else has been scanned until you tell me what is useful. Each clip plays the moment with a second or so either side. Headlines are copied from the transcript and checked against it "
-             f"({sum(1 for r in rows if r['status'] == 'VERIFIED')} of {len(rows)} verified). The transcript is Whisper's, so a word can be wrong: where it disagrees with the sequence transcript it says so, and the clip is the final word.</div></header><main>"]
+    groups = [("subcontractors", "Hiring subcontractors", "t-sub"), ("franchisees", "Recruiting franchisees and partners", "t-fr"), ("both", "Works for both", "t-both")]
+    n_ver = sum(1 for r in rows if r["status"] == "VERIFIED")
+    parts = [f"<!doctype html><meta charset=utf-8><title>{esc(a.title)}</title><style>{css}</style><header><h1>{esc(a.title)}</h1>"
+             f"<div class=sub>{esc(a.intro)} Moments that could help recruit franchisees and hire subcontractors. Nothing is cut into a project. Each clip plays the moment with a second or so either side. "
+             f"Headlines are copied from the transcript and checked against it ({n_ver} of {len(rows)} verified). The transcript is Whisper's, so a word can be wrong: where two readings disagree the card says so, "
+             f"and the clip is the final word.</div></header><main>"]
     for key, title, cls in groups:
         sel = [r for r in rows if r["audience"] == key]
         if not sel:
@@ -154,7 +196,7 @@ def main(argv=None) -> int:
         for r in sel:
             media = ""
             if r.get("clip_file"):
-                media = (f"<audio controls preload=none src=\"{esc(r['clip_file'])}\"></audio><div class=warn>Audio only. {esc(r.get('audio_only_note') or 'No picture for this moment.')}</div>" if r.get("audio_only")
+                media = (f"<audio controls preload=none src=\"{esc(r['clip_file'])}\"></audio><div class=warn>{esc(r.get('audio_only_note') or r.get('media_note') or 'Audio only: no picture for this moment.')}</div>" if r.get("audio_only")
                          else f"<video controls preload=metadata src=\"{esc(r['clip_file'])}\"></video>")
             else:
                 media = "<div class=meta>no clip could be cut</div>"
@@ -163,7 +205,7 @@ def main(argv=None) -> int:
             heard = f"<div class=warn>Heard differently: {esc(r['heard'])}</div>" if r.get("heard") else ""
             sp = f"<div class=meta>Speaker: {esc(r['speakers'])}</div>" if r.get("speakers") else ""
             ver = "<span class=ok>verified</span>" if r["status"] == "VERIFIED" else f"<span class=meta>{esc(r['status'].lower().replace('_', ' '))}</span>"
-            parts.append(f"<div class=card><div>{media}<div class=meta>{esc(r['clip'])}<br>{tc(r['speech_start'])} to {tc(r['speech_end'])} in the clip</div></div><div>"
+            parts.append(f"<div class=card><div>{media}<div class=meta>{esc(r['where'])}</div></div><div>"
                          f"<span class='tag {cls}'>{esc(r['id'])}</span><b>{esc(r['theme'])}</b> &middot; {ver}"
                          f"<p class=q>&ldquo;{esc(r['headline'])}&rdquo;</p><div>{esc(r['why'])}</div>{us}{fl}{heard}{sp}"
                          f"<details><summary>Everything said in this moment (transcript)</summary><p>{esc(r['text'])}</p></details></div></div>")
