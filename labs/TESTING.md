@@ -31,7 +31,8 @@ window) in Premiere; generated sound effect and music; layers on the page; recon
 | 14 | **B-roll suggestions: website, SoldFast exports and raw footage, with a vision check** (NEW) | `B-roll pool (proof)/Faucet video (vision, exports + raw)/suggestions.html`, `.../Faucet video (vision top 8)/...`, `.../Tiling window (vision, exports + raw)/...` | suggestions only, nothing placed; best matches are right (pull-down faucet, soap dispenser) but the model's answers differ between runs; tell me which you would use and whether a pick-from list is the right shape |
 | 15 | **Premiere import of the newest XML** | `... reconformed v4 E (image card)/Runnells_Tiling_v3_layers_v4.xml` | V1 cut, V2 callout, V3 image card, V4 captions, A3/A4 music, A5/A6 effect. Imports? Positions and timing right? (It carries the stand-in callout changes.) |
 | 16 | **Sound effects: library first, music generated** (NEW) | `Audio library check (proof)/library check - 12 sounds.txt`, `.../applause_generated.mp3` | 8 of 12 sounds found in your library, 4 would be generated; listen to the one generated for real (applause); are the borderline library picks acceptable; should the bleep use your library's beep? |
-| 17 | **Project index, skill, docs** | `labs/README.md`, `labs/skill/post-house-review-loop/SKILL.md` | is the map of tools clear? |
+| 17 | **Recruitment footage: one interview** (NEW) | `Recruitment footage (proof)/selects.html` | 22 moments from the Bob and Mitch interview for hiring subs and recruiting franchisees; play a few and tell me which you would use; two things need your ears (who speaks, and the B6 line) |
+| 18 | **Project index, skill, docs** | `labs/README.md`, `labs/skill/post-house-review-loop/SKILL.md` | is the map of tools clear? |
 
 ## Try it on your own notes (the whole loop)
 1. Open review page #2, leave 3-4 notes (include one with a drawing, one about the text bubble staying longer, one about a pause, one
