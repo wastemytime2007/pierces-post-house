@@ -33,7 +33,8 @@ window) in Premiere; generated sound effect and music; layers on the page; recon
 | 16 | **Sound effects: library first, music generated** (NEW) | `Audio library check (proof)/library check - 12 sounds.txt`, `.../applause_generated.mp3` | 8 of 12 sounds found in your library, 4 would be generated; listen to the one generated for real (applause); are the borderline library picks acceptable; should the bleep use your library's beep? |
 | 17 | **Recruitment footage: one interview** (NEW) | `Recruitment footage (proof)/selects.html` | 22 moments from the Bob and Mitch interview for hiring subs and recruiting franchisees; play a few and tell me which you would use; two things need your ears (who speaks, and the B6 line) |
 | 18 | **Recruitment footage: the weekend interview** (NEW) | `Recruitment footage (proof)/index.html`, `.../weekend/selects.html` | 23 moments, 20 with picture synced to a camera by sound; children are in this footage; whose voice is a clue only; tell me which to use and which sessions to do next |
-| 19 | **Project index, skill, docs** | `labs/README.md`, `labs/skill/post-house-review-loop/SKILL.md` | is the map of tools clear? |
+| 19 | **Reel pitches from the recruitment footage** (NEW) | `Recruitment footage (proof)/reel_pitches.html` | five pitches, each beat playable; which would you want cut; start with 3 then 1 |
+| 20 | **Project index, skill, docs** | `labs/README.md`, `labs/skill/post-house-review-loop/SKILL.md` | is the map of tools clear? |
 
 ## Try it on your own notes (the whole loop)
 1. Open review page #2, leave 3-4 notes (include one with a drawing, one about the text bubble staying longer, one about a pause, one

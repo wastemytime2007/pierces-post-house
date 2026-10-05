@@ -11,6 +11,7 @@ Ryan (2026-10-05): "go through the footage to find any footage that will help us
 | `transcribe_clean.py --src <file or folder> --out <folder>` | Clean per-clip transcripts: English set, silence hallucinations and third repeats dropped, `.srt` plus `.json` (with per-segment confidence). Exists because the earlier WhisperX transcripts of the weekend shoot were 66 to 97 percent loops. |
 | `pick_mic.py --moments m.json --mics Bob=<folder> --mics Mitch=<folder> --out located.json` | When each person wore their own recorder: locates a moment in each person's transcripts and says whose microphone was clearer. A clue, not a fact. |
 | `sync_audio.py --located located.json --mics <recordings> --cams <8 kHz camera audio> --out synced.json` | Finds which camera clip, and where, a moment from a person's recorder also happened (GCC-PHAT audio correlation), so it can be cut with PICTURE. Never guesses: a weak or tied match stays audio only. |
+| `pitch_page.py --pitches pitches/2026-10-05.json --units "May15=<folder>" --units "Jun13=<folder>" --out reel_pitches.html` | A page of reel pitches built only from verified moments: hook, ordered beats with the exact line and the clip, close, estimated length, and what must be confirmed first. Refuses to build if any quoted line is not in its moment's transcript. |
 | `index_page.py --root <folder> --out index.html` | One page linking every unit's selects page, with counts read from each `selects.json`. |
 | `build_selects.py ...` | Checks one headline sentence per moment is verbatim in its transcript, runs your `verified-quotes` verifier on a log of them, cuts a preview clip (video, or audio for audio-only moments) for each, and writes `selects.html`: cards grouped by audience with the clip, the verified headline, why it helps, flags, where the transcript may have misheard, who is speaking, and whether the finished video already used it. |
 
@@ -49,4 +50,12 @@ About the first 67 minutes are a family outing and a job-site tour with children
 - **Limits:** Whisper mishears (it wrote "slip knot" for "stigma"; the camera-side audio wrote "we actually killed him personally" where the recorder has "know them personally"), so the card says where two readings differ and the clip is the final word. Moments start and end at transcript segment edges. Names, a first name in W12, dollar figures and wording
   such as "greedy" are flagged on the cards; nothing is cleared for publication. A moment is my judgement of what helps.
 
-Tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs/recruit -q` (14).
+Tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs/recruit -q` (15).
+
+
+## Reel pitches (Ryan, 2026-10-05: "pitch me a few videos with the results for reels")
+`pitches/2026-10-05.json` holds five pitches; `reel_pitches.html` in `~/Documents/Post House Reviews/Recruitment footage (proof)/` plays every beat. They use only the 45 verified moments, no B-roll (his rule), and nothing is cut into a project.
+1. **What Bob expects** (subcontractors): the blunt expectation first, then the honest ask, why he understands the sub's side, then the offer. 2. **What a day costs** (both): "$88 a day", what a good day's work means, pride in the finished house. 3. **That's on me** (operators): the backyard a sub called done,
+ownership, what he does about it; the hook is a fragment of the ending, as in the wallpaper reel. 4. **Not everyone is the right fit** (franchisees): who should not apply. 5. **Bob is real** (both): humor, reputation, pride, why he is still out here.
+Recommended first: 3, then 1. Lengths are estimates from the wallpaper reel's roughly 2.5 to 1 trim, not measurements. Every beat's line is a verbatim part of its moment's transcript (checked by the page generator; the extra lines beyond the headlines were also run through the verified-quotes verifier, 9 of 9 verified). Speakers
+are the transcripts' clue and mostly unconfirmed, and each pitch lists what Ryan must confirm (a dollar figure, a speaker, a trim that removes a seller's estate mention). Not built: any cut of a pitch. Hooks and closes are proposals.

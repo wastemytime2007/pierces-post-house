@@ -128,3 +128,15 @@ def test_clean_transcription_drops_silence_hallucinations_and_third_repeats_but_
     assert j["dropped_as_silence_or_loop"] == 2 and j["segments"][0]["avg_logprob"] == -0.3                       # the confidence pick_mic.py reads is kept
     srt = (tmp_path / "clip.srt").read_text()
     assert srt.startswith("1\n00:00:00,000 --> 00:00:02,000\nReal words here.")
+
+
+def test_a_pitch_may_only_quote_words_the_moments_transcript_contains():
+    import pitch_page as pp
+    units = {"U": {"folder": Path("/x"), "rows": {"A1": {"id": "A1", "text": "Honestly, we never have a rain day. We always have projects to fill in."}}}}
+    good = {"pitches": [{"title": "T", "hook": {"unit": "U", "id": "A1", "line": "We never have a rain day"}, "beats": [{"unit": "U", "id": "A1", "line": "we always have projects to fill in."}]}]}
+    assert pp.validate(good, units) == []                                                                   # case and punctuation do not matter
+    bad = {"pitches": [{"title": "T", "hook": {"unit": "U", "id": "A1", "line": "We never have a rain day"}, "beats": [{"unit": "U", "id": "A1", "line": "we always pay on time"}]}]}
+    problems = pp.validate(bad, units)
+    assert len(problems) == 1 and "not in A1's transcript" in problems[0]                                  # a paraphrase dressed as a quote is refused
+    missing = {"pitches": [{"title": "T", "hook": {}, "beats": [{"unit": "U", "id": "Z9", "line": "x"}, {"unit": "V", "id": "A1", "line": "x"}]}]}
+    assert len(pp.validate(missing, units)) == 2                                                            # an unknown moment or unit is refused too

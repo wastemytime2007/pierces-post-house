@@ -1,0 +1,76 @@
+{
+ "intro": "Five reel pitches built only from the 45 verified moments across the May 15 and June 13 interviews. Every line quoted is checked against its moment's transcript, and the page will not build if one is not there. Each beat plays its clip. Lengths are estimates using the roughly 2.5 to 1 trim of your wallpaper reel as a band, not a rule. No B-roll is used and nothing is cut into a project. Hooks are proposals, and the quoted lines are the transcript's words, so a word may be misheard: the clip is the final word.",
+ "recommendation": "Start with pitch 3, 'That's on me'. It is all picture, one story, it shows the honesty you want instead of claiming it, and it is the shortest to prove. Then pitch 1 for subcontractors, the audience Bob needs most.",
+ "pitches": [
+  {
+   "title": "What Bob expects",
+   "audience": "subcontractors",
+   "why": "Straight talk first, then the offer. Bob says what he expects, what he asks for in return, why he understands the sub's side, and what a sub gets. The honesty is in the order: the hard part comes before the pitch.",
+   "hook": {"pattern": "Quiet-contrarian", "text": "Cold open on the blunt line, no title: 'I expect them to work, not be on their phone.'", "unit": "May15", "id": "S5", "line": "I expect them to work, not be on their phone."},
+   "beats": [
+    {"unit": "May15", "id": "S5", "role": "What he expects, and that he stands up for his crew", "line": "I am also very loyal to my guys.", "seconds": 25},
+    {"unit": "May15", "id": "S10", "role": "The one thing he asks for: honesty about your week", "line": "But I don't want you to say you want to work seven days a week and we give you that work now you only want to work two days a week because then it makes us look bad."},
+    {"unit": "May15", "id": "S9", "role": "Why he gets the sub's side", "line": "I needed the next job because I had two kids and a wife at home."},
+    {"unit": "May15", "id": "B8", "role": "The offer", "line": "Like, come work for us. Start your own company. I'll help set you up.", "seconds": 12, "at": "the line is at 17:12 in the source clip, about 1:23 into this preview"}
+   ],
+   "close": "Your call: no end slate (the wallpaper reel ended on its joke), or one plain line such as 'Want to work with Bob? Message us.' Never urgent.",
+   "estimate": "At about 2.5 to 1 that is roughly 40 to 45 seconds.",
+   "needs_from_ryan": ["Confirm who is speaking in S5, S9 and the B8 offer. The transcript labels this whole stretch 'Unknown' and Bob and Mitch both talk in it.", "S1 and S3 are already in your finished recruitment video, so they are left out here."]
+  },
+  {
+   "title": "What a day costs",
+   "audience": "subcontractors and franchisees",
+   "why": "A real number that reframes a normal workday, then the human payoff. It tells a sub why a good day's work matters, and an operator why finishing beats bouncing between jobs.",
+   "hook": {"pattern": "Honest-math", "text": "Cold open on the number: 'we're burning $88 a day working on this one.'", "unit": "Jun13", "id": "W9", "line": "we're burning $88 a day working on this one."},
+   "beats": [
+    {"unit": "Jun13", "id": "W9", "role": "The math", "line": "That's just, that's hard math, right?"},
+    {"unit": "Jun13", "id": "W10", "role": "What it means for a crew", "line": "when you show up and you didn't get me a good day's work, even though you got a good day's pay"},
+    {"unit": "Jun13", "id": "W2", "role": "Why finishing matters", "line": "closing houses is just as important as getting them done."},
+    {"unit": "Jun13", "id": "W22", "role": "The payoff", "line": "it's nice to when you can come down right by the street go, yeah, we did that house."}
+   ],
+   "close": "End on the pride line, no slate.",
+   "estimate": "At about 2.5 to 1 that is roughly 30 seconds, a short.",
+   "needs_from_ryan": ["$88 a day is one job's figure: confirm it can be used.", "The two microphones could not settle who says W9, W10 and W2."]
+  },
+  {
+   "title": "That's on me",
+   "audience": "franchisees and operators",
+   "why": "A sub said a backyard was done, the buyer found it was not, and the owner says it is his fault. It shows ownership instead of claiming it, and it is the clearest 'what done means' for an operator.",
+   "hook": {"pattern": "Loop: the hook is a fragment of the ending, as in the wallpaper reel", "text": "Cold open on 'That's 100% my fault.', rewind to the story, and end on 'That's on me.'", "unit": "Jun13", "id": "W18", "line": "That's 100% my fault."},
+   "beats": [
+    {"unit": "Jun13", "id": "W18", "role": "The backyard story, ending on 'That's on me.'", "line": "He gets there and he's like, hey man, backyard's not done."},
+    {"unit": "Jun13", "id": "W17", "role": "What he does about it", "line": "I am physically on every job, or at least try to be.", "seconds": 25}
+   ],
+   "close": "Return to 'That's on me.' as the last frame, no slate.",
+   "estimate": "At about 2.5 to 1 that is roughly 25 to 30 seconds.",
+   "needs_from_ryan": ["Mitch is the likely speaker in W18 (his microphone was clearer), a clue and not confirmed.", "He criticizes a sub he does not name. Fine for operators, but check how it reads to subcontractors."]
+  },
+  {
+   "title": "Not everyone is the right fit",
+   "audience": "franchisees",
+   "why": "Tells prospective operators who should not apply. The work is dirty and the standard is high, and if the care is not there it is not the right fit. That is the honest-broker line aimed at recruiting.",
+   "hook": {"pattern": "Truth first", "text": "Cold open on the line that says who should not apply: 'if you don't have that in your heart, it's probably not the right fit to operate.'", "unit": "Jun13", "id": "W13", "line": "if you don't have that in your heart, it's probably not the right fit to operate."},
+   "beats": [
+    {"unit": "Jun13", "id": "W1", "role": "What 'our name on it' means", "line": "we didn't really want to put our name on that after we saw the things.", "seconds": 15, "at": "trim out the estate mention that follows"},
+    {"unit": "Jun13", "id": "W13", "role": "What the work asks of an operator", "line": "You gotta get in the weeds. you gotta get in the mud, it's gonna be dirty, it's gonna be nasty."}
+   ],
+   "close": "Return to the cold-open line as the last words.",
+   "estimate": "At about 2.5 to 1 that is roughly 35 to 45 seconds.",
+   "needs_from_ryan": ["W1 mentions the seller's estate in passing; it needs trimming out.", "Mitch is the likely speaker in W13, unconfirmed."]
+  },
+  {
+   "title": "Bob is real",
+   "audience": "subcontractors and franchisees",
+   "why": "The human piece. A joke that people thought Bob was made up, why his reputation matters to him, the pride of driving past a house he did, and why he is still out here. Heart and humor from a real person, no ask until the end.",
+   "hook": {"pattern": "Person-first", "text": "Cold open on the joke: 'oh, you are real. And I'm like, yeah, I'm here.'", "unit": "May15", "id": "B11", "line": "oh, you are real. And I'm like, yeah, I'm here."},
+   "beats": [
+    {"unit": "May15", "id": "B11", "role": "Why his name matters to him", "line": "And our reputation is a big thing to us, to our names."},
+    {"unit": "May15", "id": "S2", "role": "What the work gives him", "line": "going around and seeing houses that we did 15, 20 years ago, going to, I did that house."},
+    {"unit": "Jun13", "id": "W15", "role": "Why he is still here", "line": "I tell everyone I could retire tomorrow and I believe I could I'm not gonna you know, whatever I do it because I still love it."}
+   ],
+   "close": "End on 'I still love it', no slate. If you want an ask, a light one after that line.",
+   "estimate": "At about 2.5 to 1 that is roughly 35 to 45 seconds.",
+   "needs_from_ryan": ["The joke is partly garbled in the transcript ('Bob was made of ...'). Listen to B11 before cutting.", "Bob is the likely speaker in all three, but the stretches are not confirmed.", "S2's transcript reads 'take part in their work' where the sequence transcript has 'pride'; that sentence is not used."]
+  }
+ ]
+}
