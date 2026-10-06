@@ -167,6 +167,37 @@ def next_version_folder(xml: str | Path) -> Path:
     return src.parent / f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1} - revised"
 
 
+def remember_export(project_dir: str | Path, xml_path: str) -> None:
+    """Record an XML the app's export just wrote, so the Review tab can start from it (the export dialog lets the XML go anywhere, so the project folder alone does not know)."""
+    import json
+    import time
+    f = Path(project_dir) / "review_exports.json"
+    try:
+        rows = json.loads(f.read_text())
+    except (OSError, ValueError):
+        rows = []
+    rows = [r for r in rows if r.get("path") != str(xml_path)]
+    rows.insert(0, {"path": str(xml_path), "time": time.time()})
+    f.write_text(json.dumps(rows[:50], indent=2))
+
+
+def list_exports(project_dir: str | Path) -> list[dict]:
+    """The exports this project made that still exist, newest first (recorded ones, then any XML in the project's own exports folder)."""
+    import json
+    d = Path(project_dir)
+    seen: dict[str, float] = {}
+    try:
+        for r in json.loads((d / "review_exports.json").read_text()):
+            if Path(r["path"]).is_file():
+                seen[r["path"]] = max(float(r.get("time", 0)), Path(r["path"]).stat().st_mtime)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    if (d / "exports").is_dir():
+        for p in (d / "exports").rglob("*.xml"):
+            seen.setdefault(str(p), p.stat().st_mtime)
+    return [{"path": p, "name": Path(p).name, "mtime": t} for p, t in sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:30]]
+
+
 def premiere_app() -> str | None:
     """The newest installed Adobe Premiere Pro (a Beta only if nothing else is installed)."""
     import glob

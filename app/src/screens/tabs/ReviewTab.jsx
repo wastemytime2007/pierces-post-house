@@ -17,8 +17,12 @@ const STATUS_CLASS = { "VERIFIED": "ok", "APPLIED-UNMEASURED": "warn", "NOT DONE
 const fileName = (p) => (p || "").split("/").pop();
 const dirName = (p) => (p || "").split("/").slice(0, -1).join("/");
 
-export default function ReviewTab({ subscribe }) {
+export default function ReviewTab({ subscribe, onStatus }) {
   const frameRef = useRef(null);
+  const versionsRef = useRef([]);
+  const busyRef = useRef("");
+  const buildRef = useRef(null);
+  const [incoming, setIncoming] = useState(""); // an export made while a review is open: offered, never swapped in under the notes being written
   const [exportsList, setExportsList] = useState([]);
   const [versions, setVersions] = useState([]); // [{label, xml, folder, url, qa}]
   const [cur, setCur] = useState(0);
@@ -31,6 +35,19 @@ export default function ReviewTab({ subscribe }) {
   const [showLedger, setShowLedger] = useState(true);
 
   const version = versions[cur];
+  versionsRef.current = versions;
+  busyRef.current = busy;
+
+  useEffect(() => {
+    if (!onStatus) return;
+    onStatus(
+      busy === "building" ? "building the cut…"
+      : busy === "applying" ? "applying notes…"
+      : incoming ? "new export ready"
+      : versions.length ? `${versions[cur]?.label || "V1"} open`
+      : exportsList.length ? "cut ready" : "notes on a cut"
+    );
+  }, [onStatus, busy, incoming, versions, cur, exportsList]);
 
   useEffect(() => {
     sendCommand({ type: "list_exports" }).catch(() => {});
@@ -40,6 +57,12 @@ export default function ReviewTab({ subscribe }) {
     return subscribe((ev) => {
       if (ev.type === "exports_listed") {
         setExportsList(ev.exports || []);
+      } else if (ev.type === "export_complete" && ev.xml_path) {
+        // The app just wrote an XML. Review it without being asked, unless a review is already open or building.
+        const row = { path: ev.xml_path, name: fileName(ev.xml_path), mtime: Date.now() / 1000 };
+        setExportsList((l) => [row, ...l.filter((x) => x.path !== row.path)]);
+        if (!versionsRef.current.length && !busyRef.current) buildRef.current?.(ev.xml_path);
+        else setIncoming(ev.xml_path);
       } else if (ev.type === "review_started") {
         setBusy("building");
         setError("");
@@ -106,6 +129,8 @@ export default function ReviewTab({ subscribe }) {
     }
   }, []);
 
+  buildRef.current = build;
+
   const browse = useCallback(async () => {
     const p = await openDialog({ multiple: false, filters: [{ name: "Premiere XML", extensions: ["xml"] }] });
     if (typeof p === "string") build(p);
@@ -161,10 +186,11 @@ export default function ReviewTab({ subscribe }) {
         <div className="run-pipeline-section">
           <div className="run-pipeline-section-label">Choose the cut to review</div>
           <p className="pm-tab-sub">
-            The cut opens here as a review page: the video, every edit decision on a timeline, and a place for timecoded notes and drawing on the frame.
-            Leave notes, apply them to get the next version, then export the XML and open it in Premiere.
+            Export a cut from the Ideas tab and it opens here by itself: the video, every edit decision on a timeline, and a place for timecoded notes and drawing
+            on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere.
           </p>
-          {busy === "building" && <div className="sync-section-hint">Building the review page (about half a minute)…</div>}
+          {busy === "building" && <div className="sync-section-hint">Building the review page from the export (about half a minute)…</div>}
+          {!busy && exportsList.length === 0 && <div className="sync-section-hint">No export from this project yet.</div>}
           {exportsList.length > 0 && (
             <div className="transcripts-list">
               {exportsList.slice(0, 8).map((x) => (
@@ -182,7 +208,7 @@ export default function ReviewTab({ subscribe }) {
           )}
           <div className="pm-tab-row">
             <button className="btn btn-ghost" disabled={!!busy} onClick={browse}>
-              {exportsList.length ? "Or choose another XML…" : "Choose an XML…"}
+              {exportsList.length ? "A different XML…" : "Choose an XML yourself…"}
             </button>
           </div>
         </div>
@@ -225,6 +251,15 @@ export default function ReviewTab({ subscribe }) {
         </button>
       </div>
 
+      {incoming && (
+        <div className="pm-tab-warnings" role="status">
+          <div className="pm-tab-row" style={{ alignItems: "center" }}>
+            <span>A new export was just made: {fileName(incoming)}.</span>
+            <button className="btn btn-primary" disabled={!!busy} onClick={() => { const x = incoming; setIncoming(""); build(x); }}>Review it instead</button>
+            <button className="btn btn-ghost" onClick={() => setIncoming("")}>Keep this one</button>
+          </div>
+        </div>
+      )}
       {busy === "applying" && <div className="sync-section-hint">{stage}</div>}
       {error && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error}</div>}
       {info && <div className="pm-tab-warnings" role="status">{info}</div>}

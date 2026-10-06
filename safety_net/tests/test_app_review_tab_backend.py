@@ -167,6 +167,27 @@ def test_export_checks_the_xml_and_only_a_passing_one_is_opened(tmp_path):
         os.environ.pop("POSTHOUSE_NO_OPEN", None)
 
 
+def test_an_export_the_app_just_made_is_remembered_and_listed_newest_first_and_a_deleted_one_is_not(tmp_path):
+    """The export dialog lets the XML go anywhere, so the project records each export; the Review tab starts from the newest one."""
+    sys.path.insert(0, str(REPO / "app" / "python_backend"))
+    import creator_tools
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    a, b, c = (tmp_path / n for n in ("a.xml", "b.xml", "c.xml"))
+    for f in (a, b, c):
+        f.write_text("<xmeml/>")
+    creator_tools.remember_export(proj, str(a))
+    creator_tools.remember_export(proj, str(b))
+    creator_tools.remember_export(proj, str(a))                       # exported again: moves to the front, no duplicate
+    assert [e["name"] for e in creator_tools.list_exports(proj)] == ["a.xml", "b.xml"]
+    b.unlink()
+    assert [e["name"] for e in creator_tools.list_exports(proj)] == ["a.xml"]
+    (proj / "exports").mkdir()
+    (proj / "exports" / "old.xml").write_text("<xmeml/>")             # an XML already in the project's own exports folder is found too
+    assert {e["name"] for e in creator_tools.list_exports(proj)} == {"a.xml", "old.xml"}
+    assert creator_tools.list_exports(tmp_path / "nothing") == []
+
+
 def test_export_through_the_backend_reports_the_check(tmp_path):
     creator_tools, xml = _short_cut(tmp_path)
     evs = _talk([{"type": "export_xml", "xml": str(xml)}], {"xml_exported", "xml_export_failed"}, timeout=60, extra_env={"POSTHOUSE_NO_OPEN": "1"})

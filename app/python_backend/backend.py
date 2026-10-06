@@ -1008,9 +1008,18 @@ def handle_export_timelines(cmd: dict) -> None:
     with _jobs_lock:
         _jobs[job_id] = ActiveJob(job_id, cancel_flag)
 
+    def emit_and_remember(ev: dict) -> None:
+        if ev.get("type") == "export_complete" and ev.get("xml_path"):
+            try:                                     # the Review tab starts from the export the app just made, even after a restart; recorded BEFORE the event so a list taken on it sees it
+                import creator_tools
+                creator_tools.remember_export(proj.dir(), ev["xml_path"])
+            except Exception as exc:
+                log("warn", f"Could not record this export for the Review tab: {exc}")
+        emit(ev)
+
     def worker():
         try:
-            run_export(proj, job_id, options, emit=emit)
+            run_export(proj, job_id, options, emit=emit_and_remember)
         except Exception as exc:
             err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
         finally:
@@ -1105,9 +1114,8 @@ def handle_list_exports(cmd: dict) -> None:
     proj = _require_project()
     if proj is None:
         return
-    d = proj.dir() / "exports"
-    found = sorted((p for p in d.rglob("*.xml") if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True) if d.exists() else []
-    emit({"type": "exports_listed", "folder": str(d), "exports": [{"path": str(p), "name": p.name, "mtime": p.stat().st_mtime} for p in found[:30]]})
+    import creator_tools
+    emit({"type": "exports_listed", "exports": creator_tools.list_exports(proj.dir())})
 
 
 def handle_open_path(cmd: dict) -> None:

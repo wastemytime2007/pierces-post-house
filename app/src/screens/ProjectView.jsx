@@ -38,6 +38,7 @@ export default function ProjectView({
   audienceProfiles,
 }) {
   const [activeTab, setActiveTab] = useState("pm");
+  const [reviewSub, setReviewSub] = useState("notes on a cut"); // the Review tab reports what it is doing ("building the cut…", "V2 open")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Drop 3.6: log hidden by default. User can reveal via side tab.
   const [showLog, setShowLog] = useState(false);
@@ -298,7 +299,7 @@ export default function ProjectView({
             label="02 · Review"
             active={activeTab === "review"}
             onClick={() => setActiveTab("review")}
-            sub="notes on a cut"
+            sub={reviewSub}
           />
         </div>
         <div className="project-nav-spacer" />
@@ -355,7 +356,7 @@ export default function ProjectView({
           )}
           {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}
           <div style={{ display: activeTab === "review" ? "block" : "none" }}>
-            <ReviewTab subscribe={subscribe} />
+            <ReviewTab subscribe={subscribe} onStatus={setReviewSub} />
           </div>
         </section>
         {showLog ? (
