@@ -37,6 +37,10 @@
     "resources": [
       "../python_backend/**/*.py",
       "../python_backend/**/*.png",
+      "../python_backend/labs/**/*.html",
+      "../python_backend/labs/**/*.txt",
+      "../python_backend/labs/**/*.json",
+      "../python_backend/labs/**/*.jsonl",
       "../python_backend/requirements.txt",
       "../premiere_extension/**/*.xml",
       "../premiere_extension/**/*.html",

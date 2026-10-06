@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="./gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; background: transparent; font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
+      .hf-frame { position: absolute; background: #0391d8; border-radius: 18px; opacity: 0; transform-origin: 50% 50%;
+                  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.30), 0 14px 40px rgba(0, 0, 0, 0.50); }
+      .hf-img { position: absolute; display: block; opacity: 0; transform-origin: 50% 50%; border-radius: 8px; object-fit: fill; }
+      .hf-hl { position: absolute; border: 6px solid #f4690b; border-radius: 8px; opacity: 0; transform-origin: 50% 50%;
+               box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35), 0 6px 18px rgba(0, 0, 0, 0.45); }
+      .hf-cap { position: absolute; background: rgba(3, 52, 89, 0.96); border-radius: 14px; padding: 0 36px 0 48px; opacity: 0; color: #ffffff;
+                display: flex; align-items: center; font-weight: 700; letter-spacing: -0.01em; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+      .hf-cap::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px; background: #0391d8; border-radius: 14px 0 0 14px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="__DUR__" data-width="1920" data-height="1080">
+      <div id="frame" class="hf-frame clip" data-start="0" data-duration="__DUR__"></div>
+      <img id="img" class="hf-img clip" data-start="0" data-duration="__DUR__" alt="" src="__IMG__" />
+      <div id="hl" class="hf-hl clip" data-start="0" data-duration="__DUR__"></div>
+      <div id="cap" class="hf-cap clip" data-start="0" data-duration="__DUR__"></div>
+    </div>
+    <script>
+      const CFG = /*__CFG__*/null;
+      const px = (el, o) => Object.entries(o).forEach(([k, v]) => { el.style[k] = typeof v === "number" ? v + "px" : v; });
+      px(document.getElementById("frame"), { left: CFG.frame.x, top: CFG.frame.y, width: CFG.frame.w, height: CFG.frame.h });
+      px(document.getElementById("img"), { left: CFG.image.x, top: CFG.image.y, width: CFG.image.w, height: CFG.image.h });
+      const hl = document.getElementById("hl"), cap = document.getElementById("cap");
+      if (CFG.highlight) px(hl, { left: CFG.highlight.x, top: CFG.highlight.y, width: CFG.highlight.w, height: CFG.highlight.h });
+      if (CFG.caption) { px(cap, { left: CFG.caption.x, top: CFG.caption.y, width: CFG.caption.w, height: CFG.caption.h, fontSize: CFG.caption.px }); cap.textContent = CFG.caption.text; }
+
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo(["#frame", "#img"], { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.4, ease: "power2.out" }, CFG.t_in);
+      if (CFG.highlight) tl.fromTo("#hl", { opacity: 0, scale: 1.25 }, { opacity: 1, scale: 1, duration: 0.35, ease: "power2.out" }, CFG.t_in + 0.6);
+      if (CFG.caption) tl.fromTo("#cap", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, CFG.t_in + 0.35);
+      tl.to(["#frame", "#img", "#hl", "#cap"], { opacity: 0, duration: CFG.fade_out, ease: "power1.in" }, CFG.t_out);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

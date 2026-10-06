@@ -118,6 +118,7 @@ _jobs_lock = threading.Lock()
 
 _executor = ThreadPoolExecutor(max_workers=4)
 _stdout_lock = threading.Lock()
+_proto_out = sys.stdout    # the event channel; the creator tools print their check rows, so they run with sys.stdout redirected and events still go here
 
 
 class ActiveJob:
@@ -132,8 +133,8 @@ class ActiveJob:
 
 def emit(event: dict[str, Any]) -> None:
     with _stdout_lock:
-        sys.stdout.write(json.dumps(event) + "\n")
-        sys.stdout.flush()
+        _proto_out.write(json.dumps(event) + "\n")
+        _proto_out.flush()
 
 
 def log(level: str, message: str) -> None:
@@ -1019,6 +1020,44 @@ def handle_export_timelines(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+# ---------------------------------------------------------------------------
+# Creator-workflow tools (labs/, bundled): review page first
+# ---------------------------------------------------------------------------
+
+def handle_build_review(cmd: dict) -> None:
+    """An export XML in; a review page (preview.mp4 + review.html) out. Runs in the background; the event says where it is."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("build_review needs an 'xml' path")
+        return
+    job_id = cmd.get("job_id") or f"review-{int(time.time())}"
+    emit({"type": "review_started", "job_id": job_id, "xml": xml})
+
+    def worker():
+        import creator_tools
+        try:
+            result, printed = creator_tools.capture(creator_tools.build_review, xml, cmd.get("out"), int(cmd.get("height", 540)))
+            for row in printed:
+                log("info", row)
+            emit({"type": "review_built", "job_id": job_id, **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "review_failed", "job_id": job_id, "xml": xml, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+            emit({"type": "review_failed", "job_id": job_id, "xml": xml, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
+def handle_open_path(cmd: dict) -> None:
+    """Open a file or folder the app made (the review page opens in the browser)."""
+    import creator_tools
+    try:
+        creator_tools.reveal(cmd.get("path", ""))
+    except creator_tools.ToolError as exc:
+        err(str(exc))
+
+
 def handle_shutdown(cmd: dict) -> None:
     log("info", "Shutdown requested")
     with _jobs_lock:
@@ -1092,6 +1131,9 @@ HANDLERS = {
     "set_audience_profiles": handle_set_audience_profiles,
     # Export (Drop 3)
     "export_timelines": handle_export_timelines,
+    # Creator-workflow tools (labs/)
+    "build_review": handle_build_review,
+    "open_path": handle_open_path,
     "shutdown": handle_shutdown,
 }
 

@@ -29,3 +29,7 @@ Run all tests: `PRECUT_ROOT=~/precut-checkout python3 -m pytest labs -q`.
 
 Each README lists what its tool verifies and its real limits. Nothing here counts as done until Ryan has judged it (see
 `docs/STATUS.md` § In progress for what has and has not been).
+
+## In the app (2026-10-06)
+The tools are being imported into `app/` a screen at a time (`ROADMAP.md` Decision Log 2026-10-06). Edit here, then run `./safety_net/sync_labs.sh` to copy into `app/python_backend/labs/`
+(`safety_net/tests/test_labs_sync.py` fails if the copies differ). Done so far: the review page (app tab "02 · Review", through `app/python_backend/creator_tools.py`).

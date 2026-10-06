@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Style brief</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d1420; --panel:#141d2c; --ink:#e8edf5; --mute:#8b98ad; --line:#25324a; --acc:#0391d8; --or:#f4690b; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,Helvetica,Arial,sans-serif; }
+  main { max-width:860px; margin:0 auto; padding:20px 16px 60px; }
+  h1 { font-size:20px; margin:0 0 4px; } h2 { font-size:16px; margin:24px 0 8px; }
+  .sub { color:var(--mute); margin:0 0 14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:8px 0; }
+  label.row { display:flex; gap:10px; align-items:flex-start; cursor:pointer; }
+  label.row input { margin-top:5px; }
+  .what { color:var(--mute); font-size:13px; }
+  input[type=text], select { width:100%; box-sizing:border-box; background:#0b111b; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+  .grid { display:grid; grid-template-columns:1fr; gap:10px; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:9px 14px; font:inherit; cursor:pointer; margin-right:8px; }
+  button.sec { background:#25324a; }
+  pre { background:#0b111b; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; font-size:12px; white-space:pre-wrap; }
+  .note { background:#3a2a12; border:1px solid var(--or); border-radius:8px; padding:8px 12px; margin:10px 0; }
+  .tag { font-size:11px; border-radius:4px; padding:1px 6px; margin-left:6px; background:#25324a; color:var(--mute); }
+  .tag.auto { background:#15402a; color:#7be3a4; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Style brief: what to take from a reference video</h1>
+  <p class="sub">Everything is ticked by default. Untick what you do not want, then download the brief or copy the command. Nothing here runs anything.</p>
+
+  <h2>Reference video</h2>
+  <div class="card"><input id="ref" type="text" placeholder="/Users/pierce/Desktop/SoldFast Exports/Removing Wallpaper Tutorial.mp4"></div>
+
+  <h2>What to emulate</h2>
+  <div class="card" id="aspects"></div>
+
+  <h2>Settings</h2>
+  <div class="card grid">
+    <div><label for="orient">Shape</label>
+      <select id="orient"><option value="match">Match the reference (vertical or horizontal)</option><option value="vertical">Vertical</option><option value="horizontal">Horizontal</option></select></div>
+    <div><label for="music">Music</label>
+      <select id="music"><option value="video">Use the reference video's own music (default)</option><option value="file">Use a music track I give instead</option></select>
+      <input id="musicfile" type="text" placeholder="Path to the track (drag the file onto the Terminal to type its path)" style="display:none;margin-top:8px"></div>
+    <div><label for="strength">Colour strength: <b id="sv">0.7</b> (0 = unchanged, 1 = the reference's full look)</label>
+      <input id="strength" type="range" min="0" max="1" step="0.05" value="0.7" style="width:100%"></div>
+  </div>
+
+  <h2>Your cut</h2>
+  <div class="card grid">
+    <input id="xml" type="text" placeholder="Layered XML of the cut (e.g. .../Runnells_Tiling_v3_layers_v4.xml)">
+    <input id="prev" type="text" placeholder="Its clean preview (e.g. .../review/preview.mp4)">
+    <input id="outdir" type="text" placeholder="Where to put the result (a new folder)">
+  </div>
+
+  <div class="card">
+    <button id="dl">Download style_brief.json</button><button id="copy" class="sec">Copy the command</button>
+    <pre id="out"></pre>
+  </div>
+  <p class="note">Some aspects are made for real (marked <span class="tag auto">makes a file</span>); the rest are measured and shown to you, because nothing reliable can reproduce them yet. The report says which is which for every run.</p>
+</main>
+<script>
+const ASPECTS = [
+  ['orientation', 'Vertical or horizontal', 'Re-frames the preview to the reference\'s shape by cropping. Crude: a crop cannot follow a subject.', true],
+  ['cuts', 'Type of cuts (pauses)', 'Tightens pauses longer than the reference\'s ordinary gaps, through the verified revise step, into a new cut.', true],
+  ['music', 'Music', 'Takes the reference\'s music from its own audio (or your track), generates music like it, mixes it under the speech. Costs a few cents per take.', true],
+  ['color', 'Colour', 'A colour look file (.cube, works in Premiere) plus a graded preview, then re-measured.', true],
+  ['text', 'Text on screen', 'Measured only. No wording is invented; say what text you want in a review note.', false],
+  ['graphics', 'Callouts and graphics', 'Measured only: the reference\'s frames are shown to you. Callouts are placed from a note.', false],
+  ['sfx', 'Sound effects', 'Measured only: effects cannot be separated from voice and music yet.', false],
+];
+const box = document.getElementById('aspects');
+ASPECTS.forEach(([key, name, what, auto]) => {
+  const l = document.createElement('label');
+  l.className = 'row';
+  const c = document.createElement('input');
+  c.type = 'checkbox'; c.checked = true; c.dataset.key = key;
+  const d = document.createElement('div');
+  const t = document.createElement('div');
+  t.innerHTML = '<b></b>' + (auto ? '<span class="tag auto">makes a file</span>' : '<span class="tag">measured only</span>');
+  t.firstChild.textContent = name;
+  const w = document.createElement('div');
+  w.className = 'what'; w.textContent = what;
+  d.append(t, w); l.append(c, d); box.appendChild(l);
+});
+const $ = id => document.getElementById(id);
+function brief() {
+  const on = [...box.querySelectorAll('input')].filter(i => i.checked).map(i => i.dataset.key);
+  const all = on.length === ASPECTS.length;
+  const b = { schema: 'style_brief.v0', reference: $('ref').value.trim() || null, emulate: all ? 'all' : on,
+    orientation: $('orient').value, color_strength: parseFloat($('strength').value) };
+  if ($('music').value === 'file' && $('musicfile').value.trim()) b.music = { from: $('musicfile').value.trim() };
+  else b.music = { from: 'reference video' };
+  return b;
+}
+function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+function command() {
+  const b = brief();
+  const parts = ['PRECUT_ROOT=~/precut-checkout python3 labs/style/emulate.py', '--brief style_brief.json',
+    '--ours-xml ' + q($('xml').value.trim() || '<layered xml>'), '--ours-preview ' + q($('prev').value.trim() || '<preview.mp4>'), '--out ' + q($('outdir').value.trim() || '<new folder>')];
+  if (!b.reference) parts.splice(1, 0, '--reference ' + q('<reference video>'));
+  return parts.join(' \\\n  ');
+}
+function show() {
+  $('sv').textContent = $('strength').value;
+  $('musicfile').style.display = $('music').value === 'file' ? '' : 'none';
+  $('out').textContent = JSON.stringify(brief(), null, 2) + '\n\n' + command();
+}
+document.querySelectorAll('input, select').forEach(e => e.addEventListener('input', show));
+document.querySelectorAll('select').forEach(e => e.addEventListener('change', show));
+$('dl').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(brief(), null, 2)], { type: 'application/json' }));
+  a.download = 'style_brief.json'; a.click();
+};
+$('copy').onclick = async e => {
+  try { await navigator.clipboard.writeText(command()); e.target.textContent = 'Copied'; } catch (err) { e.target.textContent = 'Copy blocked, select the text below'; }
+  setTimeout(() => { e.target.textContent = 'Copy the command'; }, 1800);
+};
+show();
+</script>
+</body>
+</html>

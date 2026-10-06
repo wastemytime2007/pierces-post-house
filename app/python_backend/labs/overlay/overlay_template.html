@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="./gsap.min.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { margin: 0; width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; background: transparent; font-family: Inter, "Helvetica Neue", Arial, sans-serif; }
+      .hf-box { position: absolute; border: 6px solid #f4690b; border-radius: 10px; opacity: 0; transform-origin: 50% 50%;
+                box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.45); }
+      .hf-arrow { position: absolute; height: 10px; width: 0; opacity: 0; transform-origin: 0 50%; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.55)); }
+      .hf-arrow .line { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: #f4690b; border-radius: 5px; }
+      .hf-arrow .head { position: absolute; right: -6px; top: 50%; margin-top: -22px; width: 0; height: 0;
+                        border-top: 22px solid transparent; border-bottom: 22px solid transparent; border-left: 40px solid #f4690b; }
+      .hf-label { position: absolute; background: rgba(3, 52, 89, 0.96); border-radius: 14px; padding: 22px 34px 22px 46px; opacity: 0; color: #ffffff;
+                  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); }
+      .hf-label::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 12px; background: #0391d8; border-radius: 14px 0 0 14px; }
+      .hf-label .t { font-weight: 700; letter-spacing: -0.01em; line-height: 1.1; }
+      .hf-label .s { font-weight: 400; color: #d4e6f4; margin-top: 8px; line-height: 1.15; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="__DUR__" data-width="1920" data-height="1080">
+      <div id="box" class="hf-box clip" data-start="0" data-duration="__DUR__"></div>
+      <div id="arrow" class="hf-arrow clip" data-start="0" data-duration="__DUR__"><div class="line"></div><div class="head"></div></div>
+      <div id="label" class="hf-label clip" data-start="0" data-duration="__DUR__"><div class="t"></div><div class="s"></div></div>
+    </div>
+    <script>
+      const CFG = /*__CFG__*/null;
+      const px = (el, o) => Object.entries(o).forEach(([k, v]) => { el.style[k] = typeof v === "number" ? v + "px" : v; });
+      px(document.getElementById("box"), { left: CFG.box.x, top: CFG.box.y, width: CFG.box.w, height: CFG.box.h });
+      px(document.getElementById("arrow"), { left: CFG.arrow.x, top: CFG.arrow.y - 5 });
+      const label = document.getElementById("label");
+      px(label, { left: CFG.label.x, top: CFG.label.y, width: CFG.label.w, height: CFG.label.h });
+      const t = label.querySelector(".t"), s = label.querySelector(".s");
+      t.textContent = CFG.title; t.style.fontSize = CFG.title_px + "px";
+      s.textContent = CFG.subtitle; s.style.fontSize = CFG.subtitle_px + "px";
+      if (!CFG.subtitle) s.style.display = "none";
+
+      const tl = gsap.timeline({ paused: true });
+      tl.set("#arrow", { rotation: CFG.arrow.angle }, 0);
+      tl.fromTo("#box", { opacity: 0, scale: 1.12 }, { opacity: 1, scale: 1, duration: 0.35, ease: "power2.out" }, CFG.t_in);
+      tl.set("#arrow", { opacity: 1 }, CFG.t_in + 0.25);
+      tl.fromTo("#arrow", { width: 0 }, { width: CFG.arrow.len, duration: 0.35, ease: "power2.out" }, CFG.t_in + 0.25);
+      tl.fromTo("#label", { opacity: 0, y: 18 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out" }, CFG.t_in + 0.4);
+      tl.to(["#box", "#arrow", "#label"], { opacity: 0, duration: CFG.fade_out, ease: "power1.in" }, CFG.t_out);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

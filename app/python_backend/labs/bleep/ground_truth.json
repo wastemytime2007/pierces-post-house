@@ -1,0 +1,58 @@
+{
+  "about": "Ryan's own labels from his review notes, used to score the suspect detector. Times are timeline seconds on the Tiling v3 cut (73.44 s). Audio is not stored here: the footage stays on his machine.",
+  "cut": "Runnells Tiling v3 (Something Went Drastically Wrong)",
+  "labelled": "2026-09-30",
+  "curse_words": [
+    {
+      "at": 29.57,
+      "range": [
+        29.44,
+        29.7
+      ],
+      "word": "fuck",
+      "how": "Ryan set it himself in the editable-bleep editor on the review page and downloaded bleep_edits.json: 29.44 to 29.70 s. Everything he typed before was a guess at this (28.35, 28.9-29.2, 28.7-29.3: each was earlier than the word). The sound agrees: the 'f' hiss runs 29.32-29.48 s, the vowel 29.50-29.60, the 'k' 29.62-29.68, then 'just'. Whisper's timing for the word when the loud 'what the' stretch (28.9-29.2) was silenced, 29.38-29.58, was right to within about 0.1 s.",
+      "what_the_transcript_said_there": "unmasked, both Whisper models wrote 'what' (28.74-29.22 s, probability 0.96, stretched) then 'just' (29.22 s): the word was folded into them"
+    }
+  ],
+  "rejected_suspects": [
+    {
+      "start": 26.3,
+      "end": 26.54,
+      "word": "by",
+      "signals": [
+        "unsure",
+        "models disagree"
+      ]
+    },
+    {
+      "start": 31.5,
+      "end": 31.98,
+      "word": "The",
+      "signals": [
+        "stretched",
+        "unsure"
+      ]
+    },
+    {
+      "start": 66.8,
+      "end": 67.1,
+      "word": "Yeah.",
+      "signals": [
+        "stretched",
+        "burst",
+        "models disagree"
+      ]
+    }
+  ],
+  "not_judged": [
+    {
+      "start": 0.0,
+      "end": 0.44,
+      "word": "Yeah,",
+      "signals": [
+        "stretched",
+        "unsure"
+      ]
+    }
+  ]
+}

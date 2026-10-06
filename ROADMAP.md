@@ -2585,3 +2585,12 @@ with Ryan touching only the intake and the checkpoints.
   (`labs/audio/sfx_library.py`, the free local `claude` CLI), a hit is used, and only with no hit is one generated and then kept in the store so it is paid for once. A failed library check refuses, it does not generate.
   **B-roll** (`labs/broll`, ROADMAP 2026-09-30) is never applied on its own: it is used only for something Ryan asks for. Still open: ElevenLabs commercial terms for generated sound effects (unconfirmed); whether the bleep should use
   a library sound instead of its 1 kHz tone.
+
+- **2026-10-06 — The `labs/` tools now go into the app, a screen at a time; this lifts the 2026-09-29 "all at once, at the end" timing.** Ryan, after judging Reel 3 round 7
+  ("This is great. Not perfect. But definitely solid."): "Lets start getting all of these pieces imported into the Precut app that weve been working with labeled
+  'broll-buddy-app'." That app is `app/` (package name `broll-buddy-app`, product name Post House). Mechanism, settled with the first slice: `labs/` stays where it is edited and
+  tested; `safety_net/sync_labs.sh` copies it (without tests, docs, `recruit/` and the skill) into `app/python_backend/labs/`, plus `safety_net/verify_export.py` into
+  `app/python_backend/safety_net/`, so `python_backend/` plays the part of the repo root the labs expect (`labs/`, `posthouse/`, `safety_net/` side by side).
+  `safety_net/tests/test_labs_sync.py` fails on drift, same as the posthouse copy (rule 9). The backend reaches a tool through `app/python_backend/creator_tools.py` (the tool's own entry
+  point, its printed check rows caught and sent as log events because stdout is the event channel); the UI gets one tab per workflow. Nothing is reimplemented. The 2026-09-29
+  rule that new capability is built standalone first, and the sign-off bar, are unchanged.

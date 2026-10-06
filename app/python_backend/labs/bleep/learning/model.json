@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "updated": "2026-09-30",
+  "n_records": 6,
+  "pads": {
+    "transcript": {
+      "before": 0.035,
+      "after": 0.112,
+      "n": 1,
+      "observed_median_before": -0.1,
+      "observed_median_after": 0.09
+    },
+    "revealed": {
+      "before": 0.045,
+      "after": 0.12,
+      "n": 1,
+      "observed_median_before": -0.06,
+      "observed_median_after": 0.12
+    }
+  },
+  "sources": {
+    "transcript": {
+      "kept": 1,
+      "wrong": 0,
+      "precision": 1.0
+    },
+    "revealed": {
+      "kept": 1,
+      "wrong": 0,
+      "precision": 1.0
+    },
+    "suspect": {
+      "kept": 0,
+      "wrong": 3,
+      "precision": 0.0
+    }
+  },
+  "detection": {
+    "misses": 1,
+    "misses_needed": 3,
+    "suspect_min_sec": null,
+    "misses_outside_loud_stretches": 1
+  },
+  "words": {
+    "skip": {},
+    "add": {}
+  }
+}

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { sendCommand } from "../App.jsx";
 import PMTab from "./tabs/PMTab.jsx";
 import IdeasTab from "./tabs/IdeasTab.jsx";
+import ReviewTab from "./tabs/ReviewTab.jsx";
 import LogView from "../components/LogView.jsx";
 
 /**
@@ -293,6 +294,12 @@ export default function ProjectView({
             sub={ideas.length ? `${ideas.length} cards` : "none"}
             disabled={transcriptCount === 0 && ideas.length === 0}
           />
+          <Tab
+            label="02 · Review"
+            active={activeTab === "review"}
+            onClick={() => setActiveTab("review")}
+            sub="notes on a cut"
+          />
         </div>
         <div className="project-nav-spacer" />
         {onDelete && (
@@ -346,6 +353,10 @@ export default function ProjectView({
               autoIncludeRulesCount={autoIncludeRulesCount}
             />
           )}
+          {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}
+          <div style={{ display: activeTab === "review" ? "block" : "none" }}>
+            <ReviewTab subscribe={subscribe} />
+          </div>
         </section>
         {showLog ? (
           <aside className="project-sidebar">
