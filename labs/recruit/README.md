@@ -70,3 +70,11 @@ Built, machine-verified, NOT yet opened in Premiere or judged by Ryan. Output: `
 - A hook is a fragment moved to the front, not repeated source: the safety net refuses source overlap.
 - Open: Canon 8K clips (W1, W2) sit in a 4K sequence unscaled; lav audio is not on its own track; speakers mostly unconfirmed; clearance (children, names, "$88", legal terms).
 - Fixed on the way: the donor exporter leaves camera-audio clips without a `sourcetrack` on this path (`add_audio_sourcetracks` in `posthouse/coldfootage.py`, test in `safety_net/tests/test_coldfootage.py`).
+
+### Reel 3 through the app features (2026-10-05), built, NOT yet judged by Ryan
+Folder: `~/Documents/Post House Reviews/Recruitment footage (proof)/Reel 3 paces/`. Open `Reel 3 - That's on me_layers_v1.xml` (cut on V1/A1, captions on V2, music and a whoosh on four new audio tracks) and `audio/audio_preview.mp4`.
+- Captions: 128 words, 25 lines, all gating checks pass (base-model transcript agrees on 95% of words). Frames read: the pill sits low and can cover a hand; it never looks at the picture.
+- Bleep scan: 128 words heard, none on the list, nothing bleeped (Whisper can hide curse words; not heard by anyone).
+- Audio: music generated with ElevenLabs; the whoosh at 1.17 s (hook to story, frame 35) came from his library, nothing generated for it. MUSIC-AUDIBLE was skipped (no 0.8 s pause in a tight cut), so the music level between words is unmeasured. Nobody has listened.
+- Layers placed with `place_overlay.py` then `place_audio.py`; `verify_export.py` passes on the final XML. Premiere import unconfirmed.
+- Not run: the QA pass (needs review notes and a before/after pair; the reel has had no revision).
