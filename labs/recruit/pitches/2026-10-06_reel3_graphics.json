@@ -1,0 +1,16 @@
+{
+ "note": "Reel 3's title card and step labels for labs/overlay/make_title.py. Draft copy for Ryan to change. Every element is anchored to a SOURCE frame (the first frame of its cut in the camera file), so it follows its cut through a revision. 'builds' are seconds after the anchor frame; the music is conformed so a beat lands on each build.",
+ "title": {
+  "anchor": {"source": "DJI_20260613100030_0004_D.MP4", "source_sec": 1181.41},
+  "small": "THE SUB SAID",
+  "big": "“DONE”",
+  "joke": "(THE BACKYARD DISAGREED)",
+  "builds": [0.0, 0.564, 1.128],
+  "hold": 2.7
+ },
+ "labels": [
+  {"anchor": {"source": "DJI_20260613100030_0004_D.MP4", "source_sec": 1190.02}, "text": "The closing", "word_step": 0.2, "until": "clip_end"},
+  {"anchor": {"source": "DJI_20260613100030_0004_D.MP4", "source_sec": 1200.93}, "text": "What he told the buyer", "word_step": 0.2, "until": "clip_end"},
+  {"anchor": {"source": "DJI_20260613100030_0004_D.MP4", "source_sec": 1205.40}, "text": "What the buyer found", "word_step": 0.2, "until": "clip_end"}
+ ]
+}

@@ -53,6 +53,9 @@ def main() -> int:
     ap.add_argument("--style", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--proof", type=Path, default=Path.home() / "Documents/Post House Reviews/Recruitment footage (proof)")
+    ap.add_argument("--graphics", type=Path, help="a make_title.py spec: the title card and step labels, placed on V2 by labs/overlay")
+    ap.add_argument("--music-track", type=Path, help="a generated track (labs/audio/score_music.py): conformed so a beat lands on every title word and transition, mixed as a steady bed with no sound effect, placed by labs/audio")
+    ap.add_argument("--music-reference", type=Path, help="the track whose measured feel the music must match (make_audio re-measures the finished stem against it)")
     a = ap.parse_args()
     import speakers
     import reframe_xml
@@ -121,6 +124,55 @@ def main() -> int:
         print(r.stderr[-800:], file=sys.stderr)
         return 1
     print(f"-> {final}")
+    if not (a.graphics or a.music_track):
+        return 0
+
+    def tool(*cmd) -> subprocess.CompletedProcess:
+        r = subprocess.run([sys.executable, *map(str, cmd)], capture_output=True, text=True)
+        keep = [l for l in r.stdout.splitlines() if not l.startswith(("!", "POSTHOUSE", "  Could not read", "  Is PRECUT", "[overlay]"))]
+        print("\n".join(keep[-24:]))
+        if r.returncode:
+            print(r.stderr[-1200:], file=sys.stderr)
+        return r
+    cur = final
+    # 5. the title card and step labels: labs/overlay (HyperFrames), anchored to source frames, placed on V2
+    if a.graphics:
+        print("\n== graphics (labs/overlay/make_title.py, place_overlay.py)")
+        if tool(REPO / "labs/overlay/make_title.py", "--xml", cur, "--spec", a.graphics, "--out", a.out / "graphics").returncode:
+            return 1
+        nxt = a.out / f"Reel {a.pitch} vertical + graphics.xml"
+        if tool(REPO / "labs/overlay/place_overlay.py", cur, a.out / "graphics", "--out", nxt).returncode:
+            return 1
+        cur = nxt
+    # 6. the music: events -> conform -> make_audio as a bed with no effect -> place_audio
+    if a.music_track:
+        print("\n== music (labs/audio/conform_music.py, make_audio.py --mix-style bed --no-sfx, place_audio.py)")
+        if tool(REPO / "labs/review_loop/build_review.py", cur, "--out", a.out / "review_for_audio", "--height", "960").returncode:
+            return 1
+        sys.path.insert(0, str(REPO / "labs/review_loop"))
+        import timeline
+        cut = timeline.load_cut(cur)
+        events = sorted({round(v.tl_start, 4) for v in cut.video if v.tl_start > 0})
+        if a.graphics:
+            plan_t = json.loads((a.out / "graphics/placement.json").read_text())["plan"]
+            if plan_t["title"]:
+                events = sorted(set(events) | set(plan_t["title"]["on"]))
+                events = [e for e in events if e >= plan_t["title"]["on"][0] - 1e-6]          # the music enters WITH the title card: nothing before it
+        (a.out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
+        (a.out / "audio_in").mkdir(exist_ok=True)
+        conformed = a.out / "audio_in/music_conformed.wav"
+        if tool(REPO / "labs/audio/conform_music.py", "--music", a.music_track, "--events", a.out / "events.json", "--total", f"{cut.zone_end:.4f}", "--out", conformed).returncode:
+            return 1
+        args = ["--xml", cur, "--base", a.out / "review_for_audio/preview.mp4", "--out", a.out / "audio", "--start", "0", "--end", f"{cut.zone_end - 0.001:.3f}", "--no-sfx", "--mix-style", "bed", "--music-file", conformed]
+        if a.music_reference:
+            args += ["--music-reference", a.music_reference]
+        if tool(REPO / "labs/audio/make_audio.py", *args).returncode:
+            return 1
+        nxt = a.out / f"Reel {a.pitch} vertical + graphics + music.xml"
+        if tool(REPO / "labs/audio/place_audio.py", cur, a.out / "audio", "--out", nxt).returncode:
+            return 1
+        cur = nxt
+    print(f"\nfinal -> {cur}")
     return 0
 
 

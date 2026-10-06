@@ -64,3 +64,12 @@ def test_after_conforming_a_beat_lands_on_every_event_and_the_music_stops_after_
     quiet = np.abs(x[int(9.5 * sr):]).max()
     assert quiet < 0.01                                                                     # it stopped: the last scene is bare
     assert np.abs(x[int(0.2 * sr):int(0.8 * sr)]).max() < 0.01                              # nothing before the first event
+
+
+def test_events_within_a_few_frames_of_each_other_are_one_event_and_the_merge_is_reported():
+    kept, dropped = cm.merge_close([1.164, 1.168, 1.7, 1.75, 4.0])
+    assert kept == [1.164, 1.7, 4.0] and dropped == [(1.168, 1.164), (1.75, 1.7)]
+    p = cm.plan([1.164, 1.168, 1.73, 2.29, 7.24], ibi=0.545)
+    assert p["events"] == [1.164, 1.73, 2.29, 7.24] and p["merged"] == [(1.168, 1.164)]
+    assert all(s["to"] - s["from"] >= cm.MIN_EVENT_GAP for s in p["segments"])              # no segment squeezes a half-beat into a few milliseconds
+    assert p["worst_stretch"] < 0.5

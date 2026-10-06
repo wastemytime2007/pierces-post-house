@@ -56,9 +56,12 @@ def main() -> int:
     music, sfx, speech = d / "music_stem.wav", d / "sfx_clip.wav", d / "speech_window.wav"
     rows: list[tuple[str, bool | None, str]] = []
 
-    pm, ps = probe(music), probe(sfx)
-    rows.append(("STEM-FORMAT", (pm["codec"], pm["sr"], pm["ch"]) == ("pcm_s16le", 48000, 2) and (ps["codec"], ps["sr"], ps["ch"]) == ("pcm_s16le", 48000, 2) and abs(pm["dur"] - win) < 0.02,
-                 f"music {pm['codec']} {pm['sr']}Hz {pm['ch']}ch {pm['dur']:.3f}s (window {win:.3f}s); effect {ps['sr']}Hz {ps['ch']}ch {ps['dur']:.2f}s"))
+    has_sfx = meta.get("sfx_anchor") != "none"                                  # a reel with no sound effect (--no-sfx) has no effect clip to check
+    bed = meta.get("mix_style") == "bed"                                        # a steady bed under the voice (--mix-style bed) is judged as a bed, not as music that ducks out of the way
+    pm = probe(music)
+    ps = probe(sfx) if has_sfx else None
+    rows.append(("STEM-FORMAT", (pm["codec"], pm["sr"], pm["ch"]) == ("pcm_s16le", 48000, 2) and (not has_sfx or (ps["codec"], ps["sr"], ps["ch"]) == ("pcm_s16le", 48000, 2)) and abs(pm["dur"] - win) < 0.02,
+                 f"music {pm['codec']} {pm['sr']}Hz {pm['ch']}ch {pm['dur']:.3f}s (window {win:.3f}s)" + (f"; effect {ps['sr']}Hz {ps['ch']}ch {ps['dur']:.2f}s" if has_sfx else "; no sound effect")))
 
     m, sp = pcm(music), pcm(speech)
     n = min(len(m), len(sp))
@@ -83,7 +86,21 @@ def main() -> int:
         i = j
     gap[:body.start] = False
     gap[body.stop:] = False
-    if act.sum() < 5 or gap.sum() < 3:
+    if bed:                                                                      # the wallpaper reel's music sits steadily 5 to 12 dB under the voice, wherever it plays
+        playing = mdb > float(np.percentile(mdb, 95)) - 20.0
+        both = act & playing
+        if both.sum() < 5:
+            rows.append(("BED-LEVEL", None, "too little speech with music under it to measure"))
+        else:
+            speech_lvl, music_act = float(np.mean(sdb[both])), float(np.mean(mdb[both]))
+            peak = float(np.abs(m).max())
+            gap_db = speech_lvl - music_act
+            rows.append(("BED-LEVEL", 5.0 <= gap_db <= 12.0 and peak < 0.99,
+                         f"where the music plays under speech ({int(both.sum())} tenths of a second): speech {speech_lvl:.1f} dB, music {music_act:.1f} dB, {gap_db:.1f} dB apart (a bed: 5 to 12; the ducked style needs 15 or more); peak {db(peak):.1f} dBFS"))
+            inside = playing[body]
+            spread = float(np.percentile(mdb[body][inside], 90) - np.percentile(mdb[body][inside], 10)) if inside.sum() >= 5 else 0.0
+            rows.append(("BED-STEADY", spread <= 6.0, f"the music's level while it plays varies by {spread:.1f} dB (10th to 90th percentile; a bed: 6 or less)"))
+    elif act.sum() < 5 or gap.sum() < 3:
         rows.append(("MUSIC-AUDIBLE", None, "too little speech, or no pause of 0.8 s or more, to measure"))
     else:
         speech_lvl, music_act, music_gap = float(np.mean(sdb[act])), float(np.mean(mdb[act])), float(np.mean(mdb[gap]))
@@ -104,18 +121,21 @@ def main() -> int:
     else:
         rows.append(("SPEECH-LEVEL-KEPT", None, "too little speech to measure"))
 
-    sf = pcm(sfx)
-    speech_peak, sfx_peak = db(float(np.abs(sp).max())), db(float(np.abs(sf).max()))
-    rows.append(("SFX-QUIETER-THAN-SPEECH", speech_peak - sfx_peak >= 5.0, f"effect peak {sfx_peak:.1f} dBFS, speech peak {speech_peak:.1f} dBFS ({speech_peak - sfx_peak:.1f} dB apart)"))
+    if has_sfx:
+        sf = pcm(sfx)
+        speech_peak, sfx_peak = db(float(np.abs(sp).max())), db(float(np.abs(sf).max()))
+        rows.append(("SFX-QUIETER-THAN-SPEECH", speech_peak - sfx_peak >= 5.0, f"effect peak {sfx_peak:.1f} dBFS, speech peak {speech_peak:.1f} dBFS ({speech_peak - sfx_peak:.1f} dB apart)"))
 
-    resid = prev[:k] - sp[:k] - m[:k]
-    want = int(round((meta["callout_sec"] - meta["window"]["start"]) * SR))
-    lo, hi = max(0, want - SR // 2), min(k - len(sf), want + SR // 2)
-    seg = resid[lo:hi + len(sf)]
-    corr = np.correlate(seg, sf, mode="valid")
-    best = int(np.argmax(np.abs(corr))) + lo
-    err_ms = (best - want) / SR * 1000
-    rows.append(("SFX-AT-CALLOUT", abs(err_ms) <= 30.0, f"the effect lands {err_ms:+.1f} ms from the callout's entrance ({meta['callout_sec']:.3f}s)"))
+        resid = prev[:k] - sp[:k] - m[:k]
+        want = int(round((meta["callout_sec"] - meta["window"]["start"]) * SR))
+        lo, hi = max(0, want - SR // 2), min(k - len(sf), want + SR // 2)
+        seg = resid[lo:hi + len(sf)]
+        corr = np.correlate(seg, sf, mode="valid")
+        best = int(np.argmax(np.abs(corr))) + lo
+        err_ms = (best - want) / SR * 1000
+        rows.append(("SFX-AT-CALLOUT", abs(err_ms) <= 30.0, f"the effect lands {err_ms:+.1f} ms from the callout's entrance ({meta['callout_sec']:.3f}s)"))
+    else:
+        rows.append(("info: NO-SFX", None, "no sound effect in this build, as asked (--no-sfx)"))
 
     pk = db(float(np.abs(prev).max()))
     rows.append(("MIX-NOT-CLIPPING", pk < -1.0, f"mixed preview peaks at {pk:.2f} dBFS"))
@@ -142,11 +162,15 @@ def main() -> int:
         rows.append(("REFERENCE-MATCH", False, f"the reference track {mr['path']} is no longer there to measure against"))
 
     g = meta["generated"]
-    sfx_how = (f"from your library: {g['sfx']['library_file']}" if g["sfx"].get("source") == "library" else
-               f"{'reused from cache' if g['sfx']['cached'] else 'newly generated, none in the library fit'}")
-    rows.append(("info: GENERATED", None, f"effect: \"{g['sfx']['prompt']}\" ({sfx_how}); music: \"{g['music']['prompt']}\" ({'reused from cache' if g['music']['cached'] else 'newly generated'})"))
+    if has_sfx:
+        sfx_how = (f"from your library: {g['sfx']['library_file']}" if g["sfx"].get("source") == "library" else
+                   f"{'reused from cache' if g['sfx']['cached'] else 'newly generated, none in the library fit'}")
+        eff = f"effect: \"{g['sfx']['prompt']}\" ({sfx_how}); "
+    else:
+        eff = "no effect; "
+    rows.append(("info: GENERATED", None, f"{eff}music: \"{g['music']['prompt']}\" ({'reused from cache' if g['music']['cached'] else 'newly generated'})"))
 
-    gating = {"REFERENCE-MATCH", "STEM-FORMAT", "MUSIC-AUDIBLE", "MUSIC-UNDER-SPEECH", "DUCKS", "SPEECH-LEVEL-KEPT", "SFX-QUIETER-THAN-SPEECH", "SFX-AT-CALLOUT", "MIX-NOT-CLIPPING", "FADES"}
+    gating = {"BED-LEVEL", "BED-STEADY", "REFERENCE-MATCH", "STEM-FORMAT", "MUSIC-AUDIBLE", "MUSIC-UNDER-SPEECH", "DUCKS", "SPEECH-LEVEL-KEPT", "SFX-QUIETER-THAN-SPEECH", "SFX-AT-CALLOUT", "MIX-NOT-CLIPPING", "FADES"}
     wd = max(len(r[0]) for r in rows)
     bad = 0
     for name, ok, detail in rows:

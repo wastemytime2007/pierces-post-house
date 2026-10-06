@@ -77,6 +77,63 @@ def test_music_sits_where_asked_and_ducks_by_the_amount_asked(stems):
     assert float(np.abs(m).max()) < 0.95
 
 
+def _gappy_music(stems: Path) -> Path:
+    """5 s of silence, 10 s of tone, 5 s of silence: a track that is bare at both ends, like a reel whose hook and last line have no music."""
+    out = stems / "gappy.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=5", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000:duration=10", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo:d=5",
+                    "-filter_complex", "[1:a]aformat=channel_layouts=stereo[t];[0:a][t][2:a]concat=n=3:v=0:a=1", str(out)], check=True)
+    return out
+
+
+def test_a_track_with_silence_is_levelled_by_the_music_while_it_plays_only_when_asked(stems):
+    """The default levels by the whole file's average, so silence drags the average down and the music comes out hot; with level_on_active the music that plays sits exactly where asked."""
+    gappy = _gappy_music(stems)
+    sp = va.pcm(stems / "speech.wav")
+    for active, want in ((True, -8.0), (False, None)):
+        out = stems / f"gappy_stem_{active}.wav"
+        lv = ma.build_music_stem(gappy, stems / "speech.wav", out, 20.0, -8.0, 0.0, level_on_active=active)
+        mdb, sdb = va.rms_db(va.pcm(out)), va.rms_db(sp)
+        both = np.zeros(len(mdb), dtype=bool)
+        both[int(8.5 * 10):int(11.5 * 10)] = True                                           # speech 8-12 s, music 5-15 s: both are on here
+        gap = float(np.mean(sdb[both]) - np.mean(mdb[both]))
+        if active:
+            assert gap == pytest.approx(-want, abs=1.0)
+        else:
+            assert gap < 8.0 - 1.5                                                         # hotter than asked: the silent ends pulled the average down
+        assert lv["duck_db"] == 0.0
+
+
+def _bed_folder(stems: Path, tmp: Path, music_db: float) -> Path:
+    d = tmp
+    d.mkdir(exist_ok=True)
+    shutil.copy(stems / "speech.wav", d / "speech_window.wav")
+    ma.build_music_stem(stems / "music.mp3", d / "speech_window.wav", d / "music_stem.wav", 20.0, music_db, 0.0, level_on_active=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=64x64:r=30:d=20", "-i", str(d / "speech_window.wav"), "-c:v", "libx264", "-c:a", "aac", "-shortest", str(d / "base.mp4")], check=True)
+    ma.mix_preview(d / "base.mp4", d / "music_stem.wav", None, d / "audio_preview.mp4", 0.0, 20.0, None)
+    (d / "audio.json").write_text(json.dumps({"window": {"start": 0.0, "end": 20.0}, "mix_style": "bed", "sfx_anchor": "none", "callout_sec": None, "music_reference": None,
+                                              "generated": {"sfx": None, "music": {"prompt": "a bed", "cached": True}}}))
+    return d
+
+
+def _verify_rows(folder: Path) -> dict:
+    r = subprocess.run([sys.executable, str(HERE / "verify_audio.py"), str(folder)], capture_output=True, text=True)
+    rows = {}
+    for line in r.stdout.splitlines():
+        if line.startswith("  ["):
+            rows[line[3:7]] = rows.get(line[3:7], [])
+            rows[line[3:7]].append(line[9:].split("  ")[0].strip())
+    return {"code": r.returncode, "rows": rows, "text": r.stdout}
+
+
+def test_a_steady_bed_with_no_effect_passes_its_own_checks_and_music_ducked_far_under_the_voice_fails_them(stems, tmp_path):
+    good = _verify_rows(_bed_folder(stems, tmp_path / "good", -8.0))
+    assert good["code"] == 0, good["text"]
+    assert "BED-LEVEL" in good["rows"]["PASS"] and "BED-STEADY" in good["rows"]["PASS"] and "SFX-AT-CALLOUT" not in good["text"]
+    assert "NO-SFX" in good["text"]                                                         # said so, rather than silently skipping the effect checks
+    bad = _verify_rows(_bed_folder(stems, tmp_path / "bad", -20.0))                         # the old doctrine's level: you could not hear it
+    assert bad["code"] == 1 and "BED-LEVEL" in bad["rows"]["FAIL"], bad["text"]
+
+
 def test_music_shorter_than_the_window_is_refused(stems):
     with pytest.raises(ma.AudioError, match="shorter than the"):
         ma.build_music_stem(stems / "music.mp3", stems / "speech.wav", stems / "x.wav", 60.0, -8.0, 10.0)

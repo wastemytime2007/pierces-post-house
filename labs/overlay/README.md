@@ -122,3 +122,14 @@ HyperFrames 0.8.93 runs through `npx` (pinned in `make_overlay.py`); GSAP 3.15.0
 once and cached in the temp dir. HyperFrames keeps its config in `~/.hyperframes/` (telemetry is
 disabled there) and downloaded a ~197MB rendering Chrome plus a font cache into
 `~/.cache/hyperframes/`. It added no skills or plugins to `~/.claude`.
+
+## A title card and step labels, in portrait or landscape (`make_title.py`, 2026-10-06)
+From Ryan's wallpaper reel (`docs/reference/WALLPAPER_REEL_ANATOMY.md`): a brand-navy title card with a small white line, a big orange word and an orange parenthetical joke, and heavy white step labels built a word at a time, lower left.
+```
+PRECUT_ROOT=~/precut-checkout python3 labs/overlay/make_title.py --xml "<export.xml>" --spec spec.json --out "<folder>"
+python3 labs/overlay/verify_title.py "<folder>"
+python3 labs/overlay/place_overlay.py "<export.xml>" "<folder>" --out "<new.xml>"
+```
+ONE transparent ProRes 4444 layer the length of the cut, at the sequence's own size and rate, **including portrait 1080x1920** (the callout and card templates are still landscape-only; `title_template.html` takes its canvas from the sequence). Every element is anchored to a SOURCE frame (`anchor: {source, source_sec}`), so on a revised cut you rebuild it on the new XML and each element lands on its own moment; `labs/reconform` does not rebuild it yet. Hard on and hard off, as the reference does. Spec format and the refusals (a moment not in the cut, a label under 0.9 s, elements on screen together, a title that runs past the cut) are in the module docstring and `tests/test_title.py`.
+`verify_title.py` decodes the rendered file and checks it against the plan: format and alpha and exact frame count, fully transparent wherever nothing is due, the navy field over most of the frame, the three title lines arriving in order (white, then orange, then orange), each label empty before it starts and filling word by word, and clearing. Negative control run: a plan with the big word 1.0 s early and a label 0.6 s late fails three checks.
+Real limits: the font is Inter (HyperFrames swaps in a fixed web font; ITC Avant Garde is not installed), no logo, English only, and the placement in Premiere is unconfirmed.

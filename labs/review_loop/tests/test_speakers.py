@@ -1,4 +1,4 @@
-"""Speaker timeline from two recorders (moved with the code from labs/recruit/render_reel.py)."""
+"""Speaker timeline from two recorders."""
 import sys
 from pathlib import Path
 

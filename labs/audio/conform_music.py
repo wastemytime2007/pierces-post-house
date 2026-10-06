@@ -116,10 +116,25 @@ def find_drop(strength: list[float], within_beats: int = 64) -> int:
     raise ConformError("no beat where a groove comes in was found")
 
 
+MIN_EVENT_GAP = 0.12                     # events closer than this are one event (a title anchored on a source frame and a cut that starts a frame later are the same moment)
+
+
+def merge_close(events: list[float], tol: float = MIN_EVENT_GAP) -> tuple[list[float], list[tuple[float, float]]]:
+    """Sorted events with any that follow another within `tol` seconds folded into it: (kept events, [(dropped, kept)])."""
+    kept: list[float] = []
+    dropped: list[tuple[float, float]] = []
+    for e in sorted(events):
+        if kept and e - kept[-1] < tol:
+            dropped.append((e, kept[-1]))
+        else:
+            kept.append(e)
+    return kept, dropped
+
+
 def plan(events: list[float], ibi: float, search: tuple[float, float] = SEARCH, max_stretch: float = MAX_STRETCH) -> dict:
     """For each gap between consecutive events, the number of half-beats of the track that fill it, and the speed factor that makes them fit exactly.
-    The overall tempo scale `s` (reel beat = ibi / s) is the one that makes the largest speed change smallest."""
-    ev = sorted(events)
+    The overall tempo scale `s` (reel beat = ibi / s) is the one that makes the largest speed change smallest. Events within MIN_EVENT_GAP of each other are merged first (and reported)."""
+    ev, merged = merge_close(events)
     gaps = np.diff(ev)
     best = None
     for s in np.arange(search[0], search[1] + 1e-9, 0.001):
@@ -130,7 +145,7 @@ def plan(events: list[float], ibi: float, search: tuple[float, float] = SEARCH, 
         if best is None or worst < best[0] - 1e-9:
             best = (worst, float(s), n, f)
     worst, s, n, f = best
-    return {"scale": round(s, 3), "reel_bpm": round(60 / (ibi / s), 2), "segments": [{"from": ev[i], "to": ev[i + 1], "half_beats": int(n[i]), "speed": round(float(f[i]), 4)} for i in range(len(gaps))],
+    return {"events": ev, "merged": merged, "scale": round(s, 3), "reel_bpm": round(60 / (ibi / s), 2), "segments": [{"from": ev[i], "to": ev[i + 1], "half_beats": int(n[i]), "speed": round(float(f[i]), 4)} for i in range(len(gaps))],
             "worst_stretch": round(worst, 4), "over_limit": [i for i in range(len(gaps)) if abs(f[i] - 1) > max_stretch]}
 
 
@@ -212,7 +227,7 @@ def conform(music: Path, events: list[float], total: float, out: Path) -> dict:
     drop = find_drop(grid["strength"])
     pl = plan(events, grid["ibi"])
     render(music, grid, drop, pl, total, out)
-    return {"grid": {k: v for k, v in grid.items() if k != "strength"}, "drop_beat": drop, "drop_at_track_sec": round(grid["b0"] + drop * grid["ibi"], 2), "plan": pl, "hits": measure_hits(out, events)}
+    return {"grid": {k: v for k, v in grid.items() if k != "strength"}, "drop_beat": drop, "drop_at_track_sec": round(grid["b0"] + drop * grid["ibi"], 2), "plan": pl, "hits": measure_hits(out, pl["events"])}
 
 
 def main() -> int:
@@ -225,7 +240,8 @@ def main() -> int:
     ev = [e["t"] for e in json.loads(a.events.read_text())["events"]]
     rep = conform(a.music, ev, a.total, a.out)
     a.out.with_suffix(".json").write_text(json.dumps(rep, indent=1))
-    print(f"track {rep['grid']['bpm']} bpm, grid error {rep['grid']['grid_err_ms']} ms, drop at beat {rep['drop_beat']} ({rep['drop_at_track_sec']} s); reel tempo {rep['plan']['reel_bpm']} bpm; worst stretch {rep['plan']['worst_stretch'] * 100:.1f}%")
+    print(f"track {rep['grid']['bpm']} bpm, grid error {rep['grid']['grid_err_ms']} ms, drop at beat {rep['drop_beat']} ({rep['drop_at_track_sec']} s); reel tempo {rep['plan']['reel_bpm']} bpm; worst stretch {rep['plan']['worst_stretch'] * 100:.1f}%"
+          + (f"; merged {len(rep['plan']['merged'])} event(s) within {MIN_EVENT_GAP}s of another: {[(round(d, 3), round(k, 3)) for d, k in rep['plan']['merged']]}" if rep["plan"]["merged"] else ""))
     for h in rep["hits"]:
         print(f"  event {h['event']:7.3f}s: onset {h['offset_ms']} ms from it, strength {h['strength']}")
     return 0

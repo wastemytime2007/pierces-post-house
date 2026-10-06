@@ -133,7 +133,7 @@ def speech_activity(x: np.ndarray, hop: int) -> tuple[np.ndarray, float]:
     return act, float(d[act].mean())
 
 
-def build_music_stem(raw_mp3: Path, speech: Path, out: Path, dur: float, music_db: float, duck_db: float) -> dict:
+def build_music_stem(raw_mp3: Path, speech: Path, out: Path, dur: float, music_db: float, duck_db: float, level_on_active: bool = False) -> dict:
     """The music sits music_db relative to the speech's level (measured while speech is playing) in the
     pauses, and duck_db lower while the speaker talks. The ducking is an exact, smoothed volume curve
     (0.15 s down, 0.35 s back up), not a compressor, so its depth is known."""
@@ -148,6 +148,10 @@ def build_music_stem(raw_mp3: Path, speech: Path, out: Path, dur: float, music_d
     m = m[:n]
     mono = va.pcm(raw_mp3)[:n]                                    # level is measured the way verify_audio reads it: a mono downmix
     m_lvl = float(20 * np.log10(max(np.sqrt((mono ** 2).mean()), 1e-6)))
+    if level_on_active:                                           # a track with silence in it (a bare hook, a bare last line) is levelled by the music while it PLAYS, not by its average over the silence
+        md = va.rms_db(mono, hop)
+        playing = md > float(np.percentile(md, 95)) - 20.0
+        m_lvl = float(20 * np.log10(max(np.sqrt(np.mean(10 ** (md[playing] / 10))), 1e-6)))
     m *= 10 ** (((s_lvl + music_db) - m_lvl) / 20)
 
     want = np.zeros(len(act))
@@ -180,7 +184,11 @@ def build_sfx_clip(raw_mp3: Path, speech: Path, out: Path, below_speech_peak_db:
     return gain
 
 
-def mix_preview(video: Path, music_stem: Path, sfx_clip: Path, out: Path, start: float, dur: float, t_sfx: float) -> None:
+def mix_preview(video: Path, music_stem: Path, sfx_clip: Path | None, out: Path, start: float, dur: float, t_sfx: float | None) -> None:
+    if sfx_clip is None:                                         # no sound effect: the speech and the music stem
+        run("-ss", start, "-t", dur, "-i", video, "-i", music_stem, "-filter_complex", "[0:a][1:a]amix=inputs=2:normalize=0:duration=first[a]",
+            "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", dur, out)
+        return
     off_ms = int(round((t_sfx - start) * 1000))
     run("-ss", start, "-t", dur, "-i", video, "-i", music_stem, "-i", sfx_clip,
         "-filter_complex", f"[2:a]adelay={off_ms}|{off_ms}[s];[0:a][1:a][s]amix=inputs=3:normalize=0:duration=first[a]",
@@ -214,8 +222,11 @@ def main() -> int:
     ap.add_argument("--sfx-at", type=float, help="put the effect at this time on the timeline (seconds) instead of at a callout: for a cut with no callout")
     ap.add_argument("--sfx-prompt", default=DEFAULT_SFX)
     ap.add_argument("--music-prompt", default=DEFAULT_MUSIC)
-    ap.add_argument("--music-db", type=float, default=-5.0, help="music level in the pauses, relative to the speech level")
-    ap.add_argument("--duck-db", type=float, default=12.0, help="how much further the music drops while the speaker talks")
+    ap.add_argument("--no-sfx", action="store_true", help="no sound effect at all (the wallpaper reel has none): exclusive with --callout and --sfx-at")
+    ap.add_argument("--mix-style", choices=["ducked", "bed"], default="ducked", help="ducked (default): the music is brought down 12 dB under speech, for a callout and a voice. bed: a steady bed under the voice like a finished reel's, "
+                                                                                    "8 dB under it with no ducking")
+    ap.add_argument("--music-db", type=float, default=None, help="music level in the pauses, relative to the speech level (default -5, or -8 for --mix-style bed)")
+    ap.add_argument("--duck-db", type=float, default=None, help="how much further the music drops while the speaker talks (default 12, or 0 for --mix-style bed)")
     ap.add_argument("--sfx-below-peak-db", type=float, default=6.0, help="effect peak below the speech's peak")
     ap.add_argument("--preview-video", type=Path, help="video to put the mixed audio under (default: --base)")
     ap.add_argument("--cache", type=Path, help="where generated audio is cached (default: <out>/generated); point it at an earlier folder's to reuse its audio")
@@ -225,12 +236,19 @@ def main() -> int:
     ap.add_argument("--music-file", type=Path, help="use exactly this already-generated music file (a rebuild uses this so the music never changes)")
     ap.add_argument("--music-ms", type=int, help="length to request the music at; the same length and prompt as an earlier run finds it in the cache instead of generating new music")
     a = ap.parse_args()
+    a.music_db = a.music_db if a.music_db is not None else (-8.0 if a.mix_style == "bed" else -5.0)
+    a.duck_db = a.duck_db if a.duck_db is not None else (0.0 if a.mix_style == "bed" else 12.0)
 
     try:
         cut = timeline.load_cut(a.xml)
         if not 0 <= a.start < a.end <= cut.zone_end + 0.01:
             raise AudioError(f"the window {a.start}-{a.end}s is outside the cut (0-{cut.zone_end:.2f}s)")
-        t_sfx = sfx_time(a.callout, a.sfx_at, a.start, a.end)
+        if a.no_sfx:
+            if a.callout is not None or a.sfx_at is not None:
+                raise AudioError("--no-sfx means no effect at all: do not also give --callout or --sfx-at")
+            t_sfx = None
+        else:
+            t_sfx = sfx_time(a.callout, a.sfx_at, a.start, a.end)
         load_key()
     except (AudioError, timeline.TimelineError, OSError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
@@ -254,7 +272,7 @@ def main() -> int:
     try:
         speech = a.out / "speech_window.wav"
         speech_wav(a.base, speech, a.start, dur)
-        sfx_mp3, sfx_info = get_sfx(a.sfx_prompt, 1.2, cache)
+        sfx_mp3, sfx_info = (None, None) if a.no_sfx else get_sfx(a.sfx_prompt, 1.2, cache)
         music_secs = a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0)
         music_ref = None
         if a.music_file:
@@ -287,20 +305,21 @@ def main() -> int:
         music_stem, sfx_clip = a.out / "music_stem.wav", a.out / "sfx_clip.wav"
         if cache.resolve() != (a.out / "generated").resolve():
             shutil.copytree(cache, a.out / "generated", dirs_exist_ok=True)               # the folder carries its own cache, so a later rebuild from it needs nothing else
-        levels = build_music_stem(music_mp3, speech, music_stem, dur, a.music_db, a.duck_db)
-        sfx_gain = build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db)
+        levels = build_music_stem(music_mp3, speech, music_stem, dur, a.music_db, a.duck_db, level_on_active=a.mix_style == "bed")
+        sfx_gain = None if a.no_sfx else build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db)
         preview = a.out / "audio_preview.mp4"
-        mix_preview(a.preview_video or a.base, music_stem, sfx_clip, preview, a.start, dur, t_sfx)
+        mix_preview(a.preview_video or a.base, music_stem, None if a.no_sfx else sfx_clip, preview, a.start, dur, t_sfx)
     except AudioError as e:
         print(f"FAILED: {e}", file=sys.stderr)
         return 1
 
     (a.out / "audio.json").write_text(json.dumps({
         "window": {"start": a.start, "end": a.end}, "speech_window": speech.name, "music_db_rel_speech": a.music_db, "duck_db": a.duck_db, "levels": levels,
-        "sfx_below_speech_peak_db": a.sfx_below_peak_db, "sfx_gain_db": round(sfx_gain, 2), "callout_sec": t_sfx, "sfx_anchor": "callout" if a.callout else "time",
+        "mix_style": a.mix_style, "sfx_below_speech_peak_db": None if a.no_sfx else a.sfx_below_peak_db, "sfx_gain_db": None if a.no_sfx else round(sfx_gain, 2), "callout_sec": t_sfx,
+        "sfx_anchor": "none" if a.no_sfx else "callout" if a.callout else "time",
         "generated": {"sfx": sfx_info, "music": music_info}, "music_reference": music_ref,
-        "clips": [{"kind": "music", "name": "music_stem.wav", "path": str(music_stem.resolve()), "start_sec": a.start, "duration_sec": probe_dur(music_stem)},
-                  {"kind": "sfx", "name": "sfx_clip.wav", "path": str(sfx_clip.resolve()), "start_sec": t_sfx, "duration_sec": probe_dur(sfx_clip)}],
+        "clips": [{"kind": "music", "name": "music_stem.wav", "path": str(music_stem.resolve()), "start_sec": a.start, "duration_sec": probe_dur(music_stem)}]
+                 + ([] if a.no_sfx else [{"kind": "sfx", "name": "sfx_clip.wav", "path": str(sfx_clip.resolve()), "start_sec": t_sfx, "duration_sec": probe_dur(sfx_clip)}]),
         "speech_wav": str(speech.resolve()), "preview_video": str((a.preview_video or a.base).resolve())}, indent=2))
     (a.out / "placement.json").write_text(json.dumps({"kind": "audio", "clips": json.loads((a.out / "audio.json").read_text())["clips"]}, indent=2))
 

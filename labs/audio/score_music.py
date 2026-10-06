@@ -72,16 +72,37 @@ def with_reference(score: dict, ref: dict) -> dict:
     return {**score, "global": "; ".join([*words, score.get("global", "")]).strip("; ")}
 
 
+def analyse_groove(path: Path) -> dict:
+    """reference_music.analyze of the part of a take that gets USED: from the groove's drop to the start of its last 6 s (its sparse intro and its ringing last chord are not what plays under the speech). A take with no
+    findable drop is analysed whole. Measuring the whole file made takes look brighter and steadier than the finished stem turned out to be."""
+    import tempfile
+    import reference_music as rm
+    import conform_music as cm
+    try:
+        grid = cm.fit_grid(path)
+        t0 = grid["b0"] + cm.find_drop(grid["strength"]) * grid["ibi"]
+    except cm.ConformError:
+        return rm.analyze(path)
+    length = max(grid["seconds"] - 6.0 - t0, 8.0)
+    with tempfile.TemporaryDirectory() as td:
+        seg = Path(td) / "groove.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0:.3f}", "-t", f"{length:.3f}", "-i", str(path), "-ar", "22050", str(seg)], check=True)
+        return rm.analyze(seg)
+
+
 def pick_take(score: dict, ref: dict, cache: Path, tries: int = 3, generate=None, analyse=None) -> tuple[Path, dict]:
     """Generate up to `tries` takes of the plan, measure each with reference_music.analyze, and keep the closest to the reference (stopping at the first that passes reference_music.closeness)."""
     import reference_music as rm
     generate = generate or generate_plan
-    analyse = analyse or rm.analyze
+    analyse = analyse or analyse_groove
     takes = []
     for k in range(tries):
         mp3, info = generate(score, cache, salt="" if k == 0 else f"take{k + 1}")
         got = analyse(mp3)
         c = rm.closeness(ref, got)
+        c_final = rm.closeness(ref, got, dynamics=False)                  # make_audio's verifier re-measures the FINISHED stem without dynamics (the stem is shaped), so a take must pass that way too
+        # a take is "like the reference" only when ALL four measured aspects hold: tempo, brightness, rhythmic density AND steadiness (the reference is a bed within about 4 dB; a take that swings 10 dB is not)
+        c = {**c, "passed": bool(all(c["checks"].values()) and c_final["passed"]), "checks_without_dynamics": c_final["checks"]}
         takes.append({"file": str(mp3), "take": k + 1, "features": got, "closeness": c, "info": info})
         if c["passed"]:
             break

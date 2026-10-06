@@ -1,0 +1,10 @@
+{
+ "note": "Second pass at Reel 3's music. The first (2026-10-06_reel3_score_beat.json) matched the wallpaper reel's tempo, rhythm and steadiness but measured darker than it (tone x0.73 against a limit of 0.75 to 1.33), so the final reference check failed. Same structure, with a brighter, more present top end asked for in the style. The feel still comes from the wallpaper reel's separated music stem via score_music --reference-features.",
+ "global": "beat-driven instrumental bed; deep sub bass with a clearly audible mid-range; kick on the beat; crisp bright hi-hats and percussion; a present plucked or synth mid-range riff; consistent energy with no breakdowns; no vocals",
+ "avoid": "vocals; lyrics; acoustic guitar; orchestral; cinematic trailer hits; risers; muffled or dark mix; cheesy corporate",
+ "sections": [
+  {"name": "Hit", "seconds": 4.0, "style": "starts on one strong accented downbeat hit with a deep bass note; then the beat settles in"},
+  {"name": "Groove", "seconds": 26.0, "style": "steady drum and bass groove; kick on every beat; busy bright hi-hats; a repeating mid-range riff; deep sub bass line; same energy throughout"},
+  {"name": "Resolve", "seconds": 6.0, "style": "drums stop; one final accented bass hit on the first beat that rings out and ends cleanly"}
+ ]
+}

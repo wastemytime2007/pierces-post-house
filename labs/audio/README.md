@@ -120,3 +120,14 @@ placement adds frame-exact checks, that nothing else in the XML changed, and `ve
   peak -1.6 dBFS) and the second request for it was a library hit. Not heard by the author. The model's yes/no is a judgement: it first picked crowd cheering for "applause" and the question was tightened; the hammer-on-metal
   and concrete-drill picks are borderline. The library check is cached by (question version, sound, library listing).
 - The bleep tool is separate: it lays a 1 kHz tone, not a library sound (his library has "Explainer Video - Censorship Tone Beep" and he has a "Censor Bleep Sound Effect.mp3"; whether the bleep should use one of those instead is his call).
+
+## A steady bed with no sound effect (`--mix-style bed --no-sfx`, 2026-10-06)
+Ryan's wallpaper reel has no sound effect and a music bed that holds steady under the voice (measured: about 8 dB under it, level within about 4 dB), where the default build puts the music 5 dB under the speech and then ducks it a further 12 dB while anyone talks, about 17 dB under continuous speech: the "can't hear the music" complaint.
+```
+python3 labs/audio/make_audio.py --xml ... --base ... --out ... --start 0 --end <cut length> --no-sfx --mix-style bed --music-file "<conformed track>" --music-reference "<the reference's music>"
+```
+`--mix-style bed` defaults to `--music-db -8 --duck-db 0` and levels the music by the music while it PLAYS (a track with a bare hook and a bare last line was being levelled by its average over the silence). `verify_audio.py` judges a bed as a bed: **BED-LEVEL** (5 to 12 dB under the speech where both play) and **BED-STEADY** (level varies by 6 dB or less), and says `NO-SFX` instead of silently skipping the effect checks. The default (ducked) style and its checks are unchanged.
+
+## Music that matches a reference and puts a beat on every event (`score_music.py`, `conform_music.py`, 2026-10-06)
+- `score_music.py --plan score.json --reference-features ref.json --tries N` generates a structured ElevenLabs plan and keeps the first take that matches the reference on ALL four measures (tempo, brightness, rhythmic density, steadiness), each take measured on the part that gets used (from the groove's drop, not its sparse intro).
+- `conform_music.py --music track.wav --events events.json --total SEC --out conformed.wav` fits the track's beat grid, puts its drop on the first event, and stretches whole or half beats between events (at most a few percent, reported) so a beat lands on each one; events within 0.12 s of each other are one event (reported); the music stops on the last event. It refuses a track whose beats are not on a steady grid.
