@@ -42,13 +42,7 @@ class TitleError(Exception):
 
 def sequence_spec(xml: Path) -> dict:
     """The target sequence's size and rate. Portrait 1080x1920 is rendered natively; the others are the overlay family's own."""
-    import xml.etree.ElementTree as ET
-    seq = timeline._seq_for_cut(ET.parse(xml).getroot())
-    w, h = int(seq.findtext("media/video/format/samplecharacteristics/width")), int(seq.findtext("media/video/format/samplecharacteristics/height"))
-    if (w, h) != PORTRAIT:
-        return mo.sequence_spec(xml)
-    tb, ntsc = int(float(seq.findtext("rate/timebase"))), (seq.findtext("rate/ntsc") or "FALSE").strip().upper() == "TRUE"
-    return {"width": w, "height": h, "fps": tb * 1000 / 1001 if ntsc else float(tb), "fps_arg": f"{tb * 1000}/1001" if ntsc else str(tb), "resolution": None}
+    return mo.sequence_spec(xml, allow_portrait=True)
 
 
 def validate_spec(spec: dict) -> None:

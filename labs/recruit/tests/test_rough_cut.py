@@ -183,3 +183,39 @@ def test_text_a_recogniser_invents_over_trailing_silence_is_dropped():
     assert rc.doubted({"no_speech_prob": 0.9, "avg_logprob": -0.4}) is False           # unsure it is speech, but sure of the words: kept
     assert rc.doubted({"no_speech_prob": 0.1, "avg_logprob": -1.4}) is False
     assert rc.doubted({}) is False
+
+
+def _tone(sr, t0, t1, n_total, amp=0.2):
+    import numpy as np
+    x = np.zeros(int(n_total * sr))
+    t = np.arange(int(t0 * sr), int(t1 * sr)) / sr
+    x[int(t0 * sr):int(t1 * sr)] = amp * np.sin(2 * np.pi * 220 * t)
+    return x
+
+
+def test_a_word_timed_across_a_pause_starts_where_the_speech_does_not_where_the_timestamp_says():
+    """Whisper timed 'if' from the end of 'is' (0.40 s) to its own end (1.80 s); the recording is silent from 0.45 to 1.50 s and the word is at 1.50. A cut placed from the timestamp begins a second early."""
+    import numpy as np
+    sr = rc.SR
+    x = _tone(sr, 0.20, 0.40, 3.0) + _tone(sr, 1.50, 1.80, 3.0) + _tone(sr, 2.0, 2.4, 3.0)
+    x += np.random.default_rng(0).standard_normal(len(x)) * 0.0005
+    rms, fs = rc.energy(x, sr)
+    first = ("if", 0.40, 1.80)                                  # stretched across the pause
+    last = ("know", 2.0, 2.4)
+    f_start, l_end = rc.refine_edges(first, last, rms, 0.0, fs)
+    assert 1.45 <= f_start <= 1.56 and l_end == 2.4              # speech resumes at 1.5 s
+    d = rc.snap_detail(f_start, l_end, rms, 0.0, fs, prev_end=0.40, next_start=None)
+    assert 1.3 <= d["in"] <= 1.5                                 # the cut starts in the pause, just ahead of the word, not at 0.4
+    # an ordinary word (no pause inside its span) is left alone
+    ok_first = ("if", 1.50, 1.80)
+    assert rc.refine_edges(ok_first, last, rms, 0.0, fs)[0] == 1.50
+
+
+def test_a_last_word_timed_across_a_pause_ends_where_the_speech_does():
+    import numpy as np
+    sr = rc.SR
+    x = _tone(sr, 0.5, 0.9, 4.0) + _tone(sr, 1.0, 1.3, 4.0)       # 'you should' then 'know' is spoken, then silence; Whisper ends 'know' at 3.2 s
+    x += np.random.default_rng(1).standard_normal(len(x)) * 0.0005
+    rms, fs = rc.energy(x, sr)
+    f_start, l_end = rc.refine_edges(("you", 0.5, 0.9), ("know", 1.0, 3.2), rms, 0.0, fs)
+    assert f_start == 0.5 and 1.25 <= l_end <= 1.4               # it ends where the sound does, not 1.9 s of silence later

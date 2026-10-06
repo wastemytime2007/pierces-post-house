@@ -75,7 +75,7 @@ def main() -> int:
     groups, win0, dur = cj["groups"], cj["window"]["start"], pl["duration_sec"]
     rend = pl["render"]
     rw, rh, rfps = rend["width"], rend["height"], rend["fps"]
-    s = rw / W
+    s = rw / pl.get("layout", {}).get("w", W)                      # the layout canvas (portrait is 1080 wide) the render was scaled from
     mov = d / "captions.mov"
     rows: list[tuple[str, bool | None, str]] = []
 

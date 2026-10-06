@@ -34,6 +34,19 @@ import words as words_mod  # noqa: E402
 
 W, H = 1920, 1080                      # layout space; the render scales it
 FONT, PADX, PADY, MARGIN, MAXW = 58, 30, 14, 90, 1500
+GROUP_WORDS, GROUP_CHARS = 6, 34
+# The canvas a layout is drawn on. Landscape is the original. Portrait (a 1080x1920 reel): bigger type, narrower lines of at most two rows, and the bottom margin kept clear of the platform's own buttons and captions.
+LAYOUTS = {"landscape": {"W": 1920, "H": 1080, "FONT": 58, "PADX": 30, "PADY": 14, "MARGIN": 90, "MAXW": 1500, "GROUP_WORDS": 6, "GROUP_CHARS": 34},
+           "portrait": {"W": 1080, "H": 1920, "FONT": 76, "PADX": 28, "PADY": 16, "MARGIN": 380, "MAXW": 940, "GROUP_WORDS": 5, "GROUP_CHARS": 28}}
+
+
+def use_layout(width: int, height: int) -> str:
+    """Select the layout for a sequence size (portrait if taller than wide) and set the module's layout constants to it. Returns its name."""
+    global W, H, FONT, PADX, PADY, MARGIN, MAXW, GROUP_WORDS, GROUP_CHARS
+    name = "portrait" if height > width else "landscape"
+    L = LAYOUTS[name]
+    W, H, FONT, PADX, PADY, MARGIN, MAXW, GROUP_WORDS, GROUP_CHARS = (L[k] for k in ("W", "H", "FONT", "PADX", "PADY", "MARGIN", "MAXW", "GROUP_WORDS", "GROUP_CHARS"))
+    return name
 CHAR_W = 0.58                          # average bold Inter glyph width, in em
 STYLES = {
     "pill": "background: rgba(3, 52, 89, 0.82); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);",
@@ -191,7 +204,7 @@ def write_project(proj: Path, groups: list[dict], dur: float, style: str) -> Non
     cfg = {"groups": [{"pos": g["pos"], "show_start": round(g["show_start"], 3), "show_end": round(g["show_end"], 3),
                        "words": [{"start": round(w.start, 3), "end": round(w.end, 3)} for w in g["words"]]} for g in groups]}
     page = (HERE / "caption_template.html").read_text()
-    for k, v in {"__DUR__": str(round(dur, 3)), "__MARGIN__": str(MARGIN), "__MAXW__": str(MAXW), "__FONT__": str(FONT),
+    for k, v in {"__CW__": str(W), "__CH__": str(H), "__DUR__": str(round(dur, 3)), "__MARGIN__": str(MARGIN), "__MAXW__": str(MAXW), "__FONT__": str(FONT),
                  "__PADX__": str(PADX), "__PADY__": str(PADY), "__PILL__": STYLES[style]}.items():
         page = page.replace(k, v)
     page = page.replace("__GROUPS__", build_groups_html(groups, dur)).replace("/*__CFG__*/null", json.dumps(cfg))
@@ -224,7 +237,8 @@ def main() -> int:
     a = ap.parse_args()
 
     try:
-        spec = mo.sequence_spec(a.xml)
+        spec = mo.sequence_spec(a.xml, allow_portrait=True)
+        layout_name = use_layout(spec["width"], spec["height"])
         cut = timeline.load_cut(a.xml)
         if not 0 <= a.start < a.end <= cut.zone_end + 0.01:
             raise CaptionError(f"the window {a.start}-{a.end}s is outside the cut (0-{cut.zone_end:.2f}s)")
@@ -239,13 +253,13 @@ def main() -> int:
     if not base.exists():
         from render_preview import render_preview
         print("rendering a 1080p proxy of the cut (used for the transcript and the preview)...")
-        render_preview(cut, base, height=1080)
+        render_preview(cut, base, height=H)
 
     ws = transcribe_window(base, a.start, dur)
     if not ws:
         print("REFUSING: no speech found in that window", file=sys.stderr)
         return 1
-    groups = group_words(ws)
+    groups = group_words(ws, max_words=GROUP_WORDS, max_chars=GROUP_CHARS)
     fixes = json.loads(a.fixes.read_text()) if a.fixes and a.fixes.exists() else []
     try:
         for g in groups:
@@ -295,7 +309,7 @@ def main() -> int:
         "groups": [{"text": g["text"], "pos": g["pos"], "show_start": g["show_start"], "show_end": g["show_end"],
                     "words": [{"text": w.text, "start": w.start, "end": w.end} for w in g["words"]]} for g in groups]}, indent=2))
     (a.out / "placement.json").write_text(json.dumps({
-        "kind": "captions", "place_overlay_on_timeline_at_sec": a.start, "duration_sec": dur, "overlay": mov.name,
+        "kind": "captions", "layout": {"name": layout_name, "w": W, "h": H}, "place_overlay_on_timeline_at_sec": a.start, "duration_sec": dur, "overlay": mov.name,
         "overlay_path": str(mov.resolve()), "render": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"], "fps_arg": spec["fps_arg"]},
         "hyperframes": mo.HF_VERSION, "avoid": [str(f) for f in a.avoid]}, indent=2))
 

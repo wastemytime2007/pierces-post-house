@@ -54,7 +54,7 @@ def locate(note: dict, timeline: dict) -> tuple[dict, float]:
 RESOLUTIONS = {(1920, 1080): None, (3840, 2160): "landscape-4k"}
 
 
-def sequence_spec(xml: Path | None) -> dict:
+def sequence_spec(xml: Path | None, allow_portrait: bool = False) -> dict:
     """Size and frame rate to render the overlay at: the target sequence's own, so it drops in
     at 100% with one frame per frame and nothing left to conform. Default 1920x1080 at 30."""
     if xml is None:
@@ -62,6 +62,8 @@ def sequence_spec(xml: Path | None) -> dict:
     seq = rl_timeline._seq_for_cut(ET.parse(xml).getroot())
     w, h = int(seq.findtext("media/video/format/samplecharacteristics/width")), int(seq.findtext("media/video/format/samplecharacteristics/height"))
     tb, ntsc = int(float(seq.findtext("rate/timebase"))), (seq.findtext("rate/ntsc") or "FALSE").strip().upper() == "TRUE"
+    if (w, h) == (1080, 1920) and allow_portrait:                  # only layers whose template takes its canvas from the sequence (titles, captions); callouts and cards are landscape-only
+        return {"width": w, "height": h, "fps": tb * 1000 / 1001 if ntsc else float(tb), "fps_arg": f"{tb * 1000}/1001" if ntsc else str(tb), "resolution": None}
     if (w, h) not in RESOLUTIONS:
         raise OverlayError(f"the sequence is {w}x{h}; overlays can be rendered at 1920x1080 or 3840x2160")
     return {"width": w, "height": h, "fps": tb * 1000 / 1001 if ntsc else float(tb),

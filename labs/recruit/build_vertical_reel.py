@@ -53,6 +53,9 @@ def main() -> int:
     ap.add_argument("--style", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--proof", type=Path, default=Path.home() / "Documents/Post House Reviews/Recruitment footage (proof)")
+    ap.add_argument("--resolved", type=Path, help="the resolved cuts to use (rough_cut.py's output); default <proof>/reels/resolved.json")
+    ap.add_argument("--captions", action="store_true", help="captions of what is said (labs/captions, portrait), placed on V2: the on-screen text")
+    ap.add_argument("--no-bleep", action="store_true", help="skip the bleep pass (the standing rule is that every cut is bleeped; only for a cut with no speech worth scanning)")
     ap.add_argument("--graphics", type=Path, help="a make_title.py spec: the title card and step labels, placed on V2 by labs/overlay")
     ap.add_argument("--music-track", type=Path, help="a generated track (labs/audio/score_music.py): conformed so a beat lands on every title word and transition, mixed as a steady bed with no sound effect, placed by labs/audio")
     ap.add_argument("--music-reference", type=Path, help="the track whose measured feel the music must match (make_audio re-measures the finished stem against it)")
@@ -63,7 +66,7 @@ def main() -> int:
 
     style = json.loads(a.style.read_text())
     proof = a.proof
-    cuts = [p for p in json.loads((proof / "reels/resolved.json").read_text())["pitches"] if p["key"] == a.pitch][0]["cuts"]
+    cuts = [p for p in json.loads((a.resolved or proof / "reels/resolved.json").read_text())["pitches"] if p["key"] == a.pitch][0]["cuts"]
     media = json.loads((proof / "reels/media.json").read_text())
     mic_dir = Path(media["_mics"])
     a.out.mkdir(parents=True, exist_ok=True)
@@ -85,10 +88,11 @@ def main() -> int:
         return 1
 
     # 2. the pieces: each cut split at the speaker changes, on whole frames
-    pieces, segs = [], []
+    pieces, segs, cut_frames = [], [], []
     for c in cuts:
         dur = c["out_sec"] - c["in_sec"]
         pcs, runs = speakers.cut_pieces(matches[c["camera"]]["lavs"], matches[c["camera"]]["t0"], c["in_sec"], dur)
+        cut_frames.append(sum(nf for _f0, nf, _w in pcs))
         for f0, nf, who in pcs:
             ta = c["in_sec"] + f0 * FR
             segs.append({"source_path": c["source_original"], "in_sec": ta, "out_sec": ta + nf * FR, "label": f"{c['role']} ({who})", "handle_sec": 0.0})
@@ -124,7 +128,7 @@ def main() -> int:
         print(r.stderr[-800:], file=sys.stderr)
         return 1
     print(f"-> {final}")
-    if not (a.graphics or a.music_track):
+    if not (a.graphics or a.captions or a.music_track or not a.no_bleep):
         return 0
 
     def tool(*cmd) -> subprocess.CompletedProcess:
@@ -135,6 +139,7 @@ def main() -> int:
             print(r.stderr[-1200:], file=sys.stderr)
         return r
     cur = final
+    parts: list[str] = []                                                      # the steps that actually ran, for the final file's name
     # 5. the title card and step labels: labs/overlay (HyperFrames), anchored to source frames, placed on V2
     if a.graphics:
         print("\n== graphics (labs/overlay/make_title.py, place_overlay.py)")
@@ -144,7 +149,33 @@ def main() -> int:
         if tool(REPO / "labs/overlay/place_overlay.py", cur, a.out / "graphics", "--out", nxt).returncode:
             return 1
         cur = nxt
-    # 6. the music: events -> conform -> make_audio as a bed with no effect -> place_audio
+        parts.append("graphics")
+    # 5b. captions of what is said: labs/captions (portrait), placed on V2 (or the next free picture track)
+    if a.captions:
+        import timeline as _tl
+        zone = _tl.load_cut(cur).zone_end
+        print("\n== captions (labs/captions/make_captions.py, place_overlay.py)")
+        if tool(REPO / "labs/captions/make_captions.py", "--xml", cur, "--out", a.out / "captions", "--start", "0", "--end", f"{zone - 0.001:.3f}").returncode:
+            return 1
+        nxt = a.out / f"Reel {a.pitch} vertical + captions.xml"
+        if tool(REPO / "labs/overlay/place_overlay.py", cur, a.out / "captions", "--out", nxt).returncode:
+            return 1
+        cur = nxt
+        parts.append("captions")
+        # every cut must start and end on the words it was meant to (read from what the captions heard in the finished cut)
+        sys.path.insert(0, str(HERE))
+        import check_edges
+        t_acc, spans = 0.0, []
+        for n in cut_frames:
+            spans.append((t_acc, t_acc + n * FR))
+            t_acc += n * FR
+        rows = check_edges.edge_rows(cuts, spans, check_edges.caption_words(a.out / "captions"))
+        for name, ok, why in rows:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name:40} {why}")
+        if not all(ok for _n, ok, _w in rows):
+            print("REFUSING: a cut starts or ends on the wrong word (see above). Nudge it with in_nudge / out_nudge in the cuts file and run again.", file=sys.stderr)
+            return 1
+    # 6. the music: events -> tone match -> conform (from the first frame to the last) -> make_audio as a bed with no effect -> place_audio
     if a.music_track:
         print("\n== music (labs/audio/conform_music.py, make_audio.py --mix-style bed --no-sfx, place_audio.py)")
         if tool(REPO / "labs/review_loop/build_review.py", cur, "--out", a.out / "review_for_audio", "--height", "960").returncode:
@@ -152,18 +183,24 @@ def main() -> int:
         sys.path.insert(0, str(REPO / "labs/review_loop"))
         import timeline
         cut = timeline.load_cut(cur)
-        events = sorted({round(v.tl_start, 4) for v in cut.video if v.tl_start > 0})
-        if a.graphics:
-            plan_t = json.loads((a.out / "graphics/placement.json").read_text())["plan"]
-            if plan_t["title"]:
-                events = sorted(set(events) | set(plan_t["title"]["on"]))
-                events = [e for e in events if e >= plan_t["title"]["on"][0] - 1e-6]          # the music enters WITH the title card: nothing before it
+        events = [0.0] + sorted({round(v.tl_start, 4) for v in cut.video if v.tl_start > 0})       # the music starts with the reel (a beat on frame 0) and has a beat on every transition
         (a.out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
         (a.out / "audio_in").mkdir(exist_ok=True)
+        track = a.music_track
+        if a.music_reference:                                                                   # the least EQ that brings the track's tone to the reference's, re-measured
+            sys.path.insert(0, str(REPO / "labs/audio"))
+            import reference_music as _rm
+            import tone_match as _tm
+            ref_feats = _rm.analyze(a.music_reference)
+            matched = a.out / "audio_in/music_matched.wav"
+            tm = _tm.match_tone(a.music_track, ref_feats, matched)
+            print(f"tone match: {tm['tone_before']} Hz -> {tm['tone_after']} Hz with a {tm['cut_db']:.0f} dB low-shelf cut (reference {tm['reference_tone']} Hz)")
+            (a.out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1))
+            track = matched
         conformed = a.out / "audio_in/music_conformed.wav"
-        if tool(REPO / "labs/audio/conform_music.py", "--music", a.music_track, "--events", a.out / "events.json", "--total", f"{cut.zone_end:.4f}", "--out", conformed).returncode:
+        if tool(REPO / "labs/audio/conform_music.py", "--music", track, "--events", a.out / "events.json", "--total", f"{cut.zone_end:.4f}", "--out", conformed, "--tail", "run").returncode:
             return 1
-        args = ["--xml", cur, "--base", a.out / "review_for_audio/preview.mp4", "--out", a.out / "audio", "--start", "0", "--end", f"{cut.zone_end - 0.001:.3f}", "--no-sfx", "--mix-style", "bed", "--music-file", conformed]
+        args = ["--xml", cur, "--base", a.out / "review_for_audio/preview.mp4", "--out", a.out / "audio", "--start", "0", "--end", f"{cut.zone_end - 0.001:.3f}", "--no-sfx", "--mix-style", "bed", "--music-db", "-6", "--music-file", conformed]
         if a.music_reference:
             args += ["--music-reference", a.music_reference]
         if tool(REPO / "labs/audio/make_audio.py", *args).returncode:
@@ -172,6 +209,24 @@ def main() -> int:
         if tool(REPO / "labs/audio/place_audio.py", cur, a.out / "audio", "--out", nxt).returncode:
             return 1
         cur = nxt
+        parts.append("music")
+    # 7. the bleep, last (the standing rule: every cut is scanned and every listed word bleeped): labs/bleep silences the word and lays the bleep
+    if not a.no_bleep:
+        print("\n== bleep (labs/bleep/bleep.py)")
+        r = tool(REPO / "labs/bleep/bleep.py", "--xml", cur, "--out", a.out / "bleep")
+        if r.returncode:
+            return 1
+        out_xml = a.out / "bleep" / cur.name
+        if out_xml.exists():
+            cur = out_xml
+            parts.append("bleep")
+        else:
+            print("nothing was bleeped (no listed word was heard)")
+    named = a.out / f"Reel {a.pitch} vertical + {' + '.join(parts)}.xml" if parts else cur
+    if named != cur:
+        import shutil
+        shutil.copy(cur, named)
+        cur = named
     print(f"\nfinal -> {cur}")
     return 0
 

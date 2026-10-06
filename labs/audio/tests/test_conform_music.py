@@ -73,3 +73,16 @@ def test_events_within_a_few_frames_of_each_other_are_one_event_and_the_merge_is
     assert p["events"] == [1.164, 1.73, 2.29, 7.24] and p["merged"] == [(1.168, 1.164)]
     assert all(s["to"] - s["from"] >= cm.MIN_EVENT_GAP for s in p["segments"])              # no segment squeezes a half-beat into a few milliseconds
     assert p["worst_stretch"] < 0.5
+
+
+def test_the_run_tail_starts_with_the_reel_plays_to_the_end_and_fades_only_over_the_last_second_and_a_half(tmp_path):
+    events = [0.0, 1.0, 2.55, 5.0]
+    out = tmp_path / "r.wav"
+    rep = cm.conform(kick_track(tmp_path / "k.wav", intro_beats=0, seconds=40.0), events, total=9.0, out=out, tail="run")
+    assert all(h["offset_ms"] is not None and abs(h["offset_ms"]) <= 33 for h in rep["hits"]), rep["hits"]
+    x, sr = sf.read(str(out))
+    assert abs(len(x) / sr - 9.0) < 0.01
+    rms = lambda a, b: float(np.sqrt((x[int(a * sr):int(b * sr)] ** 2).mean()))                # noqa: E731
+    assert rms(0.0, 0.5) > 0.05                                                              # the music is already playing in the first half second
+    assert rms(6.0, 7.0) > 0.05 and rms(7.0, 7.4) > 0.5 * rms(6.0, 7.0)                       # it plays on well past the last event and up to the fade
+    assert rms(8.6, 9.0) < 0.35 * rms(6.0, 7.0)                                              # and fades out at the very end

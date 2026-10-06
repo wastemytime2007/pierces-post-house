@@ -86,6 +86,7 @@ def main() -> int:
         i = j
     gap[:body.start] = False
     gap[body.stop:] = False
+    bed_gap = None
     if bed:                                                                      # the wallpaper reel's music sits steadily 5 to 12 dB under the voice, wherever it plays
         playing = mdb > float(np.percentile(mdb, 95)) - 20.0
         both = act & playing
@@ -95,11 +96,16 @@ def main() -> int:
             speech_lvl, music_act = float(np.mean(sdb[both])), float(np.mean(mdb[both]))
             peak = float(np.abs(m).max())
             gap_db = speech_lvl - music_act
+            bed_gap = gap_db
             rows.append(("BED-LEVEL", 5.0 <= gap_db <= 12.0 and peak < 0.99,
                          f"where the music plays under speech ({int(both.sum())} tenths of a second): speech {speech_lvl:.1f} dB, music {music_act:.1f} dB, {gap_db:.1f} dB apart (a bed: 5 to 12; the ducked style needs 15 or more); peak {db(peak):.1f} dBFS"))
-            inside = playing[body]
-            spread = float(np.percentile(mdb[body][inside], 90) - np.percentile(mdb[body][inside], 10)) if inside.sum() >= 5 else 0.0
-            rows.append(("BED-STEADY", spread <= 6.0, f"the music's level while it plays varies by {spread:.1f} dB (10th to 90th percentile; a bed: 6 or less)"))
+            # steadiness is judged per phrase (one second, power-averaged), the unit reference_music.analyze uses for the reference's own spread: at a tenth of a second every kick of a punchy track is a swing of several dB
+            seg, inside = mdb[body], playing[body]
+            n10 = len(seg) // 10 * 10
+            blocks = 10 * np.log10(np.mean(10 ** (seg[:n10].reshape(-1, 10) / 10), axis=1))
+            live = inside[:n10].reshape(-1, 10).mean(axis=1) > 0.5
+            spread = float(np.percentile(blocks[live], 90) - np.percentile(blocks[live], 10)) if live.sum() >= 5 else 0.0
+            rows.append(("BED-STEADY", spread <= 6.0, f"the music's level while it plays varies by {spread:.1f} dB from one second to the next (10th to 90th percentile; a bed: 6 or less; the reference's own is measured the same way)"))
     elif act.sum() < 5 or gap.sum() < 3:
         rows.append(("MUSIC-AUDIBLE", None, "too little speech, or no pause of 0.8 s or more, to measure"))
     else:
@@ -117,7 +123,11 @@ def main() -> int:
     a2 = act[:len(pdb)]
     if a2.sum() >= 5:
         delta = float(np.mean(pdb[:len(a2)][a2]) - np.mean(sdb[:len(a2)][a2]))
-        rows.append(("SPEECH-LEVEL-KEPT", abs(delta) <= 1.0, f"speech level in the mix vs the original: {delta:+.2f} dB"))
+        if bed_gap is not None:                                                   # a bed under the voice ADDS to the level of the mix; the speech is unchanged if the mix is higher by just that sum
+            expected = 10 * np.log10(1 + 10 ** (-bed_gap / 10))
+            rows.append(("SPEECH-LEVEL-KEPT", abs(delta - expected) <= 1.0, f"level of the mix during speech vs the original speech: {delta:+.2f} dB; a bed {bed_gap:.1f} dB under it adds {expected:+.2f} dB, so the speech itself is {delta - expected:+.2f} dB from unchanged (within 1)"))
+        else:
+            rows.append(("SPEECH-LEVEL-KEPT", abs(delta) <= 1.0, f"speech level in the mix vs the original: {delta:+.2f} dB"))
     else:
         rows.append(("SPEECH-LEVEL-KEPT", None, "too little speech to measure"))
 

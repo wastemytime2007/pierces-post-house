@@ -55,3 +55,6 @@ because two models legitimately word some phrases differently.
 - Word timing is Whisper's, good to about a tenth of a second.
 - English only (PreCut's `WHISPER_LANGUAGE`).
 - One window at a time. Style, size, colours and timing are Ryan's calls.
+
+## Portrait (1080x1920), 2026-10-06
+For a vertical sequence the captions use the portrait layout (`make_captions.LAYOUTS`, chosen by `use_layout` from the sequence's size): a 1080x1920 canvas, 76 px type, lines of at most 28 characters or 5 words (two rows at most), and a 380 px bottom margin so a caption stays clear of a platform's own buttons and text. `placement.json` records the layout and `verify_captions.py` reads it. Landscape is unchanged. The first real portrait run (Reel 3, 34 lines): every check passed. Words on the bleep list are starred in the caption (`a**`), so the clear word never shows.

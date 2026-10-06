@@ -19,6 +19,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -54,10 +55,17 @@ def generate_plan(score: dict, cache: Path, salt: str = "") -> tuple[Path, dict]
         return out, {"cached": True, "file": out.name, "salt": salt}
     req = urllib.request.Request(f"{ma.API}/music?output_format=mp3_44100_128", data=json.dumps({"composition_plan": plan, "model_id": "music_v1"}).encode(),
                                  headers={"xi-api-key": ma.load_key(), "Content-Type": "application/json"})
-    try:
-        data = urllib.request.urlopen(req, timeout=600).read()
-    except urllib.error.HTTPError as e:
-        raise ma.AudioError(f"ElevenLabs music refused ({e.code}): {e.read()[:400].decode(errors='replace')}")
+    data = None
+    for attempt in range(5):                                                      # a busy service (429, 503) is retried with a wait; anything else is a real refusal
+        try:
+            data = urllib.request.urlopen(req, timeout=600).read()
+            break
+        except urllib.error.HTTPError as e:
+            if e.code in (429, 503) and attempt < 4:
+                print(f"ElevenLabs is busy ({e.code}); waiting {20 * (attempt + 1)} s and trying again", file=sys.stderr)
+                time.sleep(20 * (attempt + 1))
+                continue
+            raise ma.AudioError(f"ElevenLabs music refused ({e.code}): {e.read()[:400].decode(errors='replace')}")
     cache.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
     return out, {"cached": False, "file": out.name, "salt": salt}

@@ -215,6 +215,32 @@ def snap_detail(first_start: float, last_end: float, rms: np.ndarray, t0: float,
     return {"in": min(t_in, first_start - 0.02), "out": out, "lead_quiet": lead, "tail_quiet": tail}
 
 
+STRETCH_PAUSE_SEC = 0.35        # a quiet run this long INSIDE one word's own time span is a pause the recogniser stretched the word across: no consonant is that long
+
+
+def refine_edges(first: tuple[str, float, float], last: tuple[str, float, float], rms: np.ndarray, t0: float, frame_sec: float) -> tuple[float, float]:
+    """(first_start, last_end) corrected for words whose timestamps were stretched across a pause. Whisper writes a word that follows a hesitation as starting right after the previous word and running to its own end
+    (Reel 3: 'if' was timed 1179.24 to 1180.5 s, but the recording is silent from 1179.30 to 1180.37 and the word is at 1180.37), so a cut placed from its start begins a second early. Where the first word's span holds a quiet run of
+    STRETCH_PAUSE_SEC or more, speech resumes at the END of the last such run; where the last word's span holds one, speech stops at the START of the first."""
+    idx = lambda t: int(round((t - t0) / frame_sec))                                    # noqa: E731
+    a, b = max(0, idx(first[1])), min(len(rms), max(idx(first[1]) + 1, idx(last[2])))
+    if b <= a:
+        return first[1], last[2]
+    # A pause inside a word's span is judged against the SPEECH, not the recording's floor (room noise wanders by several dB and breaks one long pause into short runs): smoothed over 50 ms, at least 15 dB under the
+    # loud frames (90th percentile) of the span. The median would be wrong: with a long pause in the span it IS the pause. 0.35 s of that is still no consonant.
+    sm = np.convolve(rms, np.ones(5) / 5, mode="same")
+    loud_db = 20 * np.log10(max(float(np.percentile(sm[a:b], 90)), 1e-6))
+    thr = max(10 ** ((loud_db - 15.0) / 20), 1e-4)
+    f_start, l_end = first[1], last[2]
+    runs = [iv for iv in quiet_intervals(sm, thr, first[1], first[2], t0, frame_sec) if iv[1] - iv[0] >= STRETCH_PAUSE_SEC]
+    if runs:
+        f_start = runs[-1][1]
+    runs = [iv for iv in quiet_intervals(sm, thr, last[1], last[2], t0, frame_sec) if iv[1] - iv[0] >= STRETCH_PAUSE_SEC]
+    if runs:
+        l_end = runs[0][0]
+    return f_start, max(l_end, f_start + 0.05)
+
+
 def snap(first_start: float, last_end: float, rms: np.ndarray, t0: float, frame_sec: float, prev_end: float | None = None, next_start: float | None = None) -> tuple[float, float]:
     d = snap_detail(first_start, last_end, rms, t0, frame_sec, prev_end, next_start)
     return d["in"], d["out"]
@@ -242,11 +268,14 @@ def lav_to_camera_delta(row: dict, synced: dict) -> float:
     return float(synced["camera_start"]) - float(row["speech_start"])
 
 
-def resolve_cut(cut: dict, row: dict, synced: dict | None, media: dict, model) -> dict:
+def resolve_cut(cut: dict, row: dict, synced: dict | None, media: dict, model, recorder: tuple[dict, dict | None] | None = None) -> dict:
     """One cut's camera clip, word-level in/out (frame aligned) and the evidence. Raises CutError, naming the cut, when it cannot be placed.
 
     A weekend cut is analysed on the speaker's own recorder (words AND where it goes quiet: a chest-worn microphone has a clean floor), then everything is mapped to camera time by the sync offset. A May 15 cut is analysed on
-    the camera's own audio, which is all there is."""
+    the camera's own audio, which is all there is.
+
+    `recorder` = (another moment's row, its sync) times the cut from THAT moment's recorder and offset (cut key `recorder_of`): a line one person says just before their own moment's window starts is on their recorder,
+    while the moment it belongs to was recorded on someone else's (Reel 3's opening line is Mitch's, in Bob's moment W17; Bob's recorder only hears Mitch faintly and mis-wrote it)."""
     cid = f"{cut['unit']}/{cut['id']}"
     a, b = cut["from"], cut.get("to", cut["from"])
     for p in (a, b):
@@ -261,11 +290,18 @@ def resolve_cut(cut: dict, row: dict, synced: dict | None, media: dict, model) -
             raise CutError(f"{cid}: the moment is not synced to a camera, so it has no picture to cut")
         stem, t_speech = synced["camera"], synced["camera_start"]
         mics, mic_t0, shift = media.get("_mics"), max(0.0, row["speech_start"] - 3.0), lav_to_camera_delta(row, synced)
+        mic_clip = row["clip"]
+        if recorder:
+            rrow, rsync = recorder
+            if not rsync or not rsync.get("synced") or rsync.get("camera") != stem:
+                raise CutError(f"{cid}: the recorder moment {cut.get('recorder_of')} is not synced to the same camera clip")
+            shift, mic_clip = lav_to_camera_delta(rrow, rsync), rrow["clip"]
+            mic_t0 = max(0.0, (float(synced["camera_start"]) - 3.0) - shift)       # the same stretch of the camera, on the other recorder's clock
     if stem not in media:
         raise CutError(f"{cid}: no media known for camera clip {stem}")
     win = dur + 6.0
     if mics:
-        mic = Path(mics) / f"{row['clip']}.WAV"
+        mic = Path(mics) / f"{mic_clip}.WAV"
         if not mic.exists():
             raise CutError(f"{cid}: the recorder file {mic.name} is not there")
         audio, clock0, heard_on = read_audio(mic, mic_t0, win), mic_t0, "the speaker's own recorder"
@@ -281,15 +317,20 @@ def resolve_cut(cut: dict, row: dict, synced: dict | None, media: dict, model) -
         raise CutError(f"{cid}: the closing words {b!r} were not found after the opening in {heard_on}")
     first, last = words[m1[0]], words[m2[1]]
     rms, fs = energy(audio)
+    f_start, l_end = refine_edges(first, last, rms, clock0, fs)                        # a word timed across a pause starts where the speech does
     prev_end = words[m1[0] - 1][2] if m1[0] > 0 else None
     next_start = words[m2[1] + 1][1] if m2[1] + 1 < len(words) else None
-    d = snap_detail(first[1], last[2], rms, clock0, fs, prev_end, next_start)
+    d = snap_detail(f_start, l_end, rms, clock0, fs, prev_end, next_start)
     to_cam = lambda t: None if t is None else t + shift                                  # noqa: E731
     i_s, o_s = frame_floor(max(0.0, d["in"] + shift)), frame_ceil(d["out"] + shift)
+    if cut.get("in_nudge") or cut.get("out_nudge"):                # a hand correction, in seconds, for an edge the recogniser's word times got wrong: found by check_edges.py on the finished cut (it hears the result)
+        i_s = round((i_s + float(cut.get("in_nudge", 0.0))) * FPS) / FPS
+        o_s = round((o_s + float(cut.get("out_nudge", 0.0))) * FPS) / FPS
     if o_s - i_s > MAX_CUT_SEC or o_s <= i_s:
         raise CutError(f"{cid}: the cut came out {o_s - i_s:.1f} s long, which is not plausible")
     return {"pitch_unit": cut["unit"], "id": cut["id"], "role": cut.get("role", ""), "from": a, "to": b, "camera": stem, "source_original": media[stem]["original"],
-            "in_sec": round(i_s, 4), "out_sec": round(o_s, 4), "first_word": first[0], "last_word": last[0], "first_word_at": round(first[1] + shift, 3), "last_word_end": round(last[2] + shift, 3),
+            "in_sec": round(i_s, 4), "out_sec": round(o_s, 4), "first_word": first[0], "last_word": last[0], "first_word_at": round(f_start + shift, 3), "last_word_end": round(l_end + shift, 3), "edges_refined": bool(abs(f_start - first[1]) > 1e-6 or abs(l_end - last[2]) > 1e-6),
+            "first_word_span": [round(first[1] + shift, 3), round(first[2] + shift, 3)], "last_word_span": [round(last[1] + shift, 3), round(last[2] + shift, 3)],
             "lead_quiet": None if d["lead_quiet"] is None else [round(to_cam(d["lead_quiet"][0]), 3), round(to_cam(d["lead_quiet"][1]), 3)],
             "tail_quiet": None if d["tail_quiet"] is None else [round(to_cam(d["tail_quiet"][0]), 3), round(to_cam(d["tail_quiet"][1]), 3)],
             "ratios": [round(m1[2], 2), round(m2[2], 2)], "heard": " ".join(w[0] for w in words[m1[0]:m2[1] + 1]), "words_from": heard_on}
@@ -351,7 +392,10 @@ def main(argv=None) -> int:
                 errors.append(f"{p['key']}: no moment {cut['unit']}/{cut['id']}")
                 continue
             try:
-                r = resolve_cut(cut, row, synced.get(cut["id"]) if cut["unit"] != "May15" else None, media, model)
+                rec = None
+                if cut.get("recorder_of"):
+                    rec = (units[cut["unit"]][cut["recorder_of"]], synced.get(cut["recorder_of"]))
+                r = resolve_cut(cut, row, synced.get(cut["id"]) if cut["unit"] != "May15" else None, media, model, rec)
                 resolved.append(r)
                 print(f"  {p['key']} {cut['id']:4} {r['camera'][-14:]} {r['in_sec']:8.2f} to {r['out_sec']:8.2f} ({r['out_sec'] - r['in_sec']:4.1f} s) ratios {r['ratios']}  '{r['heard'][:60]}'", flush=True)
             except CutError as e:

@@ -32,7 +32,8 @@ MAX_STRETCH = 0.08                       # a segment sped up or slowed by more t
 FADE = 0.004                             # seconds of cross-fade at each join
 ACCENT_DB = 3.0
 ACCENT_DECAY = 0.12
-STOP_BEATS = 1.0                         # how long the music plays on after the last event before it ends
+STOP_BEATS = 1.0                         # how long the music plays on after the last event before it ends ("stop" tail)
+END_FADE = 1.5                           # the "run" tail plays to the end of the reel and fades over its last this many seconds
 MAX_GRID_ERR = 0.06                      # a beat further than this from the fitted grid means the track is not quantised
 
 
@@ -155,7 +156,7 @@ def _run(cmd: list) -> None:
         raise ConformError(f"{cmd[0]} failed: {r.stderr[-500:]}")
 
 
-def render(music: Path, grid: dict, drop: int, pl: dict, total: float, out: Path, sr: int = 48000) -> None:
+def render(music: Path, grid: dict, drop: int, pl: dict, total: float, out: Path, sr: int = 48000, tail: str = "stop") -> None:
     """Each segment is cut from the track on its beat, time-stretched by its own factor, trimmed to EXACTLY the samples between its event and the next (plus a short overlap), and laid in at the sample the event falls on.
     Doing the lengths in samples here, not trusting the stretch filter's output length, is what keeps every event on its beat instead of drifting by a few milliseconds a segment."""
     import soundfile as sf
@@ -165,8 +166,12 @@ def render(music: Path, grid: dict, drop: int, pl: dict, total: float, out: Path
     y = np.zeros((int(round(total * sr)) + f, 2), dtype="float32")
     pos = float(drop)                                                               # in beats, along the track
     plan_rows = [(sg["from"], sg["to"], sg["half_beats"] * ibi / 2, sg["speed"], False) for sg in segs]
-    stop_len = STOP_BEATS * ibi / pl["scale"]
-    plan_rows.append((segs[-1]["to"], segs[-1]["to"] + stop_len, STOP_BEATS * ibi, pl["scale"], True))
+    if tail == "run":                                                               # the music plays on to the end of the reel at its natural tempo and fades over the last END_FADE seconds
+        e_last = segs[-1]["to"]
+        plan_rows.append((e_last, total, (total - e_last) * pl["scale"], pl["scale"], True))
+    else:                                                                           # "stop": one more beat after the last event, faded out
+        stop_len = STOP_BEATS * ibi / pl["scale"]
+        plan_rows.append((segs[-1]["to"], segs[-1]["to"] + stop_len, STOP_BEATS * ibi, pl["scale"], True))
     tmp = out.with_suffix(".seg.wav")
     for k, (t_from, t_to, src_len, speed, is_stop) in enumerate(plan_rows):
         start = b0 + pos * ibi
@@ -187,7 +192,7 @@ def render(music: Path, grid: dict, drop: int, pl: dict, total: float, out: Path
         if k < len(plan_rows) - 1:
             x[-f:] *= np.linspace(1, 0, f, dtype="float32")[:, None]                 # fade out over the overlap
         if is_stop:
-            m = int(0.25 * sr)
+            m = min(int((END_FADE if tail == "run" else 0.25) * sr), len(x))
             x[-m:] *= np.linspace(1, 0, m, dtype="float32")[:, None]
         end = min(len(y), i_from + len(x))
         y[i_from:end] += x[:end - i_from]
@@ -197,7 +202,7 @@ def render(music: Path, grid: dict, drop: int, pl: dict, total: float, out: Path
     t = np.arange(len(y)) / sr
     gain = np.ones(len(y), dtype="float32")
     boost = 10 ** (ACCENT_DB / 20) - 1
-    for e in [segs[0]["from"]] + [sg["to"] for sg in segs[:-1]]:
+    for e in [segs[0]["from"]] + [sg["to"] for sg in (segs if tail == "run" else segs[:-1])]:
         d = t - (e - 0.01)
         env = np.where(d < 0, 0.0, np.where(d < 0.01, d / 0.01, np.exp(-(d - 0.01) / ACCENT_DECAY)))
         gain += (boost * env).astype("float32")
@@ -222,11 +227,11 @@ def measure_hits(wav: Path, events: list[float], window: float = 0.08) -> list[d
     return out
 
 
-def conform(music: Path, events: list[float], total: float, out: Path) -> dict:
+def conform(music: Path, events: list[float], total: float, out: Path, tail: str = "stop") -> dict:
     grid = fit_grid(music)
     drop = find_drop(grid["strength"])
     pl = plan(events, grid["ibi"])
-    render(music, grid, drop, pl, total, out)
+    render(music, grid, drop, pl, total, out, tail=tail)
     return {"grid": {k: v for k, v in grid.items() if k != "strength"}, "drop_beat": drop, "drop_at_track_sec": round(grid["b0"] + drop * grid["ibi"], 2), "plan": pl, "hits": measure_hits(out, pl["events"])}
 
 
@@ -236,9 +241,10 @@ def main() -> int:
     ap.add_argument("--events", type=Path, required=True)
     ap.add_argument("--total", type=float, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--tail", choices=["stop", "run"], default="stop", help="stop: the music stops one beat after the last event. run: it plays on to the end of the reel and fades over the last 1.5 s (start the events at 0.0 to have it start with the reel)")
     a = ap.parse_args()
     ev = [e["t"] for e in json.loads(a.events.read_text())["events"]]
-    rep = conform(a.music, ev, a.total, a.out)
+    rep = conform(a.music, ev, a.total, a.out, tail=a.tail)
     a.out.with_suffix(".json").write_text(json.dumps(rep, indent=1))
     print(f"track {rep['grid']['bpm']} bpm, grid error {rep['grid']['grid_err_ms']} ms, drop at beat {rep['drop_beat']} ({rep['drop_at_track_sec']} s); reel tempo {rep['plan']['reel_bpm']} bpm; worst stretch {rep['plan']['worst_stretch'] * 100:.1f}%"
           + (f"; merged {len(rep['plan']['merged'])} event(s) within {MIN_EVENT_GAP}s of another: {[(round(d, 3), round(k, 3)) for d, k in rep['plan']['merged']]}" if rep["plan"]["merged"] else ""))

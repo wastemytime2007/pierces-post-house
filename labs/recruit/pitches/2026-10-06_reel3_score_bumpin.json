@@ -1,0 +1,8 @@
+{
+ "note": "Reel 3's music, third plan (Ryan, 2026-10-06: 'The music starts late and ends early and has no drive to it. If you look at the example its supposed to be more upbeat', with Artlist's Aves - Bumpin' as the example). Measured on that track: 114 bpm, it starts on the full groove at 0.28 s with no intro, -7 LUFS, level within 2.5 dB, 70% of the energy under 200 Hz. So: one section that starts on the groove immediately and keeps driving, and the reel plays it from its first frame to its last (conform_music --tail run). The feel comes from the reference via score_music --reference-features.",
+ "global": "upbeat, driving instrumental; punchy kick on every beat; deep warm bass line; crisp clap or snare on the backbeat; bright hi-hats; a catchy repeating mid-range hook; loud, full and tight like a modern social video track; the same high energy from the first beat to the last; no vocals",
+ "avoid": "intro; build-up; riser; breakdown; quiet or sparse start; fade in; vocals; lyrics; acoustic guitar; orchestral; cinematic trailer hits; cheesy corporate",
+ "sections": [
+  {"name": "Groove", "seconds": 45.0, "style": "starts immediately on the first beat with the full groove and no intro; kick on every beat, backbeat clap, bright hi-hats, the bass line and the hook all in from the start; the same energy all the way through"}
+ ]
+}
