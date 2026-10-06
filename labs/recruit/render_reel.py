@@ -225,7 +225,7 @@ def label_states(text: str, t_on: float, t_off: float, step: float = 0.2) -> lis
     return out
 
 
-def title_states(small: str, big: str, joke: str, t_on: float, t_off: float) -> list[tuple[Image.Image, float, float]]:
+def title_states(small: str, big: str, joke: str, t_on: float, t_off: float, builds: tuple[float, float] = (0.45, 1.05)) -> list[tuple[Image.Image, float, float]]:
     """The title card: a brand-navy field over the picture (the speaker still faintly there), faint diagonals, the small white line, the big orange word, then the orange parenthetical joke. Cumulative: each state replaces the last."""
     def card(parts: int) -> Image.Image:
         img = Image.new("RGBA", (OUT_W, OUT_H), BRAND_NAVY + (214,))
@@ -239,7 +239,7 @@ def title_states(small: str, big: str, joke: str, t_on: float, t_off: float) -> 
         if parts >= 3:
             shadowed(img, (OUT_W // 2, 1190), joke, 58, BRAND_ORANGE, "ma")
         return img
-    marks = [t_on, t_on + 0.45, t_on + 1.05, t_off]
+    marks = [t_on, t_on + builds[0], t_on + builds[1], t_off]
     return [(card(k), marks[k - 1], marks[k]) for k in (1, 2, 3)]
 
 
@@ -372,10 +372,22 @@ def main() -> int:
             n += 1
     ti = style["title"]
     first = [p for p in plan if p["role"] == ti["over_role"]][0]
-    add(title_states(ti["small"], ti["big"], ti["joke"], first["start"] + ti["delay"], first["start"] + ti["delay"] + ti["hold"]))
+    t_on = first["start"] + ti["delay"]
+    builds, events, cm = (0.45, 1.05), [], None
+    if style.get("music_conform"):
+        # every title word, label and transition is an EVENT the music puts a beat on; the title's words are timed on beats of the music's own tempo
+        sys.path.insert(0, str(HERE.parent / "audio"))
+        import conform_music as cm
+        grid = cm.fit_grid(a.music)
+        starts = sorted({round(q["start"], 3) for pp in plan for q in pp["pieces"] if q["start"] > t_on + 1e-6} | {round(pp["start"], 3) for pp in plan if pp["start"] > t_on + 1e-6})
+        transitions = [t_on] + starts
+        beat = grid["ibi"] / cm.plan(transitions, grid["ibi"])["scale"]
+        builds = (beat, 2 * beat)
+        events = sorted(set([t_on, t_on + builds[0], t_on + builds[1]] + transitions))
+    add(title_states(ti["small"], ti["big"], ti["joke"], t_on, t_on + ti["hold"], builds))
     for p in plan:
         if p["role"] in style["labels"]:
-            add(label_states(style["labels"][p["role"]], p["start"] + 0.25, p["start"] + p["dur"]))
+            add(label_states(style["labels"][p["role"]], p["start"] + style.get("label_delay", 0.25), p["start"] + p["dur"]))
     inputs, chain, last = ["-i", str(work / "picture.mp4")], [], "0:v"
     for k, (png, ta, tb) in enumerate(layers, 1):
         inputs += ["-framerate", f"{FPS_NUM}/{FPS_DEN}", "-loop", "1", "-i", str(png)]
@@ -386,17 +398,29 @@ def main() -> int:
     # the audio: voice levelled, the bed set a measured distance under it and ducked a little by the voice, the whole at the reference's loudness
     run(["ffmpeg", "-v", "error", "-y", "-i", work / "voice_raw.wav", "-af", f"highpass=f=90,acompressor=threshold=0.06:ratio=3:attack=5:release=80:makeup=3,loudnorm=I={VOICE_LUFS}:TP=-1.5:LRA=7,aresample=48000", work / "voice.wav"])
     v_l = lufs(work / "voice.wav")
-    marks = music_marks(a.music)
-    last = plan[-1]
-    skip = music_skip(marks, last["start"]) if style.get("music_end_at_last_cut", True) else 0.0           # the groove resolves as the last cut begins, so its last line is bare
     body = work / "music_body.wav"
-    run(["ffmpeg", "-v", "error", "-y", "-ss", f"{marks['arrives']}", "-t", f"{marks['ends'] - marks['arrives']:.2f}", "-i", a.music, body])
-    m_l = lufs(body)                                                                                      # the level the bed is set by is its body, not its quiet entrance and ending
-    g = music_gain_db(v_l, m_l)
-    bed = (f"[1:a]aresample=48000,atrim=start={skip},asetpts=PTS-STARTPTS,apad,atrim=0:{total:.3f},volume={g}dB,afade=t=in:d=0.3,afade=t=out:st={total - 0.8:.3f}:d=0.8[m];"
-           "[0:a]asplit=2[vk][vm];[m][vk]sidechaincompress=threshold=0.1:ratio=2:attack=30:release=400[md]")
-    run(["ffmpeg", "-v", "error", "-y", "-i", work / "voice.wav", "-i", a.music, "-filter_complex", bed + ";[vm]anullsink;[md]anull[o]", "-map", "[o]", work / "bed_only.wav"])
-    run(["ffmpeg", "-v", "error", "-y", "-i", work / "voice.wav", "-i", a.music, "-filter_complex", bed + f";[vm][md]amix=inputs=2:duration=first:normalize=0,loudnorm=I={REFERENCE_LUFS}:TP=-1.0:LRA=6,aresample=48000[o]", "-map", "[o]", work / "mix.wav"])
+    music_in, marks, skip, conf = a.music, None, 0.0, None
+    if style.get("music_conform"):
+        music_in = work / "music_conformed.wav"                                                           # already on the reel's own clock: silence until the first event, a beat on every event, stopped on the last
+        conf = cm.conform(a.music, events, total, music_in)
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{events[0]:.3f}", "-t", f"{events[-1] - events[0]:.3f}", "-i", music_in, body])
+        m_l = lufs(body)
+        g = music_gain_db(v_l, m_l)
+        bed = (f"[1:a]aresample=48000,apad,atrim=0:{total:.3f},volume={g}dB[m];"
+               "[0:a]asplit=2[vk][vm];[m][vk]sidechaincompress=threshold=0.1:ratio=2:attack=30:release=400[md]")
+    else:
+        marks = music_marks(a.music)
+        last = plan[-1]
+        skip = music_skip(marks, last["start"]) if style.get("music_end_at_last_cut", True) else 0.0       # the groove resolves as the last cut begins, so its last line is bare
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{marks['arrives']}", "-t", f"{marks['ends'] - marks['arrives']:.2f}", "-i", a.music, body])
+        m_l = lufs(body)                                                                                  # the level the bed is set by is its body, not its quiet entrance and ending
+        g = music_gain_db(v_l, m_l)
+        bed = (f"[1:a]aresample=48000,atrim=start={skip},asetpts=PTS-STARTPTS,apad,atrim=0:{total:.3f},volume={g}dB,afade=t=in:d=0.3,afade=t=out:st={total - 0.8:.3f}:d=0.8[m];"
+               "[0:a]asplit=2[vk][vm];[m][vk]sidechaincompress=threshold=0.1:ratio=2:attack=30:release=400[md]")
+    run(["ffmpeg", "-v", "error", "-y", "-i", work / "voice.wav", "-i", music_in, "-filter_complex", bed + ";[vm]anullsink;[md]anull[o]", "-map", "[o]", work / "bed_only.wav"])
+    run(["ffmpeg", "-v", "error", "-y", "-i", work / "voice.wav", "-i", music_in, "-filter_complex", bed + f";[vm][md]amix=inputs=2:duration=first:normalize=0,loudnorm=I={REFERENCE_LUFS}:TP=-1.0:LRA=6,aresample=48000[o]", "-map", "[o]", work / "mix.wav"])
+    if conf:
+        conf["hits_in_the_bed"] = cm.measure_hits(work / "bed_only.wav", events)                              # measured again on the bed as mixed, not on the conformed file alone
     reel = out / "reel.mp4"
     run(["ffmpeg", "-v", "error", "-y", "-i", work / "graded.mp4", "-i", work / "mix.wav", "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", reel])
 
@@ -405,7 +429,7 @@ def main() -> int:
     dur_out = float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", reel]).stdout)
     report = {"reel": reel.name, "size": [w, h], "seconds": round(dur_out, 2), "loudness_lufs": lufs(reel), "reference_lufs": REFERENCE_LUFS,
               "voice_lufs": v_l, "bed_lufs_after_ducking": lufs(work / "bed_only.wav"), "bed_under_voice_lu": round(v_l - lufs(work / "bed_only.wav"), 1),
-              "music_file": str(a.music), "music_marks": marks, "music_skip_sec": skip, "music_arrives_at_reel_sec": round(marks["arrives"] - skip, 2), "music_ends_at_reel_sec": round(marks["ends"] - skip, 2), "sound_effects": 0, "cuts": plan, "title": ti, "labels": style["labels"], "layers": len(layers)}
+              "music_file": str(a.music), "music_marks": marks, "music_skip_sec": skip, "music_conformed": conf, "events": events, "sound_effects": 0, "cuts": plan, "title": ti, "labels": style["labels"], "layers": len(layers)}
     (out / "report.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k not in ("cuts", "labels", "title")}, indent=1))
     for p in plan:

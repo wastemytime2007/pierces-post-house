@@ -1,0 +1,10 @@
+{
+ "note": "Second score for Reel 3 (Ryan, 2026-10-06: use the wallpaper reel's music as the example type; music hits in line with text on screen and transitions). The feel comes from the wallpaper reel's separated music stem (measured: about 110 bpm, bass-heavy, busy rhythm, very steady level), filled in by score_music --reference-features. The groove is longer than the reel needs so conform_music can take whole bars out to fit.",
+ "global": "beat-driven instrumental bed; deep sub bass; kick on the beat; hi-hats and percussion; minimal melody; consistent energy with no breakdowns; no vocals",
+ "avoid": "vocals; lyrics; acoustic guitar; orchestral; cinematic trailer hits; risers; cheesy corporate",
+ "sections": [
+  {"name": "Hit", "seconds": 4.0, "style": "starts on one strong accented downbeat hit with a deep bass note; then the beat settles in"},
+  {"name": "Groove", "seconds": 26.0, "style": "steady drum and bass groove; kick on every beat; busy hi-hats; deep sub bass line that repeats; same energy throughout"},
+  {"name": "Resolve", "seconds": 6.0, "style": "drums stop; one final accented bass hit on the first beat that rings out and ends cleanly"}
+ ]
+}

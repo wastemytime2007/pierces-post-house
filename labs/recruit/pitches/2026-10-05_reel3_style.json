@@ -1,17 +1,23 @@
 {
- "note": "Draft copy for Ryan to change. Shaped on the wallpaper reel: a hook, a title card with a small joke, step labels, no CTA card, no sound effects. 'Tight' cuts are the punched-in crop; the others are the full-height crop.",
- "tight_roles": ["Hook", "Owning it", "The last word"],
+ "note": "Draft copy for Ryan to change. Shaped on the wallpaper reel: a hook, a title card with a small joke, step labels, no CTA card, no sound effects. 'Tight' cuts are the punched-in crop; the others are the full-height crop. Round 3 (2026-10-06): the title and each label appear ON their transition, and music_conform puts a beat of the music on every title word, label and transition.",
+ "tight_roles": [
+  "Hook",
+  "Owning it",
+  "The last word"
+ ],
  "title": {
   "over_role": "The setup",
-  "delay": 0.25,
+  "delay": 0.0,
   "hold": 2.7,
   "small": "THE SUB SAID",
-  "big": "“DONE”",
+  "big": "\u201cDONE\u201d",
   "joke": "(THE BACKYARD DISAGREED)"
  },
  "labels": {
   "The closing": "The closing",
   "What he told the buyer": "What he told the buyer",
   "What the buyer found": "What the buyer found"
- }
+ },
+ "label_delay": 0.0,
+ "music_conform": true
 }

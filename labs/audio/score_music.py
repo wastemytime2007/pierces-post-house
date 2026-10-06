@@ -45,12 +45,13 @@ def to_plan(score: dict) -> dict:
     }
 
 
-def generate_plan(score: dict, cache: Path) -> tuple[Path, dict]:
+def generate_plan(score: dict, cache: Path, salt: str = "") -> tuple[Path, dict]:
+    """One take of the plan. A different `salt` is a different take of the same plan (the plan sent is unchanged; only the cache name differs)."""
     plan = to_plan(score)
-    h = hashlib.sha1(json.dumps(plan, sort_keys=True).encode()).hexdigest()[:12]
+    h = hashlib.sha1((json.dumps(plan, sort_keys=True) + salt).encode()).hexdigest()[:12]
     out = cache / f"score_{h}.mp3"
     if out.exists() and out.stat().st_size > 1000:
-        return out, {"cached": True, "file": out.name}
+        return out, {"cached": True, "file": out.name, "salt": salt}
     req = urllib.request.Request(f"{ma.API}/music?output_format=mp3_44100_128", data=json.dumps({"composition_plan": plan, "model_id": "music_v1"}).encode(),
                                  headers={"xi-api-key": ma.load_key(), "Content-Type": "application/json"})
     try:
@@ -59,7 +60,33 @@ def generate_plan(score: dict, cache: Path) -> tuple[Path, dict]:
         raise ma.AudioError(f"ElevenLabs music refused ({e.code}): {e.read()[:400].decode(errors='replace')}")
     cache.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
-    return out, {"cached": False, "file": out.name}
+    return out, {"cached": False, "file": out.name, "salt": salt}
+
+
+def with_reference(score: dict, ref: dict) -> dict:
+    """The score with the reference's measured feel put into its global style, in words from reference_music.describe (a fixed mapping from measurements; no song, artist or lyric is named) and its tempo (folded to
+    a mid-range one, as reference_music does). The sections and their lengths are the score's own."""
+    import reference_music as rm
+    w = rm.describe({**ref, "bpm": rm.prompt_tempo(ref["bpm"])})
+    words = [f"about {round(rm.prompt_tempo(ref['bpm']))} BPM", w["tempo"], rm.describe(ref)["tone"], rm.describe(ref)["rhythm"], rm.describe(ref)["dynamics"], *rm.describe(ref)["extra"], "instrumental", "leaves room for a speaking voice"]
+    return {**score, "global": "; ".join([*words, score.get("global", "")]).strip("; ")}
+
+
+def pick_take(score: dict, ref: dict, cache: Path, tries: int = 3, generate=None, analyse=None) -> tuple[Path, dict]:
+    """Generate up to `tries` takes of the plan, measure each with reference_music.analyze, and keep the closest to the reference (stopping at the first that passes reference_music.closeness)."""
+    import reference_music as rm
+    generate = generate or generate_plan
+    analyse = analyse or rm.analyze
+    takes = []
+    for k in range(tries):
+        mp3, info = generate(score, cache, salt="" if k == 0 else f"take{k + 1}")
+        got = analyse(mp3)
+        c = rm.closeness(ref, got)
+        takes.append({"file": str(mp3), "take": k + 1, "features": got, "closeness": c, "info": info})
+        if c["passed"]:
+            break
+    best = max(takes, key=lambda t: (t["closeness"]["passed"], t["closeness"]["score"]))
+    return Path(best["file"]), {"takes": takes, "chosen_take": best["take"], "passed": best["closeness"]["passed"]}
 
 
 def section_levels(wav: Path, score: dict) -> list[dict]:
@@ -76,10 +103,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--plan", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--reference-features", type=Path, help="reference_music.analyze output (json) of the music to feel like: its measured tempo, tone, rhythm and dynamics go into the style and the closest of --tries takes is kept")
+    ap.add_argument("--tries", type=int, default=3)
     ap.add_argument("--cache", type=Path, default=Path.home() / "Library/Application Support/Post House/music_cache")
     a = ap.parse_args()
     score = json.loads(a.plan.read_text())
-    mp3, info = generate_plan(score, a.cache)
+    if a.reference_features:
+        ref = json.loads(a.reference_features.read_text())
+        score = with_reference(score, ref)
+        print("style:", score["global"])
+        mp3, picked = pick_take(score, ref, a.cache, a.tries)
+        info = {"cached": all(t["info"]["cached"] for t in picked["takes"]), "file": mp3.name, "reference": ref, **{k: v for k, v in picked.items() if k != "takes"},
+                "takes": [{"take": t["take"], "closeness": t["closeness"], "features": t["features"]} for t in picked["takes"]]}
+        for t in picked["takes"]:
+            c = t["closeness"]
+            print(f"  take {t['take']}: {t['features']['bpm']} bpm (ref {ref['bpm']}), tone {t['features']['tone_centre_hz']} Hz (ref {ref['tone_centre_hz']}), {t['features']['onsets_per_sec']} onsets/s (ref {ref['onsets_per_sec']}), spread {t['features']['dynamic_spread_db']} dB (ref {ref['dynamic_spread_db']}): {'PASS' if c['passed'] else 'not close enough'} {c['checks']}")
+    else:
+        mp3, info = generate_plan(score, a.cache)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(mp3), "-ar", "48000", "-ac", "2", str(a.out)], check=True)
     secs = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(a.out)], capture_output=True, text=True).stdout)
     levels = section_levels(a.out, score)
