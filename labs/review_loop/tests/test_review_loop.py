@@ -110,6 +110,41 @@ def test_render_matches_cut_length_and_has_audio(tmp_path, media):
     assert "video" in streams and "audio" in streams
 
 
+def _brightness(path: Path):
+    """Mean brightness of every frame, in order."""
+    import numpy as np
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vf", "scale=8:8,format=gray", "-vsync", "0", "-f", "rawvideo", "-"], capture_output=True).stdout
+    return np.frombuffer(raw, dtype=np.uint8).reshape(-1, 64).astype(float).mean(axis=1)
+
+
+def test_the_preview_is_frame_exact_at_the_sequence_rate_not_a_frame_late_and_not_missing_frames(tmp_path):
+    """A 29.97 source where each frame is a flat grey set by its frame number (4 levels a frame), so a frame early or late is a clear step. The first renderer ran at 30 fps, duplicated each segment's first
+    frame (every later frame one frame late) and lost frames in the join."""
+    src = tmp_path / "s.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=320x180:r=30000/1001,geq=lum='mod(N*4\\,256)':cb=128:cr=128", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+                    "-t", "20", "-c:v", "libx264", "-bf", "0", "-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", str(src)], check=True)
+    rate = "<rate><timebase>30</timebase><ntsc>TRUE</ntsc></rate>"
+    xml = f"""<xmeml version="4"><sequence id="s"><name>T</name>{rate}<media><video><format><samplecharacteristics><width>320</width><height>180</height></samplecharacteristics></format><track>
+<clipitem id="c1"><name>s.mp4</name>{rate}<start>0</start><end>95</end><in>20</in><out>115</out><file id="f1"><name>s.mp4</name><pathurl>file://localhost{src}</pathurl><rate><timebase>30</timebase><ntsc>TRUE</ntsc></rate><duration>600</duration></file></clipitem>
+<clipitem id="c2"><name>s.mp4</name>{rate}<start>95</start><end>171</end><in>300</in><out>376</out><file id="f1"/></clipitem>
+</track></video><audio><track><clipitem id="a1"><name>s.mp4</name><enabled>TRUE</enabled>{rate}<start>0</start><end>171</end><in>20</in><out>191</out><file id="f1"/></clipitem></track></audio></media></sequence></xmeml>"""
+    cut = _load(tmp_path, xml)
+    assert abs(cut.fps - 30000 / 1001) < 0.001
+    out = tmp_path / "o" / "preview.mp4"
+    out.parent.mkdir()
+    render_preview(cut, out, height=180)
+    rate_out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.strip()
+    assert rate_out == "30000/1001"                                          # not 30
+    got, ref = _brightness(out), _brightness(src)
+    assert len(got) == 171                                                   # 95 + 76 frames, exactly
+    step = abs(ref[21] - ref[20])
+    assert step > 3
+    for k in range(95):                                                      # frame k of the first clip is source frame 20+k: not the same frame twice, not a frame late
+        assert abs(got[k] - ref[20 + k]) < step / 2, (k, got[k], ref[20 + k])
+    for k in range(76):                                                      # and of the second clip is source frame 300+k, with nothing lost at the join
+        assert abs(got[95 + k] - ref[300 + k]) < step / 2, (k, got[95 + k], ref[300 + k])
+
+
 def test_no_enabled_audio_falls_back_to_camera_audio_and_says_so(tmp_path, media):
     xml = _xml(*media).replace("<enabled>TRUE</enabled>", "<enabled>FALSE</enabled>")
     cut = _load(tmp_path, xml)

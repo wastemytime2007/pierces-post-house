@@ -151,3 +151,6 @@ camera audio and the file-rate reading lags -5.029s.
 ## Integration contract (when and if this earns a screen)
 Reads what the app already writes (export XML) and writes plain files. Nothing
 here touches `project.json`, the DB, or `precut_pipeline`.
+
+## Preview frame accuracy (fixed 2026-10-06)
+`render_preview.py` used to encode each segment with `fps=30` and the clip's duration as an input limit. Measured on a real 8-clip cut (879 frames at 29.97): the preview ran at 30 fps, started 0.033 s late, rendered 874 frames, and each segment's first frame was shown twice, so every frame after it was one frame (33 ms) behind the source. Now each segment starts its own clock at 0, runs at the sequence's exact rate (`fps_arg`: 29.97 is 30000/1001), is exactly the timeline's number of frames, and `render_preview` refuses to hand back a preview whose total frame count differs from the timeline's. `test_the_preview_is_frame_exact_...` uses a source whose every frame is a flat grey set by its frame number (a frame early or late is a clear step) and fails on the old renderer (checked: it ran at `30/1`). Review pages built before this date can have timecodes a few frames off late in a long cut; rebuild them to correct that.
