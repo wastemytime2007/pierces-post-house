@@ -4701,3 +4701,8 @@ kbd {
   color: var(--fg-2);
   text-align: center;
 }
+
+/* Review tab: the QA ledger's status colour on each note */
+.review-status-ok { color: var(--success); }
+.review-status-warn { color: var(--warn); }
+.review-status-bad { color: var(--error); }

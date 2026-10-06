@@ -95,7 +95,11 @@ def main() -> int:
         else:
             want = _gray(c["source_path"], mid_src)
             other = _gray(c["source_path"], other_t)
-        if got.size == 0 or want.size != got.size:
+            for alt in (mid_src + 3.0, mid_src - 3.0, mid_src + 1.5, mid_src - 1.5):          # a short source has nothing 97 s away: use a frame that exists, as far from this one as the file allows
+                if other.size == want.size or alt < 0:
+                    break
+                other = _gray(c["source_path"], alt)
+        if got.size == 0 or want.size != got.size or other.size != got.size:
             rows.append((f"FRAME-MATCH clip {c['idx']}", False, "could not extract comparable frames"))
             continue
         d_right, d_other = float(np.abs(got - want).mean()), float(np.abs(got - other).mean())

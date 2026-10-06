@@ -55,6 +55,60 @@ def build_review(xml: str, out: str | None = None, height: int = 540) -> dict:
             "sequence": cut.sequence_name, "clips": len(cut.video), "duration": round(cut.zone_end, 2)}
 
 
+def _tail(text: str, n: int = 14) -> str:
+    return "\n".join([ln for ln in text.splitlines() if ln.strip()][-n:])
+
+
+def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540, on_stage=None, ops: str | None = None) -> dict:
+    """An export XML and a review_notes.json in; a revised cut (next version XML + review page) and the QA pass on it out.
+
+    The revise step is the tool's own script (labs/review_loop/revise.py), run as it is run by hand, and the QA pass is labs/qa/qa_pass.qa on its files. Nothing about
+    what a note means is decided here. A refusal or a failed check comes back as a ToolError carrying the tool's own last lines."""
+    import json
+    import re
+    src, nfile = Path(xml).expanduser(), Path(notes).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    if not nfile.is_file():
+        raise ToolError(f"that notes file is not there: {nfile}")
+    try:
+        note_list = json.loads(nfile.read_text())["notes"]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ToolError(f"that is not a review_notes.json (no 'notes' list): {exc}") from exc
+    if not note_list:
+        raise ToolError("that notes file has no notes")
+    folder = Path(out).expanduser() if out else src.parent / f"{src.stem} - revised"
+    use_labs()
+    stage = on_stage or (lambda _s: None)
+
+    stage("Reading the notes and revising the cut (the notes are interpreted by the local claude CLI, this can take a few minutes)")
+    cmd = [sys.executable, str(LABS / "review_loop" / "revise.py"), str(src), str(nfile), "--out", str(folder), "--height", str(height)]
+    if ops:
+        cmd += ["--ops", str(Path(ops).expanduser())]          # a reviewed plan: the interpretation step is skipped
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    if p.returncode != 0:
+        raise ToolError("The revision did not pass its own checks, so no revised cut was kept.\n" + _tail(p.stdout + "\n" + p.stderr))
+    items_file = folder / "changes.json"
+    items = json.loads(items_file.read_text())["items"] if items_file.exists() else []
+    m = re.match(r"^(.*)_v(\d+)$", src.stem)
+    v2 = folder / f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1}.xml"
+    base = {"folder": str(folder), "items": items, "applied": sum(1 for i in items if i.get("applied")), "notes": len(note_list)}
+    if not v2.is_file():
+        return {**base, "xml": None, "page": None, "qa": None, "message": "Nothing in the notes could be applied to the timeline, so no new version was written."}
+
+    stage("Checking every note against the new version")
+    import qa_pass
+    import timeline
+    old, new = timeline.load_cut(src), timeline.load_cut(v2)
+    prev = src.parent / f"{src.stem} - review"
+    results, glob, unreq, report = qa_pass.qa(note_list, json.loads((folder / "ops.json").read_text()), items, old, new, v2, folder / "qa",
+                                              before_page=prev if (prev / "preview.mp4").exists() else None, after_page=folder, title=f"QA pass: {v2.stem}", before_xml=src)
+    qa_out = {"report": str(report),
+              "notes": [{"note": r.note, "time": round(r.time, 2), "status": r.status, "text": r.text, "rows": [{"op": x.op, "status": x.status, "detail": x.detail} for x in r.rows]} for r in results],
+              "whole_cut": [{"name": n, "ok": ok, "detail": d} for n, ok, d in glob], "unrequested": list(unreq)}
+    return {**base, "xml": str(v2), "page": str(folder / "review.html"), "qa": qa_out, "message": ""}
+
+
 def reveal(path: str) -> None:
     """Open a file in its default app (the review page opens in the browser) or a folder in Finder."""
     p = Path(path).expanduser()

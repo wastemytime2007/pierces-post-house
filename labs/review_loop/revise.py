@@ -55,16 +55,20 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
                  ("every V2 piece lies inside a V1 clip" + (f" (plus the measured {extra_out:.2f}s extension)" if extra_out else ""))
                  if not stray else f"{len(stray)} piece(s) outside V1 ranges"))
 
+    def lav_offset(a, v):
+        """The lav's source time minus the camera's source time at the instant the piece starts. A piece that begins mid-clip (a lav split around a bleep) is measured at its own start, not at the clip's."""
+        return a.src_in - (v.src_in + (a.tl_start - v.tl_start))
+
     v1_off: dict[str, list[float]] = {}
     for a in cut1.audio:
-        v = next((c for c in cut1.video if abs(c.tl_start - a.tl_start) < 0.05), None)
+        v = next((c for c in cut1.video if c.tl_start - 0.02 <= a.tl_start < c.tl_end), None)
         if v:
-            v1_off.setdefault(a.src_path, []).append(a.src_in - v.src_in)
+            v1_off.setdefault(a.src_path, []).append(lav_offset(a, v))
     bad = []
     for a in cut2.audio:
         v = next((c for c in cut2.video if c.tl_start - 0.02 <= a.tl_start < c.tl_end), None)
         if v and a.src_path in v1_off:
-            off = a.src_in - v.src_in
+            off = lav_offset(a, v)
             if not any(abs(off - o) < 0.05 for o in v1_off[a.src_path]):
                 bad.append((a.tl_start, off))
     rows.append(("LAV-SYNC-PRESERVED", not bad, "every lav piece keeps its V1 offset to camera" if not bad else f"{len(bad)} piece(s) drifted, first at {bad[0][0]:.2f}s"))

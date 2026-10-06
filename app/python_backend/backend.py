@@ -1049,6 +1049,33 @@ def handle_build_review(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_apply_notes(cmd: dict) -> None:
+    """An export XML + a review_notes.json in; the revised cut, its review page and the QA pass on every note out. Background job."""
+    xml, notes = cmd.get("xml"), cmd.get("notes")
+    if not xml or not notes:
+        err("apply_notes needs an 'xml' and a 'notes' path")
+        return
+    job_id = cmd.get("job_id") or f"notes-{int(time.time())}"
+    emit({"type": "notes_started", "job_id": job_id, "xml": xml, "notes": notes})
+
+    def worker():
+        import creator_tools
+        try:
+            result, printed = creator_tools.capture(
+                creator_tools.apply_notes, xml, notes, cmd.get("out"), int(cmd.get("height", 540)),
+                lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}), cmd.get("ops"))
+            for row in printed:
+                log("info", row)
+            emit({"type": "notes_applied", "job_id": job_id, **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "notes_failed", "job_id": job_id, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+            emit({"type": "notes_failed", "job_id": job_id, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
 def handle_open_path(cmd: dict) -> None:
     """Open a file or folder the app made (the review page opens in the browser)."""
     import creator_tools
@@ -1133,6 +1160,7 @@ HANDLERS = {
     "export_timelines": handle_export_timelines,
     # Creator-workflow tools (labs/)
     "build_review": handle_build_review,
+    "apply_notes": handle_apply_notes,
     "open_path": handle_open_path,
     "shutdown": handle_shutdown,
 }

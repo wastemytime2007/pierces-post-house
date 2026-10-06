@@ -163,3 +163,6 @@ A note such as "lower this shot so his head isn't cropped off at the top" is a c
 - `revise.verify_motion` reads the revised XML back; `labs/qa/qa_pass.py` measures old XML against new (direction, scale unchanged).
 - **Rests on the vertical unit that has not been confirmed in Premiere** (`labs/reframe/README.md`). Every summary line says what Position y should read, so one look in Effect Controls confirms or refutes it.
 - Tried on Ryan's real notes against the `final_v2` XML (dry run): only clips 4 and 8 changed. Not run through the interpreter call or the full QA pass.
+
+## In the app (2026-10-06)
+The app's Review tab (`app/src/screens/tabs/ReviewTab.jsx`, backend `app/python_backend/creator_tools.py`) runs `build_review.py`, then `revise.py` and `labs/qa/qa_pass.py` on a notes file, from a window. Two fixes came out of the first real run: `revise.verify`'s LAV-SYNC-PRESERVED now measures each lav piece at its own start (a lav split mid-clip around a bleep used to read as drift), and `verify_preview.py` no longer needs a source longer than 97 s.

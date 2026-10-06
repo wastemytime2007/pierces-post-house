@@ -97,6 +97,29 @@ def test_an_overlay_clip_on_a_second_video_track_does_not_shift_which_clip_is_mo
     assert after[2][2] > 0 and after[0] == before[0] and after[1] == before[1]         # clip 3 moved, 1 and 2 did not
 
 
+def test_a_lav_split_mid_clip_by_a_bleep_is_not_reported_as_drift(tmp_path, framed):
+    """LAV-SYNC-PRESERVED compared each lav piece's source start with the START of its video clip, so a lav split around a bleep (a piece beginning mid-clip) read as drifted
+    on any bleeped cut, even when the revision changed no timing at all."""
+    t = ET.parse(framed)
+    seq = t.getroot().find("sequence")
+    track = seq.findall("media/audio/track")[1]
+    first = track.findall("clipitem")[0]
+    s, e, i, o = (int(first.findtext(k)) for k in ("start", "end", "in", "out"))
+    cutpt = s + 200
+    second = ET.fromstring(ET.tostring(first))
+    second.set("id", "s1-sync-lav.wav-split")
+    first.find("end").text, first.find("out").text = str(cutpt), str(i + 200)
+    second.find("start").text, second.find("in").text = str(cutpt), str(i + 200)
+    first.addnext(second) if hasattr(first, "addnext") else track.insert(list(track).index(first) + 1, second)
+    split = tmp_path / "split.xml"
+    t.write(split, encoding="UTF-8", xml_declaration=True)
+    cut = timeline.load_cut(split)
+    out = tmp_path / "v2.xml"
+    apply_ops.apply_ops(split, out, cut, [{"note": 1, "op": "reframe_vertical", "clip": 2, "direction": "lower"}], NOTES)
+    rows = dict((n, ok) for n, ok, _d in revise.verify(cut, split, out, 0.0))
+    assert rows["LAV-SYNC-PRESERVED"] is True
+
+
 def test_raising_goes_the_other_way_and_the_edge_of_the_picture_stops_it(tmp_path, framed):
     cut = timeline.load_cut(framed)
     ops = [{"note": 2, "op": "reframe_vertical", "clip": 2, "direction": "raise"}]
