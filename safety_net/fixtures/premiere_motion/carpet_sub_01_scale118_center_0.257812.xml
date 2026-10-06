@@ -1,0 +1,510 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xmeml>
+<xmeml version="4">
+	<sequence id="sequence-1" TL.SQAudioVisibleBase="0" TL.SQVideoVisibleBase="0" TL.SQVisibleBaseTime="0" TL.SQAVDividerPosition="0.5" TL.SQHideShyTracks="0" TL.SQHeaderWidth="204" Monitor.ProgramZoomOut="8467200000" Monitor.ProgramZoomIn="0" TL.SQTimePerPixel="0.097158646322378722" MZ.EditLine="0" MZ.Sequence.PreviewFrameSizeHeight="1920" MZ.Sequence.PreviewFrameSizeWidth="1080" MZ.Sequence.AudioTimeDisplayFormat="200" MZ.Sequence.PreviewRenderingPresetCodec="1919706400" MZ.Sequence.PreviewRenderingPresetPath="EncoderPresets/SequencePreview/795454d9-d3c2-429d-9474-923ab13b7018/QuickTime.epr" MZ.Sequence.PreviewUseMaxRenderQuality="false" MZ.Sequence.PreviewUseMaxBitDepth="false" MZ.Sequence.EditingModeGUID="795454d9-d3c2-429d-9474-923ab13b7018" MZ.Sequence.VideoTimeDisplayFormat="104" MZ.WorkOutPoint="1464825600000" MZ.WorkInPoint="0" explodedTracks="true">
+		<uuid>4de79eca-cf94-4e35-98d2-95cc91fb5779</uuid>
+		<duration>415</duration>
+		<rate>
+			<timebase>30</timebase>
+			<ntsc>FALSE</ntsc>
+		</rate>
+		<name>How To Pull Up Old Carpet_Sub_01</name>
+		<media>
+			<video>
+				<format>
+					<samplecharacteristics>
+						<rate>
+							<timebase>30</timebase>
+							<ntsc>FALSE</ntsc>
+						</rate>
+						<codec>
+							<name>Apple ProRes 422</name>
+							<appspecificdata>
+								<appname>Final Cut Pro</appname>
+								<appmanufacturer>Apple Inc.</appmanufacturer>
+								<appversion>7.0</appversion>
+								<data>
+									<qtcodec>
+										<codecname>Apple ProRes 422</codecname>
+										<codectypename>Apple ProRes 422</codectypename>
+										<codectypecode>apcn</codectypecode>
+										<codecvendorcode>appl</codecvendorcode>
+										<spatialquality>1024</spatialquality>
+										<temporalquality>0</temporalquality>
+										<keyframerate>0</keyframerate>
+										<datarate>0</datarate>
+									</qtcodec>
+								</data>
+							</appspecificdata>
+						</codec>
+						<width>1080</width>
+						<height>1920</height>
+						<anamorphic>FALSE</anamorphic>
+						<pixelaspectratio>square</pixelaspectratio>
+						<fielddominance>none</fielddominance>
+						<colordepth>24</colordepth>
+					</samplecharacteristics>
+				</format>
+				<track TL.SQTrackShy="0" TL.SQTrackExpandedHeight="41" TL.SQTrackExpanded="0" MZ.TrackTargeted="1">
+					<clipitem id="clipitem-1">
+						<masterclipid>masterclip-1</masterclipid>
+						<name>DJI_20260505105407_0008_D.MP4</name>
+						<enabled>TRUE</enabled>
+						<duration>9206</duration>
+						<rate>
+							<timebase>30</timebase>
+							<ntsc>FALSE</ntsc>
+						</rate>
+						<start>0</start>
+						<end>415</end>
+						<in>3765</in>
+						<out>4180</out>
+						<pproTicksIn>31879008000000</pproTicksIn>
+						<pproTicksOut>35392896000000</pproTicksOut>
+						<alphatype>none</alphatype>
+						<pixelaspectratio>square</pixelaspectratio>
+						<anamorphic>FALSE</anamorphic>
+						<file id="file-1">
+							<name>DJI_20260505105407_0008_D.MP4</name>
+							<pathurl>file://localhost/Volumes/RDOSS_2025/SoldFast%202026/10050%20NE%20University%20Ave%20Runnells/Clean%20Out,%20Carpets,%20Grass,%20wallpaper/Osmo/DJI_20260505105407_0008_D.MP4</pathurl>
+							<rate>
+								<timebase>60</timebase>
+								<ntsc>TRUE</ntsc>
+							</rate>
+							<duration>18394</duration>
+							<timecode>
+								<rate>
+									<timebase>60</timebase>
+									<ntsc>TRUE</ntsc>
+								</rate>
+								<string>01;28;03;00</string>
+								<frame>316660</frame>
+								<displayformat>DF</displayformat>
+							</timecode>
+							<media>
+								<video>
+									<samplecharacteristics>
+										<rate>
+											<timebase>60</timebase>
+											<ntsc>TRUE</ntsc>
+										</rate>
+										<width>3840</width>
+										<height>2160</height>
+										<anamorphic>FALSE</anamorphic>
+										<pixelaspectratio>square</pixelaspectratio>
+										<fielddominance>none</fielddominance>
+									</samplecharacteristics>
+								</video>
+								<audio>
+									<samplecharacteristics>
+										<depth>16</depth>
+										<samplerate>48000</samplerate>
+									</samplecharacteristics>
+									<channelcount>2</channelcount>
+								</audio>
+							</media>
+						</file>
+						<filter>
+							<effect>
+								<name>Basic Motion</name>
+								<effectid>basic</effectid>
+								<effectcategory>motion</effectcategory>
+								<effecttype>motion</effecttype>
+								<mediatype>video</mediatype>
+								<pproBypass>false</pproBypass>
+								<parameter authoringApp="PremierePro">
+									<parameterid>scale</parameterid>
+									<name>Scale</name>
+									<valuemin>0</valuemin>
+									<valuemax>1000</valuemax>
+									<value>118</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>rotation</parameterid>
+									<name>Rotation</name>
+									<valuemin>-8640</valuemin>
+									<valuemax>8640</valuemax>
+									<value>0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>center</parameterid>
+									<name>Center</name>
+									<value>
+										<horiz>0.257812</horiz>
+										<vert>0</vert>
+									</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>centerOffset</parameterid>
+									<name>Anchor Point</name>
+									<value>
+										<horiz>0</horiz>
+										<vert>0</vert>
+									</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>antiflicker</parameterid>
+									<name>Anti-flicker Filter</name>
+									<valuemin>0.0</valuemin>
+									<valuemax>1.0</valuemax>
+									<value>0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>leftcrop</parameterid>
+									<name>Left</name>
+									<valuemin>0.0</valuemin>
+									<valuemax>100.0</valuemax>
+									<value>0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>topcrop</parameterid>
+									<name>Top</name>
+									<valuemin>0.0</valuemin>
+									<valuemax>100.0</valuemax>
+									<value>0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>rightcrop</parameterid>
+									<name>Right</name>
+									<valuemin>0.0</valuemin>
+									<valuemax>100.0</valuemax>
+									<value>0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>bottomcrop</parameterid>
+									<name>Bottom</name>
+									<valuemin>0.0</valuemin>
+									<valuemax>100.0</valuemax>
+									<value>0</value>
+								</parameter>
+							</effect>
+						</filter>
+						<filter>
+							<effect>
+								<name></name>
+								<effectid>Lumetri</effectid>
+								<effecttype>filter</effecttype>
+								<mediatype>video</mediatype>
+								<pproBypass>false</pproBypass>
+								<parameter authoringApp="PremierePro">
+									<parameterid>1</parameterid>
+									<name>Blob</name>
+									<hash>63866a15-9327-e4cb-ff31-c9ea0000000e</hash>
+									<value>/v4=</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>3</parameterid>
+									<name> </name>
+									<value>-91445760000000000,true,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>4</parameterid>
+									<name> </name>
+									<hash>63866a15-9327-e4cb-ff31-c9ea0000000e</hash>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>5</parameterid>
+									<name>Input LUT</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>11</UpperBound>
+									<value>-91445760000000000,0,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>7</parameterid>
+									<name>Temperature</name>
+									<LowerBound>-300</LowerBound>
+									<UpperBound>300</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>8</parameterid>
+									<name>Tint</name>
+									<LowerBound>-300</LowerBound>
+									<UpperBound>300</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>20</parameterid>
+									<name>Saturation</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>300</UpperBound>
+									<UpperUIBound>200</UpperUIBound>
+									<value>-91445760000000000,100.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>11</parameterid>
+									<name>Exposure</name>
+									<LowerBound>-7</LowerBound>
+									<UpperBound>7</UpperBound>
+									<LowerUIBound>-5</LowerUIBound>
+									<UpperUIBound>5</UpperUIBound>
+									<value>-91445760000000000,1.400000095367431640625,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>12</parameterid>
+									<name>Contrast</name>
+									<LowerBound>-150</LowerBound>
+									<UpperBound>150</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>13</parameterid>
+									<name>Highlights</name>
+									<LowerBound>-150</LowerBound>
+									<UpperBound>150</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>14</parameterid>
+									<name>Shadows</name>
+									<LowerBound>-150</LowerBound>
+									<UpperBound>150</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,24.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>15</parameterid>
+									<name>Whites</name>
+									<LowerBound>-150</LowerBound>
+									<UpperBound>150</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>16</parameterid>
+									<name>Blacks</name>
+									<LowerBound>-150</LowerBound>
+									<UpperBound>150</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>23</parameterid>
+									<name> </name>
+									<value>-91445760000000000,true,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>24</parameterid>
+									<name> </name>
+									<hash>63866a15-9327-e4cb-ff31-c9ea0000000e</hash>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>25</parameterid>
+									<name>Look</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>68</UpperBound>
+									<value>-91445760000000000,0,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>26</parameterid>
+									<name>Intensity</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>200</UpperBound>
+									<value>-91445760000000000,100.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>28</parameterid>
+									<name>Faded Film</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>150</UpperBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>29</parameterid>
+									<name>Sharpen</name>
+									<LowerBound>-100</LowerBound>
+									<UpperBound>100</UpperBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>30</parameterid>
+									<name>Vibrance</name>
+									<LowerBound>-100</LowerBound>
+									<UpperBound>100</UpperBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>31</parameterid>
+									<name>Saturation</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>300</UpperBound>
+									<UpperUIBound>200</UpperUIBound>
+									<value>-91445760000000000,100.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>32</parameterid>
+									<name></name>
+									<hash>49d2fca5-ddd1-a393-0544-f6d80000002c</hash>
+									<value>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>33</parameterid>
+									<name>Tint Balance</name>
+									<LowerBound>-150</LowerBound>
+									<UpperBound>150</UpperBound>
+									<LowerUIBound>-100</LowerUIBound>
+									<UpperUIBound>100</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>37</parameterid>
+									<name> </name>
+									<value>-91445760000000000,true,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>39</parameterid>
+									<name> </name>
+									<hash>261f3840-e8cf-a8cd-fa5e-bac10000082c</hash>
+									<value>AAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAADwPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPA/AAAAAAAA8D8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADwPwAAAAAAAPA/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAADwPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>42</parameterid>
+									<name>Hue vs Sat</name>
+									<hash>f146cafe-eab3-19ed-0ee8-de0e00000214</hash>
+									<value>AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA8D8AAAAAAADwPwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>46</parameterid>
+									<name> </name>
+									<value>-91445760000000000,true,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>47</parameterid>
+									<name> </name>
+									<hash>0b5436c4-bae0-bb64-a2f6-c8c40000006c</hash>
+									<value>AAAAAAAAAAAAAAAAAADgPwAAAAAAAAAAAAAAAAAAAAAAAAAAAADgPwAAAAAAAAAAAAAAAAAAAAAAAAAAAADgPwAAAAAAAAAAAAAAAAAAAAAAAAAAAADgPwAAAAAAAAAA</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>50</parameterid>
+									<name> </name>
+									<value>-91445760000000000,true,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>51</parameterid>
+									<name>Amount</name>
+									<LowerBound>-5</LowerBound>
+									<UpperBound>5</UpperBound>
+									<LowerUIBound>-3</LowerUIBound>
+									<UpperUIBound>3</UpperUIBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>52</parameterid>
+									<name>Midpoint</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>100</UpperBound>
+									<value>-91445760000000000,50.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>53</parameterid>
+									<name>Roundness</name>
+									<LowerBound>-100</LowerBound>
+									<UpperBound>100</UpperBound>
+									<value>-91445760000000000,0.,0,0,0,0,0,0</value>
+								</parameter>
+								<parameter authoringApp="PremierePro">
+									<parameterid>54</parameterid>
+									<name>Feather</name>
+									<LowerBound>0</LowerBound>
+									<UpperBound>100</UpperBound>
+									<value>-91445760000000000,50.,0,0,0,0,0,0</value>
+								</parameter>
+							</effect>
+						</filter>
+						<logginginfo>
+							<description></description>
+							<scene></scene>
+							<shottake></shottake>
+							<lognote></lognote>
+							<good></good>
+							<originalvideofilename></originalvideofilename>
+							<originalaudiofilename></originalaudiofilename>
+						</logginginfo>
+						<colorinfo>
+							<lut></lut>
+							<lut1></lut1>
+							<asc_sop></asc_sop>
+							<asc_sat></asc_sat>
+							<lut2></lut2>
+						</colorinfo>
+						<labels>
+							<label2>Mango</label2>
+						</labels>
+					</clipitem>
+					<enabled>TRUE</enabled>
+					<locked>FALSE</locked>
+				</track>
+			</video>
+			<audio>
+				<numOutputChannels>2</numOutputChannels>
+				<format>
+					<samplecharacteristics>
+						<depth>16</depth>
+						<samplerate>48000</samplerate>
+					</samplecharacteristics>
+				</format>
+				<outputs>
+					<group>
+						<index>1</index>
+						<numchannels>1</numchannels>
+						<downmix>0</downmix>
+						<channel>
+							<index>1</index>
+						</channel>
+					</group>
+					<group>
+						<index>2</index>
+						<numchannels>1</numchannels>
+						<downmix>0</downmix>
+						<channel>
+							<index>2</index>
+						</channel>
+					</group>
+				</outputs>
+				<track TL.SQTrackAudioKeyframeStyle="0" TL.SQTrackShy="0" TL.SQTrackExpandedHeight="41" TL.SQTrackExpanded="0" MZ.TrackTargeted="1" PannerCurrentValue="0.5" PannerIsInverted="true" PannerStartKeyframe="-91445760000000000,0.5,0,0,0,0,0,0" PannerName="Balance" currentExplodedTrackIndex="0" totalExplodedTrackCount="2" premiereTrackType="Stereo">
+					<enabled>TRUE</enabled>
+					<locked>FALSE</locked>
+					<outputchannelindex>1</outputchannelindex>
+				</track>
+				<track TL.SQTrackAudioKeyframeStyle="0" TL.SQTrackShy="0" TL.SQTrackExpandedHeight="41" TL.SQTrackExpanded="0" MZ.TrackTargeted="1" PannerCurrentValue="0.5" PannerIsInverted="true" PannerStartKeyframe="-91445760000000000,0.5,0,0,0,0,0,0" PannerName="Balance" currentExplodedTrackIndex="1" totalExplodedTrackCount="2" premiereTrackType="Stereo">
+					<enabled>TRUE</enabled>
+					<locked>FALSE</locked>
+					<outputchannelindex>2</outputchannelindex>
+				</track>
+			</audio>
+		</media>
+		<timecode>
+			<rate>
+				<timebase>30</timebase>
+				<ntsc>FALSE</ntsc>
+			</rate>
+			<string>00:00:00:00</string>
+			<frame>0</frame>
+			<displayformat>NDF</displayformat>
+		</timecode>
+		<labels>
+			<label2>Forest</label2>
+		</labels>
+		<logginginfo>
+			<description></description>
+			<scene></scene>
+			<shottake></shottake>
+			<lognote></lognote>
+			<good></good>
+			<originalvideofilename></originalvideofilename>
+			<originalaudiofilename></originalaudiofilename>
+		</logginginfo>
+	</sequence>
+</xmeml>
