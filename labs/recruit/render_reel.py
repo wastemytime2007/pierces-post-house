@@ -328,9 +328,12 @@ def main() -> int:
             ta, td = c["in_sec"] + f0 * FR, nf * FR
             cw, ch, cx, cy = crop_box(sw, sh, SIDE_X[SIDE_OF[who]], tight)
             seg = work / f"seg_{i}_{k}.mp4"
-            run(["ffmpeg", "-v", "error", "-y", "-ss", f"{ta:.4f}", "-t", f"{td:.4f}", "-i", src, "-an",
-                 "-vf", f"crop={cw}:{ch}:{cx}:{cy},scale={OUT_W}:{OUT_H}:flags=lanczos,fps={FPS_NUM}/{FPS_DEN},format=yuv420p",
-                 "-c:v", "libx264", "-crf", "15", "-preset", "medium", str(seg)])
+            # Frame-exact: frame k of the piece is source frame k at the cut. The first version used `fps` alone, which DUPLICATED each piece's first frame (every frame after it showed the picture one frame, 33 ms,
+            # late against its voice) and rounded some pieces up a frame. Starting the piece's clock at 0, pinning the fps filter's start, passing frames through, and asking for exactly nf frames fixes all three;
+            # the check at the end of this render measures the result.
+            run(["ffmpeg", "-v", "error", "-y", "-ss", f"{ta:.4f}", "-i", src, "-an",
+                 "-vf", f"crop={cw}:{ch}:{cx}:{cy},scale={OUT_W}:{OUT_H}:flags=lanczos,setpts=PTS-STARTPTS,fps={FPS_NUM}/{FPS_DEN}:start_time=0,format=yuv420p",
+                 "-fps_mode", "passthrough", "-frames:v", str(nf), "-c:v", "libx264", "-bf", "0", "-crf", "15", "-preset", "medium", str(seg)])
             segs.append(seg)
             # the voice: THAT person's own recorder, at the offset measured against the camera
             if two:
@@ -388,6 +391,7 @@ def main() -> int:
     for p in plan:
         if p["role"] in style["labels"]:
             add(label_states(style["labels"][p["role"]], p["start"] + style.get("label_delay", 0.25), p["start"] + p["dur"]))
+    (work / "layers.json").write_text(json.dumps([{"png": str(png), "t_on": round(ta, 4), "t_off": round(tb, 4)} for png, ta, tb in layers], indent=1))     # reel_xml.py rebuilds the graphics as one transparent layer from these
     inputs, chain, last = ["-i", str(work / "picture.mp4")], [], "0:v"
     for k, (png, ta, tb) in enumerate(layers, 1):
         inputs += ["-framerate", f"{FPS_NUM}/{FPS_DEN}", "-loop", "1", "-i", str(png)]
@@ -427,9 +431,16 @@ def main() -> int:
     # measured from the finished file
     w, h = probe_size(str(reel))
     dur_out = float(run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", reel]).stdout)
+    planned_frames = sum(int(round(q["dur"] / FR)) for p in plan for q in p["pieces"])
+    pic_frames = int(run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", reel]).stdout.strip())
+    aud_sec = float(run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "csv=p=0", reel]).stdout.strip())
+    seg_frames = sum(int(run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", s]).stdout.strip()) for s in segs)
+    av = {"planned_frames": planned_frames, "piece_frames": seg_frames, "reel_picture_frames": pic_frames, "reel_audio_seconds": round(aud_sec, 3), "picture_minus_audio_ms": round((pic_frames * FR - aud_sec) * 1000)}
+    if seg_frames != planned_frames or abs(pic_frames - planned_frames) > 1 or abs(pic_frames * FR - aud_sec) > FR * 1.5:
+        raise RuntimeError(f"picture and audio disagree: {av} (a piece has the wrong number of frames, or the overlay pass dropped frames); not writing a report for a reel that drifts")
     report = {"reel": reel.name, "size": [w, h], "seconds": round(dur_out, 2), "loudness_lufs": lufs(reel), "reference_lufs": REFERENCE_LUFS,
               "voice_lufs": v_l, "bed_lufs_after_ducking": lufs(work / "bed_only.wav"), "bed_under_voice_lu": round(v_l - lufs(work / "bed_only.wav"), 1),
-              "music_file": str(a.music), "music_marks": marks, "music_skip_sec": skip, "music_conformed": conf, "events": events, "sound_effects": 0, "cuts": plan, "title": ti, "labels": style["labels"], "layers": len(layers)}
+              "music_file": str(a.music), "music_marks": marks, "music_skip_sec": skip, "music_conformed": conf, "events": events, "av": av, "sound_effects": 0, "cuts": plan, "title": ti, "labels": style["labels"], "layers": len(layers)}
     (out / "report.json").write_text(json.dumps(report, indent=1))
     print(json.dumps({k: v for k, v in report.items() if k not in ("cuts", "labels", "title")}, indent=1))
     for p in plan:
