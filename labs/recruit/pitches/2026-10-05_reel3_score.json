@@ -1,0 +1,11 @@
+{
+ "note": "Timed to Reel 3's cut (29.3 s): the hook is bare voice, the music enters WITH the title card at 1.45 s, the groove carries the story to the last cut at 24.3 s, then it thins out so 'That's on me' lands bare and the piece ends on a resolved chord. Section lengths add up to 28.45 s = the reel from 1.45 s to its end plus a 0.6 s tail.",
+ "enter_at": 1.45,
+ "global": "warm acoustic instrumental; steady mid tempo around 96 bpm; plucked guitar, soft kick, light brushed snare, round bass; serious but hopeful; confident and understated; leaves space for a speaking voice",
+ "avoid": "vocals; lyrics; loud drums; cinematic trailer hits; electronic drops; cheesy corporate",
+ "sections": [
+  {"name": "Title", "seconds": 3.0, "style": "sparse intro; one soft plucked guitar note on the downbeat with a low warm pad; a clear first beat that announces a title; gentle build"},
+  {"name": "Story", "seconds": 19.85, "style": "the groove settles in; steady pulse with soft kick and brushed snare; plucked guitar riff that repeats; warm bass; forward motion, confident; consistent energy with no big changes"},
+  {"name": "Last line", "seconds": 5.6, "style": "stripped back; drums drop out; a sustained pad with a few sparse guitar notes; serious; ends on a single resolved final chord that rings out and finishes cleanly"}
+ ]
+}
