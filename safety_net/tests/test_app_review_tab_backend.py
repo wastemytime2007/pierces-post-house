@@ -32,9 +32,9 @@ def media(tmp_path_factory):
     return d, Path(xml)
 
 
-def _talk(commands, want, timeout=180):
+def _talk(commands, want, timeout=180, extra_env=None):
     """Send commands to a fresh backend; return every event up to and including the first whose type is in `want`."""
-    env = {"PATH": "/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin", "PRECUT_ROOT": str(REPO / "app" / "python_backend")}
+    env = {"PATH": "/usr/bin:/bin:/opt/homebrew/bin:/usr/local/bin", "PRECUT_ROOT": str(REPO / "app" / "python_backend"), **(extra_env or {})}
     p = subprocess.Popen([sys.executable, str(BACKEND)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=env)
     events = []
     try:
@@ -101,6 +101,94 @@ def test_apply_notes_through_the_backend_revises_the_cut_and_qa_measures_it(tmp_
     assert [n["status"] for n in qa["notes"]] == ["VERIFIED"], qa["notes"]
     assert Path(qa["report"]).is_file()
     assert timeline.load_cut(Path(last["xml"])).zone_end == pytest.approx(10.0, abs=0.1)
+
+
+def _short_cut(tmp_path):
+    v = tmp_path / "Clip.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=48000:duration=12", "-f", "lavfi", "-i", "testsrc2=s=180x320:r=30:d=12",
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(v)], check=True)
+    sys.path.insert(0, str(REPO / "app" / "python_backend"))
+    import creator_tools
+    creator_tools.use_labs()
+    import xml_from_media
+    return creator_tools, xml_from_media.make(v, tmp_path / "cut.xml")
+
+
+def test_the_review_server_does_byte_ranges_and_serves_nothing_outside_its_folder(tmp_path):
+    """A WebView cannot seek a video it is served without ranges; and the server must not be a way to read other files."""
+    import http.client
+    import urllib.parse
+    sys.path.insert(0, str(REPO / "app" / "python_backend"))
+    import creator_tools
+    folder = tmp_path / "rev"
+    folder.mkdir()
+    (folder / "review.html").write_text("<html>page</html>")
+    blob = bytes(range(100))
+    (folder / "preview.mp4").write_bytes(blob)
+    (tmp_path / "secret.txt").write_text("not for the page")
+    url = creator_tools.serve_review(folder)
+    u = urllib.parse.urlparse(url)
+    base = u.path.rsplit("/", 1)[0]
+
+    def get(path, rng=None):
+        c = http.client.HTTPConnection(u.hostname, u.port, timeout=10)
+        c.request("GET", path, headers={"Range": rng} if rng else {})
+        r = c.getresponse()
+        return r.status, dict(r.getheaders()), r.read()
+
+    st, h, body = get(base + "/preview.mp4")
+    assert st == 200 and body == blob and h["Accept-Ranges"] == "bytes"
+    st, h, body = get(base + "/preview.mp4", "bytes=10-19")
+    assert st == 206 and body == blob[10:20] and h["Content-Range"] == "bytes 10-19/100"
+    st, h, body = get(base + "/preview.mp4", "bytes=90-")
+    assert st == 206 and body == blob[90:] and h["Content-Range"] == "bytes 90-99/100"
+    st, h, body = get(base + "/preview.mp4", "bytes=-5")
+    assert st == 206 and body == blob[-5:]
+    assert get(base + "/preview.mp4", "bytes=500-600")[0] == 416
+    assert get(base + "/../secret.txt")[0] == 404 and get(base + "/%2e%2e/secret.txt")[0] == 404
+    assert get("/r/deadbeef00/review.html")[0] == 404 and get("/etc/passwd")[0] == 404
+    assert get(base + "/review.html")[2] == b"<html>page</html>"
+
+
+def test_export_checks_the_xml_and_only_a_passing_one_is_opened(tmp_path):
+    creator_tools, xml = _short_cut(tmp_path)
+    import os
+    os.environ["POSTHOUSE_NO_OPEN"] = "1"                      # report what would open; open nothing
+    try:
+        ok = creator_tools.export_xml(str(xml))
+        assert ok["verified"] is True and ok["failed"] == [] and ok["opened"] is False
+        assert ok["app"] is None or "Premiere" in ok["app"]
+        bad = tmp_path / "bad.xml"
+        bad.write_text("<xmeml version='4'><sequence id='s'><name>x</name></sequence></xmeml>")
+        refused = creator_tools.export_xml(str(bad))
+        assert refused["verified"] is False and refused["failed"] and refused["opened"] is False and refused["app"] is None
+        assert creator_tools.export_xml(str(xml), open_in_premiere=False)["app"] is None
+    finally:
+        os.environ.pop("POSTHOUSE_NO_OPEN", None)
+
+
+def test_export_through_the_backend_reports_the_check(tmp_path):
+    creator_tools, xml = _short_cut(tmp_path)
+    evs = _talk([{"type": "export_xml", "xml": str(xml)}], {"xml_exported", "xml_export_failed"}, timeout=60, extra_env={"POSTHOUSE_NO_OPEN": "1"})
+    assert evs[-1]["type"] == "xml_exported" and evs[-1]["verified"] is True and evs[-1]["opened"] is False
+
+
+def test_the_pages_own_notes_are_applied_and_the_next_version_opens_beside_the_xml(tmp_path):
+    """What the Review tab does: the page hands over its notes object, the app saves it beside that page, revises, and returns the next version's page URL."""
+    creator_tools, xml = _short_cut(tmp_path)
+    review = tmp_path / "cut - review"
+    review.mkdir()
+    payload = {"schema": "review_notes.v0-draft", "sequence": "Clip", "notes": [{"timeline_sec": 4.0, "clip": 1, "text": "Take out 3 to 5 seconds, it drags", "shapes": []}]}
+    ops = tmp_path / "ops.json"
+    ops.write_text(json.dumps([{"note": 1, "op": "remove_range", "start": 3.0, "end": 5.0, "why": "stated"}]))
+    evs = _talk([{"type": "apply_notes", "job_id": "p1", "xml": str(xml), "notes_payload": payload, "review_folder": str(review), "ops": str(ops), "height": 320}],
+                {"notes_applied", "notes_failed"}, timeout=240)
+    last = evs[-1]
+    assert last["type"] == "notes_applied", evs[-3:]
+    assert json.loads((review / "review_notes.json").read_text())["notes"][0]["text"].startswith("Take out")
+    assert Path(last["folder"]).name == "cut_v2 - revised" and Path(last["folder"]).parent == tmp_path
+    assert last["url"].startswith("http://127.0.0.1:") and last["url"].endswith("/review.html")
+    assert [n["status"] for n in last["qa"]["notes"]] == ["VERIFIED"]
 
 
 def test_a_notes_file_that_is_not_review_notes_is_refused_in_words(tmp_path):

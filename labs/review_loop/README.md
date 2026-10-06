@@ -166,3 +166,6 @@ A note such as "lower this shot so his head isn't cropped off at the top" is a c
 
 ## In the app (2026-10-06)
 The app's Review tab (`app/src/screens/tabs/ReviewTab.jsx`, backend `app/python_backend/creator_tools.py`) runs `build_review.py`, then `revise.py` and `labs/qa/qa_pass.py` on a notes file, from a window. Two fixes came out of the first real run: `revise.verify`'s LAV-SYNC-PRESERVED now measures each lav piece at its own start (a lav split mid-clip around a bleep used to read as drift), and `verify_preview.py` no longer needs a source longer than 97 s.
+
+## Embedded in the app (2026-10-06)
+The Review tab frames this page. Two additions make that work: the page posts `{type: 'review:count', n}` to its host when its notes change and answers `{type: 'review:get-notes', id}` with `{type: 'review:notes', id, payload}` (the object "Download JSON" saves). Standalone use is unchanged. `tests/drive_embedded.js` drives the framed page in Chrome (manual, like `drive_page.js`).

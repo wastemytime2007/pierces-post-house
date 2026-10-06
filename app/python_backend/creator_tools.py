@@ -7,6 +7,7 @@ Nothing here reimplements a tool. Each function is the tool's own entry point pl
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +38,169 @@ def use_labs() -> None:
             sys.path.insert(0, s)
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# The review page inside the app: a small local server frames each review folder for the Review tab.
+#
+# The page is plain HTML plus preview.mp4 and the tab shows it in a frame. A WebView cannot seek a video it is served without byte ranges, so this is a server that
+# does ranges (python's own http.server does not). It binds 127.0.0.1 only and serves nothing outside a folder the app registered.
+# The port is fixed when it is free so the page's own browser storage (its unsent notes) stays under one origin from one run to the next.
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+
+import hashlib
+import http.server
+import mimetypes
+import socketserver
+import threading
+import urllib.parse
+
+REVIEW_PORT = 47821
+_ROOTS: dict[str, Path] = {}
+_SERVER: dict = {}
+_SERVER_LOCK = threading.Lock()
+
+
+class _Handler(http.server.BaseHTTPRequestHandler):
+    server_version = "PostHouseReview/1"
+
+    def log_message(self, *a):
+        pass
+
+    def _target(self) -> Path | None:
+        parts = urllib.parse.unquote(urllib.parse.urlparse(self.path).path).split("/")        # ['', 'r', token, ...file]
+        if len(parts) < 4 or parts[1] != "r" or parts[2] not in _ROOTS:
+            return None
+        root = _ROOTS[parts[2]].resolve()
+        t = (root / "/".join(parts[3:])).resolve()
+        return t if (root in t.parents) and t.is_file() else None
+
+    def _send(self, head_only: bool):
+        t = self._target()
+        if t is None:
+            self.send_error(404)
+            return
+        size = t.stat().st_size
+        start, end, code = 0, size - 1, 200
+        m = re.match(r"bytes=(\d*)-(\d*)$", self.headers.get("Range", "").strip())
+        if m and (m.group(1) or m.group(2)):
+            if m.group(1):
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else size - 1
+            else:                                                  # "bytes=-N": the last N bytes
+                start = max(0, size - int(m.group(2)))
+            end = min(end, size - 1)
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            code = 206
+        ctype = "text/html; charset=utf-8" if t.suffix == ".html" else (mimetypes.guess_type(str(t))[0] or "application/octet-stream")
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.send_header("Cache-Control", "no-store")
+        if code == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        if head_only:
+            return
+        try:
+            with open(t, "rb") as f:
+                f.seek(start)
+                left = end - start + 1
+                while left > 0:
+                    chunk = f.read(min(1 << 16, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass                                                   # the player closed the request (a seek); not an error
+
+    def do_GET(self):
+        self._send(False)
+
+    def do_HEAD(self):
+        self._send(True)
+
+
+class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+def serve_review(folder: str | Path, page: str = "review.html") -> str:
+    """The URL the Review tab frames for a review folder (built by build_review or apply_notes)."""
+    f = Path(folder).expanduser().resolve()
+    if not (f / page).is_file():
+        raise ToolError(f"there is no {page} in {f}")
+    token = hashlib.sha1(str(f).encode()).hexdigest()[:10]
+    with _SERVER_LOCK:
+        _ROOTS[token] = f
+        if "srv" not in _SERVER:
+            try:
+                srv = _Server(("127.0.0.1", REVIEW_PORT), _Handler)
+            except OSError:
+                srv = _Server(("127.0.0.1", 0), _Handler)
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            _SERVER["srv"] = srv
+        port = _SERVER["srv"].server_address[1]
+    return f"http://127.0.0.1:{port}/r/{token}/{page}"
+
+
+def save_notes(folder: str | Path, payload: dict) -> Path:
+    """The notes the page handed over, written where the revise step and QA read them (the same file 'Download JSON' makes)."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("notes"), list):
+        raise ToolError("the review page did not hand over its notes")
+    p = Path(folder).expanduser() / "review_notes.json"
+    import json
+    p.write_text(json.dumps(payload, indent=2))
+    return p
+
+
+def next_version_folder(xml: str | Path) -> Path:
+    """Where the next version of this XML is written: beside it, named by the version, so applying notes to V1, then V2, never overwrites an earlier version."""
+    import re as _re
+    src = Path(xml).expanduser()
+    m = _re.match(r"^(.*)_v(\d+)$", src.stem)
+    return src.parent / f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1} - revised"
+
+
+def premiere_app() -> str | None:
+    """The newest installed Adobe Premiere Pro (a Beta only if nothing else is installed)."""
+    import glob
+    found = sorted(glob.glob("/Applications/Adobe Premiere Pro*/Adobe Premiere Pro*.app"))
+    stable = [a for a in found if "Beta" not in a]
+    return (stable or found or [None])[-1]
+
+
+def export_xml(xml: str, open_in_premiere: bool = True) -> dict:
+    """The XML a version of the cut is, checked by the export check and (only if it passes) opened in Premiere. Never hands over an export it has not verified."""
+    import os
+    src = Path(xml).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    use_labs()
+    import export_gate
+    import verify_export
+    rep = verify_export.Report()
+    verify_export.check_xml(src, rep)
+    skip = {"CUT-GRANULARITY"} if export_gate.is_whole_file(src) else set()
+    rows = [{"name": n, "ok": ok, "detail": d} for n, ok, d in rep.rows]
+    failed = [r["name"] for r in rows if r["ok"] is False and r["name"] not in skip]
+    out = {"xml": str(src), "verified": not failed, "failed": failed, "rows": rows, "opened": False, "app": None}
+    if failed or not open_in_premiere:
+        return out
+    app = premiere_app()
+    out["app"] = Path(app).stem if app else None
+    if os.environ.get("POSTHOUSE_NO_OPEN"):
+        return out                                                  # tests: report what would open, open nothing
+    subprocess.run(["open", "-a", app, str(src)] if app else ["open", str(src)], check=False)
+    out["opened"] = True
+    return out
+
+
 def build_review(xml: str, out: str | None = None, height: int = 540) -> dict:
     """An export XML in; a review folder (preview.mp4, review.html, timeline.json) out. Returns where it is and what it holds."""
     src = Path(xml).expanduser()
@@ -51,7 +215,7 @@ def build_review(xml: str, out: str | None = None, height: int = 540) -> dict:
         cut = load_cut(src)
     except TimelineError as exc:
         raise ToolError(str(exc)) from exc
-    return {"xml": str(src), "folder": str(folder), "page": str(page), "preview": str(folder / "preview.mp4"),
+    return {"xml": str(src), "folder": str(folder), "page": str(page), "preview": str(folder / "preview.mp4"), "url": serve_review(folder),
             "sequence": cut.sequence_name, "clips": len(cut.video), "duration": round(cut.zone_end, 2)}
 
 
@@ -77,7 +241,7 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
         raise ToolError(f"that is not a review_notes.json (no 'notes' list): {exc}") from exc
     if not note_list:
         raise ToolError("that notes file has no notes")
-    folder = Path(out).expanduser() if out else src.parent / f"{src.stem} - revised"
+    folder = Path(out).expanduser() if out else next_version_folder(src)
     use_labs()
     stage = on_stage or (lambda _s: None)
 
@@ -106,7 +270,7 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     qa_out = {"report": str(report),
               "notes": [{"note": r.note, "time": round(r.time, 2), "status": r.status, "text": r.text, "rows": [{"op": x.op, "status": x.status, "detail": x.detail} for x in r.rows]} for r in results],
               "whole_cut": [{"name": n, "ok": ok, "detail": d} for n, ok, d in glob], "unrequested": list(unreq)}
-    return {**base, "xml": str(v2), "page": str(folder / "review.html"), "qa": qa_out, "message": ""}
+    return {**base, "xml": str(v2), "page": str(folder / "review.html"), "url": serve_review(folder), "qa": qa_out, "message": ""}
 
 
 def reveal(path: str) -> None:

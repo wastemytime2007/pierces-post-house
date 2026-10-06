@@ -171,7 +171,8 @@ if (FULL) {
 const KEY = 'review_loop:' + DATA.sequence + ':' + DATA.duration.toFixed(2);
 let notes = [];
 try { notes = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { notes = []; }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch (e) {} }
+function tellHost(msg) { try { if (window.parent !== window) window.parent.postMessage(msg, '*'); } catch (e) {} }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch (e) {} tellHost({ type: 'review:count', n: notes.length }); }
 
 const fmt = s => { const m = Math.floor(s / 60); return String(m).padStart(2, '0') + ':' + (s - m * 60).toFixed(1).padStart(4, '0'); };
 const clipAt = t => DATA.clips.find(c => t >= c.start && t < c.end) || DATA.clips[DATA.clips.length - 1];
@@ -739,7 +740,12 @@ document.getElementById('dl').onclick = () => {
   a.href = URL.createObjectURL(new Blob([JSON.stringify(payload(), null, 2)], { type: 'application/json' }));
   a.download = 'review_notes.json'; a.click();
 };
+// Embedded in the app (the Review tab frames this page): the app asks for the notes and gets them as the same object "Download JSON" saves, so there is no file to download and carry over.
+window.addEventListener('message', e => {
+  if (e.data && e.data.type === 'review:get-notes') tellHost({ type: 'review:notes', id: e.data.id, payload: payload() });
+});
 setDrawMode(false); drawNotes(); tick();
+tellHost({ type: 'review:count', n: notes.length });
 </script>
 </body>
 </html>

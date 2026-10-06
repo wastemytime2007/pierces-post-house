@@ -1,241 +1,281 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { sendCommand } from "../../App.jsx";
 
 /**
- * 02 · Review. The creator-workflow review loop (labs/review_loop and labs/qa, bundled into python_backend/labs).
+ * 02 · Review. The review page itself (labs/review_loop: the video, every edit decision on a timeline, timecoded notes, drawing on the frame) shown in the app,
+ * with the loop around it:
  *
- *  1. An export XML goes in; the backend builds a review page (preview.mp4 + review.html) beside it. Notes and drawings are made on that page.
- *  2. The notes file the page saves (review_notes.json) goes in with the same XML; the backend revises the cut, builds the next version's review
- *     page, and QA re-measures every note on the new version from its files. The ledger below is that QA pass, not the revise step's own claim.
+ *   choose the cut  ->  leave notes on the page  ->  "Apply notes" (the page hands its notes to the app, the cut is revised, the next version opens here,
+ *   every note is re-checked on it)  ->  "Export XML" (checked by the export check, then opened in Premiere for final touches).
+ *
+ * The page is served by the backend on 127.0.0.1 (creator_tools.serve_review) and framed here; the page and this tab talk by postMessage.
  */
-const STATUS_LABEL = {
-  "VERIFIED": "Verified",
-  "APPLIED-UNMEASURED": "Applied, look at it",
-  "NOT DONE": "Not done",
-  "FAILED": "Failed",
-};
+const STATUS_LABEL = { "VERIFIED": "Verified", "APPLIED-UNMEASURED": "Applied, look at it", "NOT DONE": "Not done", "FAILED": "Failed" };
 const STATUS_CLASS = { "VERIFIED": "ok", "APPLIED-UNMEASURED": "warn", "NOT DONE": "warn", "FAILED": "bad" };
-
 const fileName = (p) => (p || "").split("/").pop();
+const dirName = (p) => (p || "").split("/").slice(0, -1).join("/");
 
 export default function ReviewTab({ subscribe }) {
-  const [xml, setXml] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | building | built | failed
-  const [result, setResult] = useState(null);
-  const [message, setMessage] = useState("");
-  const [rows, setRows] = useState([]);
+  const frameRef = useRef(null);
+  const [exportsList, setExportsList] = useState([]);
+  const [versions, setVersions] = useState([]); // [{label, xml, folder, url, qa}]
+  const [cur, setCur] = useState(0);
+  const [noteCount, setNoteCount] = useState(0);
+  const [busy, setBusy] = useState(""); // "" | building | applying
+  const [stage, setStage] = useState("");
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [exportResult, setExportResult] = useState(null);
+  const [showLedger, setShowLedger] = useState(true);
 
-  const [notesFile, setNotesFile] = useState("");
-  const [notesStatus, setNotesStatus] = useState("idle"); // idle | working | done | failed
-  const [notesStage, setNotesStage] = useState("");
-  const [notesResult, setNotesResult] = useState(null);
-  const [notesMessage, setNotesMessage] = useState("");
+  const version = versions[cur];
+
+  useEffect(() => {
+    sendCommand({ type: "list_exports" }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     return subscribe((ev) => {
-      if (ev.type === "review_started") {
-        setStatus("building");
-        setRows([]);
-        setMessage("");
-      } else if (ev.type === "log" && status === "building" && /\[(PASS|FAIL|SKIP)\]/.test(ev.message || "")) {
-        setRows((r) => [...r, ev.message.trim()]);
+      if (ev.type === "exports_listed") {
+        setExportsList(ev.exports || []);
+      } else if (ev.type === "review_started") {
+        setBusy("building");
+        setError("");
+        setInfo("");
       } else if (ev.type === "review_built") {
-        setStatus("built");
-        setResult(ev);
+        setBusy("");
+        setVersions([{ label: "V1", xml: ev.xml, folder: ev.folder, url: ev.url, qa: null }]);
+        setCur(0);
+        setNoteCount(0);
+        setExportResult(null);
       } else if (ev.type === "review_failed") {
-        setStatus("failed");
-        setMessage(ev.message || "The review page could not be built.");
+        setBusy("");
+        setError(ev.message || "The review page could not be built.");
       } else if (ev.type === "notes_started") {
-        setNotesStatus("working");
-        setNotesStage("Starting…");
-        setNotesMessage("");
-        setNotesResult(null);
+        setBusy("applying");
+        setStage("Starting…");
+        setError("");
+        setInfo("");
       } else if (ev.type === "notes_stage") {
-        setNotesStage(ev.stage || "");
+        setStage(ev.stage || "");
       } else if (ev.type === "notes_applied") {
-        setNotesStatus("done");
-        setNotesResult(ev);
+        setBusy("");
+        if (!ev.xml) {
+          setInfo(ev.message || "Nothing in the notes could be applied to the timeline.");
+          return;
+        }
+        setVersions((vs) => {
+          const next = [...vs, { label: `V${vs.length + 1}`, xml: ev.xml, folder: ev.folder, url: ev.url, qa: ev.qa, applied: ev.applied, notes: ev.notes }];
+          setCur(next.length - 1);
+          return next;
+        });
+        setNoteCount(0);
+        setExportResult(null);
+        setShowLedger(true);
       } else if (ev.type === "notes_failed") {
-        setNotesStatus("failed");
-        setNotesMessage(ev.message || "The notes could not be applied.");
+        setBusy("");
+        setError(ev.message || "The notes could not be applied.");
+      } else if (ev.type === "xml_exported") {
+        setExportResult(ev);
+      } else if (ev.type === "xml_export_failed") {
+        setError(ev.message || "The export failed.");
       }
     });
-  }, [subscribe, status]);
+  }, [subscribe]);
 
-  const pickXml = useCallback(async () => {
-    const p = await openDialog({ multiple: false, filters: [{ name: "Premiere XML", extensions: ["xml"] }] });
-    if (typeof p === "string") {
-      setXml(p);
-      setStatus("idle");
-      setResult(null);
-      setNotesStatus("idle");
-      setNotesResult(null);
-    }
+  // The page tells us how many notes it holds.
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:count") setNoteCount(e.data.n || 0);
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, []);
 
-  const pickNotes = useCallback(async () => {
-    const p = await openDialog({ multiple: false, filters: [{ name: "Review notes", extensions: ["json"] }] });
-    if (typeof p === "string") {
-      setNotesFile(p);
-      setNotesStatus("idle");
-      setNotesResult(null);
-    }
-  }, []);
-
-  const build = useCallback(async () => {
+  const build = useCallback(async (xml) => {
     if (!xml) return;
-    setStatus("building");
+    setBusy("building");
+    setError("");
     try {
       await sendCommand({ type: "build_review", xml });
     } catch (e) {
-      setStatus("failed");
-      setMessage(String(e));
+      setBusy("");
+      setError(String(e));
     }
-  }, [xml]);
+  }, []);
 
-  const applyNotes = useCallback(async () => {
-    if (!xml || !notesFile) return;
-    setNotesStatus("working");
-    setNotesStage("Starting…");
+  const browse = useCallback(async () => {
+    const p = await openDialog({ multiple: false, filters: [{ name: "Premiere XML", extensions: ["xml"] }] });
+    if (typeof p === "string") build(p);
+  }, [build]);
+
+  const askNotes = useCallback(
+    () =>
+      new Promise((resolve, reject) => {
+        const id = String(Math.random());
+        const done = (fn, v) => {
+          clearTimeout(t);
+          window.removeEventListener("message", h);
+          fn(v);
+        };
+        const h = (e) => {
+          if (e.data?.type === "review:notes" && e.data.id === id) done(resolve, e.data.payload);
+        };
+        const t = setTimeout(() => done(reject, new Error("The review page did not answer. Reload this tab and try again.")), 4000);
+        window.addEventListener("message", h);
+        frameRef.current?.contentWindow?.postMessage({ type: "review:get-notes", id }, "*");
+      }),
+    []
+  );
+
+  const apply = useCallback(async () => {
+    if (!version) return;
+    setError("");
+    setInfo("");
     try {
-      await sendCommand({ type: "apply_notes", xml, notes: notesFile });
+      const payload = await askNotes();
+      if (!payload.notes?.length) {
+        setInfo("Leave at least one note on the page first (the + Note button, or press n).");
+        return;
+      }
+      await sendCommand({ type: "apply_notes", xml: version.xml, notes_payload: payload, review_folder: version.folder });
     } catch (e) {
-      setNotesStatus("failed");
-      setNotesMessage(String(e));
+      setBusy("");
+      setError(String(e.message || e));
     }
-  }, [xml, notesFile]);
+  }, [version, askNotes]);
 
-  const failed = rows.filter((r) => r.includes("[FAIL]"));
-  const qa = notesResult?.qa;
-  const counts = qa
-    ? qa.notes.reduce((acc, n) => ({ ...acc, [n.status]: (acc[n.status] || 0) + 1 }), {})
-    : {};
+  const exportXml = useCallback(async () => {
+    if (!version) return;
+    setError("");
+    setExportResult(null);
+    await sendCommand({ type: "export_xml", xml: version.xml, open: true });
+  }, [version]);
+
+  // ---- nothing chosen yet
+  if (!version) {
+    return (
+      <div className="review-tab">
+        <div className="run-pipeline-section">
+          <div className="run-pipeline-section-label">Choose the cut to review</div>
+          <p className="pm-tab-sub">
+            The cut opens here as a review page: the video, every edit decision on a timeline, and a place for timecoded notes and drawing on the frame.
+            Leave notes, apply them to get the next version, then export the XML and open it in Premiere.
+          </p>
+          {busy === "building" && <div className="sync-section-hint">Building the review page (about half a minute)…</div>}
+          {exportsList.length > 0 && (
+            <div className="transcripts-list">
+              {exportsList.slice(0, 8).map((x) => (
+                <div className="transcript-row" key={x.path}>
+                  <div className="transcript-row-main">
+                    <div className="transcript-row-name">{x.name}</div>
+                    <div className="transcript-row-folder">{new Date(x.mtime * 1000).toLocaleString()}</div>
+                  </div>
+                  <button className="btn btn-primary" disabled={!!busy} onClick={() => build(x.path)}>
+                    Review
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="pm-tab-row">
+            <button className="btn btn-ghost" disabled={!!busy} onClick={browse}>
+              {exportsList.length ? "Or choose another XML…" : "Choose an XML…"}
+            </button>
+          </div>
+        </div>
+        {error && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error}</div>}
+      </div>
+    );
+  }
+
+  // ---- a version is open
+  const qa = version.qa;
+  const counts = qa ? qa.notes.reduce((a, n) => ({ ...a, [n.status]: (a[n.status] || 0) + 1 }), {}) : {};
   const wholeBad = qa ? qa.whole_cut.filter((w) => w.ok === false) : [];
+  const failedChecks = exportResult && !exportResult.verified ? exportResult.rows.filter((r) => r.ok === false) : [];
 
   return (
-    <div className="review-tab">
-      <div className="run-pipeline-section">
-        <div className="run-pipeline-section-label">1 · The edit to review</div>
-        <p className="pm-tab-sub">
-          Pick the XML you exported from Premiere (or from this app). A review page is built beside it: the cut as a video, every edit decision on a
-          timeline, and a place to leave timecoded notes and draw on the frame.
-        </p>
-        <div className="pm-tab-row">
-          <button className="btn btn-ghost" onClick={pickXml} disabled={status === "building" || notesStatus === "working"}>
-            {xml ? "Choose a different XML" : "Choose an XML…"}
+    <div className="review-tab" style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
+      <div className="pm-tab-row" style={{ flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+        {versions.map((v, i) => (
+          <button key={v.label} className={`btn ${i === cur ? "btn-primary" : "btn-ghost"}`} onClick={() => { setCur(i); setNoteCount(0); setExportResult(null); }} disabled={!!busy}>
+            {v.label}
           </button>
-          {xml && <span className="transcript-row-name" title={xml}>{fileName(xml)}</span>}
-        </div>
-        <div className="pm-tab-row">
-          <button className="btn btn-primary" onClick={build} disabled={!xml || status === "building"}>
-            {status === "building" ? "Building the review page…" : "Build review page"}
-          </button>
-        </div>
+        ))}
+        <span className="transcript-row-name" title={version.xml}>{fileName(version.xml)}</span>
+        <span style={{ flex: 1 }} />
+        <button className="btn btn-primary" onClick={apply} disabled={!!busy} title="Revise the cut from the notes on the page and open the next version here">
+          {busy === "applying"
+            ? "Applying…"
+            : noteCount
+              ? `Apply ${noteCount} note${noteCount === 1 ? "" : "s"} → V${versions.length + 1}`
+              : `Apply notes → V${versions.length + 1}`}
+        </button>
+        <button className="btn btn-ghost" onClick={exportXml} disabled={!!busy} title="Check the XML, then open it in Premiere">
+          Export XML → Premiere
+        </button>
+        <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: dirName(version.xml) })} disabled={!!busy}>
+          Show in Finder
+        </button>
+        <button className="btn btn-ghost" onClick={() => { setVersions([]); setCur(0); setExportResult(null); setError(""); setInfo(""); sendCommand({ type: "list_exports" }).catch(() => {}); }} disabled={!!busy}>
+          Other cut…
+        </button>
       </div>
 
-      {status === "failed" && (
-        <div className="pm-tab-warnings" role="alert">
-          {message}
+      {busy === "applying" && <div className="sync-section-hint">{stage}</div>}
+      {error && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error}</div>}
+      {info && <div className="pm-tab-warnings" role="status">{info}</div>}
+
+      {exportResult && (
+        <div className={exportResult.verified ? "sync-section-hint" : "pm-tab-warnings"} role="status">
+          {exportResult.verified
+            ? exportResult.opened
+              ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}`
+              : `Checked: ${fileName(exportResult.xml)} (not opened${exportResult.app ? "" : "; Premiere was not found"}).`
+            : `Not opened: the export check failed (${exportResult.failed.join(", ")}). ${failedChecks.map((r) => r.detail).join(" ")}`}
         </div>
       )}
 
-      {status === "built" && result && (
+      {qa && (
         <div className="run-pipeline-section">
-          <div className="run-pipeline-section-label">Review page ready</div>
-          <p className="pm-tab-sub">
-            {result.sequence}: {result.clips} clips, {result.duration} s. The notes you save on the page come back as a review_notes.json file.
-          </p>
-          <div className="pm-tab-row">
-            <button className="btn btn-primary" onClick={() => sendCommand({ type: "open_path", path: result.page })}>
-              Open review page
-            </button>
-            <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: result.folder })}>
-              Show folder
-            </button>
+          <div className="pm-tab-row" style={{ alignItems: "center" }}>
+            <div className="run-pipeline-section-label" style={{ margin: 0 }}>
+              {version.label}, checked: {version.applied} of {version.notes} notes applied · {counts["VERIFIED"] || 0} verified · {counts["APPLIED-UNMEASURED"] || 0} look at it · {counts["NOT DONE"] || 0} not done · {counts["FAILED"] || 0} failed
+              {wholeBad.length ? ` · ${wholeBad.length} whole-cut check(s) failed` : ""}
+              {qa.unrequested.length ? ` · ${qa.unrequested.length} change(s) nobody asked for` : ""}
+            </div>
+            <span style={{ flex: 1 }} />
+            <button className="btn btn-ghost" onClick={() => setShowLedger((s) => !s)}>{showLedger ? "Hide" : "Show"} details</button>
+            <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: qa.report })}>QA report</button>
           </div>
-          {rows.length > 0 && (
-            <div className="sync-section-hint">
-              Layer checks: {rows.length - failed.length} of {rows.length} passed or skipped{failed.length ? `; ${failed.length} failed (see the log)` : ""}.
+          {showLedger && (
+            <div className="transcripts-list">
+              {qa.notes.map((n) => (
+                <div className="transcript-row" key={n.note}>
+                  <div className="transcript-row-main">
+                    <div className={`transcript-row-name review-status-${STATUS_CLASS[n.status] || "warn"}`}>Note {n.note} at {n.time}s · {STATUS_LABEL[n.status] || n.status}</div>
+                    <div className="transcript-row-folder">{n.text}</div>
+                    {n.rows.map((r, i) => <div className="sync-section-hint" key={i}>{r.detail}</div>)}
+                  </div>
+                </div>
+              ))}
+              {qa.unrequested.map((u, i) => <div className="pm-tab-warnings" key={i}>{u}</div>)}
             </div>
           )}
         </div>
       )}
 
-      <div className="run-pipeline-section">
-        <div className="run-pipeline-section-label">2 · Apply the notes</div>
-        <p className="pm-tab-sub">
-          Pick the review_notes.json the page saved. The notes are turned into edits on this same XML, a new version and its review page are built, and every note is
-          then checked again on the new version. Notes it cannot do are listed as not done, with the reason.
-        </p>
-        <div className="pm-tab-row">
-          <button className="btn btn-ghost" onClick={pickNotes} disabled={notesStatus === "working"}>
-            {notesFile ? "Choose a different notes file" : "Choose the notes file…"}
-          </button>
-          {notesFile && <span className="transcript-row-name" title={notesFile}>{fileName(notesFile)}</span>}
-        </div>
-        <div className="pm-tab-row">
-          <button className="btn btn-primary" onClick={applyNotes} disabled={!xml || !notesFile || notesStatus === "working"}>
-            {notesStatus === "working" ? "Working…" : "Apply notes and check"}
-          </button>
-          {!xml && <span className="sync-section-hint">Choose the XML in step 1 first.</span>}
-        </div>
-        {notesStatus === "working" && <div className="sync-section-hint">{notesStage}</div>}
-      </div>
-
-      {notesStatus === "failed" && (
-        <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>
-          {notesMessage}
-        </div>
-      )}
-
-      {notesStatus === "done" && notesResult && !qa && (
-        <div className="pm-tab-warnings" role="status">
-          {notesResult.message}
-        </div>
-      )}
-
-      {notesStatus === "done" && qa && (
-        <div className="run-pipeline-section">
-          <div className="run-pipeline-section-label">New version, checked</div>
-          <p className="pm-tab-sub">
-            {notesResult.applied} of {notesResult.notes} notes applied. {counts["VERIFIED"] || 0} verified,{" "}
-            {(counts["APPLIED-UNMEASURED"] || 0)} applied but not measurable, {(counts["NOT DONE"] || 0)} not done, {(counts["FAILED"] || 0)} failed.
-            {wholeBad.length ? ` ${wholeBad.length} whole-cut check(s) failed.` : ""}
-            {qa.unrequested.length ? ` ${qa.unrequested.length} change(s) nobody asked for.` : ""}
-          </p>
-          <div className="transcripts-list">
-            {qa.notes.map((n) => (
-              <div className="transcript-row" key={n.note}>
-                <div className="transcript-row-main">
-                  <div className={`transcript-row-name review-status-${STATUS_CLASS[n.status] || "warn"}`}>
-                    Note {n.note} at {n.time}s · {STATUS_LABEL[n.status] || n.status}
-                  </div>
-                  <div className="transcript-row-folder">{n.text}</div>
-                  {n.rows.map((r, i) => (
-                    <div className="sync-section-hint" key={i}>{r.detail}</div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          {qa.unrequested.map((u, i) => (
-            <div className="pm-tab-warnings" key={i}>{u}</div>
-          ))}
-          <div className="pm-tab-row">
-            <button className="btn btn-primary" onClick={() => sendCommand({ type: "open_path", path: notesResult.page })}>
-              Open the new review page
-            </button>
-            <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: qa.report })}>
-              Open the QA report
-            </button>
-            <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: notesResult.folder })}>
-              Show folder ({fileName(notesResult.xml)})
-            </button>
-          </div>
-        </div>
-      )}
+      <iframe
+        key={version.url}
+        ref={frameRef}
+        title={`Review ${version.label}`}
+        src={version.url}
+        allow="autoplay; clipboard-write"
+        style={{ flex: 1, minHeight: 640, width: "100%", border: "1px solid var(--border, #333)", borderRadius: 8, background: "#000" }}
+      />
     </div>
   );
 }

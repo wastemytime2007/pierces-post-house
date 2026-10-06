@@ -1051,16 +1051,19 @@ def handle_build_review(cmd: dict) -> None:
 
 def handle_apply_notes(cmd: dict) -> None:
     """An export XML + a review_notes.json in; the revised cut, its review page and the QA pass on every note out. Background job."""
-    xml, notes = cmd.get("xml"), cmd.get("notes")
-    if not xml or not notes:
-        err("apply_notes needs an 'xml' and a 'notes' path")
+    xml, notes, payload = cmd.get("xml"), cmd.get("notes"), cmd.get("notes_payload")
+    if not xml or not (notes or payload):
+        err("apply_notes needs an 'xml' and either a 'notes' path or the page's 'notes_payload'")
         return
     job_id = cmd.get("job_id") or f"notes-{int(time.time())}"
-    emit({"type": "notes_started", "job_id": job_id, "xml": xml, "notes": notes})
+    emit({"type": "notes_started", "job_id": job_id, "xml": xml, "notes": notes or "(from the review page)"})
 
     def worker():
         import creator_tools
         try:
+            nonlocal notes
+            if payload is not None:                  # the Review tab hands over what the page holds: save it beside that page, then revise from the file
+                notes = str(creator_tools.save_notes(cmd.get("review_folder") or Path(xml).expanduser().parent, payload))
             result, printed = creator_tools.capture(
                 creator_tools.apply_notes, xml, notes, cmd.get("out"), int(cmd.get("height", 540)),
                 lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}), cmd.get("ops"))
@@ -1074,6 +1077,37 @@ def handle_apply_notes(cmd: dict) -> None:
             emit({"type": "notes_failed", "job_id": job_id, "message": f"{type(exc).__name__}: {exc}"})
 
     _executor.submit(worker)
+
+
+def handle_export_xml(cmd: dict) -> None:
+    """A version's XML checked by the export check and, only if it passes, opened in Premiere."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("export_xml needs an 'xml' path")
+        return
+
+    def worker():
+        import creator_tools
+        try:
+            result, _printed = creator_tools.capture(creator_tools.export_xml, xml, bool(cmd.get("open", True)))
+            emit({"type": "xml_exported", **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "xml_export_failed", "xml": xml, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "xml_export_failed", "xml": xml, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
+def handle_list_exports(cmd: dict) -> None:
+    """The XML exports this project already has (newest first), so the Review tab can start from the export without a file dialog."""
+    proj = _require_project()
+    if proj is None:
+        return
+    d = proj.dir() / "exports"
+    found = sorted((p for p in d.rglob("*.xml") if p.is_file()), key=lambda p: p.stat().st_mtime, reverse=True) if d.exists() else []
+    emit({"type": "exports_listed", "folder": str(d), "exports": [{"path": str(p), "name": p.name, "mtime": p.stat().st_mtime} for p in found[:30]]})
 
 
 def handle_open_path(cmd: dict) -> None:
@@ -1161,6 +1195,8 @@ HANDLERS = {
     # Creator-workflow tools (labs/)
     "build_review": handle_build_review,
     "apply_notes": handle_apply_notes,
+    "export_xml": handle_export_xml,
+    "list_exports": handle_list_exports,
     "open_path": handle_open_path,
     "shutdown": handle_shutdown,
 }
