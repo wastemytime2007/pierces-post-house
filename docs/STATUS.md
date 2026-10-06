@@ -77,6 +77,8 @@ bleep 51, broll 14, captions 15, overlay 59, project 10, qa 15, reconform 11, re
 window); generated sound effect and music bed; layers shown on the page; reconform (layers kept through a revision); the per-version QA pass; the beatmap. Also his own words on the bleep: "yes it works" (the live tone)
 and his hand-placed bleep at 29.44-29.70 s on the Tiling cut (applied exactly).
 
+**B00. Reel 3 as a vertical reel (2026-10-05), built, NOT yet judged by Ryan:** `labs/recruit/render_reel.py` -> `Recruitment footage (proof)/Reel 3 vertical/reel.mp4`, after Ryan rejected the 16:9 version. Evidence: `report.json` (1080x1920, 29.3 s, -13.2 LUFS, bed 8.3 LU under the voice, 0 sound effects), 42 recruit tests pass. Not done: Ryan watching it, listening by me, vertical XML, the other four reels in this style.
+
 **B0. Recruitment reels (2026-10-05), built, NOT yet judged by Ryan:** five reel XMLs from the May 15 and weekend interviews in `~/Documents/Post House Reviews/Recruitment footage (proof)/reels/`. Evidence: all five pass `safety_net/verify_export.py` and `labs/recruit/verify_reel.py` (rate, pairing, frames-as-resolved, sync worst lag 1.9 ms). Not done: opening in Premiere, listening (3 to 4 cuts per reel are flagged mid-sound by the advisory check), the Canon 8K clips in a 4K sequence. See `labs/recruit/README.md`.
 
 **B. Built, NOT yet judged by Ryan** (the folder to open is in the testing guide, `~/Documents/Post House Reviews/TESTING - creator workflow.html`, entries 2-14):

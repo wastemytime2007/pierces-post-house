@@ -1,0 +1,17 @@
+{
+ "note": "Draft copy for Ryan to change. Shaped on the wallpaper reel: a hook, a title card with a small joke, step labels, no CTA card, no sound effects. 'Tight' cuts are the punched-in crop; the others are the full-height crop.",
+ "tight_roles": ["Hook", "Owning it", "The last word"],
+ "title": {
+  "over_role": "The setup",
+  "delay": 0.25,
+  "hold": 2.7,
+  "small": "THE SUB SAID",
+  "big": "“DONE”",
+  "joke": "(THE BACKYARD DISAGREED)"
+ },
+ "labels": {
+  "The closing": "The closing",
+  "What he told the buyer": "What he told the buyer",
+  "What the buyer found": "What the buyer found"
+ }
+}

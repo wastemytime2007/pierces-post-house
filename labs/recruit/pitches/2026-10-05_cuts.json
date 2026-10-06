@@ -88,6 +88,13 @@
     {
      "unit": "Jun13",
      "id": "W18",
+     "role": "The setup",
+     "from": "And you don't know what done means",
+     "to": "look like an ass"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
      "role": "The closing",
      "from": "Yesterday we had a closing",
      "to": "didn't clean up the backyard"
@@ -126,20 +133,6 @@
      "role": "The last word",
      "from": "I made the representation of that buyer",
      "to": "That's on me"
-    },
-    {
-     "unit": "Jun13",
-     "id": "W17",
-     "role": "What he does about it",
-     "from": "I am physically on every job",
-     "to": "or at least try to be"
-    },
-    {
-     "unit": "Jun13",
-     "id": "W17",
-     "role": "Why",
-     "from": "I try to be at everything",
-     "to": "missed anything"
     }
    ]
   },
