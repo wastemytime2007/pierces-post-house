@@ -473,3 +473,28 @@ def test_a_word_revealed_under_only_one_way_of_silencing_is_not_kept_for_an_unsu
     two = bl.reveal(speech, [(2.28, 2.43)], words_after(2), pats, tmp_path)
     assert [r["votes"] for r in one] == [1] and [r["votes"] for r in two] == [2]
     assert bl.REVEAL_UNSURE_VOTES == 2
+
+
+def _speech_with_s(gap_before_s: float):
+    """A vowel (0.6 to 1.1 s), then `gap_before_s` of room noise, then an /s/ (12 ms steps of high-frequency noise, 18 dB under the vowel) and silence."""
+    sr = bl.SR
+    rng = np.random.default_rng(5)
+    x = np.convolve(rng.standard_normal(int(4.0 * sr)), np.ones(24) / 24, mode="same") * 0.003        # low-frequency room noise
+    t = np.arange(int(0.6 * sr), int(1.1 * sr)) / sr
+    x[int(0.6 * sr):int(1.1 * sr)] += 0.1 * np.sin(2 * np.pi * 180 * t)
+    s0 = int((1.1 + gap_before_s) * sr)
+    noise = rng.standard_normal(int(0.12 * sr))
+    hi = np.diff(noise, n=2, prepend=0.0, append=0.0)[:len(noise)]
+    x[s0:s0 + len(noise)] += hi / hi.std() * 0.0014
+    return x
+
+
+def test_a_bleep_ends_after_the_trailing_s_of_the_word_not_before_it():
+    x = _speech_with_s(0.0)                                          # the s follows the vowel at once: 'ass'
+    out = bl.extend_over_fricatives([(0.55, 1.12)], x)               # Whisper ended the word early; the pad took the span to 1.12
+    assert out[0][0] == 0.55 and 1.22 <= out[0][1] <= 1.30           # the span now ends just after the s (1.22 s)
+
+
+def test_a_pause_stops_the_extension_so_the_next_words_s_is_not_swallowed():
+    x = _speech_with_s(0.45)                                         # a 0.45 s pause, then an s: the NEXT word
+    assert bl.extend_over_fricatives([(0.55, 1.12)], x) == [(0.55, 1.12)]

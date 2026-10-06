@@ -19,3 +19,6 @@ A plan row with no picture clip, a picture clip with no row, and any piece whose
 
 ## Not done
 Vertical (`center.vert`) moves; keyframed motion; sources other than 3840x2160; graphics and music layers on this XML (the overlay and audio tools).
+
+## Vertical moves (2026-10-06)
+`plan` pieces may carry `subject_y` (the source pixel row the shot's subject should sit at); `window_inside` keeps the window inside the picture and `vert_for_subject` writes Basic Motion `center.vert`. **The vertical rule is assumed, not confirmed:** `vert = (Position y - seq_h/2) / source_h`, positive down, by analogy with the horizontal rule that Ryan's export settled (`safety_net/fixtures/premiere_motion/`). No export with a vertical move exists. `verify` therefore reports an INFO row `VERTICAL-UNIT-ASSUMED` with the Position y Premiere should show; INFO rows do not fail the run (the CLI used to print one as FAIL and stop a reel build). To confirm: open a lowered clip in Premiere, read Position y in Effect Controls, and compare. If it is wrong, only `vert_for_subject`, `subject_y_for_vert` and `expected_position_y` change.

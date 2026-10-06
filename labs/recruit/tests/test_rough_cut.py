@@ -219,3 +219,26 @@ def test_a_last_word_timed_across_a_pause_ends_where_the_speech_does():
     rms, fs = rc.energy(x, sr)
     f_start, l_end = rc.refine_edges(("you", 0.5, 0.9), ("know", 1.0, 3.2), rms, 0.0, fs)
     assert f_start == 0.5 and 1.25 <= l_end <= 1.4               # it ends where the sound does, not 1.9 s of silence later
+
+
+def test_a_trailing_s_is_quiet_by_level_but_it_is_the_word_so_the_cut_ends_after_it():
+    """'ass': a vowel at -20 dB, then an /s/ (high-frequency noise) 18 dB under it, then silence, then the next speaker. By level alone the /s/ is silence and the cut ends before it."""
+    import numpy as np
+    sr = rc.SR
+    rng = np.random.default_rng(3)
+    n = int(3.0 * sr)
+    x = np.convolve(rng.standard_normal(n), np.ones(24) / 24, mode="same") * 0.003    # room noise: low-frequency heavy, as a real room is (1 to 7% of its energy above 3.5 kHz)
+    t = np.arange(int(0.6 * sr), int(1.1 * sr)) / sr
+    x[int(0.6 * sr):int(1.1 * sr)] += 0.1 * np.sin(2 * np.pi * 180 * t)             # the vowel, 0.6 to 1.1 s
+    s_len = int(0.12 * sr)
+    noise = rng.standard_normal(s_len)
+    hi = np.diff(noise, n=2, prepend=0.0, append=0.0)[:s_len]                       # twice-differenced noise: nearly all its energy is above 3.5 kHz
+    x[int(1.1 * sr):int(1.1 * sr) + s_len] += hi / hi.std() * 0.0014                 # the /s/, 1.10 to 1.22 s: a few dB over the room and far under the vowel, as on the real recording (about -38 dB against -41 to -45 and -20)
+    x[int(1.6 * sr):int(2.1 * sr)] += 0.1 * np.sin(2 * np.pi * 150 * np.arange(int(0.5 * sr)) / sr)   # the next speaker
+    rms, fs = rc.energy(x, sr)
+    hf = rc.hf_share(x, sr)
+    assert hf[int(1.15 / fs)] > rc.HF_SHARE and hf[int(2.5 / fs)] < 0.1              # the /s/ is high-frequency; the room is not
+    lifted = rc.without_fricatives(rms, hf)
+    assert lifted[int(1.15 / fs)] == rms.max() and lifted[int(0.8 / fs)] == rms[int(0.8 / fs)]      # fricative frames are lifted; the vowel frames are left alone
+    fixed = rc.snap_detail(0.6, 1.1, lifted, 0.0, fs, None, 1.6)                      # Whisper ends 'ass' at the vowel (1.10 s)
+    assert 1.22 <= fixed["out"] < 1.58                                                # the cut ends after the /s/ (1.22 s) and before the next speaker (1.6 s)

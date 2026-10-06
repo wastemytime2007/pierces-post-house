@@ -117,3 +117,34 @@ def test_verify_catches_a_wrong_framing_a_wrong_microphone_and_a_changed_clip(tm
     tree.write(out)
     rows = {n: g for n, g, _ in rf.verify(src, out, PLAN)}
     assert not rows["EVERY-CLIP-FRAMED"] and not rows["ONLY-THE-SPEAKER-LIVE"] and not rows["REST-UNCHANGED"]
+
+
+def test_the_vertical_rule_mirrors_the_horizontal_one_and_round_trips():
+    for y in (700, 900, 1080, 1300):
+        for s in (88.89, 123.5):
+            assert rf.subject_y_for_vert(rf.vert_for_subject(y, s), s) == pytest.approx(y, abs=1e-6)
+    assert rf.vert_for_subject(1080, 100) == 0                                              # the clip's own centre needs no move
+    assert rf.vert_for_subject(900, 123.5) > 0                                              # a window moved UP the source puts the picture LOWER on screen: the clip is pushed down (positive)
+    assert rf.expected_position_y(900, 123.5, 1920) == pytest.approx(960 + 180 * 1.235, abs=0.01)
+
+
+def test_a_lowered_clip_is_written_decoded_back_and_flagged_as_resting_on_an_assumption(tmp_path):
+    src, out = _xml(tmp_path), tmp_path / "out.xml"
+    import copy
+    plan = copy.deepcopy(PLAN)
+    plan["pieces"][1]["subject_y"] = 900
+    rf.reframe(src, out, plan)
+    root = ET.parse(out).getroot()
+    f = root.findall(".//video/track/clipitem")[1].find("filter")
+    vert = float(f.find("effect/parameter[3]/value/vert").text)
+    assert vert == pytest.approx(rf.vert_for_subject(900, 123.5), abs=1e-6) and vert > 0
+    first = root.findall(".//video/track/clipitem")[0].find("filter")
+    assert first.find("effect/parameter[3]/value/vert").text == "0"                          # a row with no subject_y stays centred
+    rows = {n: (g, d) for n, g, d in rf.verify(src, out, plan)}
+    assert rows["EVERY-CLIP-FRAMED"][0] and rows["FRAME-INSIDE-THE-CLIP"][0]
+    assert "info: VERTICAL-UNIT-ASSUMED" in rows and "Position y 1182" in rows["info: VERTICAL-UNIT-ASSUMED"][1]
+
+
+def test_a_lowered_window_that_would_leave_the_top_of_the_clip_is_refused():
+    assert rf.window_inside(1221, 123.5, 3840, 2160, 1080, 1920, subject_y=900)[0]
+    assert not rf.window_inside(1221, 123.5, 3840, 2160, 1080, 1920, subject_y=700)[0]      # 700 - 777 is above the top of the picture

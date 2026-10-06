@@ -394,6 +394,19 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
             hit = words_mod.find_phrase(after, o["words"])
             return Row(n, kind, VERIFIED if hit is not None and hit[0] <= 1 else FAILED,
                        f'a clip starts at the seam ({seam:.2f}s) and the new version reads from it: "{words_mod.heard(after[:9])}" (asked to start at "{o["words"]}")')
+    if kind == "reframe_vertical":
+        c = old.video[o["clip"] - 1] if 1 <= o["clip"] <= len(old.video) else None
+        if c is None or not c.motion:
+            return Row(n, kind, UNMEASURED, f"clip {o['clip']} has no position on the old cut to compare")
+        p = find_piece(new, c.src_path, src_in=c.src_in)
+        if p is None or not p.motion:
+            return Row(n, kind, FAILED, "no clip with a position starts where that clip did on the new cut")
+        moved = p.motion[2] - c.motion[2]                                              # positive = the picture is lower on screen (the rule that has not been confirmed in Premiere)
+        right_way = moved > 0 if o["direction"] == "lower" else moved < 0
+        ok = right_way and abs(moved) >= 0.01 and abs(p.motion[0] - c.motion[0]) < 0.01
+        return Row(n, kind, VERIFIED if ok else FAILED,
+                   f"clip {o['clip']}: vertical position {c.motion[2]:+.3f} -> {p.motion[2]:+.3f} ({'down' if moved > 0 else 'up' if moved < 0 else 'unchanged'} in the frame; asked to {o['direction']} it), scale {p.motion[0]:g}. "
+                   "Measured from the XML under an ASSUMED vertical rule: the confirmation is Premiere's Position y")
     return Row(n, kind, UNMEASURED, f"no independent check exists for {kind}")
 
 

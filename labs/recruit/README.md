@@ -134,3 +134,12 @@ Output: `Recruitment footage (proof)/Reel 3 vertical v3/reel.mp4` (+ `report.jso
 - **Tools changed:** captions portrait layout (`make_captions.use_layout`, verifier reads the layout), `make_overlay.sequence_spec(allow_portrait)`, `score_music` (retries a busy ElevenLabs, takes measured on the groove, all four measures required), `tone_match`, `conform_music --tail run`, bed checks judged per second (a kick-by-kick measure called every punchy track unsteady) and a bed's expected level sum.
 - **Cost:** 8 music generations this round (plus 9 earlier on the two previous plans).
 - **Not done / open:** nobody has listened; the XML has not been opened in Premiere; the notes loop (review, revise, reconform, QA) has not been run on this cut and `reconform` does not rebuild captions' portrait layout or the title layer; a hit exactly on every word is not what this does (hits are on transitions); the music's final second is a fade, not a produced ending.
+
+### Round 7 (2026-10-06, Ryan's review-page notes on `final_v2`)
+Notes: clip 2 (Bob) "needs to be a little longer. It cuts off the 'ss' from the word 'ass'"; clips 4 and 8 "lowered more in screen so Mitch's head isnt cut off at the top".
+
+- **The cut lost the "ss".** The final /s/ of a word is 18 dB under the vowel and mostly above 3.5 kHz, so the silence detector read it as the end of speech. `rough_cut.hf_share` and `without_fricatives` now count a frame that is mostly high-frequency as sound. Bob's end also needed `out_nudge 0.198` in the cuts file: the next word Whisper hears on Bob's recorder is Mitch's voice bleeding in, timed early, and it capped the cut (the signal shows Bob speaking until 1188.96 s, the /s/ at 1189.00 to 1189.05 s, Mitch's "It" at 1189.06 s). That nudge is a hand correction and is recorded in the cuts file.
+- **The bleep lost it too.** `bleep.extend_over_fricatives` ends a bleep at the end of a trailing fricative (up to 0.3 s ahead, gaps over 60 ms stop it, so the next word's own s is not swallowed).
+- **Lower the tight shots.** `build_vertical_reel.subject_y_for` gives each tight shot the head top it should clear (`HEAD_TOP_Y`, `HEADROOM`), and `labs/reframe` writes it into Basic Motion `vert`. The vertical rule is **assumed** (see `labs/reframe/README.md`); `verify` prints an INFO row, not a pass.
+- **The app's loop now has an operation for this.** `reframe_vertical` in `labs/review_loop` (see its README).
+- Not done: listening; opening the XML in Premiere; the QA pass on this revision; `extend_end` re-timing the music and bleep layers.

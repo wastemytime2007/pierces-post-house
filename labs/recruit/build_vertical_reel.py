@@ -30,6 +30,17 @@ SOURCE_W, SOURCE_H = 3840, 2160
 OUT_W, OUT_H = 1080, 1920
 SIDE_X = {"Bob": 0.318, "Mitch": 0.665}              # where each person stands in the two-shot, as a fraction of the width (the left person is Bob, the right is Mitch; checked by motion and by whose recorder is loudest)
 TIGHT = 0.72                                          # a tight shot shows this fraction of the source height
+HEAD_TOP_Y = {"Mitch": 215, "Bob": 390}              # the top of each person's head in the 3840x2160 two-shot (source pixels), from the frames Ryan's notes pointed at (Mitch's is at about 220 to 232; 215 allows for him leaning up)
+HEADROOM = 0.06                                       # a tight shot leaves this fraction of its height above the head: with the window centred on the frame (y = 1080) it started at y = 302 and cut Mitch's head off (Ryan's notes 2 and 3)
+
+
+def subject_y_for(person: str, scale_pct: float) -> float:
+    """The source row to put mid-frame: the frame's own centre for a full-height shot, and for a punched-in one the row that leaves HEADROOM above the person's head (kept inside the clip)."""
+    window = OUT_H / (scale_pct / 100.0)
+    if window >= SOURCE_H - 1:
+        return SOURCE_H / 2
+    y = HEAD_TOP_Y[person] - HEADROOM * window + window / 2
+    return round(min(max(y, window / 2), SOURCE_H - window / 2))
 
 
 def lav_state(matches: dict[str, dict], media: dict):
@@ -117,7 +128,7 @@ def main() -> int:
     plan_pieces = []
     for p, ci in zip(pieces, v1):
         scale = round(OUT_H / (SOURCE_H * (TIGHT if p["tight"] else 1.0)) * 100, 2)
-        plan_pieces.append({"start": int(ci.findtext("start")), "end": int(ci.findtext("end")), "person": p["person"], "subject_x": round(SIDE_X[p["person"]] * SOURCE_W), "scale": scale})
+        plan_pieces.append({"start": int(ci.findtext("start")), "end": int(ci.findtext("end")), "person": p["person"], "subject_x": round(SIDE_X[p["person"]] * SOURCE_W), "scale": scale, "subject_y": subject_y_for(p["person"], scale)})
     mics = {Path(str(lav)).name: person for m in matches.values() for person, (lav, _o, _s) in m["lavs"].items()}
     plan = {"source_width": SOURCE_W, "source_height": SOURCE_H, "pieces": plan_pieces, "mics": mics}
     (a.out / "reframe_plan.json").write_text(json.dumps(plan, indent=1))

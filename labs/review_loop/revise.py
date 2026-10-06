@@ -88,6 +88,22 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
     return rows
 
 
+def verify_motion(cut1: Cut, changes, cut2: Cut) -> list[tuple[str, bool | None, str]]:
+    """Each reframe, read back from the REVISED XML: the clip that starts where it did before now has the new vertical position and the same scale."""
+    rows = []
+    for c in changes:
+        k = c.check
+        if not c.applied or not k or k.get("kind") != "motion":
+            continue
+        p = next((v for v in cut2.video if v.src_path == k["src_path"] and abs(v.src_in - k["src_in"]) < 2.0 / cut1.fps), None)
+        if p is None or not p.motion:
+            rows.append((f"note {c.note} REFRAME-WRITTEN", False, "no clip with a position starts where that clip did"))
+            continue
+        ok = abs(p.motion[2] - k["vert"]) < 1e-5 and abs(p.motion[0] - k["scale"]) < 0.01
+        rows.append((f"note {c.note} REFRAME-WRITTEN", ok, f"clip now has vertical position {p.motion[2]:+.4f} (was {k['vert_before']:+.4f}) at scale {p.motion[0]:g}"))
+    return rows
+
+
 def verify_render(changes, preview: Path) -> list[tuple[str, bool | None, str]]:
     """Re-check the measured edits on the finished V2 render and the source, not on the plan."""
     rows: list[tuple[str, bool | None, str]] = []
@@ -153,6 +169,7 @@ def main() -> int:
     try:
         extra_out = max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") == "quiet_at"] or [0.0])
         rows = verify(cut1, args.xml, v2_xml, delta, extra_out)
+        rows += verify_motion(cut1, changes, load_cut(v2_xml))
     except TimelineError as e:
         print(f"REFUSING: revised XML does not load: {e}", file=sys.stderr)
         return 1

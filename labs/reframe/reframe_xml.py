@@ -7,11 +7,13 @@ Why this and not baked crops: the clips stay the camera originals (handles intac
 
 The rule, from that export (Position 1530.0, 960.0, Scale 118, Anchor 1920, 1080 gave `center.horiz` 0.2578125): `horiz = (Position.x - sequence_width / 2) / source_width`, positive to the right, and Position is where the
 clip's own centre lands. To put source pixel `subject_x` in the middle of the vertical frame at scale `s`: `Position.x - sequence_width / 2 = (source_width / 2 - subject_x) * s`, so `horiz = (source_width / 2 - subject_x) * s / source_width`.
-`center.vert` is always 0 here: its normaliser has not been confirmed (no vertical move has been exported), and a scale of at least `sequence_height / source_height` (88.9% for 2160-high video into 1920) already fills the
-frame top to bottom with the clip centred.
+**Vertical (ASSUMED, not confirmed):** no Premiere export on record has a vertical move, so `center.vert` is taken to follow the horizontal rule exactly, normalised by the clip's own height and positive downward:
+`vert = (Position.y - sequence_height / 2) / source_height`, i.e. to put source row `subject_y` mid-frame at scale `s`, `vert = (source_height / 2 - subject_y) * s / source_height`. A plan row without `subject_y` is centred (vert 0), which is
+always safe: a scale of at least `sequence_height / source_height` (88.9% for 2160-high video into 1920) fills the frame top to bottom. A row WITH one (a punched-in shot lowered so a head is not cropped) rests on the assumption;
+`verify` reports it as an INFO row with the Position y Premiere should show, so a mismatch is one readout away from settled. If Premiere shows the picture moved the wrong way or by a different amount, the rule is wrong, not the plan.
 
 plan.json: {"source_width": 3840, "source_height": 2160,
-            "pieces": [{"start": <timeline frame>, "end": <timeline frame>, "person": "Mitch", "subject_x": 2554, "scale": 88.89}, ...],
+            "pieces": [{"start": <timeline frame>, "end": <timeline frame>, "person": "Mitch", "subject_x": 2554, "scale": 88.89, "subject_y": 900 (optional)}, ...],
             "mics": {"wknd_Mitch4.WAV": "Mitch", "wknd_Bob3.WAV": "Bob"}}        (mics is optional: with it only the speaker's microphone is left enabled in each piece)
 A piece's start and end are the picture clip's start and end on the timeline.
 """
@@ -32,7 +34,7 @@ DEFAULT_W, DEFAULT_H = 1080, 1920
 MOTION_TEMPLATE = """<filter><effect><name>Basic Motion</name><effectid>basic</effectid><effectcategory>motion</effectcategory><effecttype>motion</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass>
 <parameter authoringApp="PremierePro"><parameterid>scale</parameterid><name>Scale</name><valuemin>0</valuemin><valuemax>1000</valuemax><value>{scale}</value></parameter>
 <parameter authoringApp="PremierePro"><parameterid>rotation</parameterid><name>Rotation</name><valuemin>-8640</valuemin><valuemax>8640</valuemax><value>0</value></parameter>
-<parameter authoringApp="PremierePro"><parameterid>center</parameterid><name>Center</name><value><horiz>{horiz}</horiz><vert>0</vert></value></parameter>
+<parameter authoringApp="PremierePro"><parameterid>center</parameterid><name>Center</name><value><horiz>{horiz}</horiz><vert>{vert}</vert></value></parameter>
 <parameter authoringApp="PremierePro"><parameterid>centerOffset</parameterid><name>Anchor Point</name><value><horiz>0</horiz><vert>0</vert></value></parameter>
 <parameter authoringApp="PremierePro"><parameterid>antiflicker</parameterid><name>Anti-flicker Filter</name><valuemin>0.0</valuemin><valuemax>1.0</valuemax><value>0</value></parameter>
 <parameter authoringApp="PremierePro"><parameterid>leftcrop</parameterid><name>Left</name><valuemin>0.0</valuemin><valuemax>100.0</valuemax><value>0</value></parameter>
@@ -56,16 +58,31 @@ def subject_for_horiz(horiz: float, scale_pct: float, source_w: float = 3840) ->
     return source_w / 2 - horiz * source_w / (scale_pct / 100.0)
 
 
-def window_inside(subject_x: float, scale_pct: float, source_w: float, source_h: float, out_w: int, out_h: int) -> tuple[bool, str]:
+def vert_for_subject(subject_y: float, scale_pct: float, source_h: float = 2160) -> float:
+    """`center.vert` that puts source row `subject_y` mid-frame at `scale_pct` percent (ASSUMED rule: the horizontal one, by the clip's height, positive down)."""
+    return (source_h / 2 - subject_y) * (scale_pct / 100.0) / source_h
+
+
+def subject_y_for_vert(vert: float, scale_pct: float, source_h: float = 2160) -> float:
+    return source_h / 2 - vert * source_h / (scale_pct / 100.0)
+
+
+def expected_position_y(subject_y: float, scale_pct: float, out_h: int, source_h: float = 2160) -> float:
+    """The Position y Premiere's Effect Controls should show for that framing under the assumed rule."""
+    return out_h / 2 + (source_h / 2 - subject_y) * (scale_pct / 100.0)
+
+
+def window_inside(subject_x: float, scale_pct: float, source_w: float, source_h: float, out_w: int, out_h: int, subject_y: float | None = None) -> tuple[bool, str]:
     """The frame is a window onto the clip: out_w/s wide, out_h/s high, centred on (subject_x, source_h / 2). It must lie inside the clip, or the edge of the picture shows."""
     s = scale_pct / 100.0
     half_w, half_h = out_w / s / 2, out_h / s / 2
-    ok = subject_x - half_w >= -0.5 and subject_x + half_w <= source_w + 0.5 and source_h / 2 - half_h >= -0.5
-    return ok, f"window x {subject_x - half_w:.0f} to {subject_x + half_w:.0f} of {source_w:.0f}, height {2 * half_h:.0f} of {source_h:.0f}"
+    cy = source_h / 2 if subject_y is None else subject_y
+    ok = subject_x - half_w >= -0.5 and subject_x + half_w <= source_w + 0.5 and cy - half_h >= -0.5 and cy + half_h <= source_h + 0.5
+    return ok, f"window x {subject_x - half_w:.0f} to {subject_x + half_w:.0f} of {source_w:.0f}, y {cy - half_h:.0f} to {cy + half_h:.0f} of {source_h:.0f}"
 
 
-def motion_filter(scale_pct: float, horiz: float) -> ET.Element:
-    return ET.fromstring(MOTION_TEMPLATE.format(scale=f"{scale_pct:.4f}".rstrip("0").rstrip("."), horiz=f"{horiz:.6f}"))
+def motion_filter(scale_pct: float, horiz: float, vert: float = 0.0) -> ET.Element:
+    return ET.fromstring(MOTION_TEMPLATE.format(scale=f"{scale_pct:.4f}".rstrip("0").rstrip("."), horiz=f"{horiz:.6f}", vert="0" if abs(vert) < 1e-9 else f"{vert:.6f}"))
 
 
 def _seq(root: ET.Element) -> ET.Element:
@@ -84,7 +101,7 @@ def reframe(xml_in: Path, xml_out: Path, plan: dict, out_w: int = DEFAULT_W, out
     rows = {(int(p["start"]), int(p["end"])): p for p in plan["pieces"]}
     problems = []
     for p in plan["pieces"]:
-        ok, why = window_inside(p["subject_x"], p["scale"], sw, sh, out_w, out_h)
+        ok, why = window_inside(p["subject_x"], p["scale"], sw, sh, out_w, out_h, p.get("subject_y"))
         if not ok:
             problems.append(f"piece at frame {p['start']} ({p['person']}): the frame would show beyond the clip ({why})")
     if problems:
@@ -100,7 +117,7 @@ def reframe(xml_in: Path, xml_out: Path, plan: dict, out_w: int = DEFAULT_W, out
         for old in ci.findall("filter"):
             if old.findtext("effect/name") == "Basic Motion":
                 ci.remove(old)
-        f = motion_filter(p["scale"], horiz_for_subject(p["subject_x"], p["scale"], sw))
+        f = motion_filter(p["scale"], horiz_for_subject(p["subject_x"], p["scale"], sw), vert_for_subject(p.get("subject_y", sh / 2), p["scale"], sh))
         ci.insert(list(ci).index(ci.find("file")) + 1, f)                       # straight after <file>, where Premiere writes it
         framed += 1
         seen.add(key)
@@ -147,12 +164,17 @@ def verify(xml_in: Path, xml_out: Path, plan: dict, out_w: int = DEFAULT_W, out_
         scale = float(vals["scale"].findtext("value"))
         horiz, vert = float(vals["center"].findtext("value/horiz")), float(vals["center"].findtext("value/vert"))
         x_back = subject_for_horiz(horiz, scale, sw)
-        if abs(scale - p["scale"]) > 0.01 or abs(x_back - p["subject_x"]) > 2 or vert != 0:
-            bad.append(f"{ci.findtext('name')} (scale {scale}, centres source x {x_back:.0f}, wanted {p['scale']} and {p['subject_x']})")
+        y_back = subject_y_for_vert(vert, scale, sh)
+        if abs(scale - p["scale"]) > 0.01 or abs(x_back - p["subject_x"]) > 2 or abs(y_back - p.get("subject_y", sh / 2)) > 2:
+            bad.append(f"{ci.findtext('name')} (scale {scale}, centres source x {x_back:.0f} y {y_back:.0f}, wanted {p['scale']}, {p['subject_x']} and {p.get('subject_y', sh / 2):.0f})")
         n += 1
     rows.append(("EVERY-CLIP-FRAMED", not bad and n == len(by), f"{n} picture clips each carry one Basic Motion that puts the intended pixel mid-frame (decoded back from the file, within 2 px)" if not bad else f"wrong: {bad[:3]}"))
-    inside = [(p["start"], window_inside(p["subject_x"], p["scale"], sw, sh, out_w, out_h)) for p in plan["pieces"]]
+    inside = [(p["start"], window_inside(p["subject_x"], p["scale"], sw, sh, out_w, out_h, p.get("subject_y"))) for p in plan["pieces"]]
     rows.append(("FRAME-INSIDE-THE-CLIP", all(ok for _s, (ok, _w) in inside), "no piece shows beyond the edge of its clip" if all(ok for _s, (ok, _w) in inside) else f"frames show beyond the clip: {[s for s, (ok, _w) in inside if not ok][:3]}"))
+    lowered = [p for p in plan["pieces"] if abs(p.get("subject_y", sh / 2) - sh / 2) > 1]
+    if lowered:
+        ex = ", ".join(f"frame {p['start']}: Position y {expected_position_y(p['subject_y'], p['scale'], out_h, sh):.0f}" for p in lowered[:4])
+        rows.append(("info: VERTICAL-UNIT-ASSUMED", None, f"{len(lowered)} clip(s) are lowered/raised on an ASSUMED rule (no Premiere export has a vertical move yet). If it is right Premiere's Effect Controls show: {ex}. A different Position y, or the picture moved the wrong way, means the rule is wrong"))
     pic_same = _canon(a.find("media/video/track"), {"filter"}) == _canon(b.find("media/video/track"), {"filter"})
     aud_same = [_canon(t, {"enabled"}) for t in a.findall("media/audio/track")] == [_canon(t, {"enabled"}) for t in b.findall("media/audio/track")]
     rows.append(("REST-UNCHANGED", pic_same and aud_same, "every picture clip's start, end, in, out and file, and every audio clip's, are as exported (only the motion was added and microphones switched off)" if pic_same and aud_same
@@ -191,8 +213,8 @@ def main() -> int:
     ok = True
     print(f"{info['framed']} picture clips framed, {info['mic_clips_muted']} microphone clips muted -> {a.out}")
     for name, good, why in rows:
-        print(f"  [{'PASS' if good else 'FAIL'}] {name:24} {why}")
-        ok = ok and bool(good)
+        print(f"  [{'INFO' if good is None else 'PASS' if good else 'FAIL'}] {name:24} {why}")
+        ok = ok and (good is None or bool(good))                                             # an INFO row (None) reports; it never gates
     return 0 if ok else 1
 
 

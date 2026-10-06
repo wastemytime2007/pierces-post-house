@@ -14,8 +14,13 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+import sys
+
 from ops import KEEP_SEC_DEFAULT, detect_pause, locate_start, measure_tail
 from timeline import Cut, TimelineError, _seq_for_cut
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reframe"))
+REFRAME_STEP = 0.12          # one "lower" or "raise" moves the shot by this fraction of the height of the window it shows
 
 HEADER = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n'
 
@@ -129,6 +134,31 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "drop_clip":
             c = cut.video[o["clip"] - 1]
             add(o, c.tl_start, c.tl_end, f"clip {c.idx} dropped as the note asked")
+        elif kind == "reframe_vertical":
+            from render_preview import source_dims
+            import reframe_xml as rx
+            c = cut.video[o["clip"] - 1]
+            if not c.motion:
+                changes.append(Change(n, kind, False, f"clip {c.idx} has no scale and position set, so there is nothing to move; set its framing first (labs/reframe)", o.get("why", "")))
+            else:
+                scale, _h, vert = c.motion
+                sw, sh = source_dims(c.src_path)
+                y0 = rx.subject_y_for_vert(vert, scale, sh)
+                window = cut.height / (scale / 100.0)
+                y1 = y0 + (-1 if o["direction"] == "lower" else 1) * REFRAME_STEP * window         # lower on screen = the window moves UP the source
+                limited = ""
+                lo, hi = window / 2, sh - window / 2
+                if y1 < lo or y1 > hi:
+                    y1, limited = min(max(y1, lo), hi), "; stopped at the edge of the picture"
+                if abs(y1 - y0) < 1.0:
+                    changes.append(Change(n, kind, False, f"clip {c.idx} is already at the {'top' if o['direction'] == 'lower' else 'bottom'} edge of its picture, so it cannot move {o['direction']}", o.get("why", "")))
+                else:
+                    shown = abs(y1 - y0) * scale / 100.0
+                    v1 = rx.vert_for_subject(y1, scale, sh)
+                    changes.append(Change(n, kind, True,
+                                          f"clip {c.idx} moved {'down' if o['direction'] == 'lower' else 'up'} in the frame by {shown:.0f} px (one step, {REFRAME_STEP:.0%} of the shot's height{limited}); Position y should now read "
+                                          f"{rx.expected_position_y(y1, scale, cut.height, sh):.0f} (it was {rx.expected_position_y(y0, scale, cut.height, sh):.0f}). This rests on the vertical rule that has not been confirmed in Premiere",
+                                          o.get("why", ""), check={"kind": "motion", "clip": c.idx, "vert": v1, "vert_before": vert, "scale": scale, "direction": o["direction"], "src_path": c.src_path, "src_in": c.src_in}))
         elif kind == "extend_end":
             c = cut.video[o["clip"] - 1]
             m = measure_tail(cut, c.idx, o.get("max_sec", 1.0))
@@ -249,9 +279,21 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
     tree = ET.parse(xml_path)
     root = tree.getroot()
     seq = _seq_for_cut(root)
+    for ch in changes:                                                 # a reframe is written BEFORE the cut edits, so every piece a clip is split into carries it
+        if ch.applied and ch.check and ch.check.get("kind") == "motion":
+            ci = sorted(seq.find("media/video/track").findall("clipitem"), key=lambda c: int(c.findtext("start")))[ch.check["clip"] - 1]      # the cut is the FIRST video track, as load_cut reads it; an overlay on V2 must not shift the count
+            done = False
+            for f in ci.findall("filter"):
+                if f.findtext("effect/name") == "Basic Motion":
+                    for prm in f.findall("effect/parameter"):
+                        if prm.findtext("parameterid") == "center":
+                            prm.find("value/vert").text = "0" if abs(ch.check["vert"]) < 1e-9 else f"{ch.check['vert']:.6f}"
+                            done = True
+            if not done:
+                raise TimelineError(f"clip {ch.check['clip']}: no Basic Motion centre to change in the XML")
     defs_full = {f.get("id"): copy.deepcopy(f) for f in root.iter("file") if f.get("id") and len(list(f)) > 0}
     used_ids = {el.get("id") for el in root.iter("clipitem") if el.get("id")}
-    vids = sorted(seq.findall("media/video/track/clipitem"), key=lambda c: int(c.findtext("start")))
+    vids = sorted(seq.find("media/video/track").findall("clipitem"), key=lambda c: int(c.findtext("start")))
     clip_file_id = {i + 1: c.find("file").get("id") for i, c in enumerate(vids[:len(cut.video)])}
     pool_groups: dict[tuple[int, int], list] = {}
     for kind in ("video", "audio"):

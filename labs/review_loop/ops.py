@@ -11,6 +11,9 @@ LLM) only chooses among them; it does not get to invent a time.
   remove_range {start, end}      only when the note itself states the times
   trim_start / trim_end {clip, seconds}   only when the note states the amount
   drop_clip {clip}               only when the note says to remove the clip
+  reframe_vertical {clip, direction}   a punched-in shot sits too high or too low in the vertical frame (Reel 3: "lower it so Mitch's head isn't cropped off at
+                                 the top"). direction is "lower" or "raise" and must be the note's own. The amount is one step (12% of the shot's height)
+                                 unless a later version learns to read one; it changes the clip's Basic Motion in the XML, not its timing, so nothing ripples.
   replace_sfx {sound}            the note wants a sound EFFECT at this moment to sound different; the
                                  description is the note's own words. Made by labs/audio/replace_sfx.py,
                                  not on the timeline, so revise.py reports it as not applied here.
@@ -69,7 +72,10 @@ SAYS_EDIT = re.compile(r"\b(change|rename|reword|replace|instead|say(s)?|read(s)
 SAYS_SUBTITLE = re.compile(r"\b(subtitle|sub-title|second line|smaller text|small text|smaller line|description|underneath|line (below|under)|sub text|subtext)\b", re.I)
 SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that|the [a-z ]{1,30}?) (out|off)|cut (this|it|that)( out| clip| shot)?)\b", re.I)
 
-CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "start_at_words", "drop_clip"}
+SAYS_FRAMING = re.compile(r"\b(frame|framing|framed|crop(ped)?|cut off|head|screen|position(ed)?|reposition|shot|angle)\b", re.I)
+SAYS_LOWER = re.compile(r"\b(lower|lowered|lowering|down|bring (it|this|them) down|drop (it|this)|move (it|this) down)\b", re.I)
+SAYS_RAISE = re.compile(r"\b(raise|raised|raising|higher|up|bring (it|this|them) up|move (it|this) up)\b", re.I)
+CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "start_at_words", "drop_clip", "reframe_vertical"}
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
 LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
@@ -92,6 +98,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - extend_end {"clip": n, "max_sec": 1.0}  The note says a word or sentence at the END of clip n is cut off too soon or needs more time to finish. "clip" is the note's own clip unless the note says otherwise. The amount is measured from how the sound decays, so never give a duration.
 - start_at_words {"clip": n, "words": "..."}  The note says clip n should START at specific words, dropping words before them (for example "the clean cut should be X to Y": the clip after the seam starts at Y). "words" must be copied from the note. The point is found by listening, so never give a time.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
+- reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming in or out, moving sideways or cropping (those are unsupported).
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
 - edit_caption {"text": "..."}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ..."). "text" must be copied from the note's own words (usually quoted); never write your own. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
@@ -100,7 +107,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - A note that says NO to something ("no", "that's not a curse word", "don't bleep it") is never a bleep_word: use unsupported with the reason "rejected".
 - end_graphic {}  The note says an on-screen GRAPHIC (callout, text bubble, label) should fade out, end or go away at the moment of the note ("have the graphic fade out here"). No parameters: the moment is the note's own time. Use it only when the note is about WHEN the graphic ends, not its words or how long it lasts in general.
 - edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
-- unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing or cropping, adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
+- unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing other than moving a shot up or down in the frame (zooming, moving sideways, cropping), adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
 
 A note may say it was left ON a named timeline element (its lane and label). Then it is about that whole element: "make this longer" on a Callout element means the callout, on an SFX element means that sound. Choose only an operation that acts on that lane (Clips/Cuts/Edits: the cut operations; SFX: replace_sfx; Callout: extend_graphic or edit_callout); otherwise unsupported.
 
@@ -209,6 +216,18 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if lane in ("Callout", "Card") or (SAYS_GRAPHIC.search(text) and not SAYS_FOOTAGE.search(text)):
                     raise ValueError("the note is about a graphic, not the footage; dropping the clip would delete footage (remove_graphic takes a graphic out)")
                 out.append({"note": note, "op": op, "clip": clip, "why": why})
+            elif op == "reframe_vertical":
+                clip = int(raw.get("clip", (tg or {}).get("clip") or notes[note - 1].get("clip", 0)))
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                direction = str(raw.get("direction", "")).strip().lower()
+                if direction not in ("lower", "raise"):
+                    raise ValueError("a direction ('lower' or 'raise') is needed")
+                if not SAYS_FRAMING.search(text):
+                    raise ValueError("the note does not talk about the framing of a shot")
+                if not (SAYS_LOWER if direction == "lower" else SAYS_RAISE).search(text):
+                    raise ValueError(f"the note does not say to {direction} it, refusing to move the shot a way the note did not ask")
+                out.append({"note": note, "op": op, "clip": clip, "direction": direction, "why": why})
             elif op == "replace_sfx":
                 sound = str(raw.get("sound", "")).strip()
                 st, nt = words_mod.tokens(sound), set(words_mod.tokens(text))

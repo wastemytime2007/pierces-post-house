@@ -24,7 +24,7 @@ def video(tmp_path_factory):
     d = tmp_path_factory.mktemp("whole")
     v = d / "Finished Video.mp4"                                                              # a space in the name, like the real files
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=12:c=white:r=48000:a=0.3", "-f", "lavfi", "-i", "testsrc2=s=180x320:r=30:d=12",
-                    "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(v)], check=True)
+                    "-af", "volume=enable='not(between(t,0.9,1.5)+between(t,4.9,5.5))':volume=0", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(v)], check=True)
     return v
 
 

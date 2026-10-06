@@ -117,6 +117,30 @@ def energy(x: np.ndarray, sr: int = SR, frame_ms: int = FRAME_MS) -> tuple[np.nd
     return np.sqrt((x[:k * n].reshape(k, n) ** 2).mean(axis=1)), frame_ms / 1000
 
 
+HF_HZ, HF_SHARE = 3500.0, 0.25    # a frame with at least this share of its energy above 3.5 kHz is a fricative (s, f, sh), not silence
+
+
+def hf_share(x: np.ndarray, sr: int = SR, frame_ms: int = FRAME_MS) -> np.ndarray:
+    """Per frame, the share of the frame's energy above HF_HZ. The end of 'ass' is an /s/: 15 to 20 dB under the vowel before it, so by level alone it looks like the silence after the word, but half of its energy is above
+    3.5 kHz (room noise is under 7%). Cutting at the 'quiet' level there cuts the s off (Reel 3, Ryan's note: 'It cuts off the ss from the word ass')."""
+    n = int(sr * frame_ms / 1000)
+    k = len(x) // n
+    if k == 0:
+        return np.zeros(0)
+    fr = x[:k * n].reshape(k, n) * np.hanning(n)
+    spec = np.abs(np.fft.rfft(fr, axis=1)) ** 2
+    freqs = np.fft.rfftfreq(n, 1 / sr)
+    return spec[:, freqs > HF_HZ].sum(axis=1) / np.maximum(spec.sum(axis=1), 1e-12)
+
+
+def without_fricatives(rms: np.ndarray, hf: np.ndarray) -> np.ndarray:
+    """The energy track with every fricative frame lifted to the loudest level, so no quiet run (and no 'valley') can include one."""
+    out = rms.copy()
+    m = min(len(out), len(hf))
+    out[:m][hf[:m] > HF_SHARE] = float(rms.max()) if len(rms) else 0.0
+    return out
+
+
 def quiet_threshold(rms: np.ndarray, a: int, b: int) -> float:
     """The level (linear rms) below which a frame counts as quiet. A recorder worn on the chest sits near -47 dB between words and its speech near -22 dB; an outdoor camera microphone never gets below about -27 dB
     and an indoor one has only about 12 to 17 dB between speech and its dips. So 'quiet' is relative to the recording itself: within 6 dB of its own floor (the 10th percentile of its frames), but never closer than 6 dB to
@@ -317,6 +341,7 @@ def resolve_cut(cut: dict, row: dict, synced: dict | None, media: dict, model, r
         raise CutError(f"{cid}: the closing words {b!r} were not found after the opening in {heard_on}")
     first, last = words[m1[0]], words[m2[1]]
     rms, fs = energy(audio)
+    rms = without_fricatives(rms, hf_share(audio))                                      # a trailing s or f is quiet by level but it is the word: it must not count as silence
     f_start, l_end = refine_edges(first, last, rms, clock0, fs)                        # a word timed across a pause starts where the speech does
     prev_end = words[m1[0] - 1][2] if m1[0] > 0 else None
     next_start = words[m2[1] + 1][1] if m2[1] + 1 < len(words) else None

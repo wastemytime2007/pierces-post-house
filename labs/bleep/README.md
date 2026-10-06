@@ -152,3 +152,6 @@ bleeped unless a listed word appears. Whisper also invents curse words over sile
 this way is kept only when it appears under 2 of the 3 ways of silencing the stretch (`votes`); the loud-stretch path is unchanged. Rescanned the three real cuts: Milwaukee gives both of his bleeps and nothing
 else, Tiling still gives only its one, smoke detectors still none. Caveat: the 2-vote rule was chosen after seeing those same cuts and rests on ONE real hidden word; it can still miss a hidden word or
 invent one. Cost: Milwaukee 11 s to 55 s for a 20 s clip, Tiling about 180 s, smoke detectors 133 s (the extra work is the repeated listening).
+
+## Trailing fricatives (2026-10-06)
+Whisper ends a word early, and the 0.12 s pad is not always enough when the word ends in /s/ or /f/: that sound runs 0.05 to 0.1 s after the vowel at a level 18 dB under it, and the bleep stopped before it ("ass" played as a bleep followed by "ss", Ryan's note on Reel 3). `extend_over_fricatives` moves a span's end to the end of a trailing high-frequency run (more than 25% of a 10 ms frame's energy above 3.5 kHz, at least 30 ms), looking up to 0.3 s ahead and stopping at a gap over 60 ms. Tested on synthetic /s/ tails and on the real Reel 3 line; not listened to.

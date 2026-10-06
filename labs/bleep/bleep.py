@@ -300,6 +300,45 @@ def spans_of(hits: list[dict], duration: float) -> list[tuple[float, float]]:
     return [(round(a, 3), round(b, 3)) for a, b in out if b - a > 0.05]
 
 
+FRIC_SHARE, FRIC_HZ = 0.25, 3500.0     # a 10 ms frame with this share of its energy above 3.5 kHz is a fricative (s, f, sh)
+FRIC_LOOKAHEAD, FRIC_BRIDGE = 0.30, 0.06   # a fricative this soon after a span, joined to it by sound with no gap over 60 ms, is part of the word
+
+
+def extend_over_fricatives(spans: list[tuple[float, float]], speech: np.ndarray, sr: int = SR) -> list[tuple[float, float]]:
+    """Each span's end moved to the end of a trailing fricative. Whisper ends a word early and the pad is 0.12 s, but the /s/ that ends 'ass' runs on for 0.05 to 0.1 s after the vowel at a level 18 dB under it, so the bleep
+    stopped before it and the hiss of the s played on, unbleeped (Ryan's note on Reel 3). From each span's end, look up to 0.3 s ahead for a run of at least 30 ms that is mostly high-frequency; if the frames between are
+    sound (loud, or high-frequency) with no gap over 60 ms, the span ends at the end of that run. A real pause stops the extension, so the next word's first s is not swallowed."""
+    n = int(sr * 0.01)
+    k = len(speech) // n
+    if k == 0:
+        return spans
+    fr = speech[:k * n].reshape(k, n) * np.hanning(n)
+    spec = np.abs(np.fft.rfft(fr, axis=1)) ** 2
+    freqs = np.fft.rfftfreq(n, 1 / sr)
+    hf = spec[:, freqs > FRIC_HZ].sum(axis=1) / np.maximum(spec.sum(axis=1), 1e-12)
+    db = 20 * np.log10(np.maximum(np.sqrt((speech[:k * n].reshape(k, n) ** 2).mean(axis=1)), 1e-6))
+    loud = db > float(np.percentile(db, 95)) - 18.0
+    sound = loud | (hf > FRIC_SHARE)
+    out = []
+    for a, b in spans:
+        i = int(round(b / 0.01))
+        end, gap, run, j = None, 0, 0, i
+        while j < min(k, i + int(FRIC_LOOKAHEAD / 0.01)):
+            if hf[j] > FRIC_SHARE:
+                run += 1
+                gap = 0
+                if run >= 3:
+                    end = j + 1
+            else:
+                run = 0
+                gap = 0 if sound[j] else gap + 1
+                if gap > int(FRIC_BRIDGE / 0.01):
+                    break
+            j += 1
+        out.append((a, round(max(b, end * 0.01 + 0.02), 3) if end is not None else b))
+    return out
+
+
 # ---------------------------------------------------------------- silencing the speech in the XML
 def _spans_frames(spans: list[tuple[float, float]], fps: float) -> list[tuple[int, int]]:
     import math                                                   # round OUTWARD: the silence must cover the whole span, at 30 fps a frame is 33 ms and rounding could leave the start audible
@@ -615,7 +654,7 @@ def bleep(xml_in: Path, out: Path, words_of=transcribe_timed, pats: list[re.Patt
     auto_hits = list(hits)
     for a_, b_ in exact:
         hits.append({"word": f"(the times you gave: {a_:.2f}-{b_:.2f}s)", "start": a_, "end": b_})
-    spans = spans_of(auto_hits, cut.zone_end)
+    spans = extend_over_fricatives(spans_of(auto_hits, cut.zone_end), speech)       # the whole word, including a trailing s
     for a_, b_ in exact:                                          # times a person gave are used as given: no padding
         spans.append((round(a_, 3), round(min(b_, cut.zone_end), 3)))
     merged: list[list[float]] = []

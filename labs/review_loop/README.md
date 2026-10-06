@@ -154,3 +154,12 @@ here touches `project.json`, the DB, or `precut_pipeline`.
 
 ## Preview frame accuracy (fixed 2026-10-06)
 `render_preview.py` used to encode each segment with `fps=30` and the clip's duration as an input limit. Measured on a real 8-clip cut (879 frames at 29.97): the preview ran at 30 fps, started 0.033 s late, rendered 874 frames, and each segment's first frame was shown twice, so every frame after it was one frame (33 ms) behind the source. Now each segment starts its own clock at 0, runs at the sequence's exact rate (`fps_arg`: 29.97 is 30000/1001), is exactly the timeline's number of frames, and `render_preview` refuses to hand back a preview whose total frame count differs from the timeline's. `test_the_preview_is_frame_exact_...` uses a source whose every frame is a flat grey set by its frame number (a frame early or late is a clear step) and fails on the old renderer (checked: it ran at `30/1`). Review pages built before this date can have timecodes a few frames off late in a long cut; rebuild them to correct that.
+
+## reframe_vertical (2026-10-06)
+A note such as "lower this shot so his head isn't cropped off at the top" is a change to the clip's Basic Motion, not to its timing. The operation takes a clip and a direction (`lower` or `raise`), and the direction must be the note's own: `ops.validate` refuses a move the note does not ask for and a note that does not talk about framing. The amount is one fixed step, 12% of the height of the window the shot shows (`apply_ops.REFRAME_STEP`), clamped so the window stays inside the picture; at the edge it says so and changes nothing. A clip with no Basic Motion is reported, not guessed at.
+
+- Applied before the cut edits, to the first video track only (the cut, as `load_cut` reads it), so an overlay clip on V2 does not shift which shot is moved.
+- Nothing ripples (no timing change), so none of the audio layers move.
+- `revise.verify_motion` reads the revised XML back; `labs/qa/qa_pass.py` measures old XML against new (direction, scale unchanged).
+- **Rests on the vertical unit that has not been confirmed in Premiere** (`labs/reframe/README.md`). Every summary line says what Position y should read, so one look in Effect Controls confirms or refutes it.
+- Tried on Ryan's real notes against the `final_v2` XML (dry run): only clips 4 and 8 changed. Not run through the interpreter call or the full QA pass.

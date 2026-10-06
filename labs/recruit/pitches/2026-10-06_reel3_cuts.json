@@ -1,4 +1,5 @@
 {
+ "note_out_nudge": "Bob's cut: out_nudge 0.198 is a hand correction from the signal (Ryan's note 1: the cut loses the 'ss' of 'ass'). On Bob's own recorder he speaks until 1188.96 s and the final /s/ runs 1189.00 to 1189.05 s (46% to 60% of its energy above 3.5 kHz, 18 dB under the vowel); Mitch begins 'It' at 1189.06 s. The tool ends the cut at 1188.85 because the next word Whisper hears on Bob's microphone is Mitch's faint 'It', timed early. The cut now ends at frame 35636 = 1189.0525 s.",
  "note": "Reel 3 re-cut (Ryan, 2026-10-06: the hook fragment 'That's 100% my fault' followed by 'and you don't know what done means' made the whole reel feel unclear). Now in the order it was said, so each line explains the next: the point (Mitch), Bob's laugh line (bleeped), then the closing story, then 'That's on me'. Nothing is moved out of order and nothing is repeated.",
  "pitches": [
   {
@@ -6,7 +7,7 @@
    "title": "That's on me",
    "cuts": [
     {"unit": "Jun13", "id": "W17", "recorder_of": "W18", "role": "The point", "from": "if a sub says they're done", "to": "what you should know"},
-    {"unit": "Jun13", "id": "W18", "role": "Bob", "from": "And it can make you look like an ass", "to": "look like an ass"},
+    {"unit": "Jun13", "id": "W18", "recorder_of": "W17", "out_nudge": 0.198, "role": "Bob", "from": "And it can make you look like an ass", "to": "look like an ass"},
     {"unit": "Jun13", "id": "W18", "role": "The closing", "from": "Yesterday we had a closing", "to": "didn't clean up the backyard"},
     {"unit": "Jun13", "id": "W18", "role": "What he told the buyer", "from": "I represent to the buyer and I say", "to": "close today"},
     {"unit": "Jun13", "id": "W18", "role": "What the buyer found", "from": "He gets there and he's like", "to": "backyard's not done"},
