@@ -22,6 +22,8 @@ from pathlib import Path
 import numpy as np
 from scipy.signal import correlate
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 SR = 8000
 
 
@@ -36,6 +38,14 @@ def _gray(path: str, t: float) -> np.ndarray:
     p = subprocess.run(
         ["ffmpeg", "-v", "error", "-ss", f"{t:.4f}", "-i", path, "-frames:v", "1",
          "-vf", "scale=64:36", "-pix_fmt", "gray", "-f", "rawvideo", "-"], capture_output=True)
+    return np.frombuffer(p.stdout, dtype=np.uint8).astype(np.float32)
+
+
+def _gray_framed(path: str, t: float, geometry: str) -> np.ndarray:
+    """A source frame as the sequence frames it (the clip's Basic Motion), squashed to 64x36 the same way the preview's frame is."""
+    p = subprocess.run(
+        ["ffmpeg", "-v", "error", "-ss", f"{t:.4f}", "-i", path, "-frames:v", "1",
+         "-vf", f"{geometry},scale=64:36", "-pix_fmt", "gray", "-f", "rawvideo", "-"], capture_output=True)
     return np.frombuffer(p.stdout, dtype=np.uint8).astype(np.float32)
 
 
@@ -74,8 +84,17 @@ def main() -> int:
         mid_tl = (c["start"] + c["end"]) / 2
         mid_src = c["src_in"] + (mid_tl - c["start"])
         got = _gray(prev, mid_tl)
-        want = _gray(c["source_path"], mid_src)
-        other = _gray(c["source_path"], (mid_src + 97.0) % max(1.0, c["src_out"] + 60))
+        other_t = (mid_src + 97.0) % max(1.0, c["src_out"] + 60)
+        fr = tl.get("frame") or {}
+        if c.get("motion") and fr.get("framed_by_motion"):                  # a reframed cut: compare with the source as the sequence frames it, not the whole frame
+            from types import SimpleNamespace
+            from render_preview import geometry_filter
+            ph = int(subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=height", "-of", "csv=p=0", prev], capture_output=True, text=True).stdout.strip())
+            geo = geometry_filter(SimpleNamespace(src_path=c["source_path"], motion=tuple(c["motion"])), fr["width"], fr["height"], ph)
+            want, other = _gray_framed(c["source_path"], mid_src, geo), _gray_framed(c["source_path"], other_t, geo)
+        else:
+            want = _gray(c["source_path"], mid_src)
+            other = _gray(c["source_path"], other_t)
         if got.size == 0 or want.size != got.size:
             rows.append((f"FRAME-MATCH clip {c['idx']}", False, "could not extract comparable frames"))
             continue

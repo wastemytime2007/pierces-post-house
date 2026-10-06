@@ -35,9 +35,11 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
         "clips": [
             {"idx": c.idx, "start": round(c.tl_start, 3), "end": round(c.tl_end, 3),
              "source": c.name, "source_path": c.src_path,
-             "src_in": round(c.src_in, 3), "src_out": round(c.src_out, 3)}
+             "src_in": round(c.src_in, 3), "src_out": round(c.src_out, 3),
+             "motion": list(c.motion) if c.motion else None}
             for c in cut.video
         ],
+        "frame": {"width": cut.width, "height": cut.height, "framed_by_motion": info.get("framed_by_motion", False)},
         "audio": [
             {"start": round(a.tl_start, 3), "end": round(a.tl_end, 3), "source": a.name,
              "source_path": a.src_path, "src_in": round(a.src_in, 3), "src_out": round(a.src_out, 3)}

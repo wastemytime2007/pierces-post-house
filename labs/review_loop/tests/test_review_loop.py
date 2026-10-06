@@ -145,6 +145,44 @@ def test_the_preview_is_frame_exact_at_the_sequence_rate_not_a_frame_late_and_no
         assert abs(got[95 + k] - ref[300 + k]) < step / 2, (k, got[95 + k], ref[300 + k])
 
 
+def test_the_loader_reads_premieres_own_basic_motion_export():
+    fixture = Path(__file__).resolve().parents[3] / "safety_net/fixtures/premiere_motion/carpet_sub_01_scale118_center_0.257812.xml"
+    import xml.etree.ElementTree as ET
+    text = fixture.read_text()
+    ci = ET.fromstring(text[text.index("<xmeml"):]).find(".//clipitem")
+    assert timeline.motion_of(ci) == (118.0, pytest.approx(0.257812), 0.0)
+    assert timeline.motion_of(ET.fromstring("<clipitem><name>x</name></clipitem>")) is None
+
+
+def test_a_cut_with_basic_motion_is_previewed_as_the_sequence_frames_it(tmp_path):
+    """A 640x360 source, black on the left half and white on the right, in a 180x320 vertical sequence. A clip whose motion puts source pixel 500 mid-frame must preview white, one that puts pixel 100 there black,
+    and the preview must be the sequence's shape (180x320), not the source's."""
+    src = tmp_path / "split.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=black:s=640x360:r=30000/1001,geq=lum='if(gte(X,320),255,0)':cb=128:cr=128", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
+                    "-t", "10", "-c:v", "libx264", "-bf", "0", "-crf", "12", "-pix_fmt", "yuv420p", "-c:a", "aac", str(src)], check=True)
+    rate = "<rate><timebase>30</timebase><ntsc>TRUE</ntsc></rate>"
+    scale = 88.89
+
+    def motion(x_s):
+        h = (640 / 2 - x_s) * (scale / 100) / 640
+        return (f"<filter><effect><name>Basic Motion</name><parameter><parameterid>scale</parameterid><value>{scale}</value></parameter>"
+                f"<parameter><parameterid>center</parameterid><value><horiz>{h:.6f}</horiz><vert>0</vert></value></parameter></effect></filter>")
+    xml = f"""<xmeml version="4"><sequence id="s"><name>T</name>{rate}<media><video><format><samplecharacteristics><width>180</width><height>320</height></samplecharacteristics></format><track>
+<clipitem id="c1"><name>split.mp4</name>{rate}<start>0</start><end>60</end><in>30</in><out>90</out><file id="f1"><name>split.mp4</name><pathurl>file://localhost{src}</pathurl><rate><timebase>30</timebase><ntsc>TRUE</ntsc></rate><duration>300</duration></file>{motion(500)}</clipitem>
+<clipitem id="c2"><name>split.mp4</name>{rate}<start>60</start><end>120</end><in>30</in><out>90</out><file id="f1"/>{motion(100)}</clipitem>
+</track></video><audio><track><clipitem id="a1"><name>split.mp4</name><enabled>TRUE</enabled>{rate}<start>0</start><end>120</end><in>30</in><out>150</out><file id="f1"/></clipitem></track></audio></media></sequence></xmeml>"""
+    cut = _load(tmp_path, xml)
+    assert [c.motion is not None for c in cut.video] == [True, True]
+    out = tmp_path / "o" / "preview.mp4"
+    out.parent.mkdir()
+    info = render_preview(cut, out, height=320)
+    assert info["framed_by_motion"] is True
+    size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.strip()
+    assert size == "180,320"
+    b = _brightness(out)
+    assert len(b) == 120 and b[:60].mean() > 230 and b[60:].mean() < 25                    # first clip: the white half; second clip: the black half
+
+
 def test_no_enabled_audio_falls_back_to_camera_audio_and_says_so(tmp_path, media):
     xml = _xml(*media).replace("<enabled>TRUE</enabled>", "<enabled>FALSE</enabled>")
     cut = _load(tmp_path, xml)

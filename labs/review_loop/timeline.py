@@ -49,6 +49,7 @@ class VideoClip:
     src_path: str
     src_in: float
     src_out: float
+    motion: tuple[float, float, float] | None = None   # Premiere's Basic Motion on the clip: (scale percent, center.horiz, center.vert), None when the clip has none
 
     @property
     def name(self) -> str:
@@ -121,6 +122,23 @@ def _resolve(in_f: int, out_f: int, candidates: list[tuple[str, tuple[int, bool]
     )
 
 
+def motion_of(ci: ET.Element) -> tuple[float, float, float] | None:
+    """(scale percent, center.horiz, center.vert) from a clipitem's Basic Motion filter, as Premiere writes it (safety_net/fixtures/premiere_motion/): horiz is the move of the clip's centre from the sequence centre
+    as a fraction of the SOURCE width, positive to the right; scale is a percent of the clip's native size. vert is read the same way but its unit is not confirmed (no vertical move has been exported)."""
+    for f in ci.findall("filter"):
+        if (f.findtext("effect/name") or "") != "Basic Motion":
+            continue
+        vals = {p.findtext("parameterid"): p for p in f.findall("effect/parameter")}
+        try:
+            scale = float(vals["scale"].findtext("value"))
+            horiz = float(vals["center"].findtext("value/horiz") or 0)
+            vert = float(vals["center"].findtext("value/vert") or 0)
+        except (KeyError, TypeError, ValueError):
+            return None
+        return (scale, horiz, vert)
+    return None
+
+
 def _seq_for_cut(root: ET.Element) -> ET.Element:
     for seq in root.iter("sequence"):
         if not (seq.findtext("name") or "").strip().lower().startswith("all synced"):
@@ -175,7 +193,7 @@ def load_cut(xml_path: Path) -> Cut:
         cands = [c for c in (("file", file_rate(ci)), ("clipitem", _rate_of(ci.find("rate")))) if c[1]]
         a, b = _resolve(int(ci.findtext("in")), int(ci.findtext("out")), cands,
                         probe_duration(path), f"video clip {n} {Path(path).name}")
-        cut.video.append(VideoClip(n, spans[n - 1][0] / seq_fps, spans[n - 1][1] / seq_fps, path, a, b))
+        cut.video.append(VideoClip(n, spans[n - 1][0] / seq_fps, spans[n - 1][1] / seq_fps, path, a, b, motion_of(ci)))
 
     for ti, track in enumerate(seq.findall("media/audio/track")):
         for ci in track.findall("clipitem"):

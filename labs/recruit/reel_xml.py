@@ -1,4 +1,6 @@
-"""The Premiere XML for a rendered vertical reel (render_reel.py's output folder), standalone; nothing in app/.
+"""SUPERSEDED 2026-10-06: baked-crop XML (the crops are rendered into the clips, so no handles and no re-framing in Premiere). Use labs/recruit/build_vertical_reel.py, which keeps the camera originals and writes Premiere's own scale and position.
+
+The Premiere XML for a rendered vertical reel (render_reel.py's output folder), standalone; nothing in app/.
 
     PRECUT_ROOT=~/precut-checkout python3 labs/recruit/reel_xml.py --render "<Reel N vertical folder>" [--name "Reel 3 - That's on me (vertical)"]
 

@@ -30,17 +30,40 @@ def fps_arg(fps: float) -> str:
     return f"{f.numerator}/{f.denominator}"
 
 
+_dims_cache: dict[str, tuple[int, int]] = {}
+
+
+def source_dims(path: str) -> tuple[int, int]:
+    if path not in _dims_cache:
+        out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip().split(",")
+        _dims_cache[path] = (int(out[0]), int(out[1]))
+    return _dims_cache[path]
+
+
+def geometry_filter(clip, seq_w: int, seq_h: int, height: int) -> str:
+    """The picture as Premiere frames it: a window onto the source `seq_w / s` by `seq_h / s` pixels (s = the clip's Basic Motion scale, 100% when it has none), centred on the source pixel the motion puts in mid-frame
+    (`x = source_w / 2 - horiz * source_w / s`), then scaled to the preview. A window that would run past the clip is pulled back inside it (Premiere would show black there)."""
+    sw, sh = source_dims(clip.src_path)
+    scale, horiz, vert = clip.motion or (100.0, 0.0, 0.0)
+    s = scale / 100.0
+    cw, ch = min(seq_w / s, sw), min(seq_h / s, sh)
+    cx, cy = sw / 2 - horiz * sw / s, sh / 2 - vert * sh / s
+    x0, y0 = min(max(cx - cw / 2, 0), sw - cw), min(max(cy - ch / 2, 0), sh - ch)
+    pw = int(round(seq_w * height / seq_h / 2)) * 2
+    return f"crop={int(cw)}:{int(ch)}:{int(round(x0))}:{int(round(y0))},scale={pw}:{height}"
+
+
 def clip_frames(clip, fps: float) -> int:
     return int(round((clip.tl_end - clip.tl_start) * fps))
 
 
-def _render_segment(clip, out: Path, height: int, camera_audio: bool, fps: float) -> None:
+def _render_segment(clip, out: Path, height: int, camera_audio: bool, fps: float, geometry: str | None = None) -> None:
     """Frame-exact: frame k of the segment is the source frame k after the clip's in point, at the SEQUENCE's rate, and the segment is exactly as many frames as the timeline says.
     The first version used `fps=30` with the clip's duration as an input limit, which duplicated each segment's first frame (every later frame one frame late), rounded some segments up a frame,
     ran the whole preview at 30 instead of 29.97, and lost frames when the segments were joined (874 frames for an 879-frame cut)."""
     nf = clip_frames(clip, fps)
     cmd = FFMPEG + ["-ss", f"{clip.src_in:.4f}", "-i", clip.src_path,
-                    "-vf", f"scale=-2:{height},setpts=PTS-STARTPTS,fps={fps_arg(fps)}:start_time=0", "-fps_mode", "passthrough", "-frames:v", str(nf),
+                    "-vf", f"{geometry or f'scale=-2:{height}'},setpts=PTS-STARTPTS,fps={fps_arg(fps)}:start_time=0", "-fps_mode", "passthrough", "-frames:v", str(nf),
                     "-c:v", "libx264", "-bf", "0", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p", "-g", "15"]
     if camera_audio:
         cmd += ["-t", f"{nf / fps:.5f}", "-c:a", "aac", "-ar", "48000", "-ac", "2"]
@@ -60,9 +83,11 @@ def render_preview(cut: Cut, out_mp4: Path, height: int = 540, workers: int = 3)
     camera_audio = not cut.audio
 
     segs = [work / f"seg_{c.idx:03d}.mp4" for c in cut.video]
+    framed = any(c.motion for c in cut.video) and cut.width > 0 and cut.height > 0              # a cut with Basic Motion on it is previewed as the sequence frames it (the vertical reframe)
+    geoms = [geometry_filter(c, cut.width, cut.height, height) if framed else None for c in cut.video]
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        list(pool.map(lambda pair: _render_segment(pair[0], pair[1], height, camera_audio, cut.fps),
-                      zip(cut.video, segs)))
+        list(pool.map(lambda args: _render_segment(args[0], args[1], height, camera_audio, cut.fps, args[2]),
+                      zip(cut.video, segs, geoms)))
 
     listing = work / "concat.txt"
     listing.write_text("".join(f"file '{s.name}'\n" for s in segs))
@@ -95,4 +120,4 @@ def render_preview(cut: Cut, out_mp4: Path, height: int = 540, workers: int = 3)
     probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                             "-of", "default=nw=1:nk=1", str(out_mp4)], capture_output=True, text=True)
     shutil.rmtree(work, ignore_errors=True)
-    return {"duration": float(probe.stdout.strip()), "audio_source": audio_note}
+    return {"duration": float(probe.stdout.strip()), "audio_source": audio_note, "framed_by_motion": framed}

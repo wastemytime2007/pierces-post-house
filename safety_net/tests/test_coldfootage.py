@@ -440,3 +440,34 @@ def test_audio_clipitems_without_a_sourcetrack_get_one_and_a_second_pass_changes
     assert doc.getElementsByTagName("video")[0].getElementsByTagName("sourcetrack") == []   # video clips never get one
     assert x.read_text().startswith('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>')
     assert add_audio_sourcetracks(x) == 0                                                # idempotent
+
+
+def test_a_synced_microphone_gets_its_own_track_pre_cut_and_pre_offset_and_the_camera_audio_is_muted(tmp_path):
+    """Door 3 passes an AudioSyncState to PreCut's own exporter, which writes each microphone on its own track at the offset the sync measured and mutes the camera audio on a cut a microphone covers."""
+    from posthouse.precut_bridge import import_precut
+    asy = import_precut("precut_pipeline.audio_sync")
+    lav = tmp_path / "lav.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=10", "-ac", "1", str(lav)], check=True)
+    state = asy.AudioSyncState(
+        pairs=[asy.SyncPair(aroll_file=AROLL, aroll_proxy=AROLL, audio_file=str(lav), offset_sec=-1.0, score=100.0, audio_duration_sec=10.0, computed_at=0.0)],   # the recorder started 1 s before the camera
+        groups=[asy.TrackGroup(group_id="Mitch", display_name="Mitch", audio_files=[str(lav)])])
+    seg = {"contract_version": 1, "sequence_name": "mic test", "segments": [{"source_path": AROLL, "in_sec": 0.5, "out_sec": 3.0, "label": "x", "handle_sec": 0.0}]}
+    out = tmp_path / "with_mic.xml"
+    build_coldfootage_xml(seg, out, audio_sync_state=state)
+    doc = minidom.parseString(out.read_text().encode("utf-8"))
+    seq = doc.getElementsByTagName("sequence")[0]
+    audio = [n for n in seq.getElementsByTagName("audio") if n.parentNode.tagName == "media"][0]
+    tracks = [t for t in audio.childNodes if getattr(t, "tagName", "") == "track"]
+    named = {t.getElementsByTagName("clipitem")[0].getElementsByTagName("name")[0].firstChild.data: t.getElementsByTagName("clipitem")[0] for t in tracks if t.getElementsByTagName("clipitem")}
+    assert "lav.wav" in named and "AROLL_01.MOV" in named
+    mic, cam = named["lav.wav"], named["AROLL_01.MOV"]
+    val = lambda el, tag: el.getElementsByTagName(tag)[0].firstChild.data              # noqa: E731
+    assert val(cam, "enabled") == "FALSE"                                                # camera audio muted: a microphone covers this cut
+    assert val(mic, "enabled") == "TRUE" and int(val(mic, "start")) == 0
+    fps = 29.97002997
+    assert abs(int(val(mic, "in")) - round(1.5 * fps)) <= 1                               # camera 0.5 s is recorder 1.5 s
+    assert abs(int(val(mic, "end")) - round(2.5 * fps)) <= 1                              # 2.5 s of picture
+    # without a sync state nothing changes: camera audio only, nothing muted
+    plain = tmp_path / "plain.xml"
+    build_coldfootage_xml(seg, plain)
+    assert "lav.wav" not in plain.read_text()

@@ -58,7 +58,7 @@ Behavior:
   discover. A segment is rejected when: ``in_sec >= out_sec``; its
   ``source_path`` does not exist on disk; or ``[in_sec, out_sec]``
   (before handles) exceeds the source's real, ffprobe'd duration.
-* **No BRollMarkers, no overlay, no library bin, audio sync off.** This
+* **No BRollMarkers, no overlay, no library bin, audio sync off (unless the caller passes an ``audio_sync_state``).** This
   is a technical, editor-facing "here's your usable footage in order"
   reel — not a creative assembly. One ``ARollPhrase`` per segment
   (``text`` = the segment's ``label`` or ``""``); ``broll_track`` and
@@ -358,6 +358,7 @@ def build_coldfootage_xml(
     segments_dict: dict,
     output_path: Path,
     project_name: Optional[str] = None,
+    audio_sync_state=None,
 ) -> Path:
     """Build a Cold Footage sequence XML from a parsed segments dict.
 
@@ -366,6 +367,13 @@ def build_coldfootage_xml(
         output_path: where to write the FCP7 XML.
         project_name: the Premiere project name in the XML. Defaults to
             the segments file's ``sequence_name``.
+        audio_sync_state: optional PreCut ``AudioSyncState`` (pairs of camera
+            file and the microphone recording synced to it, plus one
+            ``TrackGroup`` per microphone). When given, PreCut's own exporter
+            writes each microphone onto its own audio track, pre-cut and
+            pre-offset, and mutes the camera audio on a cut a microphone
+            covers (the same behaviour the app has for A-roll). Left ``None``
+            the sequence carries camera audio only, as before.
 
     Returns:
         The output_path, on success.
@@ -420,7 +428,7 @@ def build_coldfootage_xml(
         overlay_style="none",
     )
 
-    request = ExportRequest(cutlist=cutlist, sequence_name=sequence_name)
+    request = ExportRequest(cutlist=cutlist, sequence_name=sequence_name, audio_sync_state=audio_sync_state)
 
     output_path = Path(output_path)
     written = export_multi_timeline(
