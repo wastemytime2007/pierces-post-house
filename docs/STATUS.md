@@ -77,6 +77,8 @@ bleep 51, broll 14, captions 15, overlay 59, project 10, qa 15, reconform 11, re
 window); generated sound effect and music bed; layers shown on the page; reconform (layers kept through a revision); the per-version QA pass; the beatmap. Also his own words on the bleep: "yes it works" (the live tone)
 and his hand-placed bleep at 29.44-29.70 s on the Tiling cut (applied exactly).
 
+**B0. Recruitment reels (2026-10-05), built, NOT yet judged by Ryan:** five reel XMLs from the May 15 and weekend interviews in `~/Documents/Post House Reviews/Recruitment footage (proof)/reels/`. Evidence: all five pass `safety_net/verify_export.py` and `labs/recruit/verify_reel.py` (rate, pairing, frames-as-resolved, sync worst lag 1.9 ms). Not done: opening in Premiere, listening (3 to 4 cuts per reel are flagged mid-sound by the advisory check), the Canon 8K clips in a 4K sequence. See `labs/recruit/README.md`.
+
 **B. Built, NOT yet judged by Ryan** (the folder to open is in the testing guide, `~/Documents/Post House Reviews/TESTING - creator workflow.html`, entries 2-14):
 - click any timeline box to note the whole element (2); keep a callout longer (3); change a callout's words (4); image card, border and highlight a screenshot (5); replace a sound effect from a note (6)
 - music like a reference track and ranking his library (7); style from a reference video (8); emulate a reference on chosen aspects, default all (9); reference music taken from the reference video (10)

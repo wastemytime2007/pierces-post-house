@@ -421,3 +421,22 @@ def test_golden_fixture_timeline_positions_accumulate_back_to_back(coldfootage_d
 
     total_duration = int(_child_text(seq, "duration"))
     assert total_duration == 285
+
+
+
+def test_audio_clipitems_without_a_sourcetrack_get_one_and_a_second_pass_changes_nothing(tmp_path):
+    """verify_export's AUDIO-SOURCETRACK check failed the first reel XML (2026-10-05): the donor exporter leaves <sourcetrack> off camera-audio clips on this path."""
+    from posthouse.coldfootage import add_audio_sourcetracks
+    x = tmp_path / "s.xml"
+    x.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n<xmeml version="4"><sequence><media><video><track><clipitem><name>v</name><file id="f"/></clipitem></track></video>'
+                 '<audio><track><clipitem><name>a1</name><file id="f"/></clipitem>'
+                 '<clipitem><name>a2</name><file id="f"/><sourcetrack><mediatype>audio</mediatype><trackindex>2</trackindex></sourcetrack></clipitem></track></audio></media></sequence></xmeml>')
+    assert add_audio_sourcetracks(x) == 1                                                # only the clip that lacked one
+    doc = minidom.parseString(x.read_text().encode("utf-8"))
+    audio = doc.getElementsByTagName("audio")[0]
+    items = audio.getElementsByTagName("clipitem")
+    idx = [i.getElementsByTagName("sourcetrack")[0].getElementsByTagName("trackindex")[0].firstChild.data for i in items]
+    assert idx == ["1", "2"]                                                             # the existing one (index 2) is untouched
+    assert doc.getElementsByTagName("video")[0].getElementsByTagName("sourcetrack") == []   # video clips never get one
+    assert x.read_text().startswith('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>')
+    assert add_audio_sourcetracks(x) == 0                                                # idempotent

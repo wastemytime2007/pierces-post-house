@@ -1,0 +1,222 @@
+{
+ "pitches": [
+  {
+   "key": "p1",
+   "title": "What Bob expects",
+   "cuts": [
+    {
+     "unit": "May15",
+     "id": "S5",
+     "role": "Hook",
+     "from": "I expect them to work",
+     "to": "not be on their phone"
+    },
+    {
+     "unit": "May15",
+     "id": "S5",
+     "role": "Loyalty",
+     "from": "I am also very loyal to my guys",
+     "to": "even if they're not"
+    },
+    {
+     "unit": "May15",
+     "id": "S10",
+     "role": "The honest ask",
+     "from": "We just want to know if you're coming on",
+     "to": "makes us look bad"
+    },
+    {
+     "unit": "May15",
+     "id": "S9",
+     "role": "Why he gets it",
+     "from": "I always did that because I was always worried",
+     "to": "a wife at home"
+    },
+    {
+     "unit": "May15",
+     "id": "B8",
+     "role": "The offer",
+     "from": "There is upward momentum there",
+     "to": "I'll help set you up"
+    }
+   ]
+  },
+  {
+   "key": "p2",
+   "title": "What a day costs",
+   "cuts": [
+    {
+     "unit": "Jun13",
+     "id": "W9",
+     "role": "The number and the math",
+     "from": "we're burning $88 a day",
+     "to": "That sucks to know"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W10",
+     "role": "What it means for a crew",
+     "from": "I've even tried to tell my guys",
+     "to": "now it's the holding cost"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W2",
+     "role": "Why finishing matters",
+     "from": "closing houses is just as important",
+     "to": "I gotta stop buying"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W22",
+     "role": "The payoff",
+     "from": "it's nice to when you can come down",
+     "to": "we did that house"
+    }
+   ]
+  },
+  {
+   "key": "p3",
+   "title": "That's on me",
+   "cuts": [
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "Hook",
+     "from": "That's 100% my fault"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "The closing",
+     "from": "Yesterday we had a closing",
+     "to": "didn't clean up the backyard"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "What he told the buyer",
+     "from": "I represent to the buyer and I say",
+     "to": "close today"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "What the buyer found",
+     "from": "He gets there and he's like",
+     "to": "backyard's not done"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "Owning it",
+     "from": "Okay, well I should have run over there",
+     "to": "check it"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "Whose job it was",
+     "from": "But inevitably that falls to me",
+     "to": "that falls to me"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W18",
+     "role": "The last word",
+     "from": "I made the representation of that buyer",
+     "to": "That's on me"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W17",
+     "role": "What he does about it",
+     "from": "I am physically on every job",
+     "to": "or at least try to be"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W17",
+     "role": "Why",
+     "from": "I try to be at everything",
+     "to": "missed anything"
+    }
+   ]
+  },
+  {
+   "key": "p4",
+   "title": "Not everyone is the right fit",
+   "cuts": [
+    {
+     "unit": "Jun13",
+     "id": "W13",
+     "role": "Hook",
+     "from": "if you don't have that in your heart",
+     "to": "not the right fit to operate"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W1",
+     "role": "Our name on it",
+     "from": "we didn't really want to put our name on that",
+     "to": "after we saw the things"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W1",
+     "role": "A good product",
+     "from": "It's not ideal by any means",
+     "to": "with our name on it"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W13",
+     "role": "What the work asks",
+     "from": "You can't pay for contract this stuff",
+     "to": "it's gonna be nasty"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W13",
+     "role": "Why it matters",
+     "from": "This is where someone lives",
+     "to": "It needs to be safe for them"
+    }
+   ]
+  },
+  {
+   "key": "p5",
+   "title": "Bob is real",
+   "cuts": [
+    {
+     "unit": "May15",
+     "id": "B11",
+     "role": "Hook",
+     "from": "oh, you are real",
+     "to": "yeah, I'm here"
+    },
+    {
+     "unit": "May15",
+     "id": "B11",
+     "role": "Why his name matters",
+     "from": "our reputation is a big thing to us",
+     "to": "out to dinner"
+    },
+    {
+     "unit": "May15",
+     "id": "S2",
+     "role": "What the work gives him",
+     "from": "I still enjoy after 42 years",
+     "to": "I did that house"
+    },
+    {
+     "unit": "Jun13",
+     "id": "W15",
+     "role": "Why he is still here",
+     "from": "I tell everyone I could retire tomorrow",
+     "to": "I still love it"
+    }
+   ]
+  }
+ ]
+}

@@ -324,6 +324,29 @@ def _validate_and_resolve(segments: list[dict]) -> list[_ResolvedSegment]:
     return resolved
 
 
+def add_audio_sourcetracks(xml_path: Path) -> int:
+    """Give every audio clipitem on the sequence's audio tracks a <sourcetrack> (mediatype audio, trackindex 1) when it has none; returns how many were added.
+
+    PreCut's exporter leaves it off camera-audio clips on this path. Without it Premiere has no mapping to a source channel, which is the AUDIO-SOURCETRACK failure
+    `safety_net/verify_export.py` was written for (found 2026-10-05 on the first Cold Footage reel XML). The shape matches the exports Ryan has imported into Premiere
+    (`<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex></sourcetrack>` straight after `<file>`)."""
+    import xml.etree.ElementTree as ET
+    xml_path = Path(xml_path)
+    tree = ET.parse(xml_path)
+    added = 0
+    for seq in tree.getroot().iter("sequence"):
+        for track in seq.findall("media/audio/track"):
+            for clip in track.findall("clipitem"):
+                if clip.find("sourcetrack") is None:
+                    st = ET.SubElement(clip, "sourcetrack")
+                    ET.SubElement(st, "mediatype").text = "audio"
+                    ET.SubElement(st, "trackindex").text = "1"
+                    added += 1
+    if added:
+        xml_path.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n' + ET.tostring(tree.getroot(), encoding="unicode"), encoding="utf-8")
+    return added
+
+
 def _load_segments_dict(segments_dict: dict) -> tuple[str, list[dict]]:
     problems = validate_segments_shape(segments_dict)
     if problems:
@@ -400,7 +423,7 @@ def build_coldfootage_xml(
     request = ExportRequest(cutlist=cutlist, sequence_name=sequence_name)
 
     output_path = Path(output_path)
-    return export_multi_timeline(
+    written = export_multi_timeline(
         requests=[request],
         output_path=output_path,
         broll_library=None,
@@ -408,6 +431,8 @@ def build_coldfootage_xml(
         include_overlay=False,
         auto_include_rules=None,
     )
+    add_audio_sourcetracks(Path(written))
+    return written
 
 
 def _main(argv: Optional[list[str]] = None) -> int:

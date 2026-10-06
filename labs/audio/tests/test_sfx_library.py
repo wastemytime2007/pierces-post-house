@@ -110,3 +110,15 @@ def test_a_long_library_sound_is_cut_to_four_seconds_with_a_fade_and_a_short_one
     out = sl.shorten(long_, tmp_path / "o2.wav")
     d = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.strip())
     assert out != long_ and 3.9 <= d <= 4.1
+
+
+def test_the_effect_lands_at_a_callout_or_at_an_explicit_time_never_both_or_neither_and_inside_the_window(tmp_path):
+    assert ma.sfx_time(None, 1.4, 0.0, 30.0) == 1.4
+    with pytest.raises(ma.AudioError, match="exactly one"):
+        ma.sfx_time(None, None, 0.0, 30.0)
+    with pytest.raises(ma.AudioError, match="exactly one"):
+        ma.sfx_time(tmp_path, 2.0, 0.0, 30.0)
+    with pytest.raises(ma.AudioError, match="outside the window"):
+        ma.sfx_time(None, 31.0, 0.0, 30.0)
+    (tmp_path / "placement.json").write_text(json.dumps({"place_overlay_on_timeline_at_sec": 10.0, "geometry": {"t_in": 0.5}}))
+    assert ma.sfx_time(tmp_path, None, 0.0, 30.0) == 10.5                                 # the callout path is unchanged

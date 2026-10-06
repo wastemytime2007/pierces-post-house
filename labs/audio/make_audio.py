@@ -187,6 +187,17 @@ def mix_preview(video: Path, music_stem: Path, sfx_clip: Path, out: Path, start:
         "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-t", dur, out)
 
 
+def sfx_time(callout: Path | None, sfx_at: float | None, start: float, end: float) -> float:
+    """When the sound effect lands, in timeline seconds: where a callout enters (`--callout`, the review-loop workflow) or at an explicit time (`--sfx-at`, for a cut with no callout, such as a reel).
+    Exactly one of the two is given, and the time must fall inside the window being built."""
+    if (callout is None) == (sfx_at is None):
+        raise AudioError("give exactly one of --callout (the effect goes with a callout) or --sfx-at (a time in seconds)")
+    t = callout_time(callout) if callout is not None else float(sfx_at)
+    if not start <= t < end:
+        raise AudioError(f"the effect would land at {t:.2f}s, outside the window {start:.2f}-{end:.2f}s")
+    return t
+
+
 def callout_time(folder: Path) -> float:
     p = json.loads((folder / "placement.json").read_text())
     return p["place_overlay_on_timeline_at_sec"] + p["geometry"]["t_in"]
@@ -199,7 +210,8 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--start", type=float, default=0.0)
     ap.add_argument("--end", type=float, required=True)
-    ap.add_argument("--callout", type=Path, required=True, help="overlay folder whose callout the effect goes with")
+    ap.add_argument("--callout", type=Path, help="overlay folder whose callout the effect goes with")
+    ap.add_argument("--sfx-at", type=float, help="put the effect at this time on the timeline (seconds) instead of at a callout: for a cut with no callout")
     ap.add_argument("--sfx-prompt", default=DEFAULT_SFX)
     ap.add_argument("--music-prompt", default=DEFAULT_MUSIC)
     ap.add_argument("--music-db", type=float, default=-5.0, help="music level in the pauses, relative to the speech level")
@@ -218,9 +230,7 @@ def main() -> int:
         cut = timeline.load_cut(a.xml)
         if not 0 <= a.start < a.end <= cut.zone_end + 0.01:
             raise AudioError(f"the window {a.start}-{a.end}s is outside the cut (0-{cut.zone_end:.2f}s)")
-        t_sfx = callout_time(a.callout)
-        if not a.start <= t_sfx < a.end:
-            raise AudioError(f"the callout enters at {t_sfx:.2f}s, outside the window")
+        t_sfx = sfx_time(a.callout, a.sfx_at, a.start, a.end)
         load_key()
     except (AudioError, timeline.TimelineError, OSError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
@@ -287,7 +297,7 @@ def main() -> int:
 
     (a.out / "audio.json").write_text(json.dumps({
         "window": {"start": a.start, "end": a.end}, "speech_window": speech.name, "music_db_rel_speech": a.music_db, "duck_db": a.duck_db, "levels": levels,
-        "sfx_below_speech_peak_db": a.sfx_below_peak_db, "sfx_gain_db": round(sfx_gain, 2), "callout_sec": t_sfx,
+        "sfx_below_speech_peak_db": a.sfx_below_peak_db, "sfx_gain_db": round(sfx_gain, 2), "callout_sec": t_sfx, "sfx_anchor": "callout" if a.callout else "time",
         "generated": {"sfx": sfx_info, "music": music_info}, "music_reference": music_ref,
         "clips": [{"kind": "music", "name": "music_stem.wav", "path": str(music_stem.resolve()), "start_sec": a.start, "duration_sec": probe_dur(music_stem)},
                   {"kind": "sfx", "name": "sfx_clip.wav", "path": str(sfx_clip.resolve()), "start_sec": t_sfx, "duration_sec": probe_dur(sfx_clip)}],
