@@ -1088,6 +1088,31 @@ def handle_apply_notes(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_ai_review(cmd: dict) -> None:
+    """The AI review of a version of the cut: findings come back as notes the review page can carry. Background job (transcribes the cut and asks the local claude CLI)."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("ai_review needs an 'xml' path")
+        return
+    tag = cmd.get("tag")                                     # the UI's label for the version this is about (V1, V2...), echoed back
+    emit({"type": "ai_review_started", "xml": xml, "tag": tag})
+
+    def worker():
+        import creator_tools
+        try:
+            result, _printed = creator_tools.capture(creator_tools.ai_review, xml, cmd.get("folder"),
+                                                     lambda s: emit({"type": "ai_review_stage", "xml": xml, "tag": tag, "stage": s}),
+                                                     bool(cmd.get("story", True)))
+            emit({"type": "ai_review_done", "xml": xml, "tag": tag, **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "ai_review_failed", "xml": xml, "tag": tag, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "ai_review_failed", "xml": xml, "tag": tag, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
 def handle_export_xml(cmd: dict) -> None:
     """A version's XML checked by the export check and, only if it passes, opened in Premiere."""
     xml = cmd.get("xml")
@@ -1204,6 +1229,7 @@ HANDLERS = {
     "build_review": handle_build_review,
     "apply_notes": handle_apply_notes,
     "export_xml": handle_export_xml,
+    "ai_review": handle_ai_review,
     "list_exports": handle_list_exports,
     "open_path": handle_open_path,
     "shutdown": handle_shutdown,

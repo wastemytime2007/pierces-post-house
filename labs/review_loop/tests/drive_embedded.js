@@ -43,6 +43,21 @@ const check = (name, ok, detail = '') => rows.push([name, ok, detail]);
   const ok = payload.schema === 'review_notes.v0-draft' && payload.notes.length === 1 && /Lower this shot/.test(payload.notes[0].text) && typeof payload.notes[0].timeline_sec === 'number';
   check('PARENT-GETS-THE-NOTES-THE-DOWNLOAD-WOULD-HAVE-MADE', ok, `${payload.notes.length} note at ${payload.notes[0] && payload.notes[0].timeline_sec}s clip ${payload.notes[0] && payload.notes[0].clip}: "${payload.notes[0] && payload.notes[0].text}"`);
 
+  // the AI review's findings arrive as notes: they merge with the hand-written one, show in the page's list, and a second run replaces only the AI ones
+  const ai = [{ timeline_sec: 5.0, clip: 2, source: 'a.mp4', source_sec: 5.0, where: 'the point', text: 'AI: Clip 2 may cut off the end.' },
+              { timeline_sec: 20.0, clip: 6, source: 'a.mp4', source_sec: 20.0, where: '', text: 'AI: The ending is abrupt.' }];
+  await page.evaluate(n => document.getElementById('f').contentWindow.postMessage({ type: 'review:add-notes', notes: n }, '*'), ai);
+  await page.waitForTimeout(400);
+  const c3 = await page.evaluate(() => window.__msgs.filter(m => m && m.type === 'review:count').pop());
+  check('AI-NOTES-JOIN-THE-HAND-WRITTEN-ONE', !!c3 && c3.n === 3, JSON.stringify(c3));
+  const listed = await frame.evaluate(() => document.body.innerText);
+  check('AI-NOTES-SHOW-IN-THE-PAGE', /AI: Clip 2 may cut off the end/.test(listed) && /AI: The ending is abrupt/.test(listed), '');
+  await page.evaluate(n => document.getElementById('f').contentWindow.postMessage({ type: 'review:add-notes', notes: n }, '*'), [ai[1]]);
+  await page.waitForTimeout(400);
+  const p2 = await page.evaluate(() => window.ask());
+  const texts = p2.notes.map(n => n.text);
+  check('SECOND-RUN-REPLACES-ONLY-THE-AI-NOTES', p2.notes.length === 2 && texts.some(t => /Lower this shot/.test(t)) && texts.some(t => /ending is abrupt/.test(t)) && !texts.some(t => /may cut off the end/.test(t)), JSON.stringify(texts));
+
   check('NO-PAGE-ERRORS', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
   let bad = 0;

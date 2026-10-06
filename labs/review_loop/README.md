@@ -169,3 +169,6 @@ The app's Review tab (`app/src/screens/tabs/ReviewTab.jsx`, backend `app/python_
 
 ## Embedded in the app (2026-10-06)
 The Review tab frames this page. Two additions make that work: the page posts `{type: 'review:count', n}` to its host when its notes change and answers `{type: 'review:get-notes', id}` with `{type: 'review:notes', id, payload}` (the object "Download JSON" saves). Standalone use is unchanged. `tests/drive_embedded.js` drives the framed page in Chrome (manual, like `drive_page.js`).
+
+## AI review (2026-10-06)
+`ai_review.py <export.xml> --out <folder>` writes `ai_review.json`: `checks` (CUT-EDGES, SOURCE-AUDIO, STORY, HOOK, ENDING) and `notes` in the shape the review page saves. The page takes them with `postMessage({type: 'review:add-notes', notes})` (a new run replaces notes flagged `ai`, hand-written notes are untouched). The method, thresholds and how they were chosen are in the module docstring and `docs/STATUS.md`. `--no-story` runs only the mechanical checks (no model call). Requires the `claude` CLI on PATH and its normal environment for the story step; without it the story check reports why and the other findings still stand. Limits: speech-only (the picture is not looked at); Whisper word times are only good to about 0.1 s; a cut that lands in a pause cannot be told from a clean one.

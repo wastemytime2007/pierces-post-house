@@ -188,6 +188,19 @@ def test_an_export_the_app_just_made_is_remembered_and_listed_newest_first_and_a
     assert creator_tools.list_exports(tmp_path / "nothing") == []
 
 
+def test_ai_review_through_the_backend_returns_notes_the_page_can_carry_and_saves_them_beside_the_page(tmp_path):
+    """The mechanical checks only (story=False: no model call). A 12 s sine with one cut at 3 and 5 s: the edges are measured on the voice under them."""
+    creator_tools, xml = _short_cut(tmp_path)
+    folder = tmp_path / "rev"
+    evs = _talk([{"type": "ai_review", "xml": str(xml), "folder": str(folder), "tag": "V1", "story": False}], {"ai_review_done", "ai_review_failed"}, timeout=240)
+    last = evs[-1]
+    assert last["type"] == "ai_review_done", evs[-3:]
+    assert last["tag"] == "V1" and {c["name"] for c in last["checks"]} >= {"CUT-EDGES", "SOURCE-AUDIO"}
+    assert all({"timeline_sec", "clip", "text", "shapes"} <= set(n) and n["text"].startswith("AI: ") for n in last["notes"])
+    assert json.loads((folder / "ai_review.json").read_text())["schema"] == "ai_review.v0-draft"
+    assert any(e["type"] == "ai_review_stage" for e in evs)
+
+
 def test_export_through_the_backend_reports_the_check(tmp_path):
     creator_tools, xml = _short_cut(tmp_path)
     evs = _talk([{"type": "export_xml", "xml": str(xml)}], {"xml_exported", "xml_export_failed"}, timeout=60, extra_env={"POSTHOUSE_NO_OPEN": "1"})

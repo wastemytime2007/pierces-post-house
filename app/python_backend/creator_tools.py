@@ -304,6 +304,26 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     return {**base, "xml": str(v2), "page": str(folder / "review.html"), "url": serve_review(folder), "qa": qa_out, "message": ""}
 
 
+def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = True) -> dict:
+    """The AI review of a cut (labs/review_loop/ai_review.py): cut edges against the voice, where the voice comes from, the story read from the words. Saved as ai_review.json beside the page."""
+    import json
+    src = Path(xml).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    use_labs()
+    import ai_review as air
+    from timeline import TimelineError
+    try:
+        res = air.review(src, story=story, progress=on_stage or (lambda _s: None))
+    except TimelineError as exc:
+        raise ToolError(str(exc)) from exc
+    if folder:
+        out = Path(folder).expanduser()
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "ai_review.json").write_text(json.dumps(res, indent=2))
+    return res
+
+
 def reveal(path: str) -> None:
     """Open a file in its default app (the review page opens in the browser) or a folder in Finder."""
     p = Path(path).expanduser()

@@ -33,10 +33,21 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [info, setInfo] = useState("");
   const [exportResult, setExportResult] = useState(null);
   const [showLedger, setShowLedger] = useState(true);
+  // The AI review of each version (keyed by its label): { status: running | done | failed, stage, result }. Its findings are posted onto the page as notes once the page is ready.
+  const [ai, setAi] = useState({});
+  const [showAi, setShowAi] = useState(true);
+  const aiPending = useRef({});
+  const readyRef = useRef(false);
+  const curRef = useRef(0);
+  const flushRef = useRef(null);
+  const aiStartRef = useRef(null);
 
   const version = versions[cur];
   versionsRef.current = versions;
   busyRef.current = busy;
+  curRef.current = cur;
+
+  useEffect(() => { readyRef.current = false; }, [version?.url]); // a new page is loading: wait for it to say it is ready
 
   useEffect(() => {
     if (!onStatus) return;
@@ -67,8 +78,21 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setBusy("building");
         setError("");
         setInfo("");
+      } else if (ev.type === "ai_review_started") {
+        setAi((a) => ({ ...a, [ev.tag]: { status: "running", stage: "Starting…" } }));
+      } else if (ev.type === "ai_review_stage") {
+        setAi((a) => ({ ...a, [ev.tag]: { ...(a[ev.tag] || {}), status: "running", stage: ev.stage } }));
+      } else if (ev.type === "ai_review_done") {
+        setAi((a) => ({ ...a, [ev.tag]: { status: "done", result: ev } }));
+        aiPending.current[ev.tag] = ev.notes || [];
+        flushRef.current?.();
+      } else if (ev.type === "ai_review_failed") {
+        setAi((a) => ({ ...a, [ev.tag]: { status: "failed", message: ev.message } }));
       } else if (ev.type === "review_built") {
         setBusy("");
+        aiPending.current = {};
+        setAi({});
+        aiStartRef.current?.(ev.xml, ev.folder, "V1");
         setVersions([{ label: "V1", xml: ev.xml, folder: ev.folder, url: ev.url, qa: null }]);
         setCur(0);
         setNoteCount(0);
@@ -89,6 +113,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           setInfo(ev.message || "Nothing in the notes could be applied to the timeline.");
           return;
         }
+        aiStartRef.current?.(ev.xml, ev.folder, `V${versionsRef.current.length + 1}`);
         setVersions((vs) => {
           const next = [...vs, { label: `V${vs.length + 1}`, xml: ev.xml, folder: ev.folder, url: ev.url, qa: ev.qa, applied: ev.applied, notes: ev.notes }];
           setCur(next.length - 1);
@@ -111,7 +136,11 @@ export default function ReviewTab({ subscribe, onStatus }) {
   // The page tells us how many notes it holds.
   useEffect(() => {
     const onMsg = (e) => {
-      if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:count") setNoteCount(e.data.n || 0);
+      if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:count") {
+        setNoteCount(e.data.n || 0);
+        readyRef.current = true;
+        flushRef.current?.();
+      }
     };
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
@@ -130,6 +159,19 @@ export default function ReviewTab({ subscribe, onStatus }) {
   }, []);
 
   buildRef.current = build;
+
+  // Post the AI review's notes onto the page for the version being shown, once the page has said it is ready.
+  flushRef.current = () => {
+    const v = versionsRef.current[curRef.current];
+    const notes = v && aiPending.current[v.label];
+    if (!notes || !readyRef.current || !frameRef.current?.contentWindow) return;
+    delete aiPending.current[v.label];
+    frameRef.current.contentWindow.postMessage({ type: "review:add-notes", notes }, "*");
+  };
+
+  aiStartRef.current = (xml, folder, tag) => {
+    sendCommand({ type: "ai_review", xml, folder, tag }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
+  };
 
   const browse = useCallback(async () => {
     const p = await openDialog({ multiple: false, filters: [{ name: "Premiere XML", extensions: ["xml"] }] });
@@ -219,6 +261,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   // ---- a version is open
   const qa = version.qa;
+  const aiState = ai[version.label];
+  const aiRes = aiState?.result;
   const counts = qa ? qa.notes.reduce((a, n) => ({ ...a, [n.status]: (a[n.status] || 0) + 1 }), {}) : {};
   const wholeBad = qa ? qa.whole_cut.filter((w) => w.ok === false) : [];
   const failedChecks = exportResult && !exportResult.verified ? exportResult.rows.filter((r) => r.ok === false) : [];
@@ -271,6 +315,44 @@ export default function ReviewTab({ subscribe, onStatus }) {
               ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}`
               : `Checked: ${fileName(exportResult.xml)} (not opened${exportResult.app ? "" : "; Premiere was not found"}).`
             : `Not opened: the export check failed (${exportResult.failed.join(", ")}). ${failedChecks.map((r) => r.detail).join(" ")}`}
+        </div>
+      )}
+
+      {aiState && (
+        <div className="run-pipeline-section">
+          <div className="pm-tab-row" style={{ alignItems: "center" }}>
+            <div className="run-pipeline-section-label" style={{ margin: 0 }}>
+              AI review of {version.label}
+              {aiState.status === "running" ? `: ${aiState.stage}` : ""}
+              {aiState.status === "done" ? `: ${aiRes.notes.length} note${aiRes.notes.length === 1 ? "" : "s"} added to the page` : ""}
+              {aiState.status === "failed" ? ": could not run" : ""}
+            </div>
+            <span style={{ flex: 1 }} />
+            {aiState.status === "done" && <button className="btn btn-ghost" onClick={() => setShowAi((x) => !x)}>{showAi ? "Hide" : "Show"} details</button>}
+            {aiState.status !== "running" && (
+              <button className="btn btn-ghost" disabled={!!busy} onClick={() => aiStartRef.current?.(version.xml, version.folder, version.label)}>Run again</button>
+            )}
+          </div>
+          {aiState.status === "failed" && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{aiState.message}</div>}
+          {aiState.status === "done" && showAi && (
+            <div className="transcripts-list">
+              {aiRes.summary && <div className="sync-section-hint">What the cut says: {aiRes.summary}</div>}
+              {aiRes.checks.filter((c) => c.name !== "STORY").map((c) => (
+                <div className="transcript-row" key={c.name}>
+                  <div className="transcript-row-main">
+                    <div className={`transcript-row-name review-status-${c.ok === true ? "ok" : c.ok === false ? "bad" : "warn"}`}>
+                      {c.name.replace("-", " ").toLowerCase()} · {c.ok === true ? "ok" : c.ok === false ? "needs a look" : "not judged"}
+                    </div>
+                    <div className="transcript-row-folder">{c.detail}</div>
+                  </div>
+                </div>
+              ))}
+              {aiRes.unverified_quotes_dropped > 0 && (
+                <div className="sync-section-hint">{aiRes.unverified_quotes_dropped} finding(s) quoted words that are not in the cut and were left out.</div>
+              )}
+              <div className="sync-section-hint">Not covered: the picture (a cropped head, a wrong shot).</div>
+            </div>
+          )}
         </div>
       )}
 

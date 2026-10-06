@@ -743,6 +743,12 @@ document.getElementById('dl').onclick = () => {
 // Embedded in the app (the Review tab frames this page): the app asks for the notes and gets them as the same object "Download JSON" saves, so there is no file to download and carry over.
 window.addEventListener('message', e => {
   if (e.data && e.data.type === 'review:get-notes') tellHost({ type: 'review:notes', id: e.data.id, payload: payload() });
+  // The AI review's findings arrive as notes. A new run replaces the AI notes of the last run; notes written by hand are never touched. They can be edited or deleted like any other.
+  if (e.data && e.data.type === 'review:add-notes' && Array.isArray(e.data.notes)) {
+    notes = notes.filter(n => !n.ai).concat(e.data.notes.map(n => Object.assign({ shapes: [], ai: true }, n)));
+    notes.sort((a, b) => a.timeline_sec - b.timeline_sec);
+    save(); drawNotes();
+  }
 });
 setDrawMode(false); drawNotes(); tick();
 tellHost({ type: 'review:count', n: notes.length });
