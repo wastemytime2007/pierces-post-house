@@ -53,6 +53,13 @@ export default function ReviewTab({ subscribe, onStatus }) {
   // The AI editor's own loop: { status: idle | running | done, round, of, label, fixing, summary, best, left, versions }
   const [auto, setAuto] = useState({ status: "idle" });
   const [showLeft, setShowLeft] = useState(true);
+  // What the AI editor is doing right now, for the status strip: which of its four steps, since when, and a feed of what it has done.
+  const [step, setStep] = useState(0); // 0 review, 1 submit fixes, 2 check, 3 new version
+  const [stepSince, setStepSince] = useState(Date.now());
+  const [now, setNow] = useState(Date.now());
+  const [activity, setActivity] = useState([]); // [{t, text, kind}]
+  const [showFeed, setShowFeed] = useState(true);
+  const lastStageRef = useRef("");
 
   const version = versions[cur];
   autoOnRef.current = autoOn;
@@ -129,7 +136,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setBusy("");
         aiPending.current = {};
         setAi({});
-        setAuto({ status: "idle" });
+        setAuto(autoOnRef.current ? { status: "running", round: 0, of: 4, label: "V1" } : { status: "idle" });      // the editor starts the moment the cut opens: do not flash "your turn" before its first event
         aiStartRef.current?.(ev.xml, ev.folder, "V1");
         setVersions([{ label: "V1", xml: ev.xml, folder: ev.folder, url: ev.url, qa: null }]);
         setCur(0);
@@ -151,7 +158,11 @@ export default function ReviewTab({ subscribe, onStatus }) {
           setInfo(ev.message || "Nothing in the notes could be applied to the timeline.");
           return;
         }
-        if (!ev.auto) aiStartRef.current?.(ev.xml, ev.folder, `V${versionsRef.current.length + 1}`);    // the editor's own revisions are reviewed by its loop; yours start it again
+        if (!ev.auto) {                                                                                  // the editor's own revisions are reviewed by its loop; yours start it again
+          const lab = `V${versionsRef.current.length + 1}`;
+          if (autoOnRef.current) setAuto({ status: "running", round: 0, of: 4, label: lab });
+          aiStartRef.current?.(ev.xml, ev.folder, lab);
+        }
         setVersions((vs) => {
           const next = [...vs, { label: `V${vs.length + 1}`, xml: ev.xml, folder: ev.folder, url: ev.url, qa: ev.qa, applied: ev.applied, notes: ev.notes }];
           setCur(next.length - 1);
@@ -170,6 +181,56 @@ export default function ReviewTab({ subscribe, onStatus }) {
       }
     });
   }, [subscribe]);
+
+  // The status strip's feed: every step the editor takes is written down with the time, so it is always clear whether the app is working or waiting for you.
+  useEffect(() => {
+    const say = (text, kind = "info") => setActivity((a) => [...a.slice(-39), { t: Date.now(), text, kind }]);
+    const go = (i) => { setStep(i); setStepSince(Date.now()); };
+    return subscribe((ev) => {
+      if (ev.type === "review_built") {
+        setActivity([]);
+        say(`The cut is open as V1 (${ev.clips} clips, ${ev.duration} s).`);
+      } else if (ev.type === "auto_edit_started") {
+        say(`The AI editor started on ${ev.tag}.`, "ai");
+      } else if (ev.type === "ai_review_started") {
+        go(0);
+        say(`Reviewing ${ev.tag}: cut edges, voice recorder, story.`, "ai");
+      } else if (ev.type === "ai_review_done") {
+        const fixable = (ev.notes || []).filter((n) => n.suggested_op).length;
+        say(`Reviewed ${ev.tag}: ${ev.notes.length} note${ev.notes.length === 1 ? "" : "s"}, ${fixable} the editor can try to fix. They are on the page.`, "ai");
+      } else if (ev.type === "ai_review_failed") {
+        say(`The review of ${ev.tag} could not run: ${String(ev.message || "").split("\n")[0].slice(0, 160)}`, "warn");
+      } else if (ev.type === "auto_edit_round") {
+        go(1);
+        say(`Round ${ev.round} of ${ev.of}: submitting ${ev.fixing} fix${ev.fixing === 1 ? "" : "es"} to ${ev.label}.`, "ai");
+      } else if (ev.type === "notes_started" && !ev.auto) {
+        go(1);
+        say("You submitted your notes. The editor is making the changes.", "you");
+      } else if (ev.type === "notes_stage" && ev.stage && ev.stage !== lastStageRef.current) {
+        lastStageRef.current = ev.stage;
+        if (/Checking every note/i.test(ev.stage)) go(2);
+        else go(1);
+        say(ev.stage.replace(/\s*\(.*$/, ""), "ai");
+      } else if (ev.type === "notes_applied") {
+        lastStageRef.current = "";
+        go(3);
+        const next = ev.xml ? `Built the next version (${ev.applied} of ${ev.notes} change${ev.notes === 1 ? "" : "s"} applied).` : (ev.message || "None of the changes could be applied.");
+        say(`The editor finished: ${next}`, ev.xml ? "ai" : "warn");
+      } else if (ev.type === "notes_failed") {
+        lastStageRef.current = "";
+        say(`A change was refused: ${String(ev.message || "").split("\n").find((l) => /REFUSING|FAIL/.test(l)) || String(ev.message || "").split("\n")[0]}`.slice(0, 220), "warn");
+      } else if (ev.type === "auto_edit_done") {
+        say(ev.summary || "The AI editor finished.", ev.status === "clean" || ev.status === "left" || ev.status === "limit" ? "ai" : "warn");
+      }
+    });
+  }, [subscribe]);
+
+  const working = auto.status === "running" || busy === "applying" || busy === "building" || !!making;
+  useEffect(() => {
+    if (!working) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [working]);
 
   // The page tells us how many notes it holds.
   useEffect(() => {
@@ -280,6 +341,49 @@ export default function ReviewTab({ subscribe, onStatus }) {
     await sendCommand({ type: "export_xml", xml: version.xml, open: true });
   }, [version]);
 
+  const STEPS = ["Review", "Submit fixes", "Check", "New version"];
+  const secs = Math.max(0, Math.round((now - stepSince) / 1000));
+  const outcomeBad = auto.outcome === "failed" || auto.outcome === "worse" || auto.outcome === "short";
+
+  // Who has the ball. Working: the AI editor is doing something right now (animated, with the step and a timer). Your turn: nothing is running and the next move is yours (amber, with the reason).
+  function StatusStrip() {
+    if (!version && !working) return null;
+    const what = making ? making
+      : busy === "building" ? "Building the review page from the cut."
+      : auto.status === "running" ? (auto.round ? `Round ${auto.round} of ${auto.of} on ${auto.label}: ${STEPS[step].toLowerCase()}.` : `Reviewing ${auto.label}.`)
+      : busy === "applying" ? (stage || "The editor is making the changes you submitted.")
+      : "";
+    if (working) {
+      return (
+        <div className="ai-strip working" role="status" aria-live="polite">
+          <span className="ai-dot" />
+          <div className="ai-strip-main">
+            <div className="ai-strip-title">{auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
+            <div className="ai-strip-sub">{what}</div>
+            {(auto.status === "running" || busy === "applying") && (
+              <div className="ai-steps">
+                {STEPS.map((n, i) => <span key={n} className={`ai-step ${i === step ? "on" : i < step ? "done" : ""}`}>{i < step ? "✓ " : ""}{n}</span>)}
+                <span className="ai-time">Nothing is needed from you.</span>
+              </div>
+            )}
+          </div>
+          {auto.status === "running" && <button className="btn btn-ghost" onClick={() => sendCommand({ type: "auto_edit_stop" })}>Stop</button>}
+          <div className="ai-bar" />
+        </div>
+      );
+    }
+    const yours = auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
+    return (
+      <div className={`ai-strip yours ${outcomeBad ? "bad" : ""}`} role="status" aria-live="polite">
+        <span className="ai-dot" />
+        <div className="ai-strip-main">
+          <div className="ai-strip-title">Your turn <span className="ai-time">{auto.status === "done" ? (auto.outcome === "clean" ? "nothing left for the editor" : "the editor has done what it can") : "the editor is waiting on you"}</span></div>
+          <div className="ai-strip-sub">{yours}</div>
+        </div>
+      </div>
+    );
+  }
+
   // ---- nothing chosen yet
   if (!version) {
     return (
@@ -290,8 +394,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
             Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing
             on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere.
           </p>
-          {making && <div className="sync-section-hint">{making}</div>}
-          {!making && busy === "building" && <div className="sync-section-hint">Building the review page from the cut (about half a minute)…</div>}
+          {StatusStrip()}
           {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">No cut from this project yet. Pick ideas on the Ideas tab and press Review.</div>}
           {exportsList.length > 0 && (
             <div className="transcripts-list">
@@ -371,7 +474,6 @@ export default function ReviewTab({ subscribe, onStatus }) {
           </div>
         </div>
       )}
-      {busy === "applying" && <div className="sync-section-hint">{stage}</div>}
       {error && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error}</div>}
       {info && <div className="pm-tab-warnings" role="status">{info}</div>}
 
@@ -385,22 +487,28 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
-      {auto.status === "running" && (
-        <div className="run-pipeline-section">
-          <div className="run-pipeline-section-label" style={{ margin: 0 }}>
-            AI editor at work: {auto.round ? `round ${auto.round} of ${auto.of}, fixing ${auto.fixing} note${auto.fixing === 1 ? "" : "s"} on ${auto.label}` : `reviewing ${auto.label}`}
-          </div>
-          <div className="sync-section-hint">
-            It reviews the cut, submits the fixes it can make, and reviews the new version. Each version stays in the tabs above, and its notes are on the page. You can look around, or press Stop.
-          </div>
-        </div>
-      )}
+      {StatusStrip()}
+
+      <div style={{ position: "relative", flex: 1, display: "flex", minHeight: 640 }}>
+        {working && (auto.status === "running" || busy === "applying") && (
+          <div className="ai-badge"><span className="ai-dot" /> AI editor working: {STEPS[step].toLowerCase()}</div>
+        )}
+        <iframe
+          key={version.url}
+          ref={frameRef}
+          title={`Review ${version.label}`}
+          src={version.url}
+          allow="autoplay; clipboard-write"
+          style={{ flex: 1, minHeight: 640, width: "100%", border: `1px solid ${working ? "var(--accent, #00e0e0)" : "var(--border, #333)"}`, borderRadius: 8, background: "#000" }}
+        />
+      </div>
+
       {auto.status === "done" && (
         <div className={auto.outcome === "failed" || auto.outcome === "worse" || auto.outcome === "short" ? "pm-tab-warnings" : "run-pipeline-section"} role="status">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
-            <div className="run-pipeline-section-label" style={{ margin: 0 }}>{auto.summary}</div>
+            <div className="run-pipeline-section-label" style={{ margin: 0 }}>{auto.left?.length ? `What the AI editor could not fix by itself (${auto.left.length})` : "Nothing left for the AI editor"}</div>
             <span style={{ flex: 1 }} />
-            {auto.left?.length > 0 && <button className="btn btn-ghost" onClick={() => setShowLeft((x) => !x)}>{showLeft ? "Hide" : "Show"} what is left</button>}
+            {auto.left?.length > 0 && <button className="btn btn-ghost" onClick={() => setShowLeft((x) => !x)}>{showLeft ? "Hide" : "Show"}</button>}
           </div>
           {auto.left?.length > 0 && showLeft && (
             <div className="transcripts-list">
@@ -484,14 +592,26 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
-      <iframe
-        key={version.url}
-        ref={frameRef}
-        title={`Review ${version.label}`}
-        src={version.url}
-        allow="autoplay; clipboard-write"
-        style={{ flex: 1, minHeight: 640, width: "100%", border: "1px solid var(--border, #333)", borderRadius: 8, background: "#000" }}
-      />
+      {activity.length > 0 && (
+        <div className="run-pipeline-section">
+          <div className="pm-tab-row" style={{ alignItems: "center" }}>
+            <div className="run-pipeline-section-label" style={{ margin: 0 }}>What has happened</div>
+            <span style={{ flex: 1 }} />
+            <button className="btn btn-ghost" onClick={() => setShowFeed((x) => !x)}>{showFeed ? "Hide" : "Show"}</button>
+          </div>
+          {showFeed && (
+            <div className="ai-feed">
+              {[...activity].reverse().slice(0, 8).map((a, i) => (
+                <div className={`ai-feed-row ${a.kind}`} key={`${a.t}-${i}`}>
+                  <span className="ai-feed-time">{new Date(a.t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                  <span>{a.text}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

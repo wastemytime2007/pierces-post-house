@@ -1,0 +1,9 @@
+<!doctype html>
+<!-- Dev harness for the Review tab: the real component with the Tauri call stubbed and its events scripted from the page (window.__emit).
+     Used by labs/review_loop/tests/drive_tab.js. Served by `npx vite` from app/ at /dev/review_harness.html. Not part of the app build. -->
+<html><head><meta charset="utf-8"><title>Review tab harness</title></head>
+<body style="margin:0;background:#0d0f11">
+<script>window.__sent = []; window.__TAURI_INTERNALS__ = { invoke: async (c, a) => { try { window.__sent.push(JSON.parse(a.commandJson)); } catch (e) {} return null; }, transformCallback: () => 0, metadata: {} };</script>
+<div id="root" style="padding:16px;max-width:1300px"></div>
+<script type="module" src="/dev/review_harness.jsx"></script>
+</body></html>

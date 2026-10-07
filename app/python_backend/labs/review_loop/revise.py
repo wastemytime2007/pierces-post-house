@@ -164,7 +164,7 @@ def main() -> int:
     items = [{"note": c.note, "note_time": notes[c.note - 1]["timeline_sec"], "note_text": notes[c.note - 1].get("text", ""),
               "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why,
               "op": c.op, "removed": [round(c.removed[0], 3), round(c.removed[1], 3)] if c.removed else None,
-              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") in ("quiet_at", "quiet_from") else None} for c in changes]
+              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") in ("quiet_at", "quiet_from", "joined") else None} for c in changes]
     print(f"\n{lab_in} {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
     for it in items:
         print(f"  note {it['note']} [{it['note_time']}s] {'APPLIED    ' if it['applied'] else 'NOT APPLIED'}  {it['summary']}")
@@ -176,8 +176,10 @@ def main() -> int:
 
     print("\nChecks on the revised XML:")
     try:
-        extra_out = max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") == "quiet_at"] or [0.0])
-        extra_in = max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") == "quiet_from"] or [0.0])
+        def ext_of(kinds, side=None):
+            return max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") in kinds and (side is None or c.check.get("side") == side)] or [0.0])
+        extra_out = max(ext_of(("quiet_at",)), ext_of(("joined",), "end"))
+        extra_in = max(ext_of(("quiet_from",)), ext_of(("joined",), "front"))
         rows = verify(cut1, args.xml, v2_xml, delta, extra_out, extra_in)
         rows += verify_motion(cut1, changes, load_cut(v2_xml))
     except TimelineError as e:

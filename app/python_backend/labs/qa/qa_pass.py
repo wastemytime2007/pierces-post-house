@@ -376,6 +376,10 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
             if p is None:
                 return Row(n, kind, FAILED, "no piece of that clip starts where it did before")
             ext = p.src_out - c.src_out
+            if ext < 0.05:                                                     # not longer itself, but the clip after it may now run on from it (a join made from the other side)
+                after = next((v for v in new.video if v.src_path == c.src_path and abs(v.src_in - p.src_out) <= TOL and v.tl_start >= p.tl_end - TOL and v is not p), None)
+                if after is not None:
+                    return Row(n, kind, VERIFIED, f"clip {idx} now runs on into the clip after it (joined), so the cut that ended it mid-sound is gone")
             lvl = ""
             try:
                 a = opsmod._audio_for(new, p)
@@ -385,7 +389,11 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
             return Row(n, kind, VERIFIED if ext >= 0.05 else FAILED, f"clip {idx} now runs {ext:.2f}s longer{lvl}")
         if kind == "extend_start":
             p = next((v for v in new.video if v.src_path == c.src_path and v.src_in < c.src_in - 0.03 and v.src_in <= c.src_in and v.src_out >= c.src_out - TOL), None)
-            if p is None:
+            if p is None:                                                      # or the clip before it now runs on into it (a join made from the other side): no cut left here
+                q = find_piece(new, c.src_path, src_in=c.src_in)
+                before = next((v for v in new.video if q is not None and v.src_path == c.src_path and abs(v.src_out - q.src_in) <= TOL and v.tl_end <= q.tl_start + TOL and v is not q), None)
+                if before is not None:
+                    return Row(n, kind, VERIFIED, f"the clip before it now runs on into clip {idx} (joined), so the cut that started it mid-sound is gone")
                 return Row(n, kind, FAILED, "no piece of that clip starts earlier in its source than it did before")
             ext = c.src_in - p.src_in
             lvl = ""

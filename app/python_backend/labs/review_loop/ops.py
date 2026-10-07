@@ -497,6 +497,29 @@ def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
             "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
 
 
+JOIN_MAX_SEC = 4.0
+
+
+def measure_join(cut: Cut, clip_idx: int, side: str, max_gap: float = JOIN_MAX_SEC) -> dict:
+    """How much footage lies between this clip and its neighbour in the same recording, to put back so the two run on without a cut. side is "next" or "prev".
+
+    A cut that stops a sentence at the end of one clip and picks it up at the start of the next, with a few seconds of the recording removed between, can be repaired from either side by
+    putting that stretch back. Returns {"ext": seconds, "other": the neighbour's clip number} or {"reason": ...}."""
+    clip = cut.video[clip_idx - 1]
+    k = clip_idx if side == "next" else clip_idx - 2
+    if not 0 <= k < len(cut.video):
+        return {"reason": "there is no clip next to it to join"}
+    other = cut.video[k]
+    if other.src_path != clip.src_path:
+        return {"reason": "the clip next to it is from different footage, so there is nothing between them to put back"}
+    gap = (other.src_in - clip.src_out) if side == "next" else (clip.src_in - other.src_out)
+    if gap <= 0.02:
+        return {"reason": "the two clips already run on from each other"}
+    if gap > max_gap:
+        return {"reason": f"the footage between the two clips is {gap:.1f}s, too much to put back as a join"}
+    return {"ext": gap, "other": other.idx}
+
+
 def from_suggestions(notes: list[dict], cut: Cut) -> list[dict]:
     """The operations notes carry as their own measured fix (`suggested_op`), marked trusted so `validate` keeps them as they are. A note without one is not touched here."""
     out: list[dict] = []

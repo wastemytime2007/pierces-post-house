@@ -375,6 +375,12 @@ def review_score(res: dict) -> int:
     return n
 
 
+def _op_sig(n: dict):
+    """What a story fix asks for, independent of the wording of the note and of clip numbers (both change from version to version): start_at_words is named by its words. Other fixes have none."""
+    op = n.get("suggested_op") or {}
+    return ("start_at_words", op.get("words")) if op.get("op") == "start_at_words" and op.get("words") else None
+
+
 def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> list[dict]:
     """The fixes that can be made together. A clip that is being dropped needs no edge fix; a clip whose start is being moved later by a story fix must not also start earlier; and story fixes
     that drop clips may not take the video below the length floor or leave fewer than two clips (those are parked with the reason). Order is kept."""
@@ -432,6 +438,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
 
     out: dict = {"status": "", "best": label, "versions": [], "left": [], "rounds": [], "message": ""}
     parked: dict[str, str] = {}
+    parked_sigs: set = set()                                          # fixes that failed, named by what they ask for: the same fix re-worded by the next review is not tried again
     cur_xml, cur_folder, cur_label = xml, folder, label
     try:
         floor = timeline.load_cut(Path(xml)).zone_end * AUTO_KEEP_FRACTION
@@ -444,7 +451,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
             if cancelled():
                 out["status"] = "stopped"
                 break
-            fixable = [n for n in res["notes"] if isinstance(n.get("suggested_op"), dict) and n.get("key") not in parked]
+            fixable = [n for n in res["notes"] if isinstance(n.get("suggested_op"), dict) and n.get("key") not in parked and _op_sig(n) not in parked_sigs]
             if not fixable:
                 out["status"] = "clean" if not res["notes"] else "left"
                 break
@@ -477,6 +484,8 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                     for n in fixable:
                         if n not in edge_only:
                             parked[n["key"]] = f"tried together with the other fixes and refused: {why[:200]}"
+                            if _op_sig(n):
+                                parked_sigs.add(_op_sig(n))
                     fixable = edge_only
                     r = submit(fixable)
             except ToolError as exc:
@@ -491,6 +500,8 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                     done += 1
                 else:
                     parked[n["key"]] = str(it.get("summary") or "the editor could not make this change")
+                    if _op_sig(n):
+                        parked_sigs.add(_op_sig(n))
             out["rounds"].append({"round": rounds, "from": cur_label, "submitted": len(fixable), "applied": done})
             if not r.get("xml"):
                 emit({"type": "notes_applied", "auto": True, **r})

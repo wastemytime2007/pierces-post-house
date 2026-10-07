@@ -235,3 +235,32 @@ def test_a_clashing_batch_records_the_real_refusal_as_the_reason(tmp_path, monke
     out = ct.auto_edit(str(tmp_path / "V1.xml"), str(tmp_path / "V1"), "V1", 4, lambda e: None)
     why = {l["text"]: l["reason"] for l in out["left"]}
     assert "CUT-GRANULARITY" in why["AI: story-fix"] and why["AI: story-fix"].startswith("tried together with the other fixes and refused")
+
+
+def test_a_failed_story_fix_is_not_tried_again_when_the_next_review_words_it_differently(tmp_path, monkeypatch):
+    calls, made = [], []
+
+    def apply_notes(xml, notes, out=None, height=540, on_stage=None, ops=None):
+        keys = [n["key"] for n in __import__("json").loads(Path(notes).read_text())["notes"]]
+        calls.append(keys)
+        if "story-v1" in keys and len(keys) > 1:
+            raise ct.ToolError("[FAIL] note 2 SEAM-TEXT  V2 audio from the seam reads: something else")
+        made.append(keys)
+        name = f"V{len(made) + 1}"                                                                          # versions are numbered by edits that were made, not by attempts
+        d = tmp_path / name
+        d.mkdir(exist_ok=True)
+        return {"folder": str(d), "items": [{"note": i + 1, "applied": True, "summary": "ok"} for i in range(len(keys))], "applied": len(keys), "notes": len(keys),
+                "xml": str(d / f"{name}.xml"), "page": "p", "url": "u", "qa": {"notes": []}, "message": ""}
+
+    story1 = fixnote("story-v1", "start_at_words", 1, words="we ask them to take")
+    story2 = fixnote("story-v2-reworded", "start_at_words", 1, words="we ask them to take")             # the next review: same fix, different words in the note, so a different key
+    edge_a, edge_b = fixnote("edge-a", "extend_end", 2), fixnote("edge-b", "extend_end", 3)
+    reviews = {"V1": review_of([story1, edge_a]), "V2": review_of([story2, edge_b]), "V3": review_of([])}
+    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True: reviews[Path(xml).stem])
+    monkeypatch.setattr(ct, "apply_notes", apply_notes)
+    monkeypatch.setattr(timeline, "load_cut", lambda p: cut_of_clips(*([5] * 12)))
+    (tmp_path / "V1").mkdir()
+    out = ct.auto_edit(str(tmp_path / "V1.xml"), str(tmp_path / "V1"), "V1", 4, lambda e: None)
+    assert calls == [["story-v1", "edge-a"], ["edge-a"], ["edge-b"]]                                      # round 1 failed together and retried alone; round 2 did not offer the same story fix again
+    assert out["status"] == "left" or out["status"] == "clean"
+    assert "story-v2-reworded" not in [k for c in calls for k in c]

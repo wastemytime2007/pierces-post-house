@@ -16,7 +16,7 @@ from pathlib import Path
 
 import sys
 
-from ops import KEEP_SEC_DEFAULT, detect_pause, locate_start, measure_head, measure_tail
+from ops import KEEP_SEC_DEFAULT, detect_pause, locate_start, measure_head, measure_join, measure_tail
 from timeline import Cut, TimelineError, _seq_for_cut
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reframe"))
@@ -90,6 +90,26 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
     def clip_of(t: float) -> int:
         return next((c.idx for c in cut.video if c.tl_start <= t < c.tl_end), cut.video[-1].idx)
 
+    joined: set[int] = set()                                      # seams (the lower clip's number) already put back by a fix in this pass
+
+    def try_join(o: dict, n: int, kind: str, c, side: str) -> bool:
+        """The reviewer's own end/start fix could not extend because the neighbour's footage is in the way: put the footage between the two clips back instead, if it is a short stretch of the
+        same recording. One join repairs both edges of the seam, so the second note about the same seam is satisfied by the first and adds nothing."""
+        j = measure_join(cut, c.idx, side)
+        if "reason" in j:
+            return False
+        seam = c.idx if side == "next" else c.idx - 1
+        way = "after" if side == "next" else "before"
+        if seam in joined:
+            changes.append(Change(n, kind, True, f"clip {c.idx} is already joined to the clip {way} it by another fix, so there is no cut left here", o.get("why", "")))
+            return True
+        joined.add(seam)
+        insertions.append((c.tl_end if side == "next" else c.tl_start, j["ext"], len(changes), c.idx, "end" if side == "next" else "front"))
+        changes.append(Change(n, kind, True,
+                              f"joined clip {c.idx} to clip {j['other']}: the {j['ext']:.2f}s of the recording between them is back in, so what is being said runs on without a cut",
+                              o.get("why", ""), check={"kind": "joined", "ext": j["ext"], "side": "end" if side == "next" else "front"}))
+        return True
+
     def add(o: dict, s: float, e: float, what: str) -> None:
         spans.append((s, e, len(changes)))
         changes.append(Change(o["note"], o["op"], True,
@@ -162,6 +182,8 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "extend_end":
             c = cut.video[o["clip"] - 1]
             m = measure_tail(cut, c.idx, o.get("max_sec", 1.0))
+            if "reason" in m and o.get("trusted") and ("next clip's footage" in m["reason"] or "keeps going" in m["reason"]) and try_join(o, n, kind, c, "next"):
+                continue
             if "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:
@@ -174,6 +196,8 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "extend_start":
             c = cut.video[o["clip"] - 1]
             m = measure_head(cut, c.idx, o.get("max_sec", 1.0))
+            if "reason" in m and o.get("trusted") and ("previous clip's footage" in m["reason"] or "keeps going" in m["reason"]) and try_join(o, n, kind, c, "prev"):
+                continue
             if "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:
