@@ -349,7 +349,7 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
                 if not good:
                     status = FAILED
         return Row(n, kind, status, "; ".join(parts))
-    if kind in ("trim_start", "trim_end", "drop_clip", "extend_end", "start_at_words"):
+    if kind in ("trim_start", "trim_end", "drop_clip", "extend_end", "extend_start", "start_at_words"):
         idx = o["clip"]
         if not 1 <= idx <= len(old.video):
             return Row(n, kind, UNMEASURED, f"clip {idx} is not on the old cut")
@@ -371,6 +371,8 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
             return Row(n, kind, VERIFIED if got >= o["seconds"] - TOL else FAILED, f"clip {idx} now ends {got:.2f}s earlier in its source (asked for {o['seconds']:.2f}s)")
         if kind == "extend_end":
             p = find_piece(new, c.src_path, src_in=c.src_in)
+            if p is None:                                                      # the same clip may also have been started earlier: find the piece that now holds the old range and runs past its end
+                p = next((v for v in new.video if v.src_path == c.src_path and v.src_in <= c.src_in + TOL and v.src_out > c.src_out + 0.03), None)
             if p is None:
                 return Row(n, kind, FAILED, "no piece of that clip starts where it did before")
             ext = p.src_out - c.src_out
@@ -381,6 +383,18 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
             except Exception:
                 pass
             return Row(n, kind, VERIFIED if ext >= 0.05 else FAILED, f"clip {idx} now runs {ext:.2f}s longer{lvl}")
+        if kind == "extend_start":
+            p = next((v for v in new.video if v.src_path == c.src_path and v.src_in < c.src_in - 0.03 and v.src_in <= c.src_in and v.src_out >= c.src_out - TOL), None)
+            if p is None:
+                return Row(n, kind, FAILED, "no piece of that clip starts earlier in its source than it did before")
+            ext = c.src_in - p.src_in
+            lvl = ""
+            try:
+                a = opsmod._audio_for(new, p)
+                lvl = f"; level just after the new start {opsmod.level_db(a[0], a[1]):.0f} dB"
+            except Exception:
+                pass
+            return Row(n, kind, VERIFIED if ext >= 0.05 else FAILED, f"clip {idx} now starts {ext:.2f}s earlier in its source{lvl}")
         if kind == "start_at_words":
             pv = pages.get("after_preview")
             seam = item.get("v2_time")

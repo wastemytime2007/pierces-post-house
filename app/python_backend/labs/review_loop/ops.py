@@ -10,6 +10,7 @@ LLM) only chooses among them; it does not get to invent a time.
   start_at_words {clip, words}   start the clip at named words, found with word timing
   remove_range {start, end}      only when the note itself states the times
   trim_start / trim_end {clip, seconds}   only when the note states the amount
+  extend_start {clip, max_sec}   a word at the START of the clip is cut off (the clip starts in the middle of a sound); the start moves earlier to where the sound begins, measured
   drop_clip {clip}               only when the note says to remove the clip
   reframe_vertical {clip, direction}   a punched-in shot sits too high or too low in the vertical frame (Reel 3: "lower it so Mitch's head isn't cropped off at
                                  the top"). direction is "lower" or "raise" and must be the note's own. The amount is one step (12% of the shot's height)
@@ -75,7 +76,11 @@ SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it
 SAYS_FRAMING = re.compile(r"\b(frame|framing|framed|crop(ped)?|cut off|head|screen|position(ed)?|reposition|shot|angle)\b", re.I)
 SAYS_LOWER = re.compile(r"\b(lower|lowered|lowering|down|bring (it|this|them) down|drop (it|this)|move (it|this) down)\b", re.I)
 SAYS_RAISE = re.compile(r"\b(raise|raised|raising|higher|up|bring (it|this|them) up|move (it|this) up)\b", re.I)
-CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "start_at_words", "drop_clip", "reframe_vertical"}
+CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "extend_start", "start_at_words", "drop_clip", "reframe_vertical"}
+# Operations a note may carry as its own measured fix ("suggested_op", written by the AI review): used as they are, the interpreter is not asked, and only structure is checked.
+# The amounts are measured later from the audio, never taken from the note; max_sec only bounds how far the measurement may look (4 s lets an end run on to the next pause).
+SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words"}
+SUGGEST_MAX_SEC = 4.0
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
 LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
@@ -96,6 +101,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - remove_range {"start": s, "end": e}  ONLY if the note itself states both times.
 - trim_start {"clip": n, "seconds": x}, trim_end {"clip": n, "seconds": x}  ONLY if the note states how many seconds.
 - extend_end {"clip": n, "max_sec": 1.0}  The note says a word or sentence at the END of clip n is cut off too soon or needs more time to finish. "clip" is the note's own clip unless the note says otherwise. The amount is measured from how the sound decays, so never give a duration.
+- extend_start {"clip": n, "max_sec": 1.0}  The note says a word at the START of clip n is cut off, or the clip starts in the middle of a word or sound, or needs a little more lead-in. "clip" is the note's own clip unless the note says otherwise. The amount is measured from the audio, so never give one.
 - start_at_words {"clip": n, "words": "..."}  The note says clip n should START at specific words, dropping words before them (for example "the clean cut should be X to Y": the clip after the seam starts at Y). "words" must be copied from the note. The point is found by listening, so never give a time.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming in or out, moving sideways or cropping (those are unsupported).
@@ -168,7 +174,19 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"the note was left on a {lane} element: " + (LANE_WHY.get(lane) or f"{op} does not act on that"))
                 if tg.get("clip") is not None and raw.get("clip") is not None and int(raw["clip"]) != int(tg["clip"]):
                     raise ValueError(f"the note was left on clip {tg['clip']}, not clip {raw['clip']}")
-            if op == "tighten_pause":
+            if raw.get("trusted") and op in SUGGESTIBLE_OPS:
+                clip = int(raw["clip"])
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                d = {"note": note, "op": op, "clip": clip, "why": why, "trusted": True}
+                if op in ("extend_start", "extend_end"):
+                    d["max_sec"] = min(max(float(raw.get("max_sec", 1.0)), 0.2), SUGGEST_MAX_SEC)
+                if op == "start_at_words":
+                    d["words"] = str(raw["words"]).strip()
+                    if not words_mod.tokens(d["words"]) or len(words_mod.tokens(d["words"])) > 14:
+                        raise ValueError("no usable words")
+                out.append(d)
+            elif op == "tighten_pause":
                 at = float(raw.get("at", notes[note - 1]["timeline_sec"]))
                 if not 0 <= at <= zone:
                     raise ValueError(f"'at' {at} outside the cut")
@@ -191,6 +209,12 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("note states no amount, refusing to invent one")
                 out.append({"note": note, "op": op, "clip": clip, "seconds": sec, "why": why})
             elif op == "extend_end":
+                clip = int(raw.get("clip", (tg or {}).get("clip") or notes[note - 1].get("clip", 0)))
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                mx = float(raw.get("max_sec", 1.0))
+                out.append({"note": note, "op": op, "clip": clip, "max_sec": min(max(mx, 0.2), 1.5), "why": why})
+            elif op == "extend_start":
                 clip = int(raw.get("clip", (tg or {}).get("clip") or notes[note - 1].get("clip", 0)))
                 if not 1 <= clip <= n_clips:
                     raise ValueError(f"clip {clip} does not exist")
@@ -433,6 +457,58 @@ def measure_tail(cut: Cut, clip_idx: int, max_sec: float) -> dict:
         return {"reason": "extending would run into the next clip's footage"}
     return {"ext": ext, "path": path, "t_end": src_out + ext, "thresh_db": 20 * float(np.log10(thresh)),
             "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
+
+
+def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
+    """How far before the cut the first sound begins, read from the audio's attack: where the clip should start so it does not begin in the middle of a sound.
+
+    The mirror of measure_tail. Returns {"ext": seconds, "path", "t_start" (source), "thresh_db", "at_cut_db"} or {"reason": ...}."""
+    clip = cut.video[clip_idx - 1]
+    path, src_in, _ = _audio_for(cut, clip)
+    lo = max(0.0, src_in - max_sec - 0.3)
+    pcm = _pcm(path, lo, (src_in + 1.0) - lo)
+    rms = _rms10(pcm)
+    if len(rms) < 30:
+        return {"reason": "not enough audio before the cut to measure"}
+    thresh = _threshold(rms)
+    cut_i = int(round((src_in - lo) * 100))
+    after = rms[cut_i:cut_i + 5]
+    at_cut = float(after.mean()) if len(after) else 0.0
+    if at_cut < thresh:
+        return {"reason": f"the audio is already quiet at the start ({20 * np.log10(max(at_cut, 1e-6)):.0f} dB, room level), so nothing looks cut off"}
+    j = cut_i
+    while j - 3 >= 0 and not (rms[j - 3:j] < thresh).all():
+        j -= 1
+    if j - 3 < 0 and lo > 0:
+        return {"reason": f"the sound keeps going for more than {max_sec:g}s before the start, so it is not a single word beginning; give an explicit amount instead"}
+    if (cut_i - j) * 0.01 > max_sec:
+        return {"reason": f"the sound keeps going for more than {max_sec:g}s before the start, so it is not a single word beginning; give an explicit amount instead"}
+    ext = (cut_i - j) * 0.01 + 0.04
+    if ext < 0.05:
+        return {"reason": "the sound has not begun before the start"}
+    if src_in - ext < 0:
+        ext = src_in
+        if ext < 0.05:
+            return {"reason": "the clip already starts at the beginning of its file"}
+    prev = cut.video[clip_idx - 2] if clip_idx > 1 else None
+    if prev and prev.src_path == clip.src_path and prev.src_out > src_in - ext + 0.02:
+        return {"reason": "extending would run into the previous clip's footage"}
+    return {"ext": ext, "path": path, "t_start": src_in - ext, "thresh_db": 20 * float(np.log10(thresh)),
+            "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
+
+
+def from_suggestions(notes: list[dict], cut: Cut) -> list[dict]:
+    """The operations notes carry as their own measured fix (`suggested_op`), marked trusted so `validate` keeps them as they are. A note without one is not touched here."""
+    out: list[dict] = []
+    for i, n in enumerate(notes, start=1):
+        s = n.get("suggested_op")
+        if not isinstance(s, dict):
+            continue
+        if s.get("op") not in SUGGESTIBLE_OPS:
+            out.append(_unsupported(i, f"the suggested fix '{s.get('op')}' is not one the editor makes"))
+            continue
+        out.append({**s, "note": i, "trusted": True, "why": s.get("why") or "the reviewer's measured fix"})
+    return out
 
 
 def locate_start(cut: Cut, clip_idx: int, phrase: str) -> dict:

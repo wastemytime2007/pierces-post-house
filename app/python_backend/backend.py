@@ -1162,6 +1162,45 @@ def handle_ai_review(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+_auto_stop = threading.Event()
+_auto_running = threading.Lock()
+
+
+def handle_auto_edit(cmd: dict) -> None:
+    """The AI editor's own loop on a version of the cut: review it, submit the findings it can fix, review the result, repeat (creator_tools.auto_edit). Background job; its events are the
+    ones a manual review and a manual Submit produce, plus auto_edit_started / _round / _done."""
+    xml, folder = cmd.get("xml"), cmd.get("folder")
+    if not xml or not folder:
+        err("auto_edit needs an 'xml' and the version's review 'folder'")
+        return
+    if not _auto_running.acquire(blocking=False):
+        emit({"type": "auto_edit_done", "status": "failed", "message": "the AI editor is already working on a cut", "best": cmd.get("tag") or "V1", "versions": [], "left": [], "rounds": [],
+              "summary": "The AI editor is already working. Press Stop on it first."})
+        return
+    _auto_stop.clear()
+
+    def worker():
+        import creator_tools
+        try:
+            result, printed = creator_tools.capture(creator_tools.auto_edit, xml, folder, cmd.get("tag") or "V1", int(cmd.get("max_rounds", creator_tools.AUTO_MAX_ROUNDS)), emit,
+                                                    _auto_stop.is_set, bool(cmd.get("story", True)))
+            for row in printed:
+                log("info", row)
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "auto_edit_done", "status": "failed", "message": f"{type(exc).__name__}: {exc}", "best": cmd.get("tag") or "V1", "versions": [], "left": [], "rounds": [],
+                  "summary": f"The editor could not continue: {exc}"})
+        finally:
+            _auto_running.release()
+
+    _executor.submit(worker)
+
+
+def handle_auto_edit_stop(cmd: dict) -> None:
+    """Stop the AI editor after the step it is on (a revision in progress is finished, nothing new is started)."""
+    _auto_stop.set()
+
+
 def handle_export_xml(cmd: dict) -> None:
     """A version's XML checked by the export check and, only if it passes, opened in Premiere."""
     xml = cmd.get("xml")
@@ -1280,6 +1319,8 @@ HANDLERS = {
     "apply_notes": handle_apply_notes,
     "export_xml": handle_export_xml,
     "ai_review": handle_ai_review,
+    "auto_edit": handle_auto_edit,
+    "auto_edit_stop": handle_auto_edit_stop,
     "list_exports": handle_list_exports,
     "open_path": handle_open_path,
     "shutdown": handle_shutdown,

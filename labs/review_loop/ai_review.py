@@ -47,6 +47,8 @@ HF_HZ, HF_SHARE = 3500.0, 0.25
 SAME_SOURCE_GAP = 0.05     # clips that continue each other in the same file are not an edge
 SILENT_DB = -55.0
 MAX_STORY_NOTES = 6
+START_WORDS = 8            # how many words of a story fix's "start at these words" are kept
+EXTEND_LOOKAHEAD = 3.0     # how far the editor may look for the pause an edge fix runs on to (it measures; this only bounds the search)
 
 
 @dataclass
@@ -146,24 +148,36 @@ def edge_findings(cut: Cut, words_fn=None, pcm_fn=pcm) -> Finding:
             text = f'Clip {clip.idx} may cut off the end of what is being said ("{heard}"): {"; ".join(reasons)}. Let the clip run a little longer.'
         else:
             text = f'Clip {clip.idx} may start in the middle of a sound ("{heard}"): {"; ".join(reasons)}. Start the clip a little earlier.'
-        notes.append(note_at(cut, tl - (0.05 if kind == "end" else -0.05), text, quote=heard))
+        fix = {"op": "extend_end" if kind == "end" else "extend_start", "clip": clip.idx, "max_sec": EXTEND_LOOKAHEAD}
+        notes.append(note_at(cut, tl - (0.05 if kind == "end" else -0.05), text, quote=heard, kind=f"edge-{kind}", suggested_op=fix))
     if notes:
         return Finding("CUT-EDGES", False, f"{len(notes)} of {checked} cut edges look cut into speech", notes)
     return Finding("CUT-EDGES", True, f"{checked} cut edges checked: each lands in silence or between words")
 
 
-def note_at(cut: Cut, t: float, text: str, quote: str = "") -> dict:
+def note_key(kind: str, quote: str, source: str, source_sec: float) -> str:
+    """A name for a finding that survives the cut changing: clip numbers and timeline times move between versions, the words heard at the spot do not. A finding with no words is named by where
+    it is in its source file (to the second)."""
+    q = " ".join(words_mod.tokens(quote))
+    return f"{kind}|{q}" if q else f"{kind}|{source}@{round(source_sec)}"
+
+
+def note_at(cut: Cut, t: float, text: str, quote: str = "", kind: str = "", suggested_op: dict | None = None) -> dict:
     t = min(max(t, 0.0), max(cut.zone_end - 0.05, 0.0))
     v = clip_at(cut, t)
-    return {"timeline_sec": round(t, 2), "clip": v.idx if v else 1, "source": v.name if v else "", "source_sec": round((v.src_in + (t - v.tl_start)) if v else t, 2),
-            "where": quote, "text": "AI: " + text, "shapes": [], "ai": True}
+    source, source_sec = (v.name if v else ""), round((v.src_in + (t - v.tl_start)) if v else t, 2)
+    n = {"timeline_sec": round(t, 2), "clip": v.idx if v else 1, "source": source, "source_sec": source_sec,
+         "where": quote, "text": "AI: " + text, "shapes": [], "ai": True, "kind": kind or "note", "key": note_key(kind or "note", quote, source, source_sec)}
+    if suggested_op:
+        n["suggested_op"] = suggested_op                              # the editor makes this fix as it stands (amounts are measured from the audio, not written here)
+    return n
 
 
 def source_audio_findings(cut: Cut, pcm_fn=pcm, covered: list[tuple[float, float]] | None = None) -> Finding:
     """`covered`: stretches where the voice is replaced on purpose (a bleep layer); not reported as holes."""
     dur = cut.zone_end
     if not cut.audio:
-        return Finding("SOURCE-AUDIO", False, "no enabled audio in the cut", [note_at(cut, 0.0, "The cut has no audible audio.")])
+        return Finding("SOURCE-AUDIO", False, "no enabled audio in the cut", [note_at(cut, 0.0, "The cut has no audible audio.", kind="audio-none")])
     cam = {v.src_path for v in cut.video}
     share: dict[str, float] = {}
     spans = []
@@ -180,13 +194,13 @@ def source_audio_findings(cut: Cut, pcm_fn=pcm, covered: list[tuple[float, float
         t = max(t, e)
     if dur - t > 0.15:
         gaps.append((t, dur))
-    notes = [note_at(cut, g0 + 0.01, f"No voice under {g0:.1f} to {g1:.1f} s: the audio has a hole here.") for g0, g1 in gaps[:4]]
+    notes = [note_at(cut, g0 + 0.01, f"No voice under {g0:.1f} to {g1:.1f} s: the audio has a hole here.", kind="audio-hole") for g0, g1 in gaps[:4]]
     silent = []
     for a in cut.audio:
         x = pcm_fn(a.src_path, a.src_in, min(a.tl_end - a.tl_start, 30.0))
         if _db(x) < SILENT_DB:
             silent.append(a)
-            notes.append(note_at(cut, a.tl_start + 0.01, f"The voice track here ({a.name}) is silent. The wrong recorder may have been synced to this footage."))
+            notes.append(note_at(cut, a.tl_start + 0.01, f"The voice track here ({a.name}) is silent. The wrong recorder may have been synced to this footage.", kind="audio-silent"))
     cam_share = sum(v for k, v in share.items() if k in cam)
     parts = ", ".join(f"{Path(k).name} {v / dur:.0%}" for k, v in sorted(share.items(), key=lambda kv: -kv[1]))
     detail = f"voice from: {parts} (camera audio {cam_share / dur:.0%}, separate recorders {(sum(share.values()) - cam_share) / dur:.0%})"
@@ -271,7 +285,10 @@ Reply with one JSON object and nothing else:
 {"story": "<one plain sentence: what this video says>",
  "hook": "good" | "weak" | "missing",
  "ending": "clean" | "abrupt" | "missing",
- "problems": [{"quote": "<words copied EXACTLY from the transcript where the problem is>", "note": "<what is wrong and what to change, plain language, one or two sentences>"}]}
+ "problems": [{"quote": "<words copied EXACTLY from the transcript where the problem is>", "note": "<what is wrong and what to change, plain language, one or two sentences>",
+               "fix": {"op": "drop_clip", "clip": <clip number>} or {"op": "start_at_words", "clip": <clip number>, "words": "<words copied EXACTLY from that clip>"} or null}]}
+A "fix" is optional and only for a clean mechanical move the editor can make: "drop_clip" for a clip that is garbled, contradicts the rest, or has no point of its own; "start_at_words" to start a clip at a later phrase and skip a false start or filler.
+Use null when the problem needs new words or a decision. Never propose a fix that would leave the video without a hook or an ending.
 Rules: list only real problems (at most 6), most important first. Every quote must be copied exactly from the transcript. A fragment that starts or ends mid-thought is a problem. A line that does not follow
 from the one before it is a problem. No praise. No hype words. If the video works, return an empty problems list."""
 
@@ -281,6 +298,25 @@ def _json_object(text: str) -> dict:
     if a < 0 or b <= a:
         raise ValueError("no JSON object in the reply")
     return json.loads(text[a:b + 1])
+
+
+def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
+    """A fix the model proposed for a story problem, kept only if it is one the editor makes and it points at something real: an existing clip, and for start_at_words, words that are in that clip."""
+    if not isinstance(raw, dict) or raw.get("op") not in ("drop_clip", "start_at_words"):
+        return None
+    try:
+        clip = int(raw["clip"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not 1 <= clip <= len(cut.video):
+        return None
+    if raw["op"] == "drop_clip":
+        return {"op": "drop_clip", "clip": clip}
+    want = words_mod.tokens(str(raw.get("words", "")))[:START_WORDS]    # the editor only needs the first words to find the spot
+    have = [(words_mod.tokens(w[2]) or [""])[0] for w in words if w[3] is not None and w[3].idx == clip]
+    if not want or not any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
+        return None                                                  # the words are not in that clip: the fix is dropped, the note stays
+    return {"op": "start_at_words", "clip": clip, "words": " ".join(want)}
 
 
 def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], dict]:
@@ -308,7 +344,8 @@ def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], d
         if at is None or not str(p.get("note", "")).strip():
             dropped += 1                                              # the model's quote is not in the real transcript: not shown
             continue
-        notes.append(note_at(cut, words[at][0], str(p["note"]).strip(), quote=str(p["quote"]).strip()))
+        fix = _checked_fix(p.get("fix"), cut, words)
+        notes.append(note_at(cut, words[at][0], str(p["note"]).strip(), quote=str(p["quote"]).strip(), kind="story", suggested_op=fix))
         if len(notes) >= MAX_STORY_NOTES:
             break
     hook, ending = str(data.get("hook", "")).lower(), str(data.get("ending", "")).lower()

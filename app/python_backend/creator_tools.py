@@ -251,7 +251,35 @@ def build_review(xml: str, out: str | None = None, height: int = 540) -> dict:
 
 
 def _tail(text: str, n: int = 14) -> str:
-    return "\n".join([ln for ln in text.splitlines() if ln.strip()][-n:])
+    """What a tool said when it stopped, for a person: its own refusal or failed-check lines if it printed any, otherwise the last lines without progress bars and library warnings."""
+    lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
+    noise = ("frames/s", "UserWarning", "warnings.warn", "it/s]", "FutureWarning", "DeprecationWarning")
+    says = [ln for ln in lines if ("REFUSING" in ln or "[FAIL]" in ln or "FAILED" in ln) and not any(x in ln for x in noise)]
+    return "\n".join(says[:8] if says else [ln for ln in lines if not any(x in ln for x in noise)][-n:])
+
+
+def _plan_with_suggestions(src: Path, note_list: list[dict], folder: Path, stage) -> str | None:
+    """When some notes carry a `suggested_op`, build the plan here: their fixes as they are, and the interpreter (the local claude CLI) only for the notes that have none, and not at all
+    when every note has one. Returns the plan file's path, or None when no note carries a fix (then revise interprets everything, as before)."""
+    import json
+    import ops as ops_mod
+    import timeline
+    if not any(isinstance(n.get("suggested_op"), dict) for n in note_list):
+        return None
+    cut = timeline.load_cut(src)
+    sug = ops_mod.from_suggestions(note_list, cut)
+    have = {o["note"] for o in sug}
+    rest = [i for i in range(1, len(note_list) + 1) if i not in have]
+    interpreted: list[dict] = []
+    if rest:
+        stage("Reading the notes that have no ready-made fix (the local claude CLI)")
+        masked = [dict(n, text="(handled separately)") if i in have else n for i, n in enumerate(note_list, start=1)]
+        interpreted = [o for o in ops_mod.interpret(cut, masked) if o["note"] not in have]
+    plan = ops_mod.validate(sug + interpreted, note_list, cut)
+    folder.mkdir(parents=True, exist_ok=True)
+    f = folder / "ops_in.json"
+    f.write_text(json.dumps(plan, indent=2))
+    return str(f)
 
 
 def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540, on_stage=None, ops: str | None = None) -> dict:
@@ -276,8 +304,13 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     use_labs()
     stage = on_stage or (lambda _s: None)
 
-    stage("Reading the notes and revising the cut (the notes are interpreted by the local claude CLI, this can take a few minutes)")
+    if all(isinstance(n.get("suggested_op"), dict) for n in note_list):
+        stage("Making the changes the notes ask for")
+    else:
+        stage("Reading the notes and revising the cut (the notes are interpreted by the local claude CLI, this can take a few minutes)")
     cmd = [sys.executable, str(LABS / "review_loop" / "revise.py"), str(src), str(nfile), "--out", str(folder), "--height", str(height)]
+    if not ops:
+        ops = _plan_with_suggestions(src, note_list, folder, stage)       # notes that carry their own measured fix (the AI review's) are not sent to the interpreter
     if ops:
         cmd += ["--ops", str(Path(ops).expanduser())]          # a reviewed plan: the interpretation step is skipped
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -322,6 +355,188 @@ def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = 
         out.mkdir(parents=True, exist_ok=True)
         (out / "ai_review.json").write_text(json.dumps(res, indent=2))
     return res
+
+
+AUTO_MAX_ROUNDS = 4
+AUTO_KEEP_FRACTION = 0.6           # the editor may not cut the video below this share of the length it started the loop with
+AUTO_MIN_CLIPS_PER_MIN = 6.3       # the export check (safety_net/verify_export CUT-GRANULARITY) wants at least 6 clips a minute; a little over, since extensions lengthen the cut
+
+
+def review_score(res: dict) -> int:
+    """How much is left to fix in a version, from its AI review (lower is better): one point per finding, two for a hole in the voice or a weak hook or abrupt ending, three for a recorder out of line."""
+    n = 0
+    for note in res.get("notes", []):
+        n += 2 if str(note.get("kind", "")).startswith("audio") else 1
+    for c in res.get("checks", []):
+        if c["name"] in ("HOOK", "ENDING") and c["ok"] is False:
+            n += 2
+        elif c["name"] == "SYNC" and c["ok"] is False:
+            n += 3
+    return n
+
+
+def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> list[dict]:
+    """The fixes that can be made together. A clip that is being dropped needs no edge fix; a clip whose start is being moved later by a story fix must not also start earlier; and story fixes
+    that drop clips may not take the video below the length floor or leave fewer than two clips (those are parked with the reason). Order is kept."""
+    drops, later = set(), set()
+    remaining, count = cut.zone_end, len(cut.video)
+    refused = set()
+    for n in fixable:
+        op = n["suggested_op"]
+        if op["op"] == "drop_clip" and 1 <= op["clip"] <= len(cut.video):
+            c = cut.video[op["clip"] - 1]
+            dur = c.tl_end - c.tl_start
+            after_clips, after_dur = count - len(drops) - 1, remaining - dur
+            if after_dur < floor_sec or after_clips < 2:
+                parked[n["key"]] = "dropping this clip would shorten the video too much"
+                refused.add(id(n))
+                continue
+            if after_dur > 0 and after_clips / (after_dur / 60.0) < AUTO_MIN_CLIPS_PER_MIN:
+                parked[n["key"]] = "dropping this clip would leave too few clips for the length (the export check wants at least 6 a minute)"
+                refused.add(id(n))
+                continue
+            drops.add(op["clip"])
+            remaining -= dur
+        elif op["op"] == "start_at_words":
+            later.add(op["clip"])
+    keep = []
+    for n in fixable:
+        op = n["suggested_op"]
+        if id(n) in refused:
+            continue
+        if op["op"] in ("extend_start", "extend_end", "start_at_words") and op["clip"] in drops:
+            continue                                                  # the clip is going: nothing to extend
+        if op["op"] == "extend_start" and op["clip"] in later:
+            continue                                                  # a story fix starts this clip later; it cannot also start earlier
+        keep.append(n)
+    return keep
+
+
+def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_MAX_ROUNDS, emit=None, cancelled=None, story: bool = True) -> dict:
+    """The AI editor's own loop: review the version, submit the findings it can fix as notes, review the new version, repeat, until the cut has nothing left to fix or the editor cannot do more.
+
+    Everything is visible: each review and each revision is announced with the same events a manual review and a manual Submit produce (so the Review tab shows the AI's notes on the page, every
+    version, and the QA ledger), plus `auto_edit_*` events for the rounds. Every version is kept as a file; nothing is overwritten. Guards: a note the editor could not carry out is parked and not
+    submitted again; a round that leaves MORE to fix than before ends the loop and the earlier version is named as the one to review; the cut is not allowed below 60% of the length the loop
+    started with; at most `max_rounds` revisions. Returns how it ended, the version to review, and what is left that it could not do."""
+    emit = emit or (lambda ev: None)
+    cancelled = cancelled or (lambda: False)
+    use_labs()
+    import timeline
+
+    def review(x: str, f: str, lab: str) -> dict:
+        emit({"type": "ai_review_started", "xml": x, "tag": lab, "auto": True})
+        res = ai_review(x, f, lambda st: emit({"type": "ai_review_stage", "xml": x, "tag": lab, "stage": st, "auto": True}), story)
+        emit({"type": "ai_review_done", "xml": x, "tag": lab, "auto": True, **res})
+        return res
+
+    out: dict = {"status": "", "best": label, "versions": [], "left": [], "rounds": [], "message": ""}
+    parked: dict[str, str] = {}
+    cur_xml, cur_folder, cur_label = xml, folder, label
+    try:
+        floor = timeline.load_cut(Path(xml)).zone_end * AUTO_KEEP_FRACTION
+        emit({"type": "auto_edit_started", "xml": xml, "tag": label, "max_rounds": max_rounds})
+        res = review(cur_xml, cur_folder, cur_label)
+        best = {"label": cur_label, "xml": cur_xml, "score": review_score(res), "res": res}
+        out["versions"].append({"label": cur_label, "xml": cur_xml, "score": best["score"]})
+        rounds = 0
+        while True:
+            if cancelled():
+                out["status"] = "stopped"
+                break
+            fixable = [n for n in res["notes"] if isinstance(n.get("suggested_op"), dict) and n.get("key") not in parked]
+            if not fixable:
+                out["status"] = "clean" if not res["notes"] else "left"
+                break
+            if rounds >= max_rounds:
+                out["status"] = "limit"
+                break
+            cut_now = timeline.load_cut(Path(cur_xml))
+            fixable = _compatible(fixable, cut_now, floor, parked)
+            if not fixable:
+                out["status"] = "left"
+                break
+            rounds += 1
+            emit({"type": "auto_edit_round", "round": rounds, "of": max_rounds, "label": cur_label, "fixing": len(fixable)})
+
+            def submit(batch: list[dict]) -> dict:
+                payload = {"schema": "review_notes.v0-draft", "sequence": res.get("sequence", ""), "notes": [{**n, "shapes": n.get("shapes", [])} for n in batch]}
+                nf = save_notes(cur_folder, payload)
+                emit({"type": "notes_started", "xml": cur_xml, "notes": f"the AI editor's {len(batch)} notes", "auto": True})
+                return apply_notes(cur_xml, str(nf), None, 540, lambda st: emit({"type": "notes_stage", "stage": st, "auto": True}))
+
+            try:
+                try:
+                    r = submit(fixable)
+                except ToolError as first:
+                    edge_only = [n for n in fixable if n.get("kind", "").startswith("edge")]
+                    if not edge_only or len(edge_only) == len(fixable):
+                        raise
+                    emit({"type": "notes_failed", "message": f"{first} Trying again with only the edge fixes.", "auto": True})        # the story fixes clashed with each other or with an edge fix
+                    why = next((ln.strip() for ln in str(first).splitlines() if "REFUSING" in ln or "[FAIL]" in ln), "the checks refused the combination")
+                    for n in fixable:
+                        if n not in edge_only:
+                            parked[n["key"]] = f"tried together with the other fixes and refused: {why[:200]}"
+                    fixable = edge_only
+                    r = submit(fixable)
+            except ToolError as exc:
+                emit({"type": "notes_failed", "message": str(exc), "auto": True})
+                out["status"], out["message"] = "failed", str(exc)
+                break
+            items = {i.get("note"): i for i in r.get("items", [])}
+            done = 0
+            for i, n in enumerate(fixable, start=1):
+                it = items.get(i, {})
+                if it.get("applied"):
+                    done += 1
+                else:
+                    parked[n["key"]] = str(it.get("summary") or "the editor could not make this change")
+            out["rounds"].append({"round": rounds, "from": cur_label, "submitted": len(fixable), "applied": done})
+            if not r.get("xml"):
+                emit({"type": "notes_applied", "auto": True, **r})
+                out["status"] = "left"
+                out["message"] = r.get("message", "")
+                break
+            new_label = f"V{int(cur_label[1:]) + 1}"
+            emit({"type": "notes_applied", "auto": True, **r})
+            res = review(r["xml"], r["folder"], new_label)
+            sc = review_score(res)
+            out["versions"].append({"label": new_label, "xml": r["xml"], "score": sc})
+            cur_xml, cur_folder, cur_label = r["xml"], r["folder"], new_label
+            if timeline.load_cut(Path(cur_xml)).zone_end < floor:
+                out["status"] = "short"
+                break
+            if sc > best["score"]:
+                out["status"] = "worse"
+                break
+            best = {"label": cur_label, "xml": cur_xml, "score": sc, "res": res}
+        out["best"] = best["label"]
+        final = best["res"] if out["status"] in ("worse", "short") else res
+        left = [{"text": n["text"], "kind": n.get("kind", ""), "reason": parked.get(n.get("key"), "no ready-made fix: needs a decision or new words, not an edit")} for n in final["notes"]]
+        out["left"] = left
+        out["score"] = best["score"]
+    except ToolError as exc:
+        out["status"], out["message"] = "failed", str(exc)
+    except Exception as exc:
+        out["status"], out["message"] = "failed", f"{type(exc).__name__}: {exc}"
+    out["summary"] = _auto_summary(out)
+    emit({"type": "auto_edit_done", **out})
+    return out
+
+
+def _auto_summary(o: dict) -> str:
+    n = max(len(o["versions"]) - 1, 0)
+    best, left = o["best"], len(o["left"])
+    ran = f"{n} revision{'s' if n != 1 else ''}"
+    return {
+        "clean": f"Ready for your review: {best} ({ran}). The editor found nothing left to fix.",
+        "left": f"Ready for your review: {best} ({ran}). {left} thing{'s' if left != 1 else ''} left that the editor could not fix by itself (each says why).",
+        "limit": f"Ready for your review: {best} ({ran}, the round limit). {left} thing{'s' if left != 1 else ''} left.",
+        "worse": f"Stopped: the last revision left more to fix than before. {best} is the one to review ({ran}).",
+        "short": f"Stopped: another revision would have cut the video below 60% of its length. {best} is the one to review ({ran}).",
+        "stopped": f"Stopped by you after {ran}. {best} is the latest good version.",
+        "failed": f"The editor could not continue: {o.get('message', '')[:300]}. {best} is the latest good version.",
+    }.get(o["status"], f"Finished: {best}.")
 
 
 def reveal(path: str) -> None:

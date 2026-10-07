@@ -38,7 +38,7 @@ def _video_items(xml: Path, zone_f: int, before: bool) -> list[tuple[int, int, i
     return sorted(r for r in rows if (r[0] < zone_f) == before)
 
 
-def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float = 0.0) -> list[tuple[str, bool | None, str]]:
+def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float = 0.0, extra_in: float = 0.0) -> list[tuple[str, bool | None, str]]:
     rows: list[tuple[str, bool | None, str]] = []
     cut2 = load_cut(xml2)                                # bounds-checks every clip against real media
     rows.append(("RELOADS-AND-BOUNDS", True, f"{len(cut2.video)} clips, every range inside its real file"))
@@ -50,9 +50,10 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
 
     slack = 2.0 / cut1.fps
     stray = [p for p in cut2.video
-             if not any(p.src_path == c.src_path and p.src_in >= c.src_in - slack and p.src_out <= c.src_out + extra_out + slack for c in cut1.video)]
+             if not any(p.src_path == c.src_path and p.src_in >= c.src_in - extra_in - slack and p.src_out <= c.src_out + extra_out + slack for c in cut1.video)]
+    ext_txt = "".join([f" (plus the measured {extra_out:.2f}s extension at an end)" if extra_out else "", f" (plus the measured {extra_in:.2f}s extension at a start)" if extra_in else ""])
     rows.append(("NO-NEW-FOOTAGE", not stray,
-                 ("every V2 piece lies inside a V1 clip" + (f" (plus the measured {extra_out:.2f}s extension)" if extra_out else ""))
+                 ("every V2 piece lies inside a V1 clip" + ext_txt)
                  if not stray else f"{len(stray)} piece(s) outside V1 ranges"))
 
     def lav_offset(a, v):
@@ -119,6 +120,10 @@ def verify_render(changes, preview: Path) -> list[tuple[str, bool | None, str]]:
             db = level_db(k["path"], k["t"] - 0.03, 0.03)
             rows.append((f"note {c.note} CUT-IN-QUIET", db <= k["thresh_db"] + 1.0,
                          f"level at the new cut point {db:.0f} dB, room-level threshold {k['thresh_db']:.0f} dB"))
+        elif k["kind"] == "quiet_from":
+            db = level_db(k["path"], k["t"], 0.03)
+            rows.append((f"note {c.note} START-IN-QUIET", db <= k["thresh_db"] + 1.0,
+                         f"level just after the new start {db:.0f} dB, room-level threshold {k['thresh_db']:.0f} dB"))
         elif k["kind"] == "seam_text":
             after = [w for w in words_mod.words_in(str(preview), c.v2_time - 0.3, 4.0) if w.start >= c.v2_time - 0.1]
             hit = words_mod.find_phrase(after, k["phrase"])
@@ -159,7 +164,7 @@ def main() -> int:
     items = [{"note": c.note, "note_time": notes[c.note - 1]["timeline_sec"], "note_text": notes[c.note - 1].get("text", ""),
               "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why,
               "op": c.op, "removed": [round(c.removed[0], 3), round(c.removed[1], 3)] if c.removed else None,
-              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") == "quiet_at" else None} for c in changes]
+              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") in ("quiet_at", "quiet_from") else None} for c in changes]
     print(f"\n{lab_in} {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
     for it in items:
         print(f"  note {it['note']} [{it['note_time']}s] {'APPLIED    ' if it['applied'] else 'NOT APPLIED'}  {it['summary']}")
@@ -172,7 +177,8 @@ def main() -> int:
     print("\nChecks on the revised XML:")
     try:
         extra_out = max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") == "quiet_at"] or [0.0])
-        rows = verify(cut1, args.xml, v2_xml, delta, extra_out)
+        extra_in = max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") == "quiet_from"] or [0.0])
+        rows = verify(cut1, args.xml, v2_xml, delta, extra_out, extra_in)
         rows += verify_motion(cut1, changes, load_cut(v2_xml))
     except TimelineError as e:
         print(f"REFUSING: revised XML does not load: {e}", file=sys.stderr)

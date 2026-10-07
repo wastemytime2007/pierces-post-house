@@ -7,8 +7,9 @@ import { sendCommand } from "../../App.jsx";
  * 02 · Review. The review page itself (labs/review_loop: the video, every edit decision on a timeline, timecoded notes, drawing on the frame) shown in the app,
  * with the loop around it:
  *
- *   choose the cut  ->  leave notes on the page  ->  "Apply notes" (the page hands its notes to the app, the cut is revised, the next version opens here,
- *   every note is re-checked on it)  ->  "Export XML" (checked by the export check, then opened in Premiere for final touches).
+ *   the cut opens  ->  the AI editor reviews it, submits the fixes it can make, reviews the new version, and repeats until nothing fixable is left (creator_tools.auto_edit);
+ *   every version and every AI note is visible here while it works, and Stop is always there  ->  you review the version it names (leave your own notes and "Submit changes" any
+ *   time; the editor then carries on from there)  ->  "Export XML" (checked by the export check, then opened in Premiere for final touches).
  *
  * The page is served by the backend on 127.0.0.1 (creator_tools.serve_review) and framed here; the page and this tab talk by postMessage.
  */
@@ -44,8 +45,17 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const flushRef = useRef(null);
   const submitRef = useRef(null);
   const aiStartRef = useRef(null);
+  const aiOnlyRef = useRef(null);
+  const autoOnRef = useRef(true);
+  const [autoOn, setAutoOn] = useState(() => {
+    try { return localStorage.getItem("review.autoEdit") !== "off"; } catch (e) { return true; }
+  });
+  // The AI editor's own loop: { status: idle | running | done, round, of, label, fixing, summary, best, left, versions }
+  const [auto, setAuto] = useState({ status: "idle" });
+  const [showLeft, setShowLeft] = useState(true);
 
   const version = versions[cur];
+  autoOnRef.current = autoOn;
   versionsRef.current = versions;
   busyRef.current = busy;
   curRef.current = cur;
@@ -56,14 +66,15 @@ export default function ReviewTab({ subscribe, onStatus }) {
   useEffect(() => {
     if (!onStatus) return;
     onStatus(
-      making ? "making the cut…"
+      auto.status === "running" ? "AI editor working…"
+      : making ? "making the cut…"
       : busy === "building" ? "building the cut…"
       : busy === "applying" ? "applying notes…"
       : incoming ? "new export ready"
       : versions.length ? `${versions[cur]?.label || "V1"} open`
       : exportsList.length ? "cut ready" : "notes on a cut"
     );
-  }, [onStatus, busy, incoming, versions, cur, exportsList, making]);
+  }, [onStatus, busy, incoming, versions, cur, exportsList, making, auto.status]);
 
   useEffect(() => {
     sendCommand({ type: "list_exports" }).catch(() => {});
@@ -106,10 +117,19 @@ export default function ReviewTab({ subscribe, onStatus }) {
         flushRef.current?.();
       } else if (ev.type === "ai_review_failed") {
         setAi((a) => ({ ...a, [ev.tag]: { status: "failed", message: ev.message } }));
+      } else if (ev.type === "auto_edit_started") {
+        setAuto({ status: "running", round: 0, of: ev.max_rounds, label: ev.tag });
+      } else if (ev.type === "auto_edit_round") {
+        setAuto((a) => ({ ...a, status: "running", round: ev.round, of: ev.of, label: ev.label, fixing: ev.fixing }));
+      } else if (ev.type === "auto_edit_done") {
+        setAuto({ status: "done", summary: ev.summary, best: ev.best, left: ev.left || [], versions: ev.versions || [], rounds: ev.rounds || [], outcome: ev.status });
+        const idx = parseInt(String(ev.best || "V1").slice(1), 10) - 1;               // open the version the editor names as the one to review
+        if (idx >= 0 && idx < versionsRef.current.length) setCur(idx);
       } else if (ev.type === "review_built") {
         setBusy("");
         aiPending.current = {};
         setAi({});
+        setAuto({ status: "idle" });
         aiStartRef.current?.(ev.xml, ev.folder, "V1");
         setVersions([{ label: "V1", xml: ev.xml, folder: ev.folder, url: ev.url, qa: null }]);
         setCur(0);
@@ -131,7 +151,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           setInfo(ev.message || "Nothing in the notes could be applied to the timeline.");
           return;
         }
-        aiStartRef.current?.(ev.xml, ev.folder, `V${versionsRef.current.length + 1}`);
+        if (!ev.auto) aiStartRef.current?.(ev.xml, ev.folder, `V${versionsRef.current.length + 1}`);    // the editor's own revisions are reviewed by its loop; yours start it again
         setVersions((vs) => {
           const next = [...vs, { label: `V${vs.length + 1}`, xml: ev.xml, folder: ev.folder, url: ev.url, qa: ev.qa, applied: ev.applied, notes: ev.notes }];
           setCur(next.length - 1);
@@ -191,8 +211,17 @@ export default function ReviewTab({ subscribe, onStatus }) {
     frameRef.current.contentWindow.postMessage({ type: "review:add-notes", notes }, "*");
   };
 
-  aiStartRef.current = (xml, folder, tag) => {
+  aiOnlyRef.current = (xml, folder, tag) => {
     sendCommand({ type: "ai_review", xml, folder, tag }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
+  };
+
+  // A new version (the cut just built, or one made from your notes): the AI editor takes it from here, unless it is switched off, then only the review runs.
+  aiStartRef.current = (xml, folder, tag) => {
+    if (autoOnRef.current) {
+      sendCommand({ type: "auto_edit", xml, folder, tag }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
+    } else {
+      aiOnlyRef.current?.(xml, folder, tag);
+    }
   };
 
   const browse = useCallback(async () => {
@@ -308,7 +337,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
         ))}
         <span className="transcript-row-name" title={version.xml}>{fileName(version.xml)}</span>
         <span style={{ flex: 1 }} />
-        <button className="btn btn-primary" onClick={apply} disabled={!!busy} title="Send the notes on the page to the editor. It makes the changes and opens the next version here.">
+        <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="When on, the AI editor reviews each version, submits the fixes it can make and repeats until nothing fixable is left. You can stop it any time.">
+          <input type="checkbox" checked={autoOn} onChange={(e) => { setAutoOn(e.target.checked); try { localStorage.setItem("review.autoEdit", e.target.checked ? "on" : "off"); } catch (err) { /* private window */ } }} />
+          AI editor works on its own
+        </label>
+        {auto.status === "running" && (
+          <button className="btn btn-ghost" onClick={() => sendCommand({ type: "auto_edit_stop" })} title="The editor finishes the step it is on and stops">Stop the AI editor</button>
+        )}
+        <button className="btn btn-primary" onClick={apply} disabled={!!busy || auto.status === "running"} title="Send the notes on the page to the editor. It makes the changes and opens the next version here.">
           {busy === "applying"
             ? "Editor is working…"
             : noteCount
@@ -349,6 +385,38 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
+      {auto.status === "running" && (
+        <div className="run-pipeline-section">
+          <div className="run-pipeline-section-label" style={{ margin: 0 }}>
+            AI editor at work: {auto.round ? `round ${auto.round} of ${auto.of}, fixing ${auto.fixing} note${auto.fixing === 1 ? "" : "s"} on ${auto.label}` : `reviewing ${auto.label}`}
+          </div>
+          <div className="sync-section-hint">
+            It reviews the cut, submits the fixes it can make, and reviews the new version. Each version stays in the tabs above, and its notes are on the page. You can look around, or press Stop.
+          </div>
+        </div>
+      )}
+      {auto.status === "done" && (
+        <div className={auto.outcome === "failed" || auto.outcome === "worse" || auto.outcome === "short" ? "pm-tab-warnings" : "run-pipeline-section"} role="status">
+          <div className="pm-tab-row" style={{ alignItems: "center" }}>
+            <div className="run-pipeline-section-label" style={{ margin: 0 }}>{auto.summary}</div>
+            <span style={{ flex: 1 }} />
+            {auto.left?.length > 0 && <button className="btn btn-ghost" onClick={() => setShowLeft((x) => !x)}>{showLeft ? "Hide" : "Show"} what is left</button>}
+          </div>
+          {auto.left?.length > 0 && showLeft && (
+            <div className="transcripts-list">
+              {auto.left.map((l, i) => (
+                <div className="transcript-row" key={i}>
+                  <div className="transcript-row-main">
+                    <div className="transcript-row-name">{l.text}</div>
+                    <div className="transcript-row-folder">{l.reason}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {aiState && (
         <div className="run-pipeline-section">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
@@ -361,7 +429,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
             <span style={{ flex: 1 }} />
             {aiState.status === "done" && <button className="btn btn-ghost" onClick={() => setShowAi((x) => !x)}>{showAi ? "Hide" : "Show"} details</button>}
             {aiState.status !== "running" && (
-              <button className="btn btn-ghost" disabled={!!busy} onClick={() => aiStartRef.current?.(version.xml, version.folder, version.label)}>Run again</button>
+              <button className="btn btn-ghost" disabled={!!busy} onClick={() => aiOnlyRef.current?.(version.xml, version.folder, version.label)}>Review again</button>
             )}
           </div>
           {aiState.status === "failed" && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{aiState.message}</div>}

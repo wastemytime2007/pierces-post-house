@@ -723,7 +723,8 @@ document.addEventListener('keydown', e => {
 function payload() {
   return { schema: 'review_notes.v0-draft', sequence: DATA.sequence, preview_duration_sec: DATA.duration,
     shape_coords: 'fractions of the video frame, 0..1, origin top-left',
-    notes: notes.map(n => Object.assign({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text }, n.target ? { target: n.target } : {}, {
+    notes: notes.map(n => Object.assign({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text }, n.target ? { target: n.target } : {},
+      n.ai ? { ai: true, kind: n.kind, key: n.key } : {}, n.suggested_op ? { suggested_op: n.suggested_op } : {}, {      // the AI review's notes keep their measured fix when they come back
       shapes: (n.shapes || []).map(exportShape) })) };
 }
 function feedbackText() {

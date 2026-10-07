@@ -180,3 +180,36 @@ def test_a_reply_with_prose_around_the_json_is_still_read():
     assert ar._json_object('Sure. {"story": "x", "problems": []} Hope that helps')["story"] == "x"
     with pytest.raises(ValueError):
         ar._json_object("no json here")
+
+
+def test_edge_notes_carry_the_editors_fix_and_a_key_that_survives_the_cut_changing(voice):
+    f = ar.edge_findings(cut_of(voice, [(0.3, 1.0), (2.9, 4.5)]), NO_WORDS)
+    n = f.notes[0]
+    assert n["kind"] == "edge-end" and n["suggested_op"] == {"op": "extend_end", "clip": 1, "max_sec": ar.EXTEND_LOOKAHEAD}
+    start = ar.edge_findings(cut_of(voice, [(0.3, 1.7), (3.5, 4.5)]), NO_WORDS).notes[0]
+    assert start["kind"] == "edge-start" and start["suggested_op"]["op"] == "extend_start" and start["suggested_op"]["clip"] == 2
+    # the same finding after the cut was re-timed keeps its key (words, not clip numbers or times)
+    assert ar.note_key("edge-end", "bought in Johnston", "a.mp4", 10.0) == ar.note_key("edge-end", "Bought in Johnston.", "a.mp4", 99.0)
+    assert ar.note_key("edge-end", "x", "a.mp4", 1) != ar.note_key("edge-start", "x", "a.mp4", 1)
+    assert ar.note_key("audio-hole", "", "a.mp4", 10.2) == "audio-hole|a.mp4@10"
+
+
+def test_a_story_fix_is_kept_only_when_the_editor_makes_it_and_it_points_at_something_real(voice):
+    cut = cut_of(voice, [(0.3, 1.7), (2.9, 4.5)])
+    heard = lambda path, start, dur: [words_mod.W(t, start + a, start + b) for t, a, b in (("So", 0.3, 0.5), ("the", 0.5, 0.6), ("septic", 0.6, 0.9), ("tank", 0.9, 1.2))]  # noqa: E731
+    words = ar.transcript_of(cut, heard)
+    assert ar._checked_fix({"op": "drop_clip", "clip": 1}, cut, words) == {"op": "drop_clip", "clip": 1}
+    assert ar._checked_fix({"op": "start_at_words", "clip": 1, "words": "the septic tank"}, cut, words)["words"] == "the septic tank"
+    long = ar._checked_fix({"op": "start_at_words", "clip": 1, "words": "the septic tank and then a whole lot more words after that one"}, cut, words)
+    assert long is None                                                                                                 # only the first 8 words are compared, and those are not all in the clip
+    assert ar._checked_fix({"op": "start_at_words", "clip": 1, "words": "the septic tank"}, cut, words)["words"] == "the septic tank"
+    assert ar._checked_fix({"op": "start_at_words", "clip": 1, "words": "the drain field"}, cut, words) is None       # words not in that clip
+    assert ar._checked_fix({"op": "drop_clip", "clip": 7}, cut, words) is None                                       # no such clip
+    assert ar._checked_fix({"op": "reframe_vertical", "clip": 1}, cut, words) is None                                 # not a fix the editor makes from a story note
+    assert ar._checked_fix(None, cut, words) is None and ar._checked_fix("drop it", cut, words) is None
+    reply = json.dumps({"story": "x", "hook": "weak", "ending": "clean", "problems": [
+        {"quote": "the septic tank", "note": "Garbled. Drop this clip.", "fix": {"op": "drop_clip", "clip": 1}},
+        {"quote": "septic tank", "note": "Needs new words.", "fix": None}]})
+    rows, _ = ar.story_findings(cut, words, fake_client(reply))
+    a, b = rows[0].notes
+    assert a["kind"] == "story" and a["suggested_op"] == {"op": "drop_clip", "clip": 1} and "suggested_op" not in b

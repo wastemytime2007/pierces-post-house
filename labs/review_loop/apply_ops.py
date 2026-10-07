@@ -16,7 +16,7 @@ from pathlib import Path
 
 import sys
 
-from ops import KEEP_SEC_DEFAULT, detect_pause, locate_start, measure_tail
+from ops import KEEP_SEC_DEFAULT, detect_pause, locate_start, measure_head, measure_tail
 from timeline import Cut, TimelineError, _seq_for_cut
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reframe"))
@@ -81,11 +81,11 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
     """Decide what to remove and what to add.
 
     Returns (changes, spans, insertions): spans are (start_sec, end_sec, change_index) to remove;
-    insertions are (at_sec, length_sec, change_index, clip_idx) of time added to a clip's end.
+    insertions are (at_sec, length_sec, change_index, clip_idx, side) of time added to a clip's end (side "end") or in front of its start (side "front").
     """
     changes: list[Change] = []
     spans: list[tuple[float, float, int]] = []
-    insertions: list[tuple[float, float, int, int]] = []
+    insertions: list[tuple[float, float, int, int, str]] = []
 
     def clip_of(t: float) -> int:
         return next((c.idx for c in cut.video if c.tl_start <= t < c.tl_end), cut.video[-1].idx)
@@ -165,11 +165,23 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             if "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:
-                insertions.append((c.tl_end, m["ext"], len(changes), c.idx))
+                insertions.append((c.tl_end, m["ext"], len(changes), c.idx, "end"))
                 changes.append(Change(n, kind, True,
                                       f"extended clip {c.idx} by {m['ext']:.2f}s: the sound was still at {m['at_cut_db']:.0f} dB at the cut "
                                       f"and decays to room level {m['ext']:.2f}s later",
                                       o.get("why", ""), check={"kind": "quiet_at", "path": m["path"], "t": m["t_end"],
+                                                               "thresh_db": m["thresh_db"], "ext": m["ext"]}))
+        elif kind == "extend_start":
+            c = cut.video[o["clip"] - 1]
+            m = measure_head(cut, c.idx, o.get("max_sec", 1.0))
+            if "reason" in m:
+                changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
+            else:
+                insertions.append((c.tl_start, m["ext"], len(changes), c.idx, "front"))
+                changes.append(Change(n, kind, True,
+                                      f"started clip {c.idx} {m['ext']:.2f}s earlier: the sound was already at {m['at_cut_db']:.0f} dB at the old start "
+                                      f"and begins {m['ext']:.2f}s before it, from room level",
+                                      o.get("why", ""), check={"kind": "quiet_from", "path": m["path"], "t": m["t_start"],
                                                                "thresh_db": m["thresh_db"], "ext": m["ext"]}))
         elif kind == "start_at_words":
             c = cut.video[o["clip"] - 1]
@@ -194,7 +206,7 @@ def _set(el: ET.Element, tag: str, val) -> None:
     child.text = str(int(val))
 
 
-def _edit_clip(c: ET.Element, removed, shift, used_ids: set[str], extend_at: dict[int, int]) -> list[ET.Element]:
+def _edit_clip(c: ET.Element, removed, shift, used_ids: set[str], extend_at: dict[int, int], extend_front_at: dict[int, int] | None = None) -> list[ET.Element]:
     start, end = int(c.findtext("start")), int(c.findtext("end"))
     in0, out0 = int(c.findtext("in")), int(c.findtext("out"))
     k = (out0 - in0) / (end - start) if end > start else 1.0
@@ -204,6 +216,7 @@ def _edit_clip(c: ET.Element, removed, shift, used_ids: set[str], extend_at: dic
     out: list[ET.Element] = []
     for n, (a, b) in enumerate(_pieces(start, end, removed)):
         grow = extend_at.get(end, 0) if b == end else 0
+        growf = (extend_front_at or {}).get(start, 0) if (n == 0 and a == start) else 0          # time added in front of the clip's first piece: it starts earlier in the source and earlier on the timeline
         if n == 0:
             el = c
         else:
@@ -217,30 +230,34 @@ def _edit_clip(c: ET.Element, removed, shift, used_ids: set[str], extend_at: dic
                 i += 1
             el.set("id", f"{base}-r{i}")
             used_ids.add(el.get("id"))
-        in_new = in0 + round((a - start) * k)
-        _set(el, "start", shift(a))
+        in_new = in0 + round((a - start) * k) - round(growf * k)
+        _set(el, "start", shift(a) - growf)                                  # shift() moved this start by the inserted time; the clip's own front growth takes it back
         _set(el, "end", shift(a) + (b - a) + grow)
         _set(el, "in", in_new)
-        _set(el, "out", in_new + round((b - a + grow) * k))
+        _set(el, "out", in_new + round((b - a + grow + growf) * k))
         if dur_is_len:
-            _set(el, "duration", b - a + grow)
+            _set(el, "duration", b - a + grow + growf)
         out.append(el)
     return out
 
 
-def _trim_pool(groups: dict, file_id: str, old_out: float, new_out: float, fps: float) -> float:
+def _trim_pool(groups: dict, file_id: str, old_out: float, new_out: float, fps: float, spf: float | None = None) -> float:
     """Pool = complement of the cut. When a clip grows into footage the pool also holds, take that
-    footage off the front of the pool clip (video and its audio together). Returns seconds trimmed."""
+    footage off the front of the pool clip (video and its audio together). Returns seconds trimmed.
+
+    `spf` is the seconds one source frame of this file lasts in the time base the clips' source times were READ in (cut.video[].src_in/out). Without it the pool is converted at the
+    sequence's frame rate, which for a 29.97 file in a 30 fps sequence puts the pool 0.1% away from the clips it is compared with (0.37 s at 12 minutes in: footage the pool never held
+    looked shared, and the pool was trimmed for it)."""
     trimmed = 0.0
     for (s, e), els in groups.items():
         v = next((el for kind, el in els if kind == "video" and el.find("file") is not None and el.find("file").get("id") == file_id), None)
         if v is None:
             continue
         k = (int(v.findtext("out")) - int(v.findtext("in"))) / (e - s)
-        a, b = int(v.findtext("in")) / (k * fps), int(v.findtext("out")) / (k * fps)
+        a, b = (int(v.findtext("in")) * spf, int(v.findtext("out")) * spf) if spf else (int(v.findtext("in")) / (k * fps), int(v.findtext("out")) / (k * fps))
         if not (a < new_out and b > old_out):
             continue
-        cut_f = round((max(a, new_out) - a) * fps)
+        cut_f = round((max(a, new_out) - a) / spf / k) if spf else round((max(a, new_out) - a) * fps)
         if cut_f <= 0:
             continue
         if cut_f >= e - s:
@@ -256,6 +273,19 @@ def _trim_pool(groups: dict, file_id: str, old_out: float, new_out: float, fps: 
     return trimmed
 
 
+def _pool_overlaps(groups: dict, file_id: str, lo: float, hi: float, fps: float, spf: float | None = None) -> bool:
+    """True when a selects-pool clip of this file holds any footage between source seconds lo and hi."""
+    for (s, e), els in groups.items():
+        v = next((el for kind, el in els if kind == "video" and el.find("file") is not None and el.find("file").get("id") == file_id), None)
+        if v is None or e <= s:
+            continue
+        k = (int(v.findtext("out")) - int(v.findtext("in"))) / (e - s)
+        a, b = (int(v.findtext("in")) * spf, int(v.findtext("out")) * spf) if spf else (int(v.findtext("in")) / (k * fps), int(v.findtext("out")) / (k * fps))
+        if a < hi and b > lo:
+            return True
+    return False
+
+
 def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: list[dict]) -> tuple[list[Change], float]:
     fps = cut.fps
     changes, spans, insertions = plan(cut, ops, notes)
@@ -263,18 +293,22 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
     removed = _merge([(max(0, round(s * fps)), min(zone_f, round(e * fps))) for s, e, _ in spans if round(e * fps) > round(s * fps)])
     if zone_f - sum(b - a for a, b in removed) < round(fps):
         raise TimelineError("these operations would remove the whole cut (under 1s would be left)")
-    inserted = [(round(at * fps), max(1, round(ln * fps))) for at, ln, _i, _c in insertions]
-    for pos_f, _ln in inserted:
-        if any(r0 < pos_f and r1 >= pos_f - 1 for r0, r1 in removed):
+    inserted_s = [(round(at * fps), max(1, round(ln * fps)), side) for at, ln, _i, _c, side in insertions]
+    for pos_f, _ln, side in inserted_s:
+        if side == "end" and any(r0 < pos_f and r1 >= pos_f - 1 for r0, r1 in removed):
             raise TimelineError("cannot extend the end of a clip whose end is also being trimmed by another note; resolve the two notes first")
-    if len({p for p, _ in inserted}) != len(inserted):
-        raise TimelineError("two notes both extend the same clip end")
+        if side == "front" and any(r0 <= pos_f < r1 for r0, r1 in removed):
+            raise TimelineError("cannot extend the start of a clip whose start is also being trimmed by another note; resolve the two notes first")
+    if len({(p, sd) for p, _l, sd in inserted_s}) != len(inserted_s):
+        raise TimelineError("two notes both extend the same clip end" if any(sd == "end" for _p, _l, sd in inserted_s) else "two notes both extend the same clip start")
+    inserted = [(p, ln) for p, ln, _sd in inserted_s]                      # the shift counts every insertion at or before a frame, front or end
     shift = _shift_fn(removed, inserted)
     for s, _e, idx in spans:
         changes[idx].v2_time = shift(round(s * fps)) / fps
-    for (at, _ln, idx, _clip), (pos_f, _l) in zip(insertions, inserted):
-        changes[idx].v2_time = shift(pos_f) / fps
-    extend_at = dict(inserted)
+    for (at, _ln, idx, _clip, side), (pos_f, ln_f, _sd) in zip(insertions, inserted_s):
+        changes[idx].v2_time = (shift(pos_f) - (ln_f if side == "front" else 0)) / fps
+    extend_at = {p: ln for p, ln, sd in inserted_s if sd == "end"}
+    extend_front_at = {p: ln for p, ln, sd in inserted_s if sd == "front"}
 
     tree = ET.parse(xml_path)
     root = tree.getroot()
@@ -295,6 +329,11 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
     used_ids = {el.get("id") for el in root.iter("clipitem") if el.get("id")}
     vids = sorted(seq.find("media/video/track").findall("clipitem"), key=lambda c: int(c.findtext("start")))
     clip_file_id = {i + 1: c.find("file").get("id") for i, c in enumerate(vids[:len(cut.video)])}
+    spf_of_file: dict[str, float] = {}                                      # seconds per source frame, in the time base the cut's clips were read in (see _trim_pool)
+    for i, el in enumerate(vids[:len(cut.video)]):
+        in_f = int(el.findtext("in") or 0)
+        if in_f > 0 and cut.video[i].src_in > 0:
+            spf_of_file.setdefault(el.find("file").get("id"), cut.video[i].src_in / in_f)
     pool_groups: dict[tuple[int, int], list] = {}
     for kind in ("video", "audio"):
         for track in seq.findall(f"media/{kind}/track"):
@@ -313,13 +352,18 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
                 track.remove(c)
             repl: list[ET.Element] = []
             for c in zone:
-                repl += _edit_clip(c, removed, shift, used_ids, extend_at)
+                repl += _edit_clip(c, removed, shift, used_ids, extend_at, extend_front_at)
             for i, c in enumerate(repl):
                 track.insert(pos + i, c)
 
-    for (at, ln, idx, clip_idx) in insertions:
+    for (at, ln, idx, clip_idx, side) in insertions:
+        if side == "front":                                                 # footage in front of the clip must not also be in the selects pool (it would play twice)
+            c0 = cut.video[clip_idx - 1]
+            if _pool_overlaps(pool_groups, clip_file_id[clip_idx], c0.src_in - ln, c0.src_in, fps, spf_of_file.get(clip_file_id[clip_idx])):
+                raise TimelineError(f"extending the start of clip {clip_idx} would repeat footage the selects pool also holds; resolve by hand")
+            continue
         old_out = cut.video[clip_idx - 1].src_out
-        trimmed = _trim_pool(pool_groups, clip_file_id[clip_idx], old_out, old_out + ln, fps)
+        trimmed = _trim_pool(pool_groups, clip_file_id[clip_idx], old_out, old_out + ln, fps, spf_of_file.get(clip_file_id[clip_idx]))
         if trimmed:
             changes[idx].summary += (f"; also took {trimmed:.2f}s off the front of the selects-pool clip that held the same "
                                      "footage, so the pool still never repeats the cut")
