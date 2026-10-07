@@ -23,6 +23,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const versionsRef = useRef([]);
   const busyRef = useRef("");
   const buildRef = useRef(null);
+  const openReviewRef = useRef(null);
   const makingRef = useRef("");
   const [making, setMaking] = useState(""); // the cut is being made from the ideas picked on the Ideas tab ("Review this cut"): what it is doing now
   const [incoming, setIncoming] = useState(""); // an export made while a review is open: offered, never swapped in under the notes being written
@@ -46,6 +47,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const submitRef = useRef(null);
   const aiStartRef = useRef(null);
   const aiOnlyRef = useRef(null);
+  const openedRef = useRef(false); // the last session was reopened (or there was none) once for this mount
   const autoOnRef = useRef(true);
   const [autoOn, setAutoOn] = useState(() => {
     try { return localStorage.getItem("review.autoEdit") !== "off"; } catch (e) { return true; }
@@ -91,6 +93,33 @@ export default function ReviewTab({ subscribe, onStatus }) {
     return subscribe((ev) => {
       if (ev.type === "exports_listed") {
         setExportsList(ev.exports || []);
+        if (!openedRef.current && !versionsRef.current.length && !busyRef.current && !makingRef.current) {
+          openedRef.current = true;
+          const worked = (ev.exports || []).filter((x) => x.session).sort((a, b) => (b.session.updated || 0) - (a.session.updated || 0))[0];
+          if (worked) openReviewRef.current?.(worked.path);               // the cut you were last reviewing, as you left it
+        }
+      } else if (ev.type === "review_session_loaded") {
+        setBusy("");
+        const vs = ev.versions.map((v) => ({ label: v.label, xml: v.xml, folder: v.folder, url: v.url, qa: v.qa, applied: v.applied, notes: v.notes }));
+        setVersions(vs);
+        const aiState = {};
+        aiPending.current = {};
+        for (const [tag, r] of Object.entries(ev.ai || {})) {
+          aiState[tag] = { status: "done", result: { ...r, notes: r.notes || [], checks: r.checks || [] } };
+          aiPending.current[tag] = r.notes || [];                       // put the AI's notes back on the page (a new run replaces only AI notes, never yours)
+        }
+        setAi(aiState);
+        const a = ev.auto;
+        if (ev.auto_running) setAuto({ status: "running", round: 0, of: 4, label: ev.auto_tag || vs[vs.length - 1].label });
+        else if (a) setAuto({ status: "done", summary: a.summary, best: a.best, left: a.left || [], versions: a.versions || [], rounds: a.rounds || [], outcome: a.status });
+        else setAuto({ status: "idle" });
+        const bestIdx = a && a.best ? vs.findIndex((v) => v.label === a.best) : -1;
+        setCur(bestIdx >= 0 ? bestIdx : vs.length - 1);
+        setNoteCount(0);
+        setExportResult(null);
+        setIncoming("");
+        setInfo("");
+        setActivity([{ t: Date.now(), kind: "info", text: `Reopened your earlier review of this cut (${vs.map((v) => v.label).join(", ")}). Nothing was rebuilt or reviewed again.` }]);
       } else if (ev.type === "review_cut_started") {
         setError("");
         setMaking(`Making the cut${ev.of > 1 ? ` (${ev.n} of ${ev.of})` : ""} from the idea…`);
@@ -137,7 +166,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         aiPending.current = {};
         setAi({});
         setAuto(autoOnRef.current ? { status: "running", round: 0, of: 4, label: "V1" } : { status: "idle" });      // the editor starts the moment the cut opens: do not flash "your turn" before its first event
-        aiStartRef.current?.(ev.xml, ev.folder, "V1");
+        aiStartRef.current?.(ev.xml, ev.folder, "V1", ev.xml);
         setVersions([{ label: "V1", xml: ev.xml, folder: ev.folder, url: ev.url, qa: null }]);
         setCur(0);
         setNoteCount(0);
@@ -263,6 +292,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   buildRef.current = build;
 
+  // Open a cut the way it was left: the backend returns its saved session (every version, the AI reviews, the editor's conclusion) or, if there is none, builds it as a new review.
+  const openReview = useCallback(async (xml, fresh = false) => {
+    if (!xml) return;
+    setBusy("building");
+    setError("");
+    try {
+      await sendCommand({ type: "open_review", xml, ...(fresh ? { fresh: true } : {}) });
+    } catch (e) {
+      setBusy("");
+      setError(String(e));
+    }
+  }, []);
+  openReviewRef.current = openReview;
+
   // Post the AI review's notes onto the page for the version being shown, once the page has said it is ready.
   flushRef.current = () => {
     const v = versionsRef.current[curRef.current];
@@ -272,16 +315,16 @@ export default function ReviewTab({ subscribe, onStatus }) {
     frameRef.current.contentWindow.postMessage({ type: "review:add-notes", notes }, "*");
   };
 
-  aiOnlyRef.current = (xml, folder, tag) => {
-    sendCommand({ type: "ai_review", xml, folder, tag }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
+  aiOnlyRef.current = (xml, folder, tag, root) => {
+    sendCommand({ type: "ai_review", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
   };
 
   // A new version (the cut just built, or one made from your notes): the AI editor takes it from here, unless it is switched off, then only the review runs.
-  aiStartRef.current = (xml, folder, tag) => {
+  aiStartRef.current = (xml, folder, tag, root) => {
     if (autoOnRef.current) {
-      sendCommand({ type: "auto_edit", xml, folder, tag }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
+      sendCommand({ type: "auto_edit", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
     } else {
-      aiOnlyRef.current?.(xml, folder, tag);
+      aiOnlyRef.current?.(xml, folder, tag, root);
     }
   };
 
@@ -319,7 +362,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setInfo("Leave at least one note on the page first (the + Note button, or press n).");
         return;
       }
-      await sendCommand({ type: "apply_notes", xml: version.xml, notes_payload: payload, review_folder: version.folder });
+      await sendCommand({ type: "apply_notes", xml: version.xml, notes_payload: payload, review_folder: version.folder, root: versionsRef.current[0].xml, label: `V${versionsRef.current.length + 1}` });
     } catch (e) {
       setBusy("");
       setError(String(e.message || e));
@@ -402,11 +445,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
                 <div className="transcript-row" key={x.path}>
                   <div className="transcript-row-main">
                     <div className="transcript-row-name">{x.name}</div>
-                    <div className="transcript-row-folder">{new Date(x.mtime * 1000).toLocaleString()}</div>
+                    <div className="transcript-row-folder">
+                      {new Date(x.mtime * 1000).toLocaleString()}
+                      {x.session ? ` · reviewed: ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}, ${x.session.best} is the one to review${x.session.left ? `, ${x.session.left} left` : ""}` : " · not reviewed yet"}
+                    </div>
                   </div>
-                  <button className="btn btn-primary" disabled={!!busy} onClick={() => build(x.path)}>
-                    Review
+                  <button className="btn btn-primary" disabled={!!busy} onClick={() => openReview(x.path)}>
+                    {x.session ? "Open review" : "Review"}
                   </button>
+                  {x.session && (
+                    <button className="btn btn-ghost" disabled={!!busy} title="Build this cut's review again from the start. The versions made so far are replaced."
+                      onClick={() => { if (window.confirm("Start this cut's review over? The versions made so far will be replaced.")) openReview(x.path, true); }}>
+                      Start over
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -462,8 +514,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: dirName(version.xml) })} disabled={!!busy}>
           Show in Finder
         </button>
-        <button className="btn btn-ghost" onClick={() => { setVersions([]); setCur(0); setExportResult(null); setError(""); setInfo(""); sendCommand({ type: "list_exports" }).catch(() => {}); }} disabled={!!busy}>
+        <button className="btn btn-ghost" onClick={() => { setVersions([]); setCur(0); setExportResult(null); setError(""); setInfo(""); openedRef.current = true; sendCommand({ type: "list_exports" }).catch(() => {}); }} disabled={!!busy}>
           Other cut…
+        </button>
+        <button className="btn btn-ghost" title="Build this cut's review again from the start. The versions made so far are replaced." disabled={!!busy || auto.status === "running"}
+          onClick={() => { if (window.confirm("Start this cut's review over? The versions made so far will be replaced.")) openReview(versionsRef.current[0].xml, true); }}>
+          Start over
         </button>
       </div>
 

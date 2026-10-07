@@ -84,6 +84,79 @@ require('fs').mkdirSync(OUT, { recursive: true });
   await shot('8-your-turn-failed');
   check('FAILED-IS-RED', (await page.locator('.ai-strip.yours.bad').count()) === 1, '');
 
+  // ---- reopening: the project is opened again in a new window. The last review comes back as it was left; nothing is built, reviewed or submitted.
+  const fresh = async () => {
+    const pg = await (await browser.newContext({ viewport: { width: 1350, height: 1000 } })).newPage();
+    pg.on('pageerror', e => errors.push(e.message));
+    pg.on('dialog', d => d.accept());
+    await pg.goto('http://localhost:1431/dev/review_harness.html');
+    await pg.waitForFunction(() => typeof window.__emit === 'function', null, { timeout: 20000 });
+    return pg;
+  };
+  const sent = pg => pg.evaluate(() => window.__sent.map(c => c.type + (c.fresh ? ':fresh' : '')));
+  const session = { summary: 'x', versions: 3, latest: 'V3', best: 'V3', left: 8, status: 'left', updated: 2000 };
+  const exportsList = [{ path: '/p/cuts/New.xml', name: 'New.xml', mtime: 1, session: null }, { path: '/p/cuts/Cut.xml', name: 'Cut.xml', mtime: 0, session }];
+  const loaded = { type: 'review_session_loaded', root: '/p/cuts/Cut.xml', auto_running: false, auto_tag: null,
+    versions: [{ label: 'V1', xml: '/p/cuts/Cut.xml', folder: '/p/cuts/Cut - review', url: 'about:blank', qa: null, applied: null, notes: null },
+               { label: 'V2', xml: '/p/cuts/Cut_v2.xml', folder: '/p/cuts/Cut_v2 - revised', url: 'about:blank', qa: { notes: [{ note: 1, time: 5, status: 'VERIFIED', text: 'AI: Clip 1', rows: [{ op: 'extend_end', status: 'VERIFIED', detail: 'clip 1 now runs 0.5s longer' }] }], whole_cut: [], unrequested: [] }, applied: 1, notes: 1 },
+               { label: 'V3', xml: '/p/cuts/Cut_v3.xml', folder: '/p/cuts/Cut_v3 - revised', url: 'about:blank', qa: null, applied: 2, notes: 3 }],
+    ai: { V3: { notes: [{ kind: 'story', text: 'AI: The ending is abrupt', timeline_sec: 50, clip: 6, shapes: [] }], checks: [{ name: 'HOOK', ok: false, detail: 'weak' }], summary: 'A septic tip.', unverified_quotes_dropped: 0 } },
+    auto: { status: 'left', summary: 'Ready for your review: V3 (2 revisions). 8 things left that the editor could not fix by itself (each says why).', best: 'V3', left: [{ text: 'AI: The ending is abrupt', kind: 'story', reason: 'needs new words' }], versions: [], rounds: [] } };
+
+  const p2 = await fresh();
+  await p2.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
+  await p2.waitForTimeout(300);
+  const s2 = await sent(p2);
+  check('REOPEN-ASKS-FOR-THE-LAST-REVIEWED-CUT-NOT-A-BUILD', s2.includes('open_review') && !s2.includes('build_review') && !s2.includes('auto_edit'), s2.join(','));
+  const opened = (await p2.evaluate(() => window.__sent.find(c => c.type === 'open_review') || {})).xml;
+  check('IT-OPENS-THE-CUT-WITH-A-SESSION-NOT-THE-NEWER-UNREVIEWED-ONE', opened === '/p/cuts/Cut.xml', String(opened));
+  await p2.evaluate(e => window.__emit(e), loaded);
+  await p2.waitForTimeout(400);
+  await p2.screenshot({ path: OUT + '9-reopened.png' });
+  const tabs2 = await p2.evaluate(() => [...document.querySelectorAll('.btn')].map(b => b.innerText).filter(t => /^V\d/.test(t)));
+  check('ALL-THREE-VERSIONS-ARE-BACK', tabs2.join(',') === 'V1,V2,V3', tabs2.join(','));
+  const strip2 = await p2.evaluate(() => (document.querySelector('.ai-strip') || {}).innerText || '');
+  check('IT-IS-THE-USERS-TURN-WITH-THE-EDITORS-OWN-SUMMARY', /Your turn/.test(strip2) && /Ready for your review: V3/.test(strip2) && (await p2.locator('.ai-strip.working').count()) === 0, strip2.slice(0, 110).replace(/\n/g, ' | '));
+  const s3 = await sent(p2);
+  check('REOPENING-STARTS-NOTHING-NEW', !s3.includes('auto_edit') && !s3.includes('ai_review') && !s3.includes('build_review') && !s3.includes('apply_notes'), s3.join(','));
+  check('THE-BEST-VERSION-IS-OPEN', /V3 open/.test(await p2.evaluate(() => document.getElementById('tablabel').innerText)), '');
+  check('THE-FEED-SAYS-IT-WAS-REOPENED', /Reopened your earlier review of this cut \(V1, V2, V3\)/.test(await p2.evaluate(() => (document.querySelector('.ai-feed') || {}).innerText || '')), '');
+  check('WHAT-IS-LEFT-IS-LISTED', /needs new words/.test(await p2.evaluate(() => document.body.innerText)), '');
+
+  // a project with only an unreviewed cut: nothing is built behind the user's back; the list says so
+  const p3 = await fresh();
+  await p3.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: [exportsList[0]] });
+  await p3.waitForTimeout(300);
+  check('AN-UNREVIEWED-CUT-IS-NOT-AUTO-BUILT', (await sent(p3)).filter(x => x !== 'list_exports').length === 0 && /not reviewed yet/.test(await p3.evaluate(() => document.body.innerText)), (await sent(p3)).join(','));
+
+  // the list of a reviewed cut: Open review (as it was) and Start over (on purpose, asks first)
+  const p4 = await fresh();
+  await p4.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: [exportsList[1]] });
+  await p4.waitForTimeout(300);
+  await p4.evaluate(e => window.__emit(e), loaded);
+  await p4.waitForTimeout(300);
+  await p4.getByText('Other cut…').click();
+  await p4.waitForTimeout(300);
+  const body4 = await p4.evaluate(() => document.body.innerText);
+  check('THE-LIST-SHOWS-THE-SESSION-AND-BOTH-CHOICES', /reviewed: 3 versions, V3 is the one to review, 8 left/.test(body4) && /Open review/.test(body4) && /Start over/.test(body4), body4.slice(body4.indexOf('Cut.xml'), body4.indexOf('Cut.xml') + 110).replace(/\n/g, ' | '));
+  await p4.evaluate(() => { window.__sent.length = 0; });
+  await p4.getByText('Open review').click();
+  await p4.waitForTimeout(300);
+  const s4 = await sent(p4);
+  check('OPEN-REVIEW-REOPENS-WITHOUT-THE-FRESH-FLAG', s4.join(',') === 'open_review', s4.join(','));
+  const p5 = await fresh();
+  await p5.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: [exportsList[1]] });
+  await p5.waitForTimeout(300);
+  await p5.evaluate(e => window.__emit(e), loaded);
+  await p5.waitForTimeout(300);
+  await p5.getByText('Other cut…').click();
+  await p5.waitForTimeout(300);
+  await p5.evaluate(() => { window.__sent.length = 0; });
+  await p5.getByText('Start over').first().click();                                                   // the dialog asking first is accepted by the handler above
+  await p5.waitForTimeout(300);
+  const s5 = await sent(p5);
+  check('START-OVER-IS-EXPLICIT-AND-SENDS-THE-FRESH-FLAG', s5.join(',') === 'open_review:fresh', s5.join(','));
+
   check('NO-PAGE-ERRORS', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();
   let bad = 0;

@@ -132,6 +132,12 @@ class ActiveJob:
 # ---------------------------------------------------------------------------
 
 def emit(event: dict[str, Any]) -> None:
+    if event.get("type") in ("review_built", "notes_applied", "ai_review_done", "auto_edit_done"):
+        try:                                           # the Review tab's session is kept beside the cut as it happens, whether or not a window is listening; saved BEFORE the event goes out
+            import creator_tools                       # so whatever reacts to the event (or a stop right after it) finds the session already on disk
+            creator_tools.record_event(event)
+        except Exception as exc:                       # never let bookkeeping break the event stream
+            sys.stderr.write(f"could not record the review session: {exc}\n")
     with _stdout_lock:
         _proto_out.write(json.dumps(event) + "\n")
         _proto_out.flush()
@@ -1107,6 +1113,22 @@ def handle_build_review(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_open_review(cmd: dict) -> None:
+    """Open a cut's review as it was left: its saved session (every version, the AI reviews, the editor's conclusion) is read back and the review pages are served again, with nothing rebuilt
+    and nothing re-reviewed. A cut with no saved session is built as a new review. `fresh: true` starts over on purpose."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("open_review needs an 'xml' path")
+        return
+    import creator_tools
+    sess = None if cmd.get("fresh") else creator_tools.load_session(xml)
+    if sess is None:
+        handle_build_review(cmd)
+        return
+    running = bool(_auto_info) and _auto_info.get("root") == sess["root"]
+    emit({"type": "review_session_loaded", **sess, "auto_running": running, "auto_tag": _auto_info.get("tag") if running else None})
+
+
 def handle_apply_notes(cmd: dict) -> None:
     """An export XML + a review_notes.json in; the revised cut, its review page and the QA pass on every note out. Background job."""
     xml, notes, payload = cmd.get("xml"), cmd.get("notes"), cmd.get("notes_payload")
@@ -1127,7 +1149,7 @@ def handle_apply_notes(cmd: dict) -> None:
                 lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}), cmd.get("ops"))
             for row in printed:
                 log("info", row)
-            emit({"type": "notes_applied", "job_id": job_id, **result})
+            emit({"type": "notes_applied", "job_id": job_id, "root": cmd.get("root"), "label": cmd.get("label"), **result})
         except creator_tools.ToolError as exc:
             emit({"type": "notes_failed", "job_id": job_id, "message": str(exc)})
         except Exception as exc:
@@ -1152,7 +1174,7 @@ def handle_ai_review(cmd: dict) -> None:
             result, _printed = creator_tools.capture(creator_tools.ai_review, xml, cmd.get("folder"),
                                                      lambda s: emit({"type": "ai_review_stage", "xml": xml, "tag": tag, "stage": s}),
                                                      bool(cmd.get("story", True)))
-            emit({"type": "ai_review_done", "xml": xml, "tag": tag, **result})
+            emit({"type": "ai_review_done", "xml": xml, "tag": tag, "root": cmd.get("root"), **result})
         except creator_tools.ToolError as exc:
             emit({"type": "ai_review_failed", "xml": xml, "tag": tag, "message": str(exc)})
         except Exception as exc:
@@ -1164,6 +1186,7 @@ def handle_ai_review(cmd: dict) -> None:
 
 _auto_stop = threading.Event()
 _auto_running = threading.Lock()
+_auto_info: dict = {}                                  # what the editor loop is on right now: {root, tag}; read when a window reopens a cut mid-loop
 
 
 def handle_auto_edit(cmd: dict) -> None:
@@ -1178,12 +1201,14 @@ def handle_auto_edit(cmd: dict) -> None:
               "summary": "The AI editor is already working. Press Stop on it first."})
         return
     _auto_stop.clear()
+    _auto_info.clear()
+    _auto_info.update({"root": cmd.get("root") or xml, "tag": cmd.get("tag") or "V1"})
 
     def worker():
         import creator_tools
         try:
             result, printed = creator_tools.capture(creator_tools.auto_edit, xml, folder, cmd.get("tag") or "V1", int(cmd.get("max_rounds", creator_tools.AUTO_MAX_ROUNDS)), emit,
-                                                    _auto_stop.is_set, bool(cmd.get("story", True)))
+                                                    _auto_stop.is_set, bool(cmd.get("story", True)), cmd.get("root"))
             for row in printed:
                 log("info", row)
         except Exception as exc:
@@ -1191,6 +1216,7 @@ def handle_auto_edit(cmd: dict) -> None:
             emit({"type": "auto_edit_done", "status": "failed", "message": f"{type(exc).__name__}: {exc}", "best": cmd.get("tag") or "V1", "versions": [], "left": [], "rounds": [],
                   "summary": f"The editor could not continue: {exc}"})
         finally:
+            _auto_info.clear()
             _auto_running.release()
 
     _executor.submit(worker)
@@ -1316,6 +1342,7 @@ HANDLERS = {
     "review_cut": handle_review_cut,
     # Creator-workflow tools (labs/)
     "build_review": handle_build_review,
+    "open_review": handle_open_review,
     "apply_notes": handle_apply_notes,
     "export_xml": handle_export_xml,
     "ai_review": handle_ai_review,

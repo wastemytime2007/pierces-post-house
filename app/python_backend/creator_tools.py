@@ -181,6 +181,143 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
     f.write_text(json.dumps(rows[:50], indent=2))
 
 
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# A review session is everything the Review tab shows for one cut: its versions (V1, V2, ...), the AI review of each, the QA ledger, what the AI editor concluded. It is written beside the cut's
+# XML as the events happen (the backend calls record_event for each), so closing the app, leaving the project or opening another cut loses nothing, and reopening shows the session as it was
+# instead of building and reviewing the cut again. Starting over is a separate, explicit act (a fresh build_review, which resets the session).
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+
+SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
+
+
+def session_path(root_xml: str | Path) -> Path:
+    r = Path(root_xml).expanduser()
+    return r.parent / f"{r.stem} - session.json"
+
+
+def _read_session(root_xml: str | Path) -> dict | None:
+    import json
+    try:
+        s = json.loads(session_path(root_xml).read_text())
+        return s if isinstance(s, dict) and isinstance(s.get("versions"), list) else None
+    except (OSError, ValueError):
+        return _session_from_disk(root_xml)                       # a cut reviewed before sessions were saved: its versions are still on disk
+
+
+def _ai_subset(path: Path) -> dict | None:
+    import json
+    try:
+        r = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    return {k: r.get(k) for k in ("notes", "checks", "summary", "unverified_quotes_dropped", "not_covered")}
+
+
+def _session_from_disk(root_xml: str | Path) -> dict | None:
+    """Rebuild the session of a cut from the files its review left: its review folder, then each version's folder nested in the one before (`<name>_v2 - revised/`, then `<name>_v3 - revised/` inside
+    it, ...) with the change ledger, the QA result and the AI review each wrote. What was not written down (the editor's own conclusion) is left out. The result is saved, so this runs once."""
+    import json
+    import time
+    root = Path(root_xml).expanduser()
+    review = root.parent / f"{root.stem} - review"
+    if not root.is_file() or not (review / "review.html").is_file():
+        return None
+    versions = [{"label": "V1", "xml": str(root), "folder": str(review), "applied": None, "notes": None, "qa": None}]
+    ai: dict = {}
+    first = _ai_subset(review / "ai_review.json")
+    if first:
+        ai["V1"] = first
+    folder, n = root.parent, 2
+    while True:
+        d = folder / f"{root.stem}_v{n} - revised"
+        x = d / f"{root.stem}_v{n}.xml"
+        if not (x.is_file() and (d / "review.html").is_file() and (d / "qa" / "qa.json").is_file()):
+            break                                                 # a revision only gets its QA result after it passed its own checks; one without it was refused and is not shown as a version
+        applied = notes = None
+        try:
+            items = json.loads((d / "changes.json").read_text()).get("items", [])
+            applied, notes = sum(1 for i in items if i.get("applied")), len(items)
+        except (OSError, ValueError):
+            pass
+        qa = None
+        try:
+            q = json.loads((d / "qa" / "qa.json").read_text())
+            qa = {"report": str(d / "qa" / "qa_report.html"), "notes": q.get("notes", []), "whole_cut": q.get("checks", []), "unrequested": q.get("unrequested", [])}
+        except (OSError, ValueError):
+            pass
+        versions.append({"label": f"V{n}", "xml": str(x), "folder": str(d), "applied": applied, "notes": notes, "qa": qa})
+        sub = _ai_subset(d / "ai_review.json")
+        if sub:
+            ai[f"V{n}"] = sub
+        folder, n = d, n + 1
+    s = {"root": str(root), "versions": versions, "ai": ai, "auto": None, "updated": max(Path(v["folder"]).stat().st_mtime for v in versions) or time.time()}
+    try:
+        session_path(root).write_text(json.dumps(s))
+    except OSError:
+        pass
+    return s
+
+
+def record_event(ev: dict) -> None:
+    """Fold one backend event into its cut's session file. `root` names the cut (the V1 XML); review_built is its own root. Events without one are not part of a session."""
+    import json
+    import time
+    t = ev.get("type")
+    if t not in SESSION_EVENTS:
+        return
+    root = ev.get("xml") if t == "review_built" else ev.get("root")
+    if not root:
+        return
+    s = _read_session(root) or {"root": str(root), "versions": [], "ai": {}, "auto": None}
+    if t == "review_built":
+        s = {"root": str(root), "versions": [{"label": "V1", "xml": ev["xml"], "folder": ev["folder"], "applied": None, "notes": None, "qa": None}], "ai": {}, "auto": None}   # a rebuild starts the session over
+    elif t == "notes_applied":
+        if not ev.get("xml"):
+            return
+        label = ev.get("label") or f"V{len(s['versions']) + 1}"
+        s["versions"] = [v for v in s["versions"] if v["xml"] != ev["xml"] and v["label"] != label]
+        s["versions"].append({"label": label, "xml": ev["xml"], "folder": ev["folder"], "applied": ev.get("applied"), "notes": ev.get("notes"), "qa": ev.get("qa")})
+        s["versions"].sort(key=lambda v: int(str(v["label"])[1:] or 0))
+    elif t == "ai_review_done":
+        s["ai"][ev.get("tag") or "V1"] = {k: ev.get(k) for k in ("notes", "checks", "summary", "unverified_quotes_dropped", "not_covered")}
+    elif t == "auto_edit_done":
+        s["auto"] = {k: ev.get(k) for k in ("status", "summary", "best", "left", "versions", "rounds", "message")}
+    s["updated"] = time.time()
+    p = session_path(root)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(s))
+    tmp.replace(p)
+
+
+def load_session(root_xml: str | Path) -> dict | None:
+    """The saved session for a cut, ready to show: versions whose files are still there (each with its review page served again), the AI reviews, the editor's conclusion. None when there is no
+    usable session (nothing saved, or the cut's own XML is gone), and the caller then builds the cut as a new review."""
+    s = _read_session(root_xml)
+    if not s:
+        return None
+    versions = []
+    for v in s["versions"]:
+        if not Path(v["xml"]).is_file() or not (Path(v["folder"]) / "review.html").is_file():
+            if v["label"] == "V1":
+                return None
+            continue
+        versions.append({**v, "url": serve_review(v["folder"])})
+    if not versions or versions[0]["label"] != "V1":
+        return None
+    ai = {k: v for k, v in (s.get("ai") or {}).items() if k in {x["label"] for x in versions}}
+    return {"root": s["root"], "versions": versions, "ai": ai, "auto": s.get("auto"), "updated": s.get("updated")}
+
+
+def session_summary(root_xml: str | Path) -> dict | None:
+    """What the exports list shows for a cut that has a session: how many versions, which one the editor named, how much was left, when."""
+    s = _read_session(root_xml)
+    if not s or not s["versions"]:
+        return None
+    auto = s.get("auto") or {}
+    return {"versions": len(s["versions"]), "latest": s["versions"][-1]["label"], "best": auto.get("best") or s["versions"][-1]["label"], "left": len(auto.get("left") or []),
+            "status": auto.get("status"), "updated": s.get("updated")}
+
+
 def list_exports(project_dir: str | Path) -> list[dict]:
     """The exports this project made that still exist, newest first (recorded ones, then any XML in the project's own exports folder)."""
     import json
@@ -195,7 +332,7 @@ def list_exports(project_dir: str | Path) -> list[dict]:
     if (d / "exports").is_dir():
         for p in (d / "exports").rglob("*.xml"):
             seen.setdefault(str(p), p.stat().st_mtime)
-    return [{"path": p, "name": Path(p).name, "mtime": t} for p, t in sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:30]]
+    return [{"path": p, "name": Path(p).name, "mtime": t, "session": session_summary(p)} for p, t in sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:30]]
 
 
 def premiere_app() -> str | None:
@@ -439,14 +576,15 @@ def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> lis
     return keep
 
 
-def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_MAX_ROUNDS, emit=None, cancelled=None, story: bool = True) -> dict:
+def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_MAX_ROUNDS, emit=None, cancelled=None, story: bool = True, root: str | None = None) -> dict:
     """The AI editor's own loop: review the version, submit the findings it can fix as notes, review the new version, repeat, until the cut has nothing left to fix or the editor cannot do more.
 
     Everything is visible: each review and each revision is announced with the same events a manual review and a manual Submit produce (so the Review tab shows the AI's notes on the page, every
     version, and the QA ledger), plus `auto_edit_*` events for the rounds. Every version is kept as a file; nothing is overwritten. Guards: a note the editor could not carry out is parked and not
     submitted again; a round that leaves MORE to fix than before ends the loop and the earlier version is named as the one to review; the cut is not allowed below 60% of the length the loop
     started with; at most `max_rounds` revisions. Returns how it ended, the version to review, and what is left that it could not do."""
-    emit = emit or (lambda ev: None)
+    raw_emit = emit or (lambda ev: None)
+    emit = lambda ev: raw_emit({**ev, "root": root or xml})                # every event names its cut, so the session file can be kept even when no window is listening   # noqa: E731
     cancelled = cancelled or (lambda: False)
     use_labs()
     import timeline
@@ -530,7 +668,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                 out["message"] = r.get("message", "")
                 break
             new_label = f"V{int(cur_label[1:]) + 1}"
-            emit({"type": "notes_applied", "auto": True, **r})
+            emit({"type": "notes_applied", "auto": True, "label": new_label, **r})
             res = review(r["xml"], r["folder"], new_label)
             sc = review_score(res)
             out["versions"].append({"label": new_label, "xml": r["xml"], "score": sc})
