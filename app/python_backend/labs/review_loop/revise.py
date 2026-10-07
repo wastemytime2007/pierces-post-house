@@ -33,8 +33,8 @@ from timeline import Cut, TimelineError, _seq_for_cut, load_cut  # noqa: E402
 
 def _video_items(xml: Path, zone_f: int, before: bool) -> list[tuple[int, int, int, int]]:
     seq = _seq_for_cut(ET.parse(xml).getroot())
-    items = seq.findall("media/video/track/clipitem")
-    rows = [(int(c.findtext("start")), int(c.findtext("end")), int(c.findtext("in")), int(c.findtext("out"))) for c in items]
+    items = seq.find("media/video/track").findall("clipitem")                 # the cut's own track, as load_cut reads it; stills (no in/out) are not footage
+    rows = [(int(c.findtext("start")), int(c.findtext("end")), int(c.findtext("in")), int(c.findtext("out"))) for c in items if c.findtext("in") is not None and c.findtext("out") is not None]
     return sorted(r for r in rows if (r[0] < zone_f) == before)
 
 

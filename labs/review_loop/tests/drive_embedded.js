@@ -32,12 +32,24 @@ const check = (name, ok, detail = '') => rows.push([name, ok, detail]);
   const first = await page.evaluate(() => window.__msgs.filter(m => m && m.type === 'review:count').pop());
   check('PAGE-REPORTS-ITS-NOTE-COUNT', !!first && first.n === 0, JSON.stringify(first));
 
+  const ui0 = await frame.evaluate(() => { const g = id => document.getElementById(id); const vis = el => getComputedStyle(el).display !== 'none';
+    return { submit: vis(g('submit')), disabled: g('submit').disabled, label: g('submit').textContent, copy: vis(g('copy')), dl: vis(g('dl')) }; });
+  check('EMBEDDED-SHOWS-SUBMIT-AND-HIDES-COPY-AND-DOWNLOAD', ui0.submit && !ui0.copy && !ui0.dl, JSON.stringify(ui0));
+  check('SUBMIT-IS-DISABLED-WITH-NO-NOTES', ui0.disabled === true && ui0.label === 'Submit changes', '');
+
   await frame.click('#add');
   await frame.fill('#text', 'Lower this shot so his head is not cut off');
   await frame.click('#save');
   await page.waitForTimeout(300);
   const count = await page.evaluate(() => window.__msgs.filter(m => m && m.type === 'review:count').pop());
   check('COUNT-UPDATES-WHEN-A-NOTE-IS-SAVED', !!count && count.n === 1, JSON.stringify(count));
+
+  const ui1 = await frame.evaluate(() => ({ disabled: document.getElementById('submit').disabled, label: document.getElementById('submit').textContent }));
+  check('SUBMIT-SHOWS-THE-NOTE-COUNT-AND-IS-ENABLED', ui1.disabled === false && ui1.label === 'Submit changes (1)', JSON.stringify(ui1));
+  await frame.click('#submit');
+  await page.waitForTimeout(200);
+  const submitted = await page.evaluate(() => window.__msgs.some(m => m && m.type === 'review:submit'));
+  check('SUBMIT-REACHES-THE-APP', submitted, '');
 
   const payload = await page.evaluate(() => window.ask());
   const ok = payload.schema === 'review_notes.v0-draft' && payload.notes.length === 1 && /Lower this shot/.test(payload.notes[0].text) && typeof payload.notes[0].timeline_sec === 'number';

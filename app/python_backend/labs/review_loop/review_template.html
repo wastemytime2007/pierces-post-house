@@ -142,6 +142,7 @@
   <div class="row">
     <h2 style="margin:0" id="count"></h2>
     <span class="spacer"></span>
+    <button id="submit" class="primary" style="display:none" title="Send these notes to the editor, who makes the changes and opens the next version">Submit changes</button>
     <button id="copy">Copy all feedback</button>
     <button id="dl">Download JSON</button>
   </div>
@@ -600,6 +601,9 @@ function drawPins() {
 function esc(s) { return s.replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch])); }
 function drawNotes() {
   document.getElementById('count').textContent = 'Feedback (' + notes.length + ')';
+  const sb = document.getElementById('submit');
+  sb.textContent = notes.length ? 'Submit changes (' + notes.length + ')' : 'Submit changes';
+  sb.disabled = !notes.length;
   const box = document.getElementById('notes');
   box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Click any box on the timeline map to leave a note on that whole element, or press n for a note at the playhead, d to draw on the frame.</div>';
   notes.forEach((n, i) => {
@@ -750,6 +754,14 @@ window.addEventListener('message', e => {
     save(); drawNotes();
   }
 });
+// Inside the app there is nothing to download or copy: the notes go to the editor with one button. On its own (opened from a file) the page keeps Copy and Download.
+if (window.parent !== window) {
+  document.getElementById('copy').style.display = 'none';
+  document.getElementById('dl').style.display = 'none';
+  const sb = document.getElementById('submit');
+  sb.style.display = '';
+  sb.onclick = () => tellHost({ type: 'review:submit' });
+}
 setDrawMode(false); drawNotes(); tick();
 tellHost({ type: 'review:count', n: notes.length });
 </script>

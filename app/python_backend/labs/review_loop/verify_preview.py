@@ -49,6 +49,18 @@ def _gray_framed(path: str, t: float, geometry: str) -> np.ndarray:
     return np.frombuffer(p.stdout, dtype=np.uint8).astype(np.float32)
 
 
+NTSC_ERR = 1.0 - 29.97 / 30.0      # 0.1%: what a 29.97 fps file's in-point reads as if its frame count is taken at 30 fps (or the other way round)
+
+
+def ntsc_explained(lag: float, camera_in_sec: float, tol: float = 0.05) -> bool:
+    """True when a lav-to-camera lag is 0.1% of where the clip sits in the camera file, to within `tol` seconds.
+
+    That signature means the XML's audio and video in-points disagree only by how the frame count is read: PreCut writes the video in-point as seconds x 30 and keeps the file declared
+    29.97, and the lav in-point as seconds x 30. Read at the sequence's 30 fps the two agree exactly; read at the file's 29.97 they are apart by 0.1% of the position. Which one Premiere
+    applies is not something this code can know, so such a lag is reported as an open question to settle in Premiere, not as a pass and not as a failure."""
+    return camera_in_sec > 30.0 and abs(lag) >= 0.1 and abs(abs(lag) - camera_in_sec * NTSC_ERR) < tol
+
+
 def _lag(a: np.ndarray, b: np.ndarray) -> float:
     n = min(len(a), len(b))
     a, b = a[:n] - a[:n].mean(), b[:n] - b[:n].mean()
@@ -114,8 +126,13 @@ def main() -> int:
             continue
         span = min(6.0, v["end"] - v["start"])
         lag = _lag(_pcm(a["source_path"], a["src_in"], span), _pcm(v["source_path"], v["src_in"], span))
-        rows.append((f"LAV-SYNC clip {v['idx']}", abs(lag) < 0.1 if lag == lag else None,
-                     f"lav vs camera lag {lag:+.3f}s" if lag == lag else "no usable signal"))
+        if lag == lag and ntsc_explained(lag, v["src_in"]):
+            rows.append((f"LAV-SYNC clip {v['idx']}", None,
+                         f"lav vs camera lag {lag:+.3f}s, which is exactly 0.1% of this clip's place in the camera file ({v['src_in']:.0f} s): the lav lines up if the video in-point is read at the "
+                         "sequence's 30 fps and is 0.1% off if it is read at the file's 29.97. Open the XML in Premiere and see whether the camera and lav waveforms line up on this clip."))
+        else:
+            rows.append((f"LAV-SYNC clip {v['idx']}", abs(lag) < 0.1 if lag == lag else None,
+                         f"lav vs camera lag {lag:+.3f}s" if lag == lag else "no usable signal"))
         checked += 1
     if not tl.get("audio"):
         rows.append(("LAV-SYNC", None, "camera audio preview; nothing to sync"))

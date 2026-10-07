@@ -42,6 +42,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const readyRef = useRef(false);
   const curRef = useRef(0);
   const flushRef = useRef(null);
+  const submitRef = useRef(null);
   const aiStartRef = useRef(null);
 
   const version = versions[cur];
@@ -153,6 +154,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
   // The page tells us how many notes it holds.
   useEffect(() => {
     const onMsg = (e) => {
+      if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:submit") {
+        submitRef.current?.();
+        return;
+      }
       if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:count") {
         setNoteCount(e.data.n || 0);
         readyRef.current = true;
@@ -231,6 +236,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
     }
   }, [version, askNotes]);
 
+  submitRef.current = () => {
+    if (busyRef.current) {
+      setInfo("The editor is already working on the last submission. Wait for the next version to open.");
+      return;
+    }
+    apply();
+  };
+
   const exportXml = useCallback(async () => {
     if (!version) return;
     setError("");
@@ -295,12 +308,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
         ))}
         <span className="transcript-row-name" title={version.xml}>{fileName(version.xml)}</span>
         <span style={{ flex: 1 }} />
-        <button className="btn btn-primary" onClick={apply} disabled={!!busy} title="Revise the cut from the notes on the page and open the next version here">
+        <button className="btn btn-primary" onClick={apply} disabled={!!busy} title="Send the notes on the page to the editor. It makes the changes and opens the next version here.">
           {busy === "applying"
-            ? "Applying…"
+            ? "Editor is working…"
             : noteCount
-              ? `Apply ${noteCount} note${noteCount === 1 ? "" : "s"} → V${versions.length + 1}`
-              : `Apply notes → V${versions.length + 1}`}
+              ? `Submit changes (${noteCount}) → V${versions.length + 1}`
+              : `Submit changes → V${versions.length + 1}`}
         </button>
         <button className="btn btn-ghost" onClick={exportXml} disabled={!!busy} title="Check the XML, then open it in Premiere">
           Export XML → Premiere

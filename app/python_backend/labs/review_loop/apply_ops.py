@@ -304,7 +304,8 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
 
     for kind in ("video", "audio"):
         for track in seq.findall(f"media/{kind}/track"):
-            zone = [c for c in track.findall("clipitem") if int(c.findtext("start")) < zone_f]
+            # a still with no source in/out (PreCut's "SAFE ZONE OVERLAY" guide on V2) is not footage in the cut: it has nothing to ripple, so it is left exactly as it is
+            zone = [c for c in track.findall("clipitem") if int(c.findtext("start")) < zone_f and c.findtext("in") is not None and c.findtext("out") is not None]
             if not zone or not (removed or inserted):
                 continue
             pos = list(track).index(zone[0])

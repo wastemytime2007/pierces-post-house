@@ -120,6 +120,27 @@ def test_a_lav_split_mid_clip_by_a_bleep_is_not_reported_as_drift(tmp_path, fram
     assert rows["LAV-SYNC-PRESERVED"] is True
 
 
+def test_a_still_overlay_with_no_in_out_is_left_alone_when_the_cut_ripples(tmp_path, framed):
+    """The app's own export carries PreCut's 'SAFE ZONE OVERLAY' still on V2: a clip item with no <in>/<out>. The ripple edit crashed on it ("int() argument must be ... NoneType")."""
+    t = ET.parse(framed)
+    seq = t.getroot().find("sequence")
+    still = ET.fromstring('<track><clipitem id="s1-clipitem-10"><name>SAFE ZONE OVERLAY (disable before export)</name><enabled>TRUE</enabled><duration>9000</duration>'
+                          '<start>0</start><end>9000</end><file id="ovf"/><compositemode>normal</compositemode><stillframe>TRUE</stillframe></clipitem></track>')
+    video = seq.find("media/video")
+    video.insert(list(video).index(video.find("track")) + 1, still)
+    both = tmp_path / "with_still.xml"
+    t.write(both, encoding="UTF-8", xml_declaration=True)
+    cut = timeline.load_cut(both)
+    out = tmp_path / "v2.xml"
+    changes, delta = apply_ops.apply_ops(both, out, cut, [{"note": 1, "op": "remove_range", "start": 3.0, "end": 5.0, "why": "stated"}], [{"timeline_sec": 4.0, "text": "take out 3 to 5 seconds"}])
+    assert changes[0].applied and delta == pytest.approx(-2.0, abs=0.03)
+    kept = ET.parse(out).getroot().find("sequence").findall("media/video/track")[1].find("clipitem")
+    assert (kept.findtext("start"), kept.findtext("end"), kept.find("in")) == ("0", "9000", None)               # untouched
+    assert timeline.load_cut(out).zone_end == pytest.approx(cut.zone_end - 2.0, abs=0.03)
+    rows = dict((n, ok) for n, ok, _d in revise.verify(cut, both, out, delta))                 # the checks read the same XML without tripping on the still
+    assert rows["RIPPLE-LENGTH"] is True and rows["CONTIGUOUS"] is True and rows["POOL-ONLY-LOST-WHAT-THE-CUT-GAINED"] is True
+
+
 def test_raising_goes_the_other_way_and_the_edge_of_the_picture_stops_it(tmp_path, framed):
     cut = timeline.load_cut(framed)
     ops = [{"note": 2, "op": "reframe_vertical", "clip": 2, "direction": "raise"}]

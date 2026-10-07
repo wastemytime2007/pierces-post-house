@@ -11,7 +11,9 @@ What it looks at, and how each finding is grounded (nothing here is a guess dres
   CUT-EDGES      every place the picture jumps to different footage, and the start and end of the cut. At each edge, on the audio you actually hear (the lav under it), the level in the 30 ms
                  inside the clip is compared with the clip's own loud speech: still loud means the cut lands in the middle of a sound. Whisper is also run on the source around the edge: a
                  word whose start or end falls on the other side of the edge is a cut-through word. Reported with the heard words and the time.
-  SOURCE-AUDIO   which recorder the voice comes from, for how much of the cut; stretches with no voice under them; voice tracks that are silent (a wrong sync shows up here).
+  SOURCE-AUDIO   which recorder the voice comes from, for how much of the cut; stretches with no voice under them; voice tracks that are silent.
+  SYNC           the voice recorder against the camera's own audio, on a few clips, at the alignment the XML gives. A lag that is exactly 0.1% of the clip's place in the camera file is the
+                 29.97-versus-30 question and is reported as open (it depends on how Premiere reads the XML); any other lag is reported as out of sync.
   STORY          the words of the finished cut, in the order they play, are read by the local Claude CLI (free, no API). It judges the hook, the point and the ending and lists problems with an
                  exact quote. A quote that is not in the transcript is thrown away (counted, never shown): the model's words are checked against the real ones.
 
@@ -195,6 +197,59 @@ def source_audio_findings(cut: Cut, pcm_fn=pcm, covered: list[tuple[float, float
     return Finding("SOURCE-AUDIO", not gaps and not silent, detail, notes)
 
 
+SYNC_CLIPS = 4             # how many clips the voice recorder is compared with the camera's own audio on (spread across the cut)
+
+
+def _sync_lag(clip, piece) -> float:
+    """Seconds the voice recorder lags the camera's own audio on this clip, from the XML's alignment (NaN when there is nothing to compare)."""
+    import verify_preview as vp
+    span = min(6.0, clip.tl_end - clip.tl_start - 0.05)
+    if span < 1.0:
+        return float("nan")
+    lav = vp._pcm(piece.src_path, piece.src_in + (clip.tl_start - piece.tl_start), span)
+    cam = vp._pcm(clip.src_path, clip.src_in, span)
+    if len(lav) < 4000 or len(cam) < 4000:
+        return float("nan")
+    return vp._lag(lav, cam)
+
+
+def sync_findings(cut: Cut, lag_fn=None) -> Finding:
+    """Is the voice recorder lined up with the picture? The lav is compared with the camera's own audio at the place the XML puts them, on a few clips. A lag that is exactly 0.1% of the
+    clip's position in the camera file is the 29.97-versus-30 reading question (see verify_preview.ntsc_explained): reported as open, to be settled in Premiere, never as a pass."""
+    import verify_preview as vp
+    lag_fn = lag_fn or _sync_lag
+    pairs = []
+    for v in cut.video:
+        a = piece_at(cut, v.tl_start + PROBE)
+        if a is not None and a.src_path != v.src_path:
+            pairs.append((v, a))
+    if not pairs:
+        return Finding("SYNC", None, "the voice comes from the camera's own audio, so there is no separate recorder to line up")
+    step = max(1, len(pairs) // SYNC_CLIPS)
+    picked = pairs[::step][:SYNC_CLIPS]
+    good, open_q, bad, none = [], [], [], 0
+    for v, a in picked:
+        lag = lag_fn(v, a)
+        if lag != lag:
+            none += 1
+        elif abs(lag) < 0.1:
+            good.append((v, lag))
+        elif vp.ntsc_explained(lag, v.src_in):
+            open_q.append((v, lag))
+        else:
+            bad.append((v, lag))
+    if bad:
+        return Finding("SYNC", False, "the voice recorder is out of line with the camera: " + "; ".join(f"clip {v.idx} by {lag:+.2f} s" for v, lag in bad))
+    if open_q:
+        v, lag = open_q[0]
+        return Finding("SYNC", None, f"open question: on {len(open_q)} of {len(picked)} clips the recorder is {abs(lag):.2f} s from the camera audio, which is exactly 0.1% of where the clip sits in the camera file "
+                                     f"({v.src_in:.0f} s). They line up if the XML's video in-points are read at the sequence's 30 fps and are 0.1% apart if read at the file's 29.97 fps. "
+                                     "Open the XML in Premiere and check whether the camera and recorder waveforms line up on one of these clips.")
+    if not good:
+        return Finding("SYNC", None, "the recorder could not be compared with the camera audio (no usable signal)")
+    return Finding("SYNC", True, f"the voice recorder lines up with the camera audio on {len(good)} clip(s) checked (largest lag {max(abs(l) for _v, l in good) * 1000:.0f} ms)")
+
+
 def transcript_of(cut: Cut, words_fn=None) -> list[tuple[float, float, str, object]]:
     """The words of the finished cut in timeline time: [(start, end, text, clip)], read from the voice audio under each stretch."""
     words_fn = words_fn or words_mod.words_in
@@ -276,6 +331,11 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
     except Exception:
         bleeps = []
     checks.append(source_audio_findings(cut, pcm_fn, bleeps))
+    progress("Checking the voice recorder against the camera audio")
+    try:
+        checks.append(sync_findings(cut))
+    except Exception as exc:
+        checks.append(Finding("SYNC", None, f"not checked: {type(exc).__name__}: {str(exc)[:160]}"))
     dropped = 0
     summary = ""
     if story:

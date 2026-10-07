@@ -109,6 +109,29 @@ def test_voice_holes_and_silent_voice_tracks_are_reported_and_a_bleep_is_not_a_h
     assert "silent.wav 100%" in s.detail
 
 
+def test_sync_a_matching_recorder_passes_a_shifted_one_fails_and_the_ntsc_pattern_is_an_open_question(voice):
+    cut = cut_of(voice, [(0.3, 1.7), (2.9, 4.5)])
+    cut.audio[0].src_path = cut.audio[1].src_path = voice + ".lav"                         # a separate recorder (the path differs from the camera file's)
+    ok = ar.sync_findings(cut, lambda v, a: 0.004)
+    assert ok.ok is True and "lines up" in ok.detail
+    off = ar.sync_findings(cut, lambda v, a: 0.5)
+    assert off.ok is False and "out of line" in off.detail and "clip 1 by +0.50 s" in off.detail
+    for v in cut.video:
+        v.src_in += 722.0                                                                     # where the clip sits in a 12-minute camera file
+    ntsc = ar.sync_findings(cut, lambda v, a: -0.73)                                          # 0.1% of 722 s
+    assert ntsc.ok is None and "open question" in ntsc.detail and "Premiere" in ntsc.detail
+    not_ntsc = ar.sync_findings(cut, lambda v, a: -0.31)                                      # a lag at that position that is NOT 0.1%
+    assert not_ntsc.ok is False
+    assert ar.sync_findings(cut_of(voice, [(0.3, 1.7)]), lambda v, a: 0.9).ok is None        # camera audio is the voice: nothing to line up
+
+
+def test_the_ntsc_signature_is_tight_and_only_applies_far_into_a_file():
+    import verify_preview as vp
+    assert vp.ntsc_explained(0.722, 722.9) and vp.ntsc_explained(-0.757, 759.2)
+    assert not vp.ntsc_explained(0.722, 300.0)                                                # that lag would not be 0.1% of 300 s
+    assert not vp.ntsc_explained(0.05, 40.0) and not vp.ntsc_explained(0.5, 10.0)             # too small or too early in the file to be this
+
+
 def fake_client(reply):
     return SimpleNamespace(messages=SimpleNamespace(create=lambda **kw: SimpleNamespace(content=[SimpleNamespace(text=reply)])))
 
