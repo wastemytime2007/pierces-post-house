@@ -335,15 +335,38 @@ def list_exports(project_dir: str | Path) -> list[dict]:
     return [{"path": p, "name": Path(p).name, "mtime": t, "session": session_summary(p)} for p, t in sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:30]]
 
 
-def premiere_app() -> str | None:
-    """The newest installed Adobe Premiere Pro (a Beta only if nothing else is installed)."""
-    import glob
-    found = sorted(glob.glob("/Applications/Adobe Premiere Pro*/Adobe Premiere Pro*.app"))
-    stable = [a for a in found if "Beta" not in a]
-    return (stable or found or [None])[-1]
+def premiere_apps(roots: tuple[str, ...] = ("/Applications", "~/Applications")) -> list[dict]:
+    """Every Adobe Premiere Pro installed, stable versions newest first, then Betas: [{"path", "name", "beta"}]. Adobe puts each install in its own folder under /Applications
+    ("Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app", "Adobe Premiere Pro (Beta)/Adobe Premiere Pro (Beta).app"); a bare .app there is found too."""
+    found: dict[str, dict] = {}
+    for root in roots:
+        base = Path(root).expanduser()
+        if not base.is_dir():
+            continue
+        for pattern in ("Adobe Premiere Pro*/Adobe Premiere Pro*.app", "Adobe Premiere Pro*.app"):
+            for p in base.glob(pattern):
+                if p.is_dir():
+                    found[str(p)] = {"path": str(p), "name": p.stem, "beta": "beta" in p.stem.lower()}
+    return sorted(found.values(), key=lambda a: (a["beta"], _neg_name(a["name"])))
 
 
-def export_xml(xml: str, open_in_premiere: bool = True) -> dict:
+def _neg_name(name: str) -> tuple:
+    """Sort key putting the higher version first among stable installs (2026 before 2025)."""
+    import re
+    m = re.search(r"(\d{4})", name)
+    return (-int(m.group(1)) if m else 0, name)
+
+
+def premiere_app(prefer: str | None = None, apps: list[dict] | None = None) -> str | None:
+    """The Premiere to open: the one asked for if it is a detected install (a path that is not one is ignored, so nothing else can be launched through this), else the newest stable, else a Beta."""
+    apps = apps if apps is not None else premiere_apps()
+    paths = [a["path"] for a in apps]
+    if prefer and prefer in paths:
+        return prefer
+    return paths[0] if paths else None
+
+
+def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None) -> dict:
     """The XML a version of the cut is, checked by the export check and (only if it passes) opened in Premiere. Never hands over an export it has not verified."""
     import os
     src = Path(xml).expanduser()
@@ -360,11 +383,12 @@ def export_xml(xml: str, open_in_premiere: bool = True) -> dict:
     out = {"xml": str(src), "verified": not failed, "failed": failed, "rows": rows, "opened": False, "app": None}
     if failed or not open_in_premiere:
         return out
-    app = premiere_app()
-    out["app"] = Path(app).stem if app else None
+    chosen = premiere_app(app)
+    out["app"] = Path(chosen).stem if chosen else None
+    out["app_path"] = chosen
     if os.environ.get("POSTHOUSE_NO_OPEN"):
         return out                                                  # tests: report what would open, open nothing
-    subprocess.run(["open", "-a", app, str(src)] if app else ["open", str(src)], check=False)
+    subprocess.run(["open", "-a", chosen, str(src)] if chosen else ["open", str(src)], check=False)
     out["opened"] = True
     return out
 

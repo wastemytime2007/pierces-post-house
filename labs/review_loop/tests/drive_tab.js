@@ -127,7 +127,7 @@ require('fs').mkdirSync(OUT, { recursive: true });
   const p3 = await fresh();
   await p3.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: [exportsList[0]] });
   await p3.waitForTimeout(300);
-  check('AN-UNREVIEWED-CUT-IS-NOT-AUTO-BUILT', (await sent(p3)).filter(x => x !== 'list_exports').length === 0 && /not reviewed yet/.test(await p3.evaluate(() => document.body.innerText)), (await sent(p3)).join(','));
+  check('AN-UNREVIEWED-CUT-IS-NOT-AUTO-BUILT', (await sent(p3)).filter(x => x !== 'list_exports' && x !== 'premiere_apps').length === 0 && /not reviewed yet/.test(await p3.evaluate(() => document.body.innerText)), (await sent(p3)).join(','));
 
   // the list of a reviewed cut: Open review (as it was) and Start over (on purpose, asks first)
   const p4 = await fresh();
@@ -156,6 +156,54 @@ require('fs').mkdirSync(OUT, { recursive: true });
   await p5.waitForTimeout(300);
   const s5 = await sent(p5);
   check('START-OVER-IS-EXPLICIT-AND-SENDS-THE-FRESH-FLAG', s5.join(',') === 'open_review:fresh', s5.join(','));
+
+  // ---- Open in Premiere: asks which version when more than one is installed, remembers the answer, and never asks when there is only one
+  const apps2 = [{ path: '/Applications/Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app', name: 'Adobe Premiere Pro 2026', beta: false },
+                 { path: '/Applications/Adobe Premiere Pro (Beta)/Adobe Premiere Pro (Beta).app', name: 'Adobe Premiere Pro (Beta)', beta: true }];
+  const open2 = async (apps) => {
+    const pg = await fresh();
+    await pg.evaluate(e => window.__emit(e), { type: 'premiere_apps', apps });
+    await pg.evaluate(e => window.__emit(e), loaded);
+    await pg.waitForTimeout(300);
+    await pg.evaluate(() => { window.__sent.length = 0; });
+    return pg;
+  };
+  const exp = pg => pg.evaluate(() => window.__sent.filter(c => c.type === 'export_xml'));
+
+  const q1 = await open2(apps2);
+  await q1.getByRole('button', { name: 'Open in Premiere' }).click();
+  await q1.waitForTimeout(300);
+  check('TWO-INSTALLS-AND-NO-CHOICE-ASKS-AND-OPENS-NOTHING-YET', (await q1.locator('[role=dialog]').count()) === 1 && (await exp(q1)).length === 0 && /Which Premiere should open it/.test(await q1.evaluate(() => document.body.innerText)), '');
+  await q1.screenshot({ path: OUT + '10-which-premiere.png' });
+  await q1.getByRole('button', { name: 'Premiere Pro (Beta)' }).click();
+  await q1.waitForTimeout(300);
+  const e1 = await exp(q1);
+  check('CHOOSING-THE-BETA-OPENS-THE-XML-IN-THE-BETA', e1.length === 1 && e1[0].app === apps2[1].path && e1[0].open === true && e1[0].xml === '/p/cuts/Cut_v3.xml', JSON.stringify(e1[0] || {}));
+  check('THE-CHOICE-IS-REMEMBERED', (await q1.evaluate(() => localStorage.getItem('review.premiere'))) === apps2[1].path, '');
+  await q1.evaluate(() => { window.__sent.length = 0; });
+  const label1 = await q1.evaluate(() => [...document.querySelectorAll('.btn')].map(b => b.innerText).find(t => /^Open in/.test(t)));
+  check('THE-BUTTON-NAMES-THE-REMEMBERED-VERSION', label1 === 'Open in Premiere Pro (Beta)', label1);
+  await q1.getByRole('button', { name: 'Open in Premiere Pro (Beta)' }).click();
+  await q1.waitForTimeout(300);
+  const e2 = await exp(q1);
+  check('NEXT-TIME-IT-OPENS-WITHOUT-ASKING', e2.length === 1 && e2[0].app === apps2[1].path && (await q1.locator('[role=dialog]').count()) === 0, JSON.stringify(e2.map(x => x.app)));
+  await q1.getByRole('button', { name: 'Premiere version…' }).click();
+  await q1.waitForTimeout(200);
+  check('PREMIERE-VERSION-REOPENS-THE-CHOICE', (await q1.locator('[role=dialog]').count()) === 1, '');
+  await q1.evaluate(() => { window.__sent.length = 0; });
+  await q1.getByRole('button', { name: 'Premiere Pro 2026' }).click();
+  await q1.waitForTimeout(300);
+  check('SWITCHING-TO-THE-STABLE-VERSION-OPENS-IT-THERE', (await exp(q1))[0].app === apps2[0].path, '');
+
+  const q2 = await open2([apps2[1]]);
+  await q2.getByRole('button', { name: 'Open in Premiere' }).click();
+  await q2.waitForTimeout(300);
+  check('ONE-INSTALL-OPENS-DIRECTLY-NO-QUESTION', (await exp(q2)).length === 1 && (await exp(q2))[0].app === apps2[1].path && (await q2.locator('[role=dialog]').count()) === 0 && (await q2.getByRole('button', { name: 'Premiere version…' }).count()) === 0, '');
+
+  const q3 = await open2([]);
+  await q3.getByRole('button', { name: 'Open in Premiere' }).click();
+  await q3.waitForTimeout(300);
+  check('NO-PREMIERE-SAYS-SO-AND-OPENS-NOTHING', (await exp(q3)).length === 0 && /Adobe Premiere Pro was not found/.test(await q3.evaluate(() => document.body.innerText)), '');
 
   check('NO-PAGE-ERRORS', errors.length === 0, errors.slice(0, 3).join(' | '));
   await browser.close();

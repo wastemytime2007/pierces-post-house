@@ -1237,7 +1237,7 @@ def handle_export_xml(cmd: dict) -> None:
     def worker():
         import creator_tools
         try:
-            result, _printed = creator_tools.capture(creator_tools.export_xml, xml, bool(cmd.get("open", True)))
+            result, _printed = creator_tools.capture(creator_tools.export_xml, xml, bool(cmd.get("open", True)), cmd.get("app"))
             emit({"type": "xml_exported", **result})
         except creator_tools.ToolError as exc:
             emit({"type": "xml_export_failed", "xml": xml, "message": str(exc)})
@@ -1246,6 +1246,12 @@ def handle_export_xml(cmd: dict) -> None:
             emit({"type": "xml_export_failed", "xml": xml, "message": f"{type(exc).__name__}: {exc}"})
 
     _executor.submit(worker)
+
+
+def handle_premiere_apps(cmd: dict) -> None:
+    """Which Premiere Pro versions are installed (stable and Beta), so the Review tab can ask which to open an XML in when there is more than one."""
+    import creator_tools
+    emit({"type": "premiere_apps", "apps": creator_tools.premiere_apps()})
 
 
 def handle_list_exports(cmd: dict) -> None:
@@ -1349,6 +1355,7 @@ HANDLERS = {
     "auto_edit": handle_auto_edit,
     "auto_edit_stop": handle_auto_edit_stop,
     "list_exports": handle_list_exports,
+    "premiere_apps": handle_premiere_apps,
     "open_path": handle_open_path,
     "shutdown": handle_shutdown,
 }

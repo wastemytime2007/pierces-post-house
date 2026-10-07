@@ -61,6 +61,13 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [now, setNow] = useState(Date.now());
   const [activity, setActivity] = useState([]); // [{t, text, kind}]
   const [showFeed, setShowFeed] = useState(true);
+  // Which Premiere to open XMLs in: every install is listed by the backend (stable and Beta); with more than one the first click asks which, and a remembered choice is used after that.
+  const [premiereApps, setPremiereApps] = useState([]);
+  const [premiereChoice, setPremiereChoice] = useState(() => {
+    try { return localStorage.getItem("review.premiere") || ""; } catch (e) { return ""; }
+  });
+  const [choosing, setChoosing] = useState(false);
+  const [remember, setRemember] = useState(true);
   const lastStageRef = useRef("");
 
   const version = versions[cur];
@@ -87,11 +94,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   useEffect(() => {
     sendCommand({ type: "list_exports" }).catch(() => {});
+    sendCommand({ type: "premiere_apps" }).catch(() => {});
   }, []);
 
   useEffect(() => {
     return subscribe((ev) => {
-      if (ev.type === "exports_listed") {
+      if (ev.type === "premiere_apps") {
+        setPremiereApps(ev.apps || []);
+      } else if (ev.type === "exports_listed") {
         setExportsList(ev.exports || []);
         if (!openedRef.current && !versionsRef.current.length && !busyRef.current && !makingRef.current) {
           openedRef.current = true;
@@ -377,12 +387,34 @@ export default function ReviewTab({ subscribe, onStatus }) {
     apply();
   };
 
-  const exportXml = useCallback(async () => {
+  const openInPremiere = useCallback(async (appPath) => {
     if (!version) return;
     setError("");
     setExportResult(null);
-    await sendCommand({ type: "export_xml", xml: version.xml, open: true });
+    setChoosing(false);
+    await sendCommand({ type: "export_xml", xml: version.xml, open: true, ...(appPath ? { app: appPath } : {}) });
   }, [version]);
+
+  const chosenApp = premiereApps.find((a) => a.path === premiereChoice);
+  const shortName = (a) => a.name.replace(/^Adobe /, "");
+  const onOpenInPremiere = () => {
+    if (premiereApps.length === 0) {
+      setError("Adobe Premiere Pro was not found in your Applications folder. Use Show in Finder and open the XML yourself.");
+    } else if (premiereApps.length === 1) {
+      openInPremiere(premiereApps[0].path);
+    } else if (chosenApp) {
+      openInPremiere(chosenApp.path);
+    } else {
+      setChoosing(true);                                                   // more than one installed and none chosen yet: ask
+    }
+  };
+  const pickPremiere = (a) => {
+    if (remember) {
+      setPremiereChoice(a.path);
+      try { localStorage.setItem("review.premiere", a.path); } catch (e) { /* private window */ }
+    }
+    openInPremiere(a.path);
+  };
 
   const STEPS = ["Review", "Submit fixes", "Check", "New version"];
   const secs = Math.max(0, Math.round((now - stepSince) / 1000));
@@ -508,9 +540,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
               ? `Submit changes (${noteCount}) → V${versions.length + 1}`
               : `Submit changes → V${versions.length + 1}`}
         </button>
-        <button className="btn btn-ghost" onClick={exportXml} disabled={!!busy} title="Check the XML, then open it in Premiere">
-          Export XML → Premiere
+        <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere. Nothing to download.">
+          {premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere"}
         </button>
+        {premiereApps.length > 1 && (
+          <button className="btn btn-ghost" onClick={() => setChoosing((x) => !x)} disabled={!!busy} title="Choose which version of Premiere opens it">
+            Premiere version…
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: dirName(version.xml) })} disabled={!!busy}>
           Show in Finder
         </button>
@@ -522,6 +559,24 @@ export default function ReviewTab({ subscribe, onStatus }) {
           Start over
         </button>
       </div>
+
+      {choosing && (
+        <div className="run-pipeline-section" role="dialog" aria-label="Choose a version of Premiere">
+          <div className="run-pipeline-section-label">Which Premiere should open it?</div>
+          <div className="sync-section-hint">More than one version is installed.</div>
+          <div className="pm-tab-row" style={{ flexWrap: "wrap" }}>
+            {premiereApps.map((a) => (
+              <button key={a.path} className={`btn ${a.path === premiereChoice ? "btn-primary" : "btn-ghost"}`} onClick={() => pickPremiere(a)}>
+                {shortName(a)}
+              </button>
+            ))}
+            <button className="btn btn-ghost" onClick={() => setChoosing(false)}>Cancel</button>
+          </div>
+          <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Use this one from now on (you can change it with "Premiere version…")
+          </label>
+        </div>
+      )}
 
       {incoming && (
         <div className="pm-tab-warnings" role="status">
