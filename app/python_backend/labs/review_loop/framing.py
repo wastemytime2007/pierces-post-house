@@ -68,10 +68,10 @@ def x_for_horiz(horiz: float, scale_pct: float, source_w: float) -> float:
 # ------------------------------------------------------------------ who is talking
 
 def speaker_runs_for(lavs: dict, t0: float, in_sec: float, dur: float) -> list[tuple[float, float, str]]:
-    """[(start, end, person)] in seconds from the start of a clip that begins at camera time `in_sec` and lasts `dur`; `lavs` is match_lavs' answer for a stretch that began at camera time `t0`."""
+    """[(start, end, person)] in seconds from the start of a clip that begins at camera time `in_sec` and lasts `dur`; `lavs` is speakers.match_lavs_timed's answer (camera times, so `t0` is not needed)."""
     if len(lavs) < 2:
         return []
-    levels = {who: sp.level_track(f, o + (in_sec - t0), dur) for who, (f, o, _sc) in lavs.items()}
+    levels = {who: sp.level_track_timed(segs, in_sec, dur) for who, segs in lavs.items()}
     return sp.speaker_runs(levels)
 
 
@@ -235,7 +235,7 @@ def analyse(cam: str, clips: list[dict], mic_dir: str | Path, cache: Path | None
             r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t0:.3f}", "-t", f"{t1 - t0:.3f}", "-i", cam, "-vn", "-ac", "1", "-ar", "8000", str(wav)], capture_output=True)
             if r.returncode != 0:
                 raise FramingError("the camera's audio could not be read")
-            lavs = sp.match_lavs(wav, 0.0, t1 - t0, Path(mic_dir))
+            lavs = sp.match_lavs_timed(wav, t0, Path(mic_dir))
         if len(lavs) < 2:
             found = ", ".join(sorted(lavs)) or "none"
             raise FramingError(f"both people's recorders could not be found against this camera (found: {found}); who is talking cannot be told")
@@ -271,4 +271,5 @@ def analyse(cam: str, clips: list[dict], mic_dir: str | Path, cache: Path | None
             data = _read_cache(cache)
             data[key] = {"people": people, "evidence": evidence}
             _write_cache(cache, data)
-    return {"people": people, "evidence": evidence, "clips": out_clips, "t0": t0}
+    return {"people": people, "evidence": evidence, "clips": out_clips, "t0": t0,
+            "lavs": {who: [[round(a, 3), round(b, 3), str(f), round(d, 4)] for a, b, f, d, _sc in segs] for who, segs in lavs.items()}}

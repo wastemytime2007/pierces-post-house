@@ -398,7 +398,7 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
         from render_preview import source_dims
         path_of_file = {clip_file_id[c.idx]: c.src_path for c in cut.video if c.idx in clip_file_id}
         new_zone_f = zone_f - sum(b - a for a, b in removed) + sum(ln for _p, ln in inserted)
-        for note_ in fs.apply_follow(seq, [ch.check for ch in follows], new_zone_f, fps, cut.width, path_of_file, spf_of_file, source_dims, used_ids):
+        for note_ in fs.apply_follow(seq, [ch.check for ch in follows], new_zone_f, fps, cut.width, path_of_file, spf_of_file, source_dims, used_ids, root):
             for ch in follows:
                 ch.summary += f"; {note_}"
 

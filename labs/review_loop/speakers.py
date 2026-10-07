@@ -86,6 +86,68 @@ def match_lavs(cam_wav: Path, t0: float, t1: float, mic_dir: Path) -> dict[str, 
     return best
 
 
+def match_lavs_timed(cam_wav: Path, wav_t0: float, mic_dir: Path, chunk: float = 30.0) -> dict[str, list[tuple[float, float, Path, float, float]]]:
+    """{person: [(camera_start, camera_end, recorder file, delta, score)]}: like match_lavs, but a person may have several recorders (a shoot restarts a recorder, or a card fills) so the camera's audio is
+    searched for in `chunk` second pieces and each piece keeps its own best file. `delta` is what to add to a camera time to get the position in the recorder file; times are camera seconds, `wav_t0` being the
+    camera time the audio in `cam_wav` starts at. A piece no recorder of a person matches leaves that stretch uncovered for them (`segments_for` then borrows the nearest piece)."""
+    cam = sa.load_wav(cam_wav)
+    total = len(cam) / sa.SR
+    n_chunk = int(chunk * sa.SR)
+    if len(cam) <= n_chunk * 1.5:
+        spans = [(0, len(cam))]
+    else:
+        k = int(np.ceil(len(cam) / n_chunk))
+        n_chunk = int(np.ceil(len(cam) / k))
+        spans = [(i * n_chunk, min(len(cam), (i + 1) * n_chunk)) for i in range(k)]
+    best: dict[tuple[str, int], tuple[Path, float, float]] = {}
+    for lav in sorted(mic_dir.glob("*.WAV")):
+        person = "Bob" if "Bob" in lav.stem else "Mitch" if "Mitch" in lav.stem else None
+        if person is None or lav.name.startswith("._"):
+            continue
+        x = sa.read_window(lav, 0, 36000)
+        longest = max(b - a for a, b in spans)
+        if len(x) < longest:
+            continue
+        n = sa.next_fast(len(x) + longest)
+        spec = sa._fft.rfft(x.astype(np.float32), n)
+        for i, (a, b) in enumerate(spans):
+            off, sc = sa.gcc_phat(spec, n, cam[a:b])
+            if sc >= sa.MIN_SCORE and sc > best.get((person, i), (None, 0, 0.0))[2]:
+                best[(person, i)] = (lav, off, sc)
+    out: dict[str, list] = {}
+    for (person, i), (lav, off, sc) in sorted(best.items()):
+        a, b = spans[i]
+        out.setdefault(person, []).append((wav_t0 + a / sa.SR, wav_t0 + b / sa.SR, lav, off - a / sa.SR - wav_t0, sc))
+    return out
+
+
+def segments_for(segs: list, a: float, b: float) -> list[tuple[float, float, Path, float]]:
+    """[(from, to, file, delta)] covering camera time a..b for one person: each stretch belongs to the matched piece it falls in, and a stretch outside every piece (before the first, after the last, or in a gap)
+    goes to the nearest piece's file, which keeps its offset across the whole recording."""
+    segs = sorted(segs, key=lambda g: g[0])
+    cuts = [(segs[i][1] + segs[i + 1][0]) / 2 for i in range(len(segs) - 1)]
+    bounds = [-1e12] + cuts + [1e12]
+    out = []
+    for g, lo, hi in zip(segs, bounds, bounds[1:]):
+        f, t = max(a, lo), min(b, hi)
+        if t - f > 1e-6:
+            out.append((f, t, g[2], g[3]))
+    return out
+
+
+def level_track_timed(segs: list, start: float, dur: float, step: float = 0.1) -> list[float]:
+    """Level (dB per `step`) of one person's recorder(s) over camera time start..start+dur; silence (-120 dB) where a file has nothing recorded."""
+    n = int(round(dur / step))
+    out = [-120.0] * n
+    for f, t, path, delta in segments_for(segs, start, start + dur):
+        i0 = int(round((f - start) / step))
+        lv = level_track(path, f + delta, t - f, step)
+        for j, v in enumerate(lv):
+            if 0 <= i0 + j < n:
+                out[i0 + j] = v
+    return out
+
+
 def level_track(path: Path, start: float, dur: float, step: float = 0.1) -> list[float]:
     x = sa.read_window(path, max(0.0, start), dur)
     n = int(step * sa.SR)

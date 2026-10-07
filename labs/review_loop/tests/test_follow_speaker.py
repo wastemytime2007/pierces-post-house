@@ -177,3 +177,71 @@ def test_horiz_puts_the_person_mid_frame_and_never_shows_beyond_the_picture():
     left = framing.horiz_for_person(0.02, 150, 1000, 1000)          # near the left edge: slice flush with the edge, not off it
     hw = framing.window_half_width(150, 1000, 1000)
     assert abs(rx.subject_for_horiz(left, 150, 1000) / 1000 - hw) < 1e-6
+
+
+# ------------------------------------------------------------------ each person's own recorder under their own turns
+
+def _voice_xml():
+    def clip(i, name, fid, start, end, a, b):
+        return (f'<clipitem id="{i}"><name>{name}</name><enabled>TRUE</enabled><duration>{end - start}</duration><rate><timebase>30</timebase><ntsc>FALSE</ntsc></rate>'
+                f'<start>{start}</start><end>{end}</end><in>{a}</in><out>{b}</out><masterclipid>masterclip-{fid[-1]}</masterclipid><file id="{fid}"/>'
+                '<sourcetrack><mediatype>audio</mediatype><trackindex>1</trackindex></sourcetrack></clipitem>')
+    fl = lambda fid, n: f'<file id="{fid}"><name>{n}</name><pathurl>file://localhost/mics/{n}</pathurl></file>'
+    return ET.fromstring(
+        '<xmeml><sequence><name>cut</name><media><video><track/></video><audio>'
+        f'<track>{clip("m1", "Mitch3.WAV", "file-3", 0, 300, 3000, 3300)}<enabled>TRUE</enabled><locked>FALSE</locked></track>'
+        '</audio></media></sequence>' + fl("file-3", "Mitch3.WAV") + fl("file-9", "Bob2.WAV") + '</xmeml>')
+
+
+def _plan():
+    # (first frame, end frame, person, camera file, camera start, camera end): camera time = frame / 30 + 100
+    return [(0, 100, "Bob", "cam", 100.0, 103.333), (100, 200, "Mitch", "cam", 103.333, 106.667), (200, 300, "Bob", "cam", 106.667, 110.0)]
+
+
+LAVS = {"cam": {"lavs": {"Bob": [[90.0, 120.0, "/mics/Bob2.WAV", 500.0]], "Mitch": [[90.0, 120.0, "/mics/Mitch3.WAV", 20.0]]}}}
+
+
+def _clips(root):
+    out = []
+    for tr in root.find("sequence").findall("media/audio/track"):
+        for c in tr.findall("clipitem"):
+            out.append((c.findtext("name"), int(c.findtext("start")), int(c.findtext("end")), int(c.findtext("in")), c.findtext("enabled")))
+    return sorted(out, key=lambda x: (x[1], x[0]))
+
+
+def test_each_person_is_live_only_under_their_own_turns():
+    root = _voice_xml()
+    notes = fs.apply_voices(root, root.find("sequence"), _plan(), LAVS, 300, 30.0, {"m1"})
+    got = _clips(root)
+    mitch = [c for c in got if c[0] == "Mitch3.WAV"]
+    assert [(c[1], c[2], c[4]) for c in mitch] == [(0, 100, "FALSE"), (100, 200, "TRUE"), (200, 300, "FALSE")]      # Mitch's recorder is cut at the changes and off under Bob's turns
+    assert [c[3] for c in mitch] == [3000, 3100, 3200]                                                              # and every piece keeps its place in the recording
+    bob = [c for c in got if c[0] == "Bob2.WAV"]
+    assert [(c[1], c[2], c[4]) for c in bob] == [(0, 100, "TRUE"), (200, 300, "TRUE")]                              # Bob's recorder is added under Bob's turns only
+    assert bob[0][3] == round((100.0 + 500.0) * 30) and bob[1][3] == round((106.667 + 500.0) * 30)                  # at the offset the camera match found
+    assert any("added" in n for n in notes)
+    assert len(root.find("sequence/media/audio").findall("track")) == 2                                             # on a track of its own
+
+
+def test_running_it_twice_does_not_stack_a_second_copy_of_the_voice_clips():
+    root = _voice_xml()
+    seq = root.find("sequence")
+    fs.apply_voices(root, seq, _plan(), LAVS, 300, 30.0, {"m1"})
+    once = _clips(root)
+    fs.apply_voices(root, seq, _plan(), LAVS, 300, 30.0, {"m1"})
+    assert _clips(root) == once
+
+
+def test_a_recorder_with_no_match_is_reported_and_adds_nothing():
+    root = _voice_xml()
+    lavs = {"cam": {"lavs": {"Mitch": LAVS["cam"]["lavs"]["Mitch"]}}}
+    notes = fs.apply_voices(root, root.find("sequence"), _plan(), lavs, 300, 30.0, {"m1"})
+    assert any("Bob" in n and "could not be placed" in n for n in notes)
+    assert not [c for c in _clips(root) if c[0] == "Bob2.WAV"]
+
+
+def test_segments_for_gives_each_stretch_to_the_recorder_that_covers_it_and_extends_the_ends():
+    import speakers
+    segs = [(0.0, 30.0, "a.WAV", 1.0, 99.0), (30.0, 60.0, "b.WAV", 2.0, 99.0)]
+    got = speakers.segments_for(segs, -5.0, 70.0)
+    assert [(g[2], round(g[0], 1), round(g[1], 1)) for g in got] == [("a.WAV", -5.0, 30.0), ("b.WAV", 30.0, 70.0)]

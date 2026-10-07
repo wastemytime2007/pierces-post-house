@@ -109,7 +109,7 @@ def verify_motion(cut1: Cut, changes, cut2: Cut) -> list[tuple[str, bool | None,
     return rows
 
 
-def verify_follow(changes, cut2: Cut) -> list[tuple[str, bool | None, str]]:
+def verify_follow(changes, cut2: Cut, xml2: Path | None = None) -> list[tuple[str, bool | None, str]]:
     """Each follow_speaker, read back from the REVISED XML (follow_speaker.check_written)."""
     import follow_speaker as fs
     from render_preview import source_dims
@@ -118,6 +118,9 @@ def verify_follow(changes, cut2: Cut) -> list[tuple[str, bool | None, str]]:
         if c.applied and c.check and c.check.get("kind") == "follow":
             ok, detail = fs.check_written(cut2, c.check, source_dims)
             rows.append((f"note {c.note} FOLLOWS-SPEAKER", ok, detail))
+            if xml2 is not None:
+                ok2, detail2 = fs.check_voices(xml2, cut2, c.check)
+                rows.append((f"note {c.note} OWN-RECORDER-LIVE", ok2, detail2))
     return rows
 
 
@@ -195,7 +198,7 @@ def main() -> int:
         extra_in = max(ext_of(("quiet_from",)), ext_of(("joined",), "front"))
         rows = verify(cut1, args.xml, v2_xml, delta, extra_out, extra_in)
         rows += verify_motion(cut1, changes, load_cut(v2_xml))
-        rows += verify_follow(changes, load_cut(v2_xml))
+        rows += verify_follow(changes, load_cut(v2_xml), v2_xml)
     except TimelineError as e:
         print(f"REFUSING: revised XML does not load: {e}", file=sys.stderr)
         return 1

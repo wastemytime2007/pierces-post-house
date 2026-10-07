@@ -90,7 +90,7 @@ def plan_follow(cut, o: dict, cache: Path | None, progress=lambda s: None, analy
         res = analyse(path, rows, mic_dir, cache, progress)
         runs = sorted((c.src_in + s, c.src_in + e, w) for c in mine for s, e, w in res["clips"][c.idx]["runs"])
         progress("Finding where each person's face is when they talk")
-        files[path] = {"people": res["people"], "runs": [[round(a, 3), round(b, 3), w] for a, b, w in runs], "evidence": res["evidence"],
+        files[path] = {"people": res["people"], "runs": [[round(a, 3), round(b, 3), w] for a, b, w in runs], "evidence": res["evidence"], "lavs": res.get("lavs", {}),
                        "faces": sample_faces(path, runs, res["people"], sample_fn, faces_fn)}
     if not files:
         raise FramingError("none of these clips has a scale and position set, so there is no punched-in window to move; set its framing first (labs/reframe)")
@@ -164,10 +164,11 @@ def _motion(el: ET.Element):
 
 
 def apply_follow(seq: ET.Element, infos: list[dict], zone_f: int, seq_fps: float, out_w: int, path_of_file: dict[str, str], spf_of_file: dict[str, float],
-                 source_dims, used_ids: set[str]) -> list[str]:
+                 source_dims, used_ids: set[str], root: ET.Element | None = None) -> list[str]:
     """Split the cut's video clips (first video track, inside the cut zone) at each speaker change and centre each piece on its speaker. Returns one note per clip it left alone, in words."""
     track = seq.find("media/video/track")
     skipped: list[str] = []
+    voice_plan: list[tuple[int, int, str, str, float, float]] = []       # (first timeline frame, end frame, person, camera file, camera start, camera end)
     people_of, runs_of, files_of = {}, {}, {}
     for info in infos:
         for path, f in info["files"].items():
@@ -231,9 +232,12 @@ def apply_follow(seq: ET.Element, infos: list[dict], zone_f: int, seq_fps: float
             mid_t = (i_in + (i_out - i_in) / 2) * spf
             _set_horiz(p, expected_horiz(person_x(files_of[path], who, mid_t), scale, sw, out_w))
             made.append(p)
+            voice_plan.append((start + f0, start + f0 + nf, who, path, i_in * spf, i_out * spf))
         pos = list(track).index(el)
         for j, p in enumerate(made[1:], 1):
             track.insert(pos + j, p)
+    if root is not None and voice_plan:
+        skipped += apply_voices(root, seq, voice_plan, files_of, zone_f, seq_fps, used_ids)
     return skipped
 
 
@@ -263,3 +267,214 @@ def check_written(new_cut, info: dict, source_dims) -> tuple[bool, str]:
         return False, "no piece of the framed clips sits where the recorders place a speaker"
     ok = right / judged >= 0.95
     return ok, f"{pieces} pieces; {right / judged:.0%} of the {judged:.1f}s where someone is talking is centred on that person" + ("" if ok else "; off: " + "; ".join(wrong[:4]))
+
+
+# ------------------------------------------------------------------ each person's own recorder under their own turns
+
+def person_of(path: str) -> str | None:
+    stem = Path(path).stem
+    return "Bob" if "Bob" in stem else "Mitch" if "Mitch" in stem else None
+
+
+def _file_paths(root: ET.Element) -> tuple[dict[str, str], dict[str, str]]:
+    """({path: file id}, {file id: path}) for every file the XML defines."""
+    from urllib.parse import unquote, urlparse
+    by_path, by_id = {}, {}
+    for f in root.iter("file"):
+        pu = f.findtext("pathurl")
+        if pu:
+            path = unquote(urlparse(pu).path)
+            by_path.setdefault(path, f.get("id"))
+            by_id.setdefault(f.get("id"), path)
+    return by_path, by_id
+
+
+def _split_at(el: ET.Element, track: ET.Element, cuts: list[int], used_ids: set[str]) -> list[ET.Element]:
+    """Split one audio clipitem at the given timeline frames (only those strictly inside it); returns its pieces in order, the first being `el` itself."""
+    start, end = int(el.findtext("start")), int(el.findtext("end"))
+    marks = [start] + sorted({c for c in cuts if start < c < end}) + [end]
+    if len(marks) == 2:
+        return [el]
+    in0, out0 = int(el.findtext("in")), int(el.findtext("out"))
+    k = (out0 - in0) / (end - start)
+    dur_is_len = el.findtext("duration") is not None and int(el.findtext("duration")) == end - start
+    orig = copy.deepcopy(el)
+    made = []
+    for n, (a, b) in enumerate(zip(marks, marks[1:])):
+        if n == 0:
+            p = el
+        else:
+            p = copy.deepcopy(orig)
+            fl = p.find("file")
+            if fl is not None:
+                for ch in list(fl):
+                    fl.remove(ch)
+            i = n
+            while f"{orig.get('id')}-v{i}" in used_ids:
+                i += 1
+            p.set("id", f"{orig.get('id')}-v{i}")
+            used_ids.add(p.get("id"))
+        i_in = in0 + round((a - start) * k)
+        i_out = out0 if b == end else in0 + round((b - start) * k)
+        for tag, v in (("start", a), ("end", b), ("in", i_in), ("out", i_out)):
+            p.find(tag).text = str(int(v))
+        if dur_is_len:
+            p.find("duration").text = str(int(b - a))
+        made.append(p)
+    pos = list(track).index(el)
+    for j, p in enumerate(made[1:], 1):
+        track.insert(pos + j, p)
+    return made
+
+
+def apply_voices(root: ET.Element, seq: ET.Element, plan: list, files_of: dict, zone_f: int, seq_fps: float, used_ids: set[str]) -> list[str]:
+    """While a person is talking, only THEIR recorder is live: every lav clip is cut at the speaker changes, a person's recorder is switched off (enabled FALSE) under the other person's turns, and where the
+    speaker's own recorder is not on the timeline at all (Bob's, in a cut built from Mitch's) their recorder is added on a track of its own, at the offset the camera match found. The camera audio is not touched."""
+    import speakers as sp
+    notes: list[str] = []
+    by_path, by_id = _file_paths(root)
+    tracks = seq.findall("media/audio/track")
+    for tr in tracks:                                                                  # a run that is being redone: take the voice clips of the last one out first
+        gone = [c for c in tr.findall("clipitem") if "-voice-" in (c.get("id") or "") and int(c.findtext("start")) < zone_f]
+        for c in gone:
+            tr.remove(c)
+        if gone and not tr.findall("clipitem"):
+            seq.find("media/audio").remove(tr)
+    tracks = seq.findall("media/audio/track")
+
+    def lav_person(c: ET.Element) -> str | None:
+        fl = c.find("file")
+        path = by_id.get(fl.get("id")) if fl is not None else None
+        return person_of(path) if path and path.lower().endswith(".wav") else None
+
+    lav_tracks = [t for t in tracks if any(lav_person(c) for c in t.findall("clipitem"))]
+    if not lav_tracks:
+        return ["no recorder clips are on the timeline to switch between, so the sound was left as it was"]
+    cuts = sorted({f for s0, e0, *_ in plan for f in (s0, e0)})
+    template = next(c for t in lav_tracks for c in t.findall("clipitem") if lav_person(c))
+
+    def who_at(frame: int) -> str | None:
+        return next((w for s0, e0, w, *_ in plan if s0 <= frame < e0), None)
+
+    for tr in lav_tracks:                                                              # cut at the speaker changes and switch each piece to its speaker
+        for c in [c for c in tr.findall("clipitem") if lav_person(c) and int(c.findtext("start")) < zone_f]:
+            person = lav_person(c)
+            c.find("enabled").text = "TRUE"
+            for piece in _split_at(c, tr, cuts, used_ids):
+                who = who_at((int(piece.findtext("start")) + int(piece.findtext("end"))) // 2)
+                piece.find("enabled").text = "FALSE" if who and who != person else "TRUE"
+    covered: dict[str, list[tuple[int, int]]] = {}
+    for tr in lav_tracks:
+        for c in tr.findall("clipitem"):
+            if lav_person(c) and c.findtext("enabled") == "TRUE":
+                covered.setdefault(lav_person(c), []).append((int(c.findtext("start")), int(c.findtext("end"))))
+
+    new_clips: list[ET.Element] = []
+    n_new = 0
+    missing: set[str] = set()
+    for s0, e0, who, cam, a_cam, b_cam in plan:                                         # the speaker's own recorder where it is not already on the timeline
+        gaps, cur = [], s0
+        for a, b in sorted(covered.get(who, [])):
+            if b <= cur or a >= e0:
+                continue
+            if a > cur:
+                gaps.append((cur, a))
+            cur = max(cur, b)
+        if cur < e0:
+            gaps.append((cur, e0))
+        segs = [(g[0], g[1], g[2], g[3]) for g in files_of[cam].get("lavs", {}).get(who, [])]
+        for g0, g1 in gaps:
+            if g1 - g0 < 2:
+                continue
+            if not segs:
+                missing.add(who)
+                continue
+            cam0, cam1 = a_cam + (g0 - s0) / seq_fps, a_cam + (g1 - s0) / seq_fps
+            for f, t, path, delta in sp.segments_for(segs, cam0, cam1):
+                fid = by_path.get(str(path))
+                if fid is None:
+                    missing.add(who)
+                    continue
+                st = s0 + round((f - a_cam) * seq_fps)
+                en = min(e0, s0 + round((t - a_cam) * seq_fps))
+                if en - st < 2:
+                    continue
+                n_new += 1
+                c = copy.deepcopy(template)
+                c.set("id", f"s1-voice-{who}-{n_new}")
+                used_ids.add(c.get("id"))
+                c.find("name").text = Path(str(path)).name
+                c.find("enabled").text = "TRUE"
+                if c.find("duration") is not None:
+                    c.find("duration").text = str(en - st)
+                i_in = round((f + delta) * seq_fps)
+                for tag, v in (("start", st), ("end", en), ("in", i_in), ("out", i_in + (en - st))):
+                    c.find(tag).text = str(int(v))
+                fl = c.find("file")
+                for ch in list(fl):
+                    fl.remove(ch)
+                fl.set("id", fid)
+                mc = next((x.findtext("masterclipid") for x in root.iter("clipitem") if x.find("file") is not None and x.find("file").get("id") == fid and x.findtext("masterclipid")), None)
+                if c.find("masterclipid") is not None:
+                    c.find("masterclipid").text = mc or f"masterclip-{fid.split('-')[-1]}"
+                new_clips.append(c)
+    if new_clips:
+        track = copy.deepcopy(lav_tracks[-1])
+        for ch in list(track):
+            if ch.tag == "clipitem":
+                track.remove(ch)
+        for j, c in enumerate(new_clips):
+            track.insert(j, c)
+        audio = seq.find("media/audio")
+        audio.insert(list(audio).index(lav_tracks[-1]) + 1, track)
+    if new_clips:
+        notes.append(f"each person's own recorder is live under their own turns ({n_new} clips of the other recorder added)")
+    else:
+        notes.append("each person's own recorder is live under their own turns")
+    if missing:
+        notes.append(f"{' and '.join(sorted(missing))}'s recorder could not be placed for some turns, so those turns use whichever recorder was already there")
+    return notes
+
+
+def check_voices(xml_path: Path, cut, info: dict) -> tuple[bool, str]:
+    """Read the finished XML back: at the middle of every run of one person talking (a second or longer) on a framed clip, the lav clips that are enabled belong to that person only, and each sits at the
+    offset to the camera the recorder match found (to 0.06 s)."""
+    import speakers as sp
+    root = ET.parse(xml_path).getroot()
+    from timeline import _seq_for_cut
+    seq = _seq_for_cut(root)
+    by_path, by_id = _file_paths(root)
+    fps = cut.fps
+    clips = []
+    for tr in seq.findall("media/audio/track"):
+        for c in tr.findall("clipitem"):
+            fl = c.find("file")
+            path = by_id.get(fl.get("id")) if fl is not None else None
+            if path and path.lower().endswith(".wav") and person_of(path) and (c.findtext("enabled") or "TRUE") == "TRUE":
+                clips.append((person_of(path), int(c.findtext("start")), int(c.findtext("end")), int(c.findtext("in")), path))
+    good = bad = 0
+    why: list[str] = []
+    for cam, f in info["files"].items():
+        sw = [(g[0], g[1], g[2], g[3]) for who in f.get("lavs", {}) for g in f["lavs"][who]]
+        for s0, e0, who in f["runs"]:
+            if e0 - s0 < FRAME_MIN_SEC:
+                continue
+            m = (s0 + e0) / 2
+            v = next((c for c in cut.video if c.src_path == cam and c.src_in <= m < c.src_out and c.motion), None)
+            if v is None:
+                continue
+            frame = round((v.tl_start + (m - v.src_in)) * fps)
+            live = [c for c in clips if c[1] <= frame < c[2]]
+            ok = bool(live) and all(c[0] == who for c in live)
+            if ok:
+                seg = sp.segments_for([tuple(g) for g in f["lavs"].get(who, [])], m, m + 0.01)
+                if seg:
+                    want = m + seg[0][3]
+                    ok = any(abs((c[3] + (frame - c[1])) / fps - want) < 0.06 for c in live)
+            good, bad = good + ok, bad + (not ok)
+            if not ok and len(why) < 3:
+                why.append(f"{m:.1f}s ({who}): live {sorted({c[0] for c in live}) or 'nothing'}")
+    if good + bad == 0:
+        return False, "no turn of one person talking sits on a framed clip, so there was nothing to check"
+    ok = bad == 0
+    return ok, f"{good} of {good + bad} turns have only the speaker's own recorder live, at the right offset" + ("" if ok else "; off: " + "; ".join(why))
