@@ -3,7 +3,7 @@
 Each person on a shoot wears their own recorder, and a recorder hears its wearer 8 to 12 dB louder than the other person. So with two recorders matched to the camera's clock, whichever is louder at a moment is who
 is talking. Used to switch the picture to the speaker (a cut to the person who starts talking, a little before they do) and to keep only that person's microphone live.
 
-Standalone and file-free: `match_lavs` finds where the camera's audio falls in each person's recorder (the same GCC-PHAT search `labs/recruit/sync_audio.py` uses); `speaker_runs` turns two level tracks into
+Standalone and file-free: `match_lavs` finds where the camera's audio falls in each person's recorder (the GCC-PHAT search in `sync_audio.py`, beside this file); `speaker_runs` turns two level tracks into
 runs of speech; `pieces_for_cut` cuts a clip into pieces at the changes, on whole frames.
 """
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recruit"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sync_audio as sa  # noqa: E402
 
 FPS_NUM, FPS_DEN = 30000, 1001

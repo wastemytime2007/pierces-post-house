@@ -416,6 +416,14 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
             hit = words_mod.find_phrase(after, o["words"])
             return Row(n, kind, VERIFIED if hit is not None and hit[0] <= 1 else FAILED,
                        f'a clip starts at the seam ({seam:.2f}s) and the new version reads from it: "{words_mod.heard(after[:9])}" (asked to start at "{o["words"]}")')
+    if kind == "follow_speaker":
+        info = item.get("follow")
+        if not info:
+            return Row(n, kind, UNMEASURED, "the revise record carries no speaker timeline to check against")
+        import follow_speaker as fs
+        from render_preview import source_dims
+        ok, detail = fs.check_written(new, info, source_dims)
+        return Row(n, kind, VERIFIED if ok else FAILED, detail + ". Who is talking comes from each person's own recorder; the picture itself should still be looked at")
     if kind == "reframe_vertical":
         c = old.video[o["clip"] - 1] if 1 <= o["clip"] <= len(old.video) else None
         if c is None or not c.motion:

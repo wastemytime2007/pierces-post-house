@@ -109,6 +109,18 @@ def verify_motion(cut1: Cut, changes, cut2: Cut) -> list[tuple[str, bool | None,
     return rows
 
 
+def verify_follow(changes, cut2: Cut) -> list[tuple[str, bool | None, str]]:
+    """Each follow_speaker, read back from the REVISED XML (follow_speaker.check_written)."""
+    import follow_speaker as fs
+    from render_preview import source_dims
+    rows = []
+    for c in changes:
+        if c.applied and c.check and c.check.get("kind") == "follow":
+            ok, detail = fs.check_written(cut2, c.check, source_dims)
+            rows.append((f"note {c.note} FOLLOWS-SPEAKER", ok, detail))
+    return rows
+
+
 def verify_render(changes, preview: Path) -> list[tuple[str, bool | None, str]]:
     """Re-check the measured edits on the finished V2 render and the source, not on the plan."""
     rows: list[tuple[str, bool | None, str]] = []
@@ -164,7 +176,8 @@ def main() -> int:
     items = [{"note": c.note, "note_time": notes[c.note - 1]["timeline_sec"], "note_text": notes[c.note - 1].get("text", ""),
               "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why,
               "op": c.op, "removed": [round(c.removed[0], 3), round(c.removed[1], 3)] if c.removed else None,
-              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") in ("quiet_at", "quiet_from", "joined") else None} for c in changes]
+              "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") in ("quiet_at", "quiet_from", "joined") else None,
+              "follow": c.check if c.check and c.check.get("kind") == "follow" else None} for c in changes]
     print(f"\n{lab_in} {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
     for it in items:
         print(f"  note {it['note']} [{it['note_time']}s] {'APPLIED    ' if it['applied'] else 'NOT APPLIED'}  {it['summary']}")
@@ -182,6 +195,7 @@ def main() -> int:
         extra_in = max(ext_of(("quiet_from",)), ext_of(("joined",), "front"))
         rows = verify(cut1, args.xml, v2_xml, delta, extra_out, extra_in)
         rows += verify_motion(cut1, changes, load_cut(v2_xml))
+        rows += verify_follow(changes, load_cut(v2_xml))
     except TimelineError as e:
         print(f"REFUSING: revised XML does not load: {e}", file=sys.stderr)
         return 1

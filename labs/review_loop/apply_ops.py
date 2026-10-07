@@ -179,6 +179,18 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
                                           f"clip {c.idx} moved {'down' if o['direction'] == 'lower' else 'up'} in the frame by {shown:.0f} px (one step, {REFRAME_STEP:.0%} of the shot's height{limited}); Position y should now read "
                                           f"{rx.expected_position_y(y1, scale, cut.height, sh):.0f} (it was {rx.expected_position_y(y0, scale, cut.height, sh):.0f}). This rests on the vertical rule that has not been confirmed in Premiere",
                                           o.get("why", ""), check={"kind": "motion", "clip": c.idx, "vert": v1, "vert_before": vert, "scale": scale, "direction": o["direction"], "src_path": c.src_path, "src_in": c.src_in}))
+        elif kind == "follow_speaker":
+            import follow_speaker as fs
+            from framing import FramingError
+            try:
+                info = fs.plan_follow(cut, o, Path(o["cache"]) if o.get("cache") else None)
+            except FramingError as e:
+                changes.append(Change(n, kind, False, f"not framed on the speaker: {e}", o.get("why", "")))
+            else:
+                who = sorted({w for f in info["files"].values() for w in f["people"]})
+                changes.append(Change(n, kind, True,
+                                      f"the picture now follows whoever is talking ({' and '.join(who)}); {next(iter(info['files'].values()))['evidence']}",
+                                      o.get("why", ""), check={"kind": "follow", **info}))
         elif kind == "extend_end":
             c = cut.video[o["clip"] - 1]
             m = measure_tail(cut, c.idx, o.get("max_sec", 1.0))
@@ -365,6 +377,7 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
                 if int(c.findtext("start")) >= zone_f:
                     pool_groups.setdefault((int(c.findtext("start")), int(c.findtext("end"))), []).append((kind, c))
 
+    follows = [ch for ch in changes if ch.applied and ch.check and ch.check.get("kind") == "follow"]
     for kind in ("video", "audio"):
         for track in seq.findall(f"media/{kind}/track"):
             # a still with no source in/out (PreCut's "SAFE ZONE OVERLAY" guide on V2) is not footage in the cut: it has nothing to ripple, so it is left exactly as it is
@@ -379,6 +392,15 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
                 repl += _edit_clip(c, removed, shift, used_ids, extend_at, extend_front_at)
             for i, c in enumerate(repl):
                 track.insert(pos + i, c)
+
+    if follows:                                                          # AFTER the cut edits, so it frames the clips as they now are; only video is split, the audio under it stays whole
+        import follow_speaker as fs
+        from render_preview import source_dims
+        path_of_file = {clip_file_id[c.idx]: c.src_path for c in cut.video if c.idx in clip_file_id}
+        new_zone_f = zone_f - sum(b - a for a, b in removed) + sum(ln for _p, ln in inserted)
+        for note_ in fs.apply_follow(seq, [ch.check for ch in follows], new_zone_f, fps, cut.width, path_of_file, spf_of_file, source_dims, used_ids):
+            for ch in follows:
+                ch.summary += f"; {note_}"
 
     for (at, ln, idx, clip_idx, side) in insertions:
         if side == "front":                                                 # footage in front of the clip must not also be in the selects pool (it would play twice)

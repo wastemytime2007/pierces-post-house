@@ -41,6 +41,7 @@
       "../python_backend/labs/**/*.txt",
       "../python_backend/labs/**/*.json",
       "../python_backend/labs/**/*.jsonl",
+      "../python_backend/labs/**/*.swift",
       "../python_backend/requirements.txt",
       "../premiere_extension/**/*.xml",
       "../premiere_extension/**/*.html",

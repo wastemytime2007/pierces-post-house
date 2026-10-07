@@ -182,3 +182,9 @@ The Review tab frames this page. Two additions make that work: the page posts `{
 ## Joining two clips of the same recording (2026-10-06)
 When a clip ends mid-sentence and the next clip, from the same file, begins mid-sentence with a few seconds of the recording cut out between them, extending either clip runs into the other. For the reviewer's own fixes (`trusted`), `apply_ops` then puts the gap back: `ops.measure_join` (same file, 0.02 to 4 s apart) and an extension of the first clip's end (or the second clip's start) by exactly that amount, so the two run on without a cut. The second note about the same seam is marked already joined and adds nothing. Not used for an interpreter's own notes: those stop at the neighbour as before.
 
+## Following the speaker (2026-10-07)
+`follow_speaker {clip | "all"}` splits the cut's video clips at each change of speaker and centres each piece on whoever is talking (`follow_speaker.py`). Who talks when comes from each person's own recorder
+(`speakers.py`, `sync_audio.py`); where each person stands comes from macOS Vision face detection (`find_faces.swift`, no download); which person is on which side is decided by who moves while their own recorder hears them
+talk, over snippets from a wide stretch of the interview, and it refuses (with the reason) when the evidence is weak (`framing.py`). Only video is split, so lav sync cannot move; a change of speaker under 1 s is ignored;
+only Basic Motion horizontal is written. The recordings folder is read from the cut's own lav clips. Read-back check: `follow_speaker.check_written` (revise's `FOLLOWS-SPEAKER`, QA's row). First look at a camera file takes about a
+minute (cached per file in `~/Library/Application Support/Post House/framing_cache.json`). Not covered: a recorder with nothing recorded in a clip's window (that clip is left as it was, and says so), tracking a person inside a piece.
