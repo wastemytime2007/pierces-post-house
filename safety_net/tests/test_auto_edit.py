@@ -56,12 +56,12 @@ class World:
         d = self.durations.get(stem, 60.0)
         return SimpleNamespace(zone_end=d, video=[SimpleNamespace(idx=i, tl_start=(i - 1) * d / 4, tl_end=i * d / 4) for i in range(1, 5)])
 
-    def run(self, monkeypatch, cancelled=None, max_rounds=4):
+    def run(self, monkeypatch, cancelled=None, max_rounds=4, finish=None):
         monkeypatch.setattr(ct, "ai_review", self.ai_review)
         monkeypatch.setattr(ct, "apply_notes", self.apply_notes)
         monkeypatch.setattr(timeline, "load_cut", lambda p: self.fake_cut(Path(p).stem))
         (self.tmp / "V1").mkdir(exist_ok=True)
-        return ct.auto_edit(str(self.tmp / "V1.xml"), str(self.tmp / "V1"), "V1", max_rounds, self.events.append, cancelled)
+        return ct.auto_edit(str(self.tmp / "V1.xml"), str(self.tmp / "V1"), "V1", max_rounds, self.events.append, cancelled, finish=finish)
 
 
 def test_it_fixes_what_it_can_reviews_again_and_names_the_clean_version_as_ready(tmp_path, monkeypatch):
@@ -320,3 +320,60 @@ def test_a_failure_that_names_no_note_is_not_retried(tmp_path, monkeypatch):
     with pytest.raises(ct.ToolError, match="RIPPLE-LENGTH"):
         ct.apply_notes(str(xml), str(notes), str(tmp_path / "o"), 540, None)
     assert len(calls) == 1
+
+
+# ------------------------------------------------------------------ the editor finishes the cut it ends on
+
+def finish_stub(calls, fail=None):
+    def fn(xml, out, captions, music, bleep, sfx_at, height, on_stage, graphics, sfx):
+        calls.append({"xml": xml, "captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx})
+        if fail:
+            raise ct.ToolError(fail)
+        on_stage("Captions: listening")
+        return {"folder": "f", "items": [{"op": "captions", "applied": True, "summary": "captions placed"}, {"op": "graphics", "applied": True, "summary": "a title card"}],
+                "applied": 2, "notes": 2, "xml": str(Path(xml).parent / "finished_v9.xml"), "page": "p", "url": "u", "qa": None, "message": ""}
+    return fn
+
+
+def test_after_its_last_round_the_editor_finishes_the_best_version_with_the_chosen_layers(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ct, "finish_cut", finish_stub(calls))
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
+    out = w.run(monkeypatch, finish={"captions": True, "music": True, "bleep": True, "graphics": True, "sfx": True})
+    assert out["status"] == "clean" and out["best"] == "V2"
+    assert len(calls) == 1 and calls[0]["xml"].endswith("V2.xml") and calls[0]["graphics"] and calls[0]["sfx"]            # the best version, not the last label by accident
+    assert out["finished"]["label"] == "V3" and [s["name"] for s in out["finished"]["steps"]] == ["captions", "graphics"]
+    fin = [e for e in w.events if e["type"] == "notes_applied" and e.get("finish")]
+    assert len(fin) == 1 and fin[0]["auto"] and fin[0]["label"] == "V3" and fin[0]["root"]
+    assert any(e["type"] == "notes_stage" and e.get("auto") for e in w.events)                                       # the tab can show its progress
+
+
+def test_a_worse_round_finishes_the_earlier_best_version(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ct, "finish_cut", finish_stub(calls))
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([note("b"), note("c"), note("d")])}, [("V2", [True])])
+    out = w.run(monkeypatch, finish={"captions": True})
+    assert out["status"] == "worse" and out["best"] == "V1" and calls[0]["xml"].endswith("V1.xml")
+
+
+def test_a_failed_finish_is_reported_and_the_editors_own_result_stands(tmp_path, monkeypatch):
+    monkeypatch.setattr(ct, "finish_cut", finish_stub([], fail="The captions failed, so nothing was kept."))
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
+    out = w.run(monkeypatch, finish={"captions": True})
+    assert out["status"] == "clean" and out["best"] == "V2" and "captions failed" in out["finish_failed"] and "finished" not in out
+
+
+def test_without_the_finish_option_nothing_is_finished(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ct, "finish_cut", finish_stub(calls))
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
+    w.run(monkeypatch)
+    assert not calls
+
+
+def test_a_stopped_editor_does_not_start_a_finish(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(ct, "finish_cut", finish_stub(calls))
+    w = World(tmp_path, {"V1": review_of([note("a")])}, [])
+    out = w.run(monkeypatch, cancelled=lambda: True, finish={"captions": True})
+    assert out["status"] == "stopped" and not calls

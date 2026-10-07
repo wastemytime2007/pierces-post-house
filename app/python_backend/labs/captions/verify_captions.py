@@ -143,20 +143,27 @@ def main() -> int:
     checked = both = hit = 0
     for folder in pl.get("avoid", []):
         op = json.loads((Path(folder) / "placement.json").read_text())
-        og, ostart = op["geometry"], op["place_overlay_on_timeline_at_sec"]
+        ostart = op["place_overlay_on_timeline_at_sec"]
         omov = Path(op["overlay_path"])
         orend = op["render"]
-        for k in range(12):
-            t_abs = ostart + og["t_in"] + 0.5 + k * 0.4
-            if t_abs > ostart + og["t_out"]:
-                break
+        if op.get("kind") == "title_layer":                              # a title card: its words (not its translucent field) while it is on, a name tag's words while it is on
+            plan = op.get("plan") or {}
+            spans = ([(plan["title"]["on"][0], plan["title"]["off"])] if plan.get("title") else []) + [(lb["on"], lb["off"]) for lb in plan.get("labels", [])]
+            samples = [(ostart + a0 + 0.3 + k * 0.4, True) for a0, b0 in spans for k in range(12) if a0 + 0.3 + k * 0.4 <= b0 - 0.1]
+        else:
+            og = op["geometry"]
+            samples = [(ostart + og["t_in"] + 0.5 + k * 0.4, False) for k in range(12) if ostart + og["t_in"] + 0.5 + k * 0.4 <= ostart + og["t_out"]]
+        for t_abs, words_only in samples:
             t = t_abs - win0
             live = any(g["show_start"] + 0.1 <= t <= g["show_end"] - 0.1 for g in groups)
             if not live:
                 continue
             checked += 1
             ca = fr(t)[..., 3] > 128
-            oa = vo.frame(omov, t_abs - ostart, "rgba", orend["width"], orend["height"])[..., 3] > 128
+            of = vo.frame(omov, t_abs - ostart, "rgba", orend["width"], orend["height"])
+            oa = of[..., 3] > 128
+            if words_only:
+                oa = oa & (of[..., :3].max(axis=-1) > 140)                  # the card's navy field is dark; its words are white or orange
             if oa.shape != ca.shape:
                 oa = np.kron(oa, np.ones((ca.shape[0] // oa.shape[0], ca.shape[1] // oa.shape[1]), dtype=bool))
             both += 1

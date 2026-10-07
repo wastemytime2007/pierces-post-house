@@ -18,6 +18,7 @@ import test_revise as tr  # noqa: E402
 from test_revise import media, xml  # noqa: E402,F401  (fixtures)
 
 import finish_cut as fc  # noqa: E402
+import timeline  # noqa: E402
 
 pytestmark = tr.pytestmark
 
@@ -219,3 +220,108 @@ def test_a_take_that_does_not_match_the_reference_is_mixed_anyway_and_the_step_s
     assert made == [True, False]                                                       # tried against the reference, then mixed without it
     m = next(s for s in r["steps"] if s["name"] == "music")
     assert m["done"] and "does NOT match the reference" in m["summary"] and "brightness x0.62" in m["summary"]
+
+
+# ------------------------------------------------------------------ graphics (title card, name tags) and the effect on each
+
+class FakeG(Fake):
+    def __call__(self, cmd, **kw):
+        script = Path(cmd[1]).name
+        args = [str(a) for a in cmd[2:]]
+        if script == "make_title.py":
+            self.calls.append(script)
+            Path(args[args.index("--out") + 1]).mkdir(parents=True, exist_ok=True)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if script == "make_audio.py":
+            out = Path(args[args.index("--out") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            meta = {"clips": [{"kind": "music", "name": "music_stem.wav", "path": "/x/m.wav", "start_sec": 0.0, "duration_sec": 30.0},
+                              {"kind": "sfx", "name": "sfx_clip.wav", "path": "/x/s.wav", "start_sec": float(args[args.index("--sfx-at") + 1]) if "--sfx-at" in args else 0.0, "duration_sec": 1.0}]}
+            for n in ("placement.json", "audio.json"):
+                (out / n).write_text(json.dumps(meta))
+            self.calls.append(script)
+            self.audio_args = args
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if script == "make_captions.py":
+            self.caption_args = args
+        return super().__call__(cmd, **kw)
+
+
+def plan_stub(spec_labels=("Bob", "Mitch"), times=(0.05, 3.0, 9.5)):
+    def fn(cut, mic_dir, cache):
+        return ({"title": {"small": "Topic"}, "labels": [{"text": n} for n in spec_labels]}, list(times), [])
+    return fn
+
+
+def test_graphics_come_before_the_captions_and_the_captions_keep_clear_of_them(xml, tmp_path):
+    f = FakeG()
+    r = fc.run(xml, tmp_path / "out", music=False, bleep=False, graphics=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub())
+    assert [s["name"] for s in r["steps"]] == ["graphics", "captions"]
+    assert f.calls.index("make_title.py") < f.calls.index("make_captions.py")
+    assert "--avoid" in f.caption_args and str(tmp_path / "out" / "graphics") in f.caption_args
+    assert "Bob and Mitch" in r["steps"][0]["summary"]
+
+
+def test_a_sound_effect_comes_on_with_each_graphic_on_one_effect_file(xml, tmp_path):
+    f = FakeG()
+    r = fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=True, sfx=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub())
+    assert "--sfx-at" in f.audio_args and f.audio_args[f.audio_args.index("--sfx-at") + 1] == "0.05" and "--no-sfx" not in f.audio_args
+    meta = json.loads((tmp_path / "out" / "audio" / "placement.json").read_text())
+    assert [c["start_sec"] for c in meta["clips"] if c["kind"] == "sfx"] == [0.05, 3.0, 9.5]            # on the title, and on each name tag
+    assert "a sound effect on each graphic (3)" in next(s for s in r["steps"] if s["name"] == "music")["summary"]
+
+
+def test_effects_without_graphics_are_not_invented(xml, tmp_path):
+    f = FakeG()
+    fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=False, sfx=True, runner=f, bleep_fn=f.bleep)
+    assert "--no-sfx" in f.audio_args
+
+
+def test_effects_say_so_when_the_music_step_that_places_them_is_off(xml, tmp_path):
+    f = FakeG()
+    r = fc.run(xml, tmp_path / "out", captions=False, music=False, bleep=False, graphics=True, sfx=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub())
+    s = next(s for s in r["steps"] if s["name"] == "sfx")
+    assert not s["done"] and "music is off" in s["summary"]
+
+
+def _cut(xml):
+    return timeline.load_cut(xml)
+
+
+def fake_analyse(runs_by_clip):
+    def analyse(path, rows, mic_dir, cache=None, progress=None):
+        return {"people": {"Bob": 0.3, "Mitch": 0.7}, "evidence": "x", "clips": {r["idx"]: {"runs": runs_by_clip.get(r["idx"], []), "pieces": []} for r in rows}}
+    return analyse
+
+
+def test_name_tags_come_on_at_each_persons_first_real_turn_and_after_the_title(xml):
+    cut = _cut(xml)
+    spec, times, notes = fc.graphics_plan(cut, "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")], 2: [(0.0, 0.5, "Mitch"), (0.5, 6.0, "Mitch")]}))
+    assert spec["title"]["small"] == cut.sequence_name.strip() and spec["title"]["big"] == ""         # the words are the sequence's own, nothing invented
+    labels = spec["labels"]
+    assert [l["text"] for l in labels] == ["Bob", "Mitch"]
+    assert times[0] == fc.SFX_AT_START and len(times) == 3
+    assert times[1] >= fc.TITLE_HOLD + fc.TAG_AFTER_TITLE - 1e-6                                       # Bob's tag waits for the title to go
+    assert not notes
+
+
+def test_a_turn_under_a_second_earns_no_name_tag_and_the_note_says_so(xml):
+    spec, times, notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")], 2: [(0.0, 0.6, "Mitch")]}))
+    assert [l["text"] for l in spec["labels"]] == ["Bob"] and any("Mitch" in n for n in notes)
+
+
+def test_without_a_recordings_folder_the_title_still_comes_and_the_tags_are_left_out_with_a_reason(xml):
+    spec, times, notes = fc.graphics_plan(_cut(xml), None, None)
+    assert spec["title"] and "labels" not in spec and times == [fc.SFX_AT_START] and "recordings" in notes[0]
+
+
+def test_a_failed_look_at_who_talks_costs_the_name_tags_only(xml):
+    def boom(*a, **k):
+        raise RuntimeError("both people's recorders could not be found")
+    spec, times, notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=boom)
+    assert spec["title"] and "labels" not in spec and times == [fc.SFX_AT_START] and "could not be found" in notes[0]
+
+
+def test_name_tags_sit_above_the_captions_band_so_the_captions_stay_at_the_bottom(xml):
+    spec, _times, _notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")]}))
+    assert spec["label_y"] == fc.TAG_Y and fc.TAG_Y < 0.65                                 # the wallpaper reel's own 0.69 would collide with the captions

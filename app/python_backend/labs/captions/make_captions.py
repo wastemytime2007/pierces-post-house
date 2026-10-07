@@ -122,6 +122,31 @@ def apply_fixes(groups: list[dict], fixes: list[dict], start: float) -> list[dic
     return groups
 
 
+FRAGMENT_SEC = 0.35        # a one-word line on screen for less than this cannot be read
+
+
+def _fold_fragments(groups: list[list[Word]], max_words: int, max_chars: int, gap: float) -> list[list[Word]]:
+    """A caption line that is one word spoken in under FRAGMENT_SEC (a trailing "it." after a sentence break) is joined to the line before it, or failing that the line after, when they are close
+    in time and the joined line still fits. A line nobody can read is worse than a slightly longer one."""
+    out = [list(g) for g in groups]
+    i = 0
+    while i < len(out):
+        g = out[i]
+        if len(g) == 1 and g[0].end - g[0].start < FRAGMENT_SEC and len(out) > 1:
+            prev_ok = i > 0 and g[0].start - out[i - 1][-1].end <= gap and len(out[i - 1]) < max_words + 2 and len(" ".join(x.text for x in out[i - 1] + g)) <= max_chars + 6
+            next_ok = i + 1 < len(out) and out[i + 1][0].start - g[0].end <= gap and len(out[i + 1]) < max_words + 2 and len(" ".join(x.text for x in g + out[i + 1])) <= max_chars + 6
+            if prev_ok:
+                out[i - 1] += g
+                del out[i]
+                continue
+            if next_ok:
+                out[i + 1] = g + out[i + 1]
+                del out[i]
+                continue
+        i += 1
+    return out
+
+
 def group_words(ws: list[Word], max_words: int = 6, max_chars: int = 34, max_dur: float = 2.8, gap: float = 0.4) -> list[dict]:
     """Break the speech into caption lines at sentence ends, pauses, commas after a phrase, and size limits."""
     groups: list[list[Word]] = []
@@ -137,6 +162,7 @@ def group_words(ws: list[Word], max_words: int = 6, max_chars: int = 34, max_dur
         cur.append(w)
     if cur:
         groups.append(cur)
+    groups = _fold_fragments(groups, max_words, max_chars, gap)
 
     out = [{"words": g, "text": " ".join(x.text for x in g)} for g in groups]
     for k, g in enumerate(out):
@@ -177,6 +203,34 @@ def blocked_from_overlay(pl: dict, pad: float = 20) -> dict:
              (min(a["x"], tx), min(a["y"], ty), abs(tx - a["x"]), abs(ty - a["y"]))]
     rects = [(x - pad, y - pad, w + 2 * pad, h + 2 * pad) for x, y, w, h in rects]
     return {"t0": start + g["t_in"] - 0.05, "t1": start + g["t_out"] + g["fade_out"], "rects": rects}
+
+
+def blocked_from_title(pl: dict, pad: float = 20) -> list[dict]:
+    """The same for a title layer (labs/overlay/make_title.py): while the title card is on, the band its text sits in; while a name tag is on, the tag's own box (lower left). The card's navy field
+    is translucent and covers the frame by design, so captions may sit over it, but never over its words."""
+    import make_title as mt
+    g = pl.get("layout") or mt.layout(W, H, (pl.get("plan") or {}).get("label_y"))               # the layout the title was actually drawn with
+    start = pl["place_overlay_on_timeline_at_sec"]
+    plan = pl.get("plan") or {}
+    out: list[dict] = []
+    t = plan.get("title")
+    if t:
+        bottoms = []
+        if t.get("small"):
+            bottoms.append(g["small_y"] + g["small_px"] * 3.2)             # a long topic wraps to up to three lines
+        if t.get("big"):
+            bottoms.append(g["big_y"] + g["big_px"] * 1.2)
+        if t.get("joke"):
+            bottoms.append(g["joke_y"] + g["joke_px"] * 1.4)
+        top = g["small_y"] if t.get("small") else g["big_y"]
+        out.append({"t0": start + t["on"][0] - 0.05, "t1": start + t["off"], "rects": [(0 - pad, top - pad, W + 2 * pad, max(bottoms or [top + 100]) - top + 2 * pad)]})
+    for lb in plan.get("labels", []):
+        out.append({"t0": start + lb["on"] - 0.05, "t1": start + lb["off"], "rects": [(g["label_x"] - pad, g["label_y"] - pad, g["label_w"] + 2 * pad, g["label_px"] * 1.4 + 2 * pad)]})
+    return out
+
+
+def blocked_for(pl: dict) -> list[dict]:
+    return blocked_from_title(pl) if pl.get("kind") == "title_layer" else [blocked_from_overlay(pl)]
 
 
 def pick_position(g: dict, blocked: list[dict], offset: float) -> tuple[str, bool]:
@@ -268,7 +322,7 @@ def main() -> int:
     except CaptionError as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
-    blocked = [blocked_from_overlay(pl) for pl in avoid]
+    blocked = [b for pl in avoid for b in blocked_for(pl)]
     collisions = 0
     for g in groups:
         g["pos"], flagged = pick_position(g, blocked, a.start)

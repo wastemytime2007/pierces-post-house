@@ -92,9 +92,10 @@ def main() -> int:
             return white(b) if which == "small" else orange(b)
         pre = frame_at(mov, on[0] - 0.08, W, H) if on[0] - 0.08 >= 0 and free(on[0] - 0.08) else None
         small_now, big_before, big_now, joke_before, joke_now = count(fb[0], "small"), count(fb[0], "big"), count(fb[1], "big"), count(fb[1], "joke"), count(fb[2], "joke")
-        builds_ok = small_now > 20 and big_before < 5 and big_now > 100 and joke_before < 5 and joke_now > 20
-        if t["joke"] == "":
-            builds_ok = small_now > 20 and big_before < 5 and big_now > 100
+        builds_ok = True                                                  # each line the spec has comes on at its own build; a line the spec leaves empty must draw nothing
+        builds_ok &= small_now > 20 if t["small"] else small_now < 5
+        builds_ok &= (big_before < 5 and big_now > 100) if t["big"] else big_now < 5
+        builds_ok &= (joke_before < 5 and joke_now > 20) if t["joke"] else joke_now < 5
         rows.append(("TITLE-BUILDS", builds_ok, f"white small line {small_now}px at build 1; orange big word {big_before}px before build 2 and {big_now}px after; orange joke {joke_before}px before build 3 and {joke_now}px after"))
         after = off + 0.1
         if free(after):

@@ -509,3 +509,13 @@ def test_a_pool_defect_the_revision_itself_makes_still_blocks_it(xml, tmp_path):
     cut = timeline.load_cut(xml)
     rows = {n: ok for n, ok, _d in revise.verify(cut, xml, bad, 0.0)}
     assert rows["verify_export XML-POOL-NO-DUPLICATES"] is False
+
+
+def test_the_shared_export_gate_does_not_blame_a_tool_for_a_defect_its_input_already_had(xml, tmp_path):
+    import export_gate
+    bad = _overlapping_pool(xml, tmp_path)
+    name, ok, detail = export_gate.row(bad, bad)
+    assert ok is None and "already failed" in detail                                      # reported in words, not hidden, and not counted against the tool
+    assert export_gate.row(bad, xml)[1] is False                                           # a defect the tool introduced still fails it
+    assert export_gate.row(bad)[1] is False                                                # and with no input to compare against every check is held, as before
+    assert export_gate.row(xml, xml)[1] is True

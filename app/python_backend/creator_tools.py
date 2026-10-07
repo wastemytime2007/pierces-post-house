@@ -589,7 +589,9 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
     unlayered = folder / f"{v2.stem} (before layers).xml"
     unlayered.write_text(v2.read_text())
     try:
-        r = fc.run(unlayered, folder / "layers", captions=have["on_screen"], music=have["music"], bleep=True, rebuild=True,
+        opts = rec.get("options") or {}
+        r = fc.run(unlayered, folder / "layers", captions=opts.get("captions", have["on_screen"]) and have["on_screen"], music=have["music"], bleep=True, rebuild=True,
+                   graphics=bool(opts.get("graphics")) and have["on_screen"], sfx=bool(opts.get("sfx")) and have["music"],
                    music_file=music_raw if music_raw and Path(music_raw).is_file() else None, caption_fixes=fixes or None, bleep_requests=requests or None,
                    progress=stage, final_name=v2.name)
     except (fc.FinishError, Exception) as exc:
@@ -607,7 +609,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
 
 
 def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
-               height: int = 540, on_stage=None) -> dict:
+               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False) -> dict:
     """A cut in; the next version out with the finishing layers on it (captions, a music bed, the bleep), each made by the tool that already does it (labs/review_loop/finish_cut.py). The result has the
     shape of apply_notes' so the Review tab opens it as the next version. Nothing is kept if a step or a check fails."""
     src = Path(xml).expanduser()
@@ -619,7 +621,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     import finish_cut as fc
     from timeline import TimelineError
     try:
-        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage)
+        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx)
     except (fc.FinishError, TimelineError) as exc:
         raise ToolError(str(exc)) from exc
     failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
@@ -715,7 +717,8 @@ def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> lis
     return keep
 
 
-def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_MAX_ROUNDS, emit=None, cancelled=None, story: bool = True, root: str | None = None) -> dict:
+def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_MAX_ROUNDS, emit=None, cancelled=None, story: bool = True, root: str | None = None,
+              finish: dict | None = None) -> dict:
     """The AI editor's own loop: review the version, submit the findings it can fix as notes, review the new version, repeat, until the cut has nothing left to fix or the editor cannot do more.
 
     Everything is visible: each review and each revision is announced with the same events a manual review and a manual Submit produce (so the Review tab shows the AI's notes on the page, every
@@ -826,6 +829,19 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
         left = [{"text": n["text"], "kind": n.get("kind", ""), "reason": parked.get(n.get("key"), "no ready-made fix: needs a decision or new words, not an edit")} for n in final["notes"]]
         out["left"] = left
         out["score"] = best["score"]
+        if finish and out["status"] not in ("stopped", "failed") and not cancelled():
+            # the editor ends on the best version it made, and finishes that one: captions, title card and name tags, music, an effect on each graphic, the bleep (the same step as the tab's Finish button)
+            bx = next(v for v in out["versions"] if v["label"] == best["label"])["xml"]
+            try:
+                fin = finish_cut(bx, None, bool(finish.get("captions", True)), bool(finish.get("music", True)), bool(finish.get("bleep", True)), None, 540,
+                                 lambda st: emit({"type": "notes_stage", "stage": st, "auto": True}), bool(finish.get("graphics", True)), bool(finish.get("sfx", True)))
+                top = max(int(v["label"][1:]) for v in out["versions"])
+                nxt = "V" + str(top + 1)
+                emit({"type": "notes_applied", "auto": True, "finish": True, "label": nxt, **fin})
+                out["versions"].append({"label": nxt, "xml": fin["xml"], "score": best["score"]})
+                out["finished"] = {"label": nxt, "steps": [{"name": i["op"], "done": i["applied"], "summary": i["summary"]} for i in fin["items"]]}
+            except ToolError as exc:
+                out["finish_failed"] = str(exc)
     except ToolError as exc:
         out["status"], out["message"] = "failed", str(exc)
     except Exception as exc:

@@ -1173,7 +1173,7 @@ def handle_finish_cut(cmd: dict) -> None:
         try:
             result, printed = creator_tools.capture(
                 creator_tools.finish_cut, xml, cmd.get("out"), bool(cmd.get("captions", True)), bool(cmd.get("music", True)), bool(cmd.get("bleep", True)),
-                cmd.get("sfx_at"), int(cmd.get("height", 540)), lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}))
+                cmd.get("sfx_at"), int(cmd.get("height", 540)), lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}), bool(cmd.get("graphics", False)), bool(cmd.get("sfx", False)))
             for row in printed:
                 log("info", row)
             emit({"type": "notes_applied", "job_id": job_id, "root": cmd.get("root"), "label": cmd.get("label"), "auto": True, "finish": True, **result})
@@ -1235,7 +1235,7 @@ def handle_auto_edit(cmd: dict) -> None:
         import creator_tools
         try:
             result, printed = creator_tools.capture(creator_tools.auto_edit, xml, folder, cmd.get("tag") or "V1", int(cmd.get("max_rounds", creator_tools.AUTO_MAX_ROUNDS)), emit,
-                                                    _auto_stop.is_set, bool(cmd.get("story", True)), cmd.get("root"))
+                                                    _auto_stop.is_set, bool(cmd.get("story", True)), cmd.get("root"), cmd.get("finish") if isinstance(cmd.get("finish"), dict) else None)
             for row in printed:
                 log("info", row)
         except Exception as exc:

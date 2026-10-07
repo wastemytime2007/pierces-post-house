@@ -64,7 +64,7 @@ def validate_spec(spec: dict) -> None:
 
 def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
     """Every element's time on THIS timeline, from its source anchor. Refuses a moment that is not in the cut and any element that would run past it."""
-    out: dict = {"title": None, "labels": []}
+    out: dict = {"title": None, "labels": [], "label_y": spec.get("label_y")}                 # optional: where the labels sit, as a fraction of the height (the wallpaper reel's own 0.69 in portrait if absent)
     t = spec.get("title")
     if t:
         clip, t0 = mo.locate(t["anchor"], timeline_d)
@@ -96,11 +96,11 @@ def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
     return out
 
 
-def layout(w: int, h: int) -> dict:
+def layout(w: int, h: int, label_y: float | None = None) -> dict:
     """Sizes as fractions of the canvas, so the same spec reads right at 1080x1920, 1920x1080 and 3840x2160. Proportions are those measured off the wallpaper reel's labels and the title drawn for Reel 3."""
     portrait = h > w
     u = w if portrait else h * 9 / 16                 # the unit: the frame's short side at 9:16
-    return {"label_px": round(u * 0.072), "label_x": round(u * 0.065), "label_y": round(h * (0.69 if portrait else 0.74)), "label_w": round(w * (0.72 if portrait else 0.5)),
+    return {"label_px": round(u * 0.072), "label_x": round(u * 0.065), "label_y": round(h * (label_y if label_y is not None else (0.69 if portrait else 0.74))), "label_w": round(w * (0.72 if portrait else 0.5)),
             "small_px": round(u * 0.065), "small_y": round(h * 0.395), "big_px": round(u * 0.23), "big_y": round(h * 0.447), "joke_px": round(u * 0.054), "joke_y": round(h * 0.62)}
 
 
@@ -127,7 +127,7 @@ def body_html(p: dict, g: dict) -> tuple[str, list[dict]]:
 
 
 def write_project(proj: Path, p: dict, w: int, h: int, total: float) -> dict:
-    g = layout(w, h)
+    g = layout(w, h, p.get("label_y"))
     body, ev = body_html(p, g)
     proj.mkdir(parents=True, exist_ok=True)
     page = ((HERE / "title_template.html").read_text().replace("__W__", str(w)).replace("__H__", str(h)).replace("__DUR__", str(total)).replace("__BODY__", body.replace("__DUR__", str(total)))

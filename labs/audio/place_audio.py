@@ -56,6 +56,8 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
     ids = {el.get("id") for el in root.iter() if el.get("id")}
     audio = seq.find("media/audio")
     clips, k = [], 1
+    shared: dict[str, dict] = {}                                  # a kind that repeats (several sound effects) shares ONE left/right pair of tracks and one file, so five effects are two tracks, not ten
+    n_pairs = 0
     for c in meta["clips"]:
         path = Path(c["path"])
         if not path.exists():
@@ -67,19 +69,24 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
         start = round(c["start_sec"] * sp["fps"])
         if start < 0 or start + n > round(cut.zone_end * sp["fps"]) + 1:
             raise PlaceError(f"{c['name']} would run outside the cut")
-        while f"audio-file-{k}" in ids:
-            k += 1
-        fid = f"audio-file-{k}"
-        ids.add(fid)
+        reuse = shared.get(c["kind"]) if c["kind"] == "sfx" and shared.get("sfx", {}).get("path") == str(path.resolve()) else None
+        if reuse:
+            fid, tracks = reuse["fid"], reuse["tracks"]
+        else:
+            while f"audio-file-{k}" in ids:
+                k += 1
+            fid = f"audio-file-{k}"
+            ids.add(fid)
+            tracks = None
         for ch in (1, 2):
-            track = po.E(audio, "track")
+            track = tracks[ch - 1] if reuse else po.E(audio, "track")
             ci = po.E(track, "clipitem", id=f"audio-clipitem-{k}-{ch}")
             po.E(ci, "name", path.name)
             po.E(ci, "enabled", "TRUE")
             po.E(ci, "duration", n)
             r = po.E(ci, "rate"); po.E(r, "timebase", sp["timebase"]); po.E(r, "ntsc", "TRUE" if sp["ntsc"] else "FALSE")
             po.E(ci, "start", start); po.E(ci, "end", start + n); po.E(ci, "in", 0); po.E(ci, "out", n)
-            if ch == 1:
+            if ch == 1 and not reuse:
                 f = po.E(ci, "file", id=fid)
                 po.E(f, "name", path.name)
                 po.E(f, "pathurl", "file://localhost" + quote(str(path.resolve()), safe="/"))
@@ -92,13 +99,26 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
             else:
                 po.E(ci, "file", id=fid)
             st = po.E(ci, "sourcetrack"); po.E(st, "mediatype", "audio"); po.E(st, "trackindex", ch)
-            po.E(track, "enabled", "TRUE"); po.E(track, "locked", "FALSE")
-        clips.append({"name": c["name"], "kind": c["kind"], "start": start, "frames": n, "path": path, "start_sec": c["start_sec"]})
+            if not reuse:
+                po.E(track, "enabled", "TRUE"); po.E(track, "locked", "FALSE")
+        if not reuse:
+            pair = audio.findall("track")[-2:]
+            if c["kind"] == "sfx":
+                shared["sfx"] = {"fid": fid, "tracks": pair, "path": str(path.resolve()), "pair": n_pairs}
+            clips.append({"name": c["name"], "kind": c["kind"], "start": start, "frames": n, "path": path, "start_sec": c["start_sec"], "pair": n_pairs})
+            n_pairs += 1
+        else:
+            clips.append({"name": c["name"], "kind": c["kind"], "start": start, "frames": n, "path": path, "start_sec": c["start_sec"], "pair": reuse["pair"]})
         k += 1
 
+    for tr in audio.findall("track"):                              # a track's <enabled>/<locked> come after its clips
+        tail = [ch for ch in tr if ch.tag in ("enabled", "locked")]
+        for ch in tail:
+            tr.remove(ch)
+            tr.append(ch)
     ET.indent(root, space="\t")
     xml_out.write_text(po.HEADER + ET.tostring(root, encoding="unicode") + "\n")
-    return {"fps": sp["fps"], "clips": clips}
+    return {"fps": sp["fps"], "clips": clips, "pairs": n_pairs}
 
 
 def verify_placed(xml_in: Path, xml_out: Path, info: dict) -> list[tuple[str, bool | None, str]]:
@@ -110,23 +130,30 @@ def verify_placed(xml_in: Path, xml_out: Path, info: dict) -> list[tuple[str, bo
             and po._ser(sa.findall("marker")) == po._ser(sb.findall("marker")))
     rows.append(("REST-UNCHANGED", same, "every existing audio track, picture track and marker is structurally identical to the input (whitespace ignored)" if same else "the existing timeline changed"))
     new = tb_[len(ta):]
-    want = 2 * len(info["clips"])
-    rows.append(("NEW-TRACKS", len(new) == want and all(len(t.findall("clipitem")) == 1 for t in new), f"{len(new)} new audio track(s), one clip each ({len(info['clips'])} stereo clip(s), left and right)"))
+    pairs = info.get("pairs", len(info["clips"]))
+    want = 2 * pairs
+    per_pair = [sum(1 for c in info["clips"] if c.get("pair", i) == i) for i in range(pairs)]
+    rows.append(("NEW-TRACKS", len(new) == want and all(len(new[2 * i + j].findall("clipitem")) == per_pair[i] for i in range(pairs) for j in (0, 1)),
+                 f"{len(new)} new audio track(s) ({len(info['clips'])} stereo clip(s) on {pairs} left/right pair(s); a repeated effect shares its pair)"))
     fps = info["fps"]
     cut2 = timeline.load_cut(xml_out)
     for i, c in enumerate(info["clips"]):
-        pair = new[2 * i:2 * i + 2]
-        cis = [t.find("clipitem") for t in pair]
+        pair = new[2 * c.get("pair", i):2 * c.get("pair", i) + 2]
+        cis = [next((ci for ci in t.findall("clipitem") if int(ci.findtext("start")) == c["start"]), None) for t in pair]
+        if None in cis:
+            rows.append((f"FRAME-EXACT ({c['kind']})", False, f"no clip starts at frame {c['start']} ({c['start_sec']:.3f}s) on its tracks"))
+            continue
         vals = [tuple(int(ci.findtext(x)) for x in ("start", "end", "in", "out")) for ci in cis]
-        fdur = int(cis[0].find("file").findtext("duration"))
+        body = next(ci.find("file") for ci in pair[0].findall("clipitem") if ci.find("file").findtext("duration"))
+        fdur = int(body.findtext("duration"))
         ok = vals[0] == vals[1] and (vals[0][1] - vals[0][0]) == (vals[0][3] - vals[0][2]) == fdur == c["frames"] and vals[0][2] == 0 and vals[0][0] == c["start"]
         rows.append((f"FRAME-EXACT ({c['kind']})", ok, f"starts at frame {vals[0][0]} ({vals[0][0] / fps:.3f}s; wanted {c['start_sec']:.3f}s), {vals[0][1] - vals[0][0]} frames on the timeline = {vals[0][3] - vals[0][2]} in the file = {fdur} in its definition, both channels alike"))
-        rows.append((f"SAMPLES ({c['kind']})", cis[0].find("file/media/audio/samplecharacteristics/samplerate").text == str(audio_rate(sb)), "the file's sample rate matches the sequence's"))
-        path = _decode_pathurl(cis[0].find("file").findtext("pathurl"))[0]
+        rows.append((f"SAMPLES ({c['kind']})", body.find("media/audio/samplecharacteristics/samplerate").text == str(audio_rate(sb)), "the file's sample rate matches the sequence's"))
+        path = _decode_pathurl(body.findtext("pathurl"))[0]
         rows.append((f"FILE-REACHABLE ({c['kind']})", Path(path) == c["path"].resolve() and Path(path).exists(), path))
         rows.append((f"INSIDE-THE-CUT ({c['kind']})", vals[0][1] <= round(cut2.zone_end * fps) + 1, f"ends at {vals[0][1] / fps:.2f}s; the cut ends at {cut2.zone_end:.2f}s"))
     import export_gate
-    rows.append(export_gate.row(xml_out))
+    rows.append(export_gate.row(xml_out, xml_in))
     return rows
 
 

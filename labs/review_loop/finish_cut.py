@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -66,6 +67,56 @@ def layers_present(xml: Path) -> dict[str, bool]:
             "bleep": any(i.endswith("-bleep") for i in ids)}
 
 
+TITLE_HOLD = 2.4           # the title card stays on this long
+TITLE_BUILDS = [0.0, 0.2, 0.4]
+TAG_SEC = 2.5              # a name tag stays on this long
+TAG_AFTER_TITLE = 0.3      # and never starts before the title is off
+MIN_TURN_SEC = 1.0         # a person's first turn must run this long to earn a name tag
+SFX_AT_START = 0.05
+TAG_Y = 0.56               # a name tag sits this far down the frame (fraction of the height): above the band the captions use, so the captions never have to jump to the top across the speaker's face
+
+
+def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) -> tuple[dict, list[float], list[str]]:
+    """What on-screen graphics this cut gets, from the cut itself: a title card with the topic (the sequence's own name) in the first seconds, and a name tag the first time each person talks for a
+    second or more (who talks when comes from each person's own recorder). Nothing is invented: the words are the sequence's name and the speakers' names. Returns (the make_title spec, the timeline
+    seconds each graphic comes on, notes in words about anything left out)."""
+    notes: list[str] = []
+    first = cut.video[0]
+    spec: dict = {"title": {"anchor": {"source": Path(first.src_path).name, "source_sec": round(first.src_in, 3)}, "small": cut.sequence_name.strip(), "big": "", "builds": TITLE_BUILDS, "hold": TITLE_HOLD}}
+    times = [round(first.tl_start + SFX_AT_START, 3)]
+    labels: list[dict] = []
+    if not mic_dir:
+        notes.append("no name tags: the folder of each person's own recordings is not known, so who is talking cannot be told")
+    else:
+        import framing
+        analyse = analyse or framing.analyse
+        seen: dict[str, float] = {}
+        try:
+            for path in dict.fromkeys(c.src_path for c in cut.video):
+                mine = [c for c in cut.video if c.src_path == path]
+                res = analyse(path, [{"idx": c.idx, "src_in": c.src_in, "src_out": c.src_out, "fps": cut.fps} for c in mine], mic_dir, cache)
+                for c in mine:
+                    for s, e, who in res["clips"][c.idx]["runs"]:
+                        if who in seen or e - s < MIN_TURN_SEC:
+                            continue
+                        at = max(c.tl_start + s + 0.15, TITLE_HOLD + TAG_AFTER_TITLE)
+                        if at + MIN_TURN_SEC > c.tl_start + e or at + TAG_SEC > c.tl_end:
+                            continue
+                        seen[who] = at
+                        labels.append({"anchor": {"source": Path(path).name, "source_sec": round(c.src_in + (at - c.tl_start), 3)}, "text": who, "word_step": 0.2, "until": TAG_SEC})
+                        times.append(round(at, 3))
+        except Exception as e:                                            # a failed look at who talks costs the name tags only, never the title or the rest
+            labels, times = [], times[:1]
+            notes.append(f"no name tags: who is talking could not be told ({str(e).splitlines()[0][:140]})")
+        for who in ("Bob", "Mitch"):
+            if labels and who not in seen:
+                notes.append(f"no name tag for {who}: no turn of a second or more was heard in the cut")
+    if labels:
+        spec["labels"] = labels
+        spec["label_y"] = TAG_Y
+    return spec, times, notes
+
+
 def default_bleep(xml: Path, out: Path, requests: list[dict] | None) -> dict:
     import bleep as bp
     return bp.bleep(xml, out, requests=requests or None, detail_of=bp.transcribe_detail, reveal_with=bp.transcribe_timed)
@@ -78,7 +129,8 @@ def version_name(src: Path) -> str:
 
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
-        caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None) -> dict:
+        caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
+        graphics: bool = False, sfx: bool = False, graphics_fn=None) -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
 
     `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
@@ -109,12 +161,31 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         if p.returncode != 0:
             raise FinishError(f"{name} failed, so nothing was kept. The tool said:\n{_tail(p.stdout + chr(10) + p.stderr)}")
 
+    # 1a. graphics: a title card and name tags (made and placed before the captions, which then keep clear of them)
+    sfx_times: list[float] = []
+    graphics_folder: Path | None = None
+    if graphics and have["on_screen"]:
+        steps.append({"name": "graphics", "done": False, "summary": "the cut already has on-screen layers, so no title card or name tags were added"})
+    elif graphics:
+        progress("Graphics: a title card and name tags")
+        import follow_speaker as fs
+        spec, sfx_times, gnotes = (graphics_fn or graphics_plan)(cut0, fs.mic_dir_of(cut0), Path.home() / "Library" / "Application Support" / "Post House" / "framing_cache.json")
+        (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
+        tool("The title card and name tags", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
+        nxt = out / "_step_graphics.xml"
+        tool("Placing the title card and name tags", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
+        cur, graphics_folder = nxt, out / "graphics"
+        tags = [l["text"] for l in spec.get("labels", [])]
+        steps.append({"name": "graphics", "done": True, "summary": "a title card with the topic" + (f" and name tags for {' and '.join(tags)}" if tags else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
+
     # 1. captions: what is said, on screen
     if captions and have["on_screen"]:
         steps.append({"name": "captions", "done": False, "summary": "the cut already has on-screen layers, so it was not captioned again"})
     elif captions:
         progress("Captions: listening to the cut and making what is said into on-screen text")
         cargs = ["--xml", cur, "--out", out / "captions", "--start", "0", "--end", f"{zone - 0.001:.3f}"]
+        if graphics_folder:
+            cargs += ["--avoid", graphics_folder]                          # the captions move clear of the title card and name tags
         if caption_fixes:
             (out / "captions").mkdir(parents=True, exist_ok=True)
             (out / "captions" / "fixes.json").write_text(json.dumps(caption_fixes, indent=2))
@@ -141,7 +212,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         events = [0.0] + sorted({round(v.tl_start, 4) for v in timeline.load_cut(cur).video if v.tl_start > 0})
         (out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
         (out / "audio_in").mkdir(exist_ok=True)
-        plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, round(zone, 1)))), "style": MUSIC_STYLE}]}
+        plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, math.ceil(zone) + 4))), "style": MUSIC_STYLE}]}      # a little more than the cut: fitting it to the cuts takes the tail off, and a track a hair short refuses
         (out / "score.json").write_text(json.dumps(plan, indent=1))
         score_args = ["--plan", out / "score.json", "--out", out / "audio_in/music.wav"]
         feats = None
@@ -170,7 +241,8 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
         margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
                  "--mix-style", "bed", "--music-db", f"{MUSIC_DB:g}", "--music-file", conformed]
-        margs += ["--sfx-at", f"{sfx_at:g}"] if sfx_at is not None else ["--no-sfx"]
+        times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
+        margs += ["--sfx-at", f"{times[0]:g}"] if times else ["--no-sfx"]
         if ref and not tone_note:
             margs += ["--music-reference", ref]
         try:
@@ -183,12 +255,23 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             margs = [a for i, a in enumerate(margs) if a != "--music-reference" and (i == 0 or margs[i - 1] != "--music-reference")]
             tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
             tone_note += "; it does NOT match the reference's feel (" + re.sub(r"^\[FAIL\]\s*REFERENCE-MATCH\s*", "", miss)[:160] + "), so judge it by ear"
+        for name in ("placement.json", "audio.json"):                       # the same library effect on each remaining graphic: more entries of the one effect file, which place_audio puts on one pair of tracks
+            f = out / "audio" / name
+            if len(times) > 1 and f.is_file():
+                meta = json.loads(f.read_text())
+                tmpl = next((c for c in meta["clips"] if c["kind"] == "sfx"), None)
+                if tmpl:
+                    meta["clips"] += [{**tmpl, "start_sec": float(x)} for x in times[1:]]
+                    f.write_text(json.dumps(meta, indent=1))
         nxt = out / "_step_music.xml"
         tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
         cur = nxt
         steps.append({"name": "music", "done": True,
                       "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
-                      + (f", with a sound effect at {sfx_at:g}s" if sfx_at is not None else ", no sound effect") + tone_note})
+                      + (f", with a sound effect on each graphic ({len(times)})" if times else ", no sound effect") + tone_note})
+
+    if sfx and not music and graphics:
+        steps.append({"name": "sfx", "done": False, "summary": "the sound effects are mixed and placed with the music step, and the music is off, so none were added"})
 
     # 3. the bleep, last: every listed word is silenced and a bleep laid on it
     if bleep:
@@ -216,7 +299,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
     checks = check(base if not rebuild else src, final, zone)
     result = {"xml": str(final), "folder": str(out), "steps": steps, "checks": checks, "music_raw": music_raw or (str(music_file) if music_file else None)}
     (out / "finish.json").write_text(json.dumps({**{k: v for k, v in result.items() if k != "checks"}, "checks": checks,
-                                                 "options": {"captions": captions, "music": music, "bleep": bleep}}, indent=1, default=str))
+                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx}}, indent=1, default=str))
     return result
 
 
@@ -231,7 +314,14 @@ def check(before: Path, after: Path, zone: float) -> list[tuple[str, bool | None
     import verify_export
     rep = verify_export.Report()
     verify_export.check_xml(after, rep)
-    rows += [("verify_export " + n, ok, d) for n, ok, d in rep.rows]
+    rep0 = verify_export.Report()                                          # held to what the cut already passed: a defect it came in with is reported, not blamed on the finish
+    verify_export.check_xml(before, rep0)
+    inherited = {n for n, ok, _d in rep0.rows if ok is False}
+    for n, ok, d in rep.rows:
+        if ok is False and n in inherited:
+            rows.append(("verify_export " + n, None, d + "  [ALREADY FAILING on the cut this was made from, so not caused by finishing; the export itself needs fixing]"))
+        else:
+            rows.append(("verify_export " + n, ok, d))
     return rows
 
 
@@ -243,10 +333,12 @@ def main() -> int:
     ap.add_argument("--no-music", action="store_true")
     ap.add_argument("--no-bleep", action="store_true")
     ap.add_argument("--sfx-at", type=float, help="put one sound effect (library first, generated only if missing) at this time in the cut; none by default")
+    ap.add_argument("--graphics", action="store_true", help="a title card with the topic and a name tag the first time each person talks")
+    ap.add_argument("--sfx", action="store_true", help="a library sound effect as each of those graphics comes on (needs the music step: the effects are mixed and placed with it)")
     ap.add_argument("--music-reference", type=Path)
     a = ap.parse_args()
     try:
-        r = run(a.xml, a.out, not a.no_captions, not a.no_music, not a.no_bleep, a.sfx_at, a.music_reference, progress=lambda s: print(f"== {s}", flush=True))
+        r = run(a.xml, a.out, not a.no_captions, not a.no_music, not a.no_bleep, a.sfx_at, a.music_reference, progress=lambda s: print(f"== {s}", flush=True), graphics=a.graphics, sfx=a.sfx)
     except (FinishError, timeline.TimelineError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1

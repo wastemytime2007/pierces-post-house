@@ -150,3 +150,20 @@ def test_listed_words_are_starred_in_the_caption_text_and_other_words_are_not():
     assert [w.text for w in out] == ["F******", "class,", "s***."]
     kept, _ = mc.clean_words([W("Fucking", 0, 0.3)], censor=False)
     assert kept[0].text == "Fucking"
+
+
+def test_captions_keep_clear_of_a_title_cards_words_and_a_name_tag(monkeypatch):
+    mc.use_layout(1080, 1920) if hasattr(mc, "use_layout") else None
+    title_layer = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": 0.0, "plan": {
+        "title": {"on": [0.0, 0.2, 0.4], "off": 2.4, "small": "The septic you don't replace yet", "big": "", "joke": ""},
+        "labels": [{"on": 3.0, "off": 5.5, "text": "Bob"}]}}
+    blocked = mc.blocked_for(title_layer)
+    assert [round(b["t1"], 1) for b in blocked] == [2.4, 5.5]                                   # one window for the card, one for the tag
+    mid = {"text": "So we bought three houses", "show_start": 1.0, "show_end": 2.0}
+    tag = {"text": "and all three", "show_start": 3.5, "show_end": 4.5}
+    clear = {"text": "later", "show_start": 7.0, "show_end": 8.0}
+    # a caption sits at the bottom, clear of the card's text band and of the tag's lower-left box, so none of them has to move
+    for g in (mid, tag, clear):
+        pos, collided = mc.pick_position(g, blocked, 0.0)
+        assert not collided
+    assert all(r[3] > 0 and r[2] > 0 for b in blocked for r in b["rects"])

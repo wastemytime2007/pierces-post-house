@@ -23,11 +23,25 @@ def is_whole_file(xml: Path) -> bool:
         return False
 
 
-def row(xml_out: Path) -> tuple[str, bool, str]:
-    """('verify_export', ok, detail) for the XML, skipping only CUT-GRANULARITY and only for a whole-file XML."""
+def row(xml_out: Path, xml_in: Path | None = None) -> tuple[str, bool | None, str]:
+    """('verify_export', ok, detail) for the XML, skipping only CUT-GRANULARITY and only for a whole-file XML.
+
+    With `xml_in` (the XML a tool was handed) the output is held to the checks the INPUT passed: a check that already failed on the input is a defect the tool inherited, not one it made, so it
+    is reported (ok None, said in words) and does not stop the tool; a check the tool newly breaks still fails. Without it every check must pass, as before."""
     rep = verify_export.Report()
     verify_export.check_xml(xml_out, rep)
     skip = {"CUT-GRANULARITY"} if is_whole_file(xml_out) else set()
-    bad = [n for n, ok, _d in rep.rows if ok is False and n not in skip]
+    failing = [n for n, ok, _d in rep.rows if ok is False and n not in skip]
+    inherited: list[str] = []
+    if xml_in is not None and failing:
+        rep_in = verify_export.Report()
+        verify_export.check_xml(xml_in, rep_in)
+        before = {n for n, ok, _d in rep_in.rows if ok is False}
+        inherited = [n for n in failing if n in before]
+        failing = [n for n in failing if n not in before]
     note = " (CUT-GRANULARITY does not apply: this XML is one finished video file)" if skip and any(n in skip and ok is False for n, ok, _d in rep.rows) else ""
-    return ("verify_export", not bad, ("all applicable checks pass" + note) if not bad else f"FAILED: {', '.join(bad)}")
+    if failing:
+        return ("verify_export", False, f"FAILED: {', '.join(failing)}")
+    if inherited:
+        return ("verify_export", None, f"{', '.join(inherited)} already failed on the XML this was made from, so not caused here (the export itself needs fixing); nothing else fails" + note)
+    return ("verify_export", True, "all applicable checks pass" + note)

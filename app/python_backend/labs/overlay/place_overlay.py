@@ -165,7 +165,7 @@ def verify_placed(xml_in: Path, xml_out: Path, info: dict, folder: Path) -> list
     path = _decode_pathurl(ci.find("file").findtext("pathurl"))[0]
     rows.append(("FILE-REACHABLE", Path(path) == info["mov"].resolve() and Path(path).exists(), path))
     import export_gate
-    rows.append(export_gate.row(xml_out))
+    rows.append(export_gate.row(xml_out, xml_in))
     return rows
 
 

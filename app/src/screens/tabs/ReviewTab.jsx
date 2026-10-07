@@ -69,8 +69,15 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [choosing, setChoosing] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishOpts, setFinishOpts] = useState(() => {
-    try { return { captions: true, music: true, bleep: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true }; }
+    try { return { captions: true, music: true, bleep: true, graphics: true, sfx: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true, graphics: true, sfx: true }; }
   });
+  const [autoFinish, setAutoFinish] = useState(() => {
+    try { return localStorage.getItem("review.autoFinish") !== "off"; } catch (e) { return true; }
+  });
+  const autoFinishRef = useRef(autoFinish);
+  autoFinishRef.current = autoFinish;
+  const finishOptsRef = useRef(finishOpts);
+  finishOptsRef.current = finishOpts;
   const [remember, setRemember] = useState(true);
   const lastStageRef = useRef("");
 
@@ -337,7 +344,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   // A new version (the cut just built, or one made from your notes): the AI editor takes it from here, unless it is switched off, then only the review runs.
   aiStartRef.current = (xml, folder, tag, root) => {
     if (autoOnRef.current) {
-      sendCommand({ type: "auto_edit", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
+      sendCommand({ type: "auto_edit", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml, finish: autoFinishRef.current ? finishOptsRef.current : null }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
     } else {
       aiOnlyRef.current?.(xml, folder, tag, root);
     }
@@ -549,6 +556,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
           <input type="checkbox" checked={autoOn} onChange={(e) => { setAutoOn(e.target.checked); try { localStorage.setItem("review.autoEdit", e.target.checked ? "on" : "off"); } catch (err) { /* private window */ } }} />
           AI editor works on its own
         </label>
+        <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="When on, the AI editor ends by finishing the best version it made: captions, a title card and name tags, music, an effect on each graphic, the bleep. The choices are the ones in Finish the cut.">
+          <input type="checkbox" checked={autoFinish} onChange={(e) => { setAutoFinish(e.target.checked); try { localStorage.setItem("review.autoFinish", e.target.checked ? "on" : "off"); } catch (err) { /* private window */ } }} />
+          …and finishes the cut
+        </label>
         {auto.status === "running" && (
           <button className="btn btn-ghost" onClick={() => sendCommand({ type: "auto_edit_stop" })} title="The editor finishes the step it is on and stops">Stop the AI editor</button>
         )}
@@ -587,14 +598,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className="run-pipeline-section" role="dialog" aria-label="Finish the cut">
           <div className="run-pipeline-section-label">Finish the cut</div>
           <div className="sync-section-hint">Adds the layers below to this version and opens the result as V{versions.length + 1}. The picture and the length stay exactly as they are. This takes several minutes.</div>
-          {[["captions", "Captions: what is said, as text on screen"], ["music", "Music: generated, an upbeat bed under the voice, a beat on every cut"], ["bleep", "Bleep: every listed word"]].map(([k, label]) => (
+          {[["captions", "Captions: what is said, as text on screen"], ["graphics", "Graphics: a title card with the topic, and a name tag the first time each person talks"], ["music", "Music: generated, an upbeat bed under the voice, a beat on every cut"], ["sfx", "Sound effects: a library effect as each graphic comes on (placed with the music)"], ["bleep", "Bleep: every listed word"]].map(([k, label]) => (
             <label key={k} className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
               {label}
             </label>
           ))}
           <div className="pm-tab-row">
-            <button className="btn btn-primary" onClick={finishCut} disabled={!finishOpts.captions && !finishOpts.music && !finishOpts.bleep}>Make V{versions.length + 1}</button>
+            <button className="btn btn-primary" onClick={finishCut} disabled={!finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics}>Make V{versions.length + 1}</button>
             <button className="btn btn-ghost" onClick={() => setFinishing(false)}>Cancel</button>
           </div>
         </div>

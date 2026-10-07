@@ -264,3 +264,25 @@ def test_refuses_when_the_sequence_declares_no_audio_rate(tmp_path, cut_media):
     xml = rl.make_xml(tmp_path / "cut.xml", vid, lav)                    # the bare synthetic cut has no audio format
     with pytest.raises(pa.PlaceError, match="no audio sample rate"):
         pa.place(xml, tmp_path / "o.xml", _folder(tmp_path))
+
+
+def test_several_effects_share_one_pair_of_tracks_and_one_file(tmp_path, cut_media):
+    xml = _xml(tmp_path, cut_media)
+    f = _folder(tmp_path)
+    meta = json.loads((f / "placement.json").read_text())
+    sfx = meta["clips"][1]
+    meta["clips"] += [{**sfx, "start_sec": 8.0}, {**sfx, "start_sec": 14.5}]                  # the same effect at two more moments
+    (f / "placement.json").write_text(json.dumps(meta))
+    out = tmp_path / "placed.xml"
+    info = pa.place(xml, out, f)
+    rows = pa.verify_placed(xml, out, info)
+    assert not [(n, d) for n, ok, d in rows if ok is False], rows
+    seq = timeline._seq_for_cut(ET.parse(out).getroot())
+    old = len(timeline._seq_for_cut(ET.parse(xml).getroot()).findall("media/audio/track"))
+    new = seq.findall("media/audio/track")[old:]
+    assert len(new) == 4                                                                      # music pair + ONE effect pair, not two pairs per effect
+    fps = info["fps"]
+    assert [int(c.findtext("start")) for c in new[2].findall("clipitem")] == [round(3.0 * fps), round(8.0 * fps), round(14.5 * fps)]
+    assert len({c.find("file").get("id") for c in new[2].findall("clipitem")}) == 1            # one file, referred to three times
+    assert [tr.findall("clipitem")[0].find("file").findtext("pathurl") is not None for tr in new[2:3]] == [True]
+    assert all(tr[-1].tag == "locked" and tr[-2].tag == "enabled" for tr in new)               # enabled/locked still close each track
