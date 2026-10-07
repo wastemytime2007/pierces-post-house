@@ -946,6 +946,64 @@ def handle_set_auto_include_rules(cmd: dict) -> None:
     emit({"type": "auto_include_rules", "rules": get_auto_include_rules()})
 
 
+def _export_emitter(proj):
+    """emit, plus: an export that completes is recorded for the Review tab (it starts from the export the app just made, even after a restart). Recorded BEFORE the event so a list taken on it sees it."""
+    def emit_and_remember(ev: dict) -> None:
+        if ev.get("type") == "export_complete" and ev.get("xml_path"):
+            try:
+                import creator_tools
+                creator_tools.remember_export(proj.dir(), ev["xml_path"])
+            except Exception as exc:
+                log("warn", f"Could not record this export for the Review tab: {exc}")
+        emit(ev)
+    return emit_and_remember
+
+
+def handle_review_cut(cmd: dict) -> None:
+    """Make the cut(s) for the selected ideas straight into the project's own folder (cuts/), with no save dialog, so they can be reviewed. Exactly the options the export dialog uses,
+    so the reviewed XML is the XML that would have been exported to Premiere. One XML per idea (the review opens one sequence per XML). Runs in the background; each finished XML arrives as
+    `export_complete`, which the Review tab builds its page from."""
+    proj = _require_project()
+    if proj is None:
+        return
+    ids = [i for i in (cmd.get("idea_ids") or []) if i]
+    if not ids:
+        err("review_cut needs at least one idea_id")
+        return
+    import datetime
+    import re as _re
+    folder = proj.dir() / "cuts"
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    safe = _re.sub(r"[^A-Za-z0-9 _.-]", "", proj.name).strip() or "cut"
+    try:
+        auto_rules = get_auto_include_rules() if bool(cmd.get("apply_auto_includes", True)) else []
+    except Exception as exc:
+        log("warn", f"Failed to load auto_include_rules; continuing without: {exc}")
+        auto_rules = []
+
+    def worker():
+        for n, idea_id in enumerate(ids, start=1):
+            out = folder / f"{safe} {str(idea_id)[-8:]} {stamp}.xml"
+            job_id = f"review-cut-{int(time.time())}-{n}"
+            cancel_flag = threading.Event()
+            with _jobs_lock:
+                _jobs[job_id] = ActiveJob(job_id, cancel_flag)
+            emit({"type": "review_cut_started", "job_id": job_id, "idea_id": idea_id, "xml_path": str(out), "n": n, "of": len(ids)})
+            try:
+                options = ExportOptions(output_path=out, idea_ids=[idea_id], include_full_library=True, run_audio_sync=True, include_clean_mic=True,
+                                        include_overlay=True, library_only=False, auto_include_rules=auto_rules, broll_target_fps=None)
+                run_export(proj, job_id, options, emit=_export_emitter(proj))
+            except Exception as exc:
+                err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+                emit({"type": "export_error", "job_id": job_id, "message": f"{type(exc).__name__}: {exc}"})
+            finally:
+                with _jobs_lock:
+                    _jobs.pop(job_id, None)
+
+    _executor.submit(worker)
+
+
 def handle_export_timelines(cmd: dict) -> None:
     """Run the full export pipeline for selected ideas.
 
@@ -1008,18 +1066,9 @@ def handle_export_timelines(cmd: dict) -> None:
     with _jobs_lock:
         _jobs[job_id] = ActiveJob(job_id, cancel_flag)
 
-    def emit_and_remember(ev: dict) -> None:
-        if ev.get("type") == "export_complete" and ev.get("xml_path"):
-            try:                                     # the Review tab starts from the export the app just made, even after a restart; recorded BEFORE the event so a list taken on it sees it
-                import creator_tools
-                creator_tools.remember_export(proj.dir(), ev["xml_path"])
-            except Exception as exc:
-                log("warn", f"Could not record this export for the Review tab: {exc}")
-        emit(ev)
-
     def worker():
         try:
-            run_export(proj, job_id, options, emit=emit_and_remember)
+            run_export(proj, job_id, options, emit=_export_emitter(proj))
         except Exception as exc:
             err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
         finally:
@@ -1225,6 +1274,7 @@ HANDLERS = {
     "set_audience_profiles": handle_set_audience_profiles,
     # Export (Drop 3)
     "export_timelines": handle_export_timelines,
+    "review_cut": handle_review_cut,
     # Creator-workflow tools (labs/)
     "build_review": handle_build_review,
     "apply_notes": handle_apply_notes,

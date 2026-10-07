@@ -352,6 +352,7 @@ export default function ProjectView({
               onMarkAutoIncludeNudgeSeen={onMarkAutoIncludeNudgeSeen}
               onOpenAutoIncludeModal={onOpenAutoIncludeModal}
               autoIncludeRulesCount={autoIncludeRulesCount}
+              onGoToReview={() => setActiveTab("review")}
             />
           )}
           {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}

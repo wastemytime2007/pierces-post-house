@@ -22,6 +22,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const versionsRef = useRef([]);
   const busyRef = useRef("");
   const buildRef = useRef(null);
+  const makingRef = useRef("");
+  const [making, setMaking] = useState(""); // the cut is being made from the ideas picked on the Ideas tab ("Review this cut"): what it is doing now
   const [incoming, setIncoming] = useState(""); // an export made while a review is open: offered, never swapped in under the notes being written
   const [exportsList, setExportsList] = useState([]);
   const [versions, setVersions] = useState([]); // [{label, xml, folder, url, qa}]
@@ -46,19 +48,21 @@ export default function ReviewTab({ subscribe, onStatus }) {
   versionsRef.current = versions;
   busyRef.current = busy;
   curRef.current = cur;
+  makingRef.current = making;
 
   useEffect(() => { readyRef.current = false; }, [version?.url]); // a new page is loading: wait for it to say it is ready
 
   useEffect(() => {
     if (!onStatus) return;
     onStatus(
-      busy === "building" ? "building the cut…"
+      making ? "making the cut…"
+      : busy === "building" ? "building the cut…"
       : busy === "applying" ? "applying notes…"
       : incoming ? "new export ready"
       : versions.length ? `${versions[cur]?.label || "V1"} open`
       : exportsList.length ? "cut ready" : "notes on a cut"
     );
-  }, [onStatus, busy, incoming, versions, cur, exportsList]);
+  }, [onStatus, busy, incoming, versions, cur, exportsList, making]);
 
   useEffect(() => {
     sendCommand({ type: "list_exports" }).catch(() => {});
@@ -68,7 +72,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
     return subscribe((ev) => {
       if (ev.type === "exports_listed") {
         setExportsList(ev.exports || []);
+      } else if (ev.type === "review_cut_started") {
+        setError("");
+        setMaking(`Making the cut${ev.of > 1 ? ` (${ev.n} of ${ev.of})` : ""} from the idea…`);
+      } else if (makingRef.current && ev.type === "export_matching") {
+        setMaking("Matching the idea to your footage…");
+      } else if (makingRef.current && ev.type === "export_sync_started") {
+        setMaking("Syncing the voice recorders to the footage…");
+      } else if (makingRef.current && ev.type === "export_writing") {
+        setMaking("Writing the cut…");
+      } else if (makingRef.current && ev.type === "export_error") {
+        setMaking("");
+        setError(ev.message || "The cut could not be made.");
       } else if (ev.type === "export_complete" && ev.xml_path) {
+        setMaking("");
         // The app just wrote an XML. Review it without being asked, unless a review is already open or building.
         const row = { path: ev.xml_path, name: fileName(ev.xml_path), mtime: Date.now() / 1000 };
         setExportsList((l) => [row, ...l.filter((x) => x.path !== row.path)]);
@@ -228,11 +245,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className="run-pipeline-section">
           <div className="run-pipeline-section-label">Choose the cut to review</div>
           <p className="pm-tab-sub">
-            Export a cut from the Ideas tab and it opens here by itself: the video, every edit decision on a timeline, and a place for timecoded notes and drawing
+            Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing
             on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere.
           </p>
-          {busy === "building" && <div className="sync-section-hint">Building the review page from the export (about half a minute)…</div>}
-          {!busy && exportsList.length === 0 && <div className="sync-section-hint">No export from this project yet.</div>}
+          {making && <div className="sync-section-hint">{making}</div>}
+          {!making && busy === "building" && <div className="sync-section-hint">Building the review page from the cut (about half a minute)…</div>}
+          {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">No cut from this project yet. Pick ideas on the Ideas tab and press Review.</div>}
           {exportsList.length > 0 && (
             <div className="transcripts-list">
               {exportsList.slice(0, 8).map((x) => (

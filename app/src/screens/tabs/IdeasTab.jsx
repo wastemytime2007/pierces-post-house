@@ -33,6 +33,8 @@ export default function IdeasTab({
   // includes" toggle. We just forward it; the toggle and gating logic
   // live in ExportModal itself.
   autoIncludeRulesCount,
+  // Review the selected cuts without exporting an XML first: the backend makes them in the project's own folder and the Review tab takes over.
+  onGoToReview,
 }) {
   const [showBriefForm, setShowBriefForm] = useState(false);
   // 2026-09-04: the plan-first conversation panel.
@@ -560,9 +562,25 @@ export default function IdeasTab({
           </button>
           <button
             className="btn btn-primary"
+            title="Make the cut and open it on the review page. Nothing to save or download."
+            onClick={async () => {
+              const ids = selectedExportable.map((i) => i.idea_id);
+              if (onGoToReview) onGoToReview();
+              try {
+                await sendCommand({ type: "review_cut", idea_ids: ids });
+              } catch (e) {
+                console.error("review_cut failed:", e);
+              }
+            }}
+          >
+            Review {selectedExportable.length === 1 ? "this cut" : "these cuts"} →
+          </button>
+          <button
+            className="btn btn-ghost"
+            title="Save a Premiere XML to a place you choose"
             onClick={() => requestExport(false)}
           >
-            Export to Premiere XML →
+            Export XML…
           </button>
         </div>
       )}
