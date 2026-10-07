@@ -81,6 +81,8 @@ SAYS_LOWER = re.compile(r"\b(lower|lowered|lowering|down|bring (it|this|them) do
 SAYS_RAISE = re.compile(r"\b(raise|raised|raising|higher|up|bring (it|this|them) up|move (it|this) up)\b", re.I)
 CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "extend_start", "start_at_words", "drop_clip", "reframe_vertical", "follow_speaker"}
 SAYS_FOLLOW = re.compile(r"\b(follow(s|ing)?|track(s|ing)?|on|center(ed|ing)?|centre(d|ing)?)\b.{0,40}\b(speak(er|ers|ing)|talk(er|ing)|whoever|who(\'s| is) (talking|speaking)|person|both)\b|\b(speak(er|ers|ing)|talk(er|ing)|whoever)\b.{0,40}\b(frame|framed|framing|follow|center|centre|on screen)\b|\bframed on (either|both|neither)\b", re.I)
+SAYS_SWITCH = re.compile(r"\b(re-?frame|cut(ting)? back and forth|back and forth|switch(ing)? (to|between)|audio source|source audio|mic(rophone)? (source )?(to|for))\b.{0,120}\b(speak(er|ers|ing)|talk(er|ing)|person|people|him|her|them)\b|\b(speak(er|ers))\b.{0,120}\b(re-?frame|cut(ting)? back|switch|audio source|source audio)\b", re.I)
+SAYS_SHORT = re.compile(r"\b(yeah|yep|right|uh[- ]?huh|mm+[- ]?hm+|okay|ok|just says?|even if|brief|short|one word|interject\w*|quick)\b", re.I)
 # Operations a note may carry as its own measured fix ("suggested_op", written by the AI review): used as they are, the interpreter is not asked, and only structure is checked.
 # The amounts are measured later from the audio, never taken from the note; max_sec only bounds how far the measurement may look (4 s lets an end run on to the next pause).
 SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", "follow_speaker"}
@@ -109,7 +111,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - start_at_words {"clip": n, "words": "..."}  The note says clip n should START at specific words, dropping words before them (for example "the clean cut should be X to Y": the clip after the seam starts at Y). "words" must be copied from the note. The point is found by listening, so never give a time.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming in or out, moving sideways or cropping (those are unsupported).
-- follow_speaker {"clip": n or "all"}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Never give a position or a time: who talks when and where each person stands are measured.
+- follow_speaker {"clip": n or "all", "short_turns": true or false}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Use it too when the note asks to cut or switch back and forth between the speakers, to reframe to whoever is talking, or to use the talking person's own microphone: the picture and the sound both follow the speaker. Set "short_turns" true when the note says even a short reply ("yeah", "right") should get the cut. Never give a position or a time: who talks when and where each person stands are measured.
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
 - edit_caption {"text": "..."}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ..."). "text" must be copied from the note's own words (usually quoted); never write your own. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
@@ -260,14 +262,15 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"the note does not say to {direction} it, refusing to move the shot a way the note did not ask")
                 out.append({"note": note, "op": op, "clip": clip, "direction": direction, "why": why})
             elif op == "follow_speaker":
-                if not SAYS_FOLLOW.search(text):
+                if not (SAYS_FOLLOW.search(text) or SAYS_SWITCH.search(text)):
                     raise ValueError("the note does not ask for the picture to follow or be framed on the person talking")
                 clip = raw.get("clip", "all")
                 if clip != "all":
                     clip = int(clip)
                     if not 1 <= clip <= n_clips:
                         raise ValueError(f"clip {clip} does not exist")
-                out.append({"note": note, "op": op, "clips": "all" if clip == "all" else [clip], "why": why})
+                out.append({"note": note, "op": op, "clips": "all" if clip == "all" else [clip], "why": why,
+                            "short_turns": bool(raw.get("short_turns")) or bool(SAYS_SHORT.search(text))})
             elif op == "replace_sfx":
                 sound = str(raw.get("sound", "")).strip()
                 st, nt = words_mod.tokens(sound), set(words_mod.tokens(text))

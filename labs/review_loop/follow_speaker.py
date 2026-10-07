@@ -22,6 +22,8 @@ import speakers as sp
 from framing import FramingError
 from timeline import TimelineError
 
+SHORT_TURN_SEC = 0.3       # with short_turns (the note says even a "yeah" gets the cut) a piece may be this short: the least speakers.pieces_for_cut will make
+SHORT_RUN_SEC = 0.25       # and the recorders' own minimum for a turn drops to this
 FRAME_MIN_SEC = 1.0        # a change of speaker shorter than this ("mm-hm", a one-word answer) does not move the picture: it would read as the frame twitching
 
 
@@ -87,14 +89,14 @@ def plan_follow(cut, o: dict, cache: Path | None, progress=lambda s: None, analy
         if not any(c.motion for c in mine):
             continue
         rows = [{"idx": c.idx, "src_in": c.src_in, "src_out": c.src_out, "fps": cut.fps} for c in mine]
-        res = analyse(path, rows, mic_dir, cache, progress)
+        res = analyse(path, rows, mic_dir, cache, progress, min_run=SHORT_RUN_SEC) if o.get("short_turns") else analyse(path, rows, mic_dir, cache, progress)
         runs = sorted((c.src_in + s, c.src_in + e, w) for c in mine for s, e, w in res["clips"][c.idx]["runs"])
         progress("Finding where each person's face is when they talk")
         files[path] = {"people": res["people"], "runs": [[round(a, 3), round(b, 3), w] for a, b, w in runs], "evidence": res["evidence"], "lavs": res.get("lavs", {}),
                        "faces": sample_faces(path, runs, res["people"], sample_fn, faces_fn)}
     if not files:
         raise FramingError("none of these clips has a scale and position set, so there is no punched-in window to move; set its framing first (labs/reframe)")
-    return {"files": files, "clips": [c.idx for c in clips],
+    return {"files": files, "clips": [c.idx for c in clips], "short_turns": bool(o.get("short_turns")),
             "ranges": [[c.src_path, round(c.src_in, 3), round(c.src_out, 3)] for c in clips if c.src_path in files]}
 
 
@@ -200,7 +202,8 @@ def apply_follow(seq: ET.Element, infos: list[dict], zone_f: int, seq_fps: float
         if framing.window_half_width(scale, sw, out_w) * 2 >= framing.NOTHING_TO_DO_WIDTH:
             skipped.append(f"a clip of {Path(path).name} already shows nearly the whole width, so there is no room to move")
             continue
-        pieces = merge_short(sp.pieces_for_cut(runs, (end - start) / seq_fps, fps=seq_fps), seq_fps) if runs else []
+        floor = SHORT_TURN_SEC if any(i.get("short_turns") for i in infos) else FRAME_MIN_SEC
+        pieces = merge_short(sp.pieces_for_cut(runs, (end - start) / seq_fps, fps=seq_fps), seq_fps, floor) if runs else []
         if not pieces:
             skipped.append(f"a clip of {Path(path).name} has no one talking in it that the recorders could place, so it was left alone")
             continue
@@ -457,7 +460,7 @@ def check_voices(xml_path: Path, cut, info: dict) -> tuple[bool, str]:
     for cam, f in info["files"].items():
         sw = [(g[0], g[1], g[2], g[3]) for who in f.get("lavs", {}) for g in f["lavs"][who]]
         for s0, e0, who in f["runs"]:
-            if e0 - s0 < FRAME_MIN_SEC:
+            if e0 - s0 < (SHORT_TURN_SEC + 0.2 if info.get("short_turns") else FRAME_MIN_SEC):
                 continue
             m = (s0 + e0) / 2
             v = next((c for c in cut.video if c.src_path == cam and c.src_in <= m < c.src_out and c.motion), None)

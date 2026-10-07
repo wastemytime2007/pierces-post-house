@@ -67,12 +67,12 @@ def x_for_horiz(horiz: float, scale_pct: float, source_w: float) -> float:
 
 # ------------------------------------------------------------------ who is talking
 
-def speaker_runs_for(lavs: dict, t0: float, in_sec: float, dur: float) -> list[tuple[float, float, str]]:
+def speaker_runs_for(lavs: dict, t0: float, in_sec: float, dur: float, min_run: float | None = None) -> list[tuple[float, float, str]]:
     """[(start, end, person)] in seconds from the start of a clip that begins at camera time `in_sec` and lasts `dur`; `lavs` is speakers.match_lavs_timed's answer (camera times, so `t0` is not needed)."""
     if len(lavs) < 2:
         return []
     levels = {who: sp.level_track_timed(segs, in_sec, dur) for who, segs in lavs.items()}
-    return sp.speaker_runs(levels)
+    return sp.speaker_runs(levels, min_run=min_run) if min_run else sp.speaker_runs(levels)
 
 
 def pieces_of(runs: list[tuple[float, float, str]], dur: float, fps: float) -> list[tuple[int, int, str]]:
@@ -216,7 +216,7 @@ def _write_cache(cache: Path | None, data: dict) -> None:
             pass
 
 
-def analyse(cam: str, clips: list[dict], mic_dir: str | Path, cache: Path | None = None, progress=lambda s: None, faces_fn=None, sample_fn=None, lavs_fn=None) -> dict:
+def analyse(cam: str, clips: list[dict], mic_dir: str | Path, cache: Path | None = None, progress=lambda s: None, faces_fn=None, sample_fn=None, lavs_fn=None, min_run: float | None = None) -> dict:
     """Who talks when in each clip, and where each person stands, for one camera file.
 
     `clips`: [{"idx", "src_in", "src_out", "fps"}] (camera seconds). Returns {"people": {"Bob": x, "Mitch": x}, "evidence": text, "clips": {idx: {"pieces": [(first_frame, frames, person)], "runs": [...]}}}.
@@ -243,7 +243,7 @@ def analyse(cam: str, clips: list[dict], mic_dir: str | Path, cache: Path | None
         all_runs: list[tuple[float, float, str]] = []
         for c in clips:
             dur = c["src_out"] - c["src_in"]
-            runs = speaker_runs_for(lavs, t0, c["src_in"], dur)
+            runs = speaker_runs_for(lavs, t0, c["src_in"], dur, min_run)
             out_clips[c["idx"]] = {"runs": runs, "pieces": pieces_of(runs, dur, c["fps"])}
             all_runs += [(c["src_in"] + s, c["src_in"] + e, w) for s, e, w in runs]
 

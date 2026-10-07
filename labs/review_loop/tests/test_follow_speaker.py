@@ -245,3 +245,40 @@ def test_segments_for_gives_each_stretch_to_the_recorder_that_covers_it_and_exte
     segs = [(0.0, 30.0, "a.WAV", 1.0, 99.0), (30.0, 60.0, "b.WAV", 2.0, 99.0)]
     got = speakers.segments_for(segs, -5.0, 70.0)
     assert [(g[2], round(g[0], 1), round(g[1], 1)) for g in got] == [("a.WAV", -5.0, 30.0), ("b.WAV", 30.0, 70.0)]
+
+
+# ------------------------------------------------------------------ Ryan's note, 2026-10-07: even a "Yeah" gets the cut
+
+RYANS_NOTE = ("Do a better job at cutting back anf forth between the two speakers. even if the other speaker just says “Yeah” or “Right” reframe to them and change the audio source "
+              "to the appropriate speaker")
+
+
+def test_the_note_as_ryan_wrote_it_is_accepted_and_asks_for_short_turns(framed):
+    cut = timeline.load_cut(framed)
+    note = [{"timeline_sec": 3.0, "text": RYANS_NOTE}]
+    kept = opsmod.validate([{"note": 1, "op": "follow_speaker", "clip": "all", "why": "x"}], note, cut)
+    assert kept[0]["op"] == "follow_speaker" and kept[0]["short_turns"] is True
+
+
+def test_a_plain_follow_note_does_not_ask_for_short_turns(framed):
+    cut = timeline.load_cut(framed)
+    note = [{"timeline_sec": 3.0, "text": "the framing should follow the speaker"}]
+    kept = opsmod.validate([{"note": 1, "op": "follow_speaker", "clip": "all", "why": "x"}], note, cut)
+    assert kept[0]["short_turns"] is False
+
+
+def test_with_short_turns_a_half_second_yeah_gets_its_own_piece_and_without_it_does_not(framed, stubbed, tmp_path):
+    def runs(c):
+        dur = c["src_out"] - c["src_in"]
+        return [(0, 1.0, "Ann"), (1.0, 1.5, "Ben"), (1.5, dur, "Ann")] if dur > 2.5 else [(0, dur, "Ann")]
+    stubbed(runs)
+    cut = timeline.load_cut(framed)
+    apply_ops.apply_ops(framed, tmp_path / "plain.xml", cut, OP, NOTE)
+    plain = timeline.load_cut(tmp_path / "plain.xml")
+    assert len({round(c.motion[1], 3) for c in plain.video if c.motion and c.motion[0] == 150}) == 1
+    short = [{**OP[0], "short_turns": True}]
+    apply_ops.apply_ops(framed, tmp_path / "short.xml", cut, short, NOTE)
+    new = timeline.load_cut(tmp_path / "short.xml")
+    assert len({round(c.motion[1], 3) for c in new.video if c.motion and c.motion[0] == 150}) == 2      # the other speaker's half second is its own piece
+    ok, detail = fs.check_written(new, apply_ops.plan(cut, short, NOTE)[0][0].check, __import__("render_preview").source_dims)
+    assert ok, detail

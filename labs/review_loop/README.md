@@ -185,7 +185,7 @@ When a clip ends mid-sentence and the next clip, from the same file, begins mid-
 ## Following the speaker (2026-10-07)
 `follow_speaker {clip | "all"}` splits the cut's video clips at each change of speaker and centres each piece on whoever is talking (`follow_speaker.py`). Who talks when comes from each person's own recorder
 (`speakers.py`, `sync_audio.py`); where each person stands comes from macOS Vision face detection (`find_faces.swift`, no download); which person is on which side is decided by who moves while their own recorder hears them
-talk, over snippets from a wide stretch of the interview, and it refuses (with the reason) when the evidence is weak (`framing.py`). Only video is split, so lav sync cannot move; a change of speaker under 1 s is ignored;
+talk, over snippets from a wide stretch of the interview, and it refuses (with the reason) when the evidence is weak (`framing.py`). Only video is split, so lav sync cannot move; a change of speaker under 1 s is ignored unless the note asks for short replies to get the cut (`short_turns`, floor 0.3 s);
 only Basic Motion horizontal is written. The recordings folder is read from the cut's own lav clips. Read-back check: `follow_speaker.check_written` (revise's `FOLLOWS-SPEAKER`, QA's row). First look at a camera file takes about a
 minute (cached per file in `~/Library/Application Support/Post House/framing_cache.json`). Not covered: a recorder with nothing recorded in a clip's window (that clip is left as it was, and says so), tracking a person inside a piece.
 The voice follows too: while a person talks only their own recorder is live. The lav clips are cut at the speaker changes, the other person's recorder is switched off under that turn, and the speaker's recorder is added on its
