@@ -67,6 +67,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
     try { return localStorage.getItem("review.premiere") || ""; } catch (e) { return ""; }
   });
   const [choosing, setChoosing] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [finishOpts, setFinishOpts] = useState(() => {
+    try { return { captions: true, music: true, bleep: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true }; }
+  });
   const [remember, setRemember] = useState(true);
   const lastStageRef = useRef("");
 
@@ -210,6 +214,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setNoteCount(0);
         setExportResult(null);
         setShowLedger(true);
+        if (ev.message) setInfo(ev.message);                                                              // e.g. the layers that were put back, or why they could not be
       } else if (ev.type === "notes_failed") {
         setBusy("");
         setError(ev.message || "The notes could not be applied.");
@@ -397,6 +402,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   const chosenApp = premiereApps.find((a) => a.path === premiereChoice);
   const shortName = (a) => a.name.replace(/^Adobe /, "");
+  const finishCut = async () => {
+    if (!version) return;
+    try { localStorage.setItem("review.finish", JSON.stringify(finishOpts)); } catch (e) { /* private window */ }
+    setFinishing(false);
+    setError("");
+    setInfo("");
+    try {
+      await sendCommand({ type: "finish_cut", xml: version.xml, ...finishOpts, root: versionsRef.current[0].xml, label: `V${versionsRef.current.length + 1}` });
+    } catch (e) {
+      setBusy("");
+      setError(String(e.message || e));
+    }
+  };
+
   const onOpenInPremiere = () => {
     if (premiereApps.length === 0) {
       setError("Adobe Premiere Pro was not found in your Applications folder. Use Show in Finder and open the XML yourself.");
@@ -540,6 +559,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
               ? `Submit changes (${noteCount}) → V${versions.length + 1}`
               : `Submit changes → V${versions.length + 1}`}
         </button>
+        <button className="btn btn-ghost" onClick={() => setFinishing((x) => !x)} disabled={!!busy || auto.status === "running"}
+          title="Add the finishing layers to this version: captions, a music bed, the bleep. Makes the next version; the picture is not touched.">
+          Finish the cut…
+        </button>
         <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere. Nothing to download.">
           {premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere"}
         </button>
@@ -559,6 +582,23 @@ export default function ReviewTab({ subscribe, onStatus }) {
           Start over
         </button>
       </div>
+
+      {finishing && (
+        <div className="run-pipeline-section" role="dialog" aria-label="Finish the cut">
+          <div className="run-pipeline-section-label">Finish the cut</div>
+          <div className="sync-section-hint">Adds the layers below to this version and opens the result as V{versions.length + 1}. The picture and the length stay exactly as they are. This takes several minutes.</div>
+          {[["captions", "Captions: what is said, as text on screen"], ["music", "Music: generated, an upbeat bed under the voice, a beat on every cut"], ["bleep", "Bleep: every listed word"]].map(([k, label]) => (
+            <label key={k} className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
+              {label}
+            </label>
+          ))}
+          <div className="pm-tab-row">
+            <button className="btn btn-primary" onClick={finishCut} disabled={!finishOpts.captions && !finishOpts.music && !finishOpts.bleep}>Make V{versions.length + 1}</button>
+            <button className="btn btn-ghost" onClick={() => setFinishing(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {choosing && (
         <div className="run-pipeline-section" role="dialog" aria-label="Choose a version of Premiere">

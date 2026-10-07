@@ -504,7 +504,20 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     v2 = folder / f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1}.xml"
     base = {"folder": str(folder), "items": items, "applied": sum(1 for i in items if i.get("applied")), "notes": len(note_list)}
     if not v2.is_file():
-        return {**base, "xml": None, "page": None, "qa": None, "message": "Nothing in the notes could be applied to the timeline, so no new version was written."}
+        # a note that only changes a caption's words or asks for a bleep touches no clip, so revise wrote no version; on a cut that carries layers that is still a change to make
+        try:
+            ops_now = json.loads((folder / "ops.json").read_text()) if (folder / "ops.json").is_file() else []
+            import finish_cut as _fc
+            layered = any(_fc.layers_present(src).values())
+        except Exception:
+            ops_now, layered = [], False
+        if not (layered and any(o.get("op") in ("edit_caption", "bleep_word") for o in ops_now)):
+            return {**base, "xml": None, "page": None, "qa": None, "message": "Nothing in the notes could be applied to the timeline, so no new version was written."}
+        v2.write_text(src.read_text())                                            # the picture is unchanged; the layers are what this version changes
+        for i in items:
+            if i.get("op") in ("edit_caption", "bleep_word"):
+                i["applied"], i["summary"] = True, "made when the layers were rebuilt below"
+        base["applied"] = sum(1 for i in items if i.get("applied"))
 
     stage("Checking every note against the new version")
     import qa_pass
@@ -516,7 +529,106 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     qa_out = {"report": str(report),
               "notes": [{"note": r.note, "time": round(r.time, 2), "status": r.status, "text": r.text, "rows": [{"op": x.op, "status": x.status, "detail": x.detail} for x in r.rows]} for r in results],
               "whole_cut": [{"name": n, "ok": ok, "detail": d} for n, ok, d in glob], "unrequested": list(unreq)}
-    return {**base, "xml": str(v2), "page": str(folder / "review.html"), "url": serve_review(folder), "qa": qa_out, "message": ""}
+    message = ""
+    layers_made = None
+    try:
+        layers_made = _put_layers_back(src, v2, folder, note_list, stage, height)
+    except ToolError as exc:
+        message = f"The picture was revised, but the captions, music and bleep could not be put back on it, so this version has none of them: {exc}"
+    if layers_made:
+        message = "The captions, music and bleep were put back on the revised cut: " + "; ".join(f"{s['name']}: {s['summary']}" for s in layers_made["steps"] if s["done"])
+    return {**base, "xml": str(v2), "page": str(folder / "review.html"), "url": serve_review(folder), "qa": qa_out, "message": message, "layers": layers_made}
+
+
+def _finish_record(src: Path) -> dict | None:
+    """finish.json of the version `src` came from (written by finish_cut.run), wherever that version's folder keeps it."""
+    import json
+    for p in (src.parent / "finish.json", src.parent / "layers" / "finish.json"):
+        if p.is_file():
+            try:
+                return json.loads(p.read_text())
+            except ValueError:
+                return None
+    return None
+
+
+def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], stage, height: int) -> dict | None:
+    """A revision of a cut that carries finishing layers: the picture was revised under them, so they are taken off, made again for the revised cut (same music track, caption corrections kept,
+    bleep notes honoured) and the layered cut becomes this version. Returns None when the cut carried no layers."""
+    import json
+    use_labs()
+    import finish_cut as fc
+    have = fc.layers_present(src)
+    if not any(have.values()):
+        return None
+    stage("Putting the captions, music and bleep back on the revised cut (several minutes)")
+    rec = _finish_record(src) or {}
+    fixes: list[dict] = []
+    cj = Path(rec.get("folder", "")) / "captions" / "captions.json"
+    if cj.is_file():
+        try:
+            fixes = json.loads(cj.read_text()).get("fixes") or []
+        except ValueError:
+            fixes = []
+    ops_file = folder / "ops.json"
+    ops = json.loads(ops_file.read_text()) if ops_file.is_file() else []
+    if any(o.get("op") == "edit_caption" for o in ops) and cj.is_file():              # a caption's new words: the same record fix_caption.py keeps, so the rebuild applies it
+        import fix_caption
+        old = json.loads(cj.read_text())
+        fixes, _ledger = fix_caption.collect(ops, note_list, old["groups"], old["window"]["start"], fixes)
+    requests = []
+    try:
+        import bleep as bp
+        requests = bp.requests_from_notes(ops, note_list)
+    except Exception:
+        requests = []
+    music_raw = rec.get("music_raw")
+    unlayered = folder / f"{v2.stem} (before layers).xml"
+    unlayered.write_text(v2.read_text())
+    try:
+        r = fc.run(unlayered, folder / "layers", captions=have["on_screen"], music=have["music"], bleep=True, rebuild=True,
+                   music_file=music_raw if music_raw and Path(music_raw).is_file() else None, caption_fixes=fixes or None, bleep_requests=requests or None,
+                   progress=stage, final_name=v2.name)
+    except (fc.FinishError, Exception) as exc:
+        unlayered.unlink(missing_ok=True)
+        raise ToolError(str(exc)) from exc
+    failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
+    if failed:
+        unlayered.unlink(missing_ok=True)
+        raise ToolError("the rebuilt layers did not pass their checks:\n" + "\n".join(failed[:5]))
+    v2.write_text(Path(r["xml"]).read_text())
+    stage("Building the review page with the layers")
+    from build_review import build
+    build(v2, folder, height=height)
+    return {"steps": r["steps"], "folder": r["folder"]}
+
+
+def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
+               height: int = 540, on_stage=None) -> dict:
+    """A cut in; the next version out with the finishing layers on it (captions, a music bed, the bleep), each made by the tool that already does it (labs/review_loop/finish_cut.py). The result has the
+    shape of apply_notes' so the Review tab opens it as the next version. Nothing is kept if a step or a check fails."""
+    src = Path(xml).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    folder = Path(out).expanduser() if out else next_version_folder(src)
+    use_labs()
+    stage = on_stage or (lambda _s: None)
+    import finish_cut as fc
+    from timeline import TimelineError
+    try:
+        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage)
+    except (fc.FinishError, TimelineError) as exc:
+        raise ToolError(str(exc)) from exc
+    failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
+    if failed:
+        raise ToolError("The finished cut did not pass its own checks, so it was not kept:\n" + "\n".join(failed[:6]))
+    stage("Building the review page")
+    from build_review import build
+    build(Path(r["xml"]), folder, height=height)
+    items = [{"note": i, "note_time": 0, "note_text": "Finish the cut: " + s["name"], "op": s["name"], "applied": s["done"], "summary": s["summary"], "why": ""} for i, s in enumerate(r["steps"], start=1)]
+    return {"folder": str(folder), "items": items, "applied": sum(1 for i in items if i["applied"]), "notes": len(items), "xml": r["xml"], "page": str(folder / "review.html"),
+            "url": serve_review(folder), "qa": None, "message": "",
+            "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in r["checks"]]}
 
 
 def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = True) -> dict:

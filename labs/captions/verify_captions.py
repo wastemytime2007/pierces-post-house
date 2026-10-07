@@ -117,19 +117,28 @@ def main() -> int:
                  f"{len(groups) - len(misplaced) - len(bad_margin)} of {len(groups)} lines in their planned band and inside the margins"
                  + (f"; misplaced {misplaced}, off-margin {bad_margin}" if misplaced or bad_margin else "")))
 
-    single = [g for g in groups if len(g["words"]) >= 4 and (lambda b: b and (b[3] - b[1]) < 0.16 * rh)(bboxes.get(groups.index(g)))]
-    if single:
-        g = max(single, key=lambda x: len(x["words"]))
-        cx = []
+    many = [g for g in groups if len(g["words"]) >= 4 and bboxes.get(groups.index(g))]
+    if many:
+        g = max(many, key=lambda x: len(x["words"]))
+        pts = []
         for w in g["words"]:
             f = fr((w["start"] + w["end"]) / 2)
             r, gr, b, a = (f[..., k].astype(int) for k in range(4))
             mask = (a > 128) & (b > 170) & (gr > 120) & (r < 100)
-            cx.append(float(np.where(mask)[1].mean()) if mask.sum() > 30 * s * s else float("nan"))
-        ok = all(not np.isnan(c) for c in cx) and all(b > a - 2 * s for a, b in zip(cx, cx[1:]))
-        rows.append(("WORD-BY-WORD", ok, f"highlight x by word in \"{g['text']}\": " + ", ".join("-" if np.isnan(c) else f"{c / s:.0f}" for c in cx)))
+            if mask.sum() > 30 * s * s:
+                ys, xs = np.where(mask)
+                pts.append((float(xs.mean()), float(ys.mean())))
+            else:
+                pts.append((float("nan"), float("nan")))
+        row = 0.04 * rh                          # a highlight whose centre is this much lower than the last word's is on the next row of a wrapped line (1080x1920 wraps five words)
+
+        def moves_on(a, b):
+            same_row = abs(b[1] - a[1]) < row
+            return b[0] > a[0] - 2 * s if same_row else b[1] > a[1]            # along the row, or down to the next one
+        ok = all(not np.isnan(c[0]) for c in pts) and all(moves_on(a, b) for a, b in zip(pts, pts[1:]))
+        rows.append(("WORD-BY-WORD", ok, f"highlight x by word in \"{g['text']}\": " + ", ".join("-" if np.isnan(c[0]) else f"{c[0] / s:.0f}" + ("" if abs(c[1] - pts[0][1]) < row else f"/row{1 + round((c[1] - pts[0][1]) / (2 * row))}") for c in pts)))
     else:
-        rows.append(("WORD-BY-WORD", None, "no single-line group of 4+ words to test"))
+        rows.append(("WORD-BY-WORD", None, "no group of 4+ words to test"))
 
     checked = both = hit = 0
     for folder in pl.get("avoid", []):

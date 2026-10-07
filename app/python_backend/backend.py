@@ -1159,6 +1159,33 @@ def handle_apply_notes(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_finish_cut(cmd: dict) -> None:
+    """Captions, music and the bleep onto a cut, as its next version. Background job (transcribes, generates music, listens for words: several minutes)."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("finish_cut needs an 'xml' path")
+        return
+    job_id = cmd.get("job_id") or f"finish-{int(time.time())}"
+    emit({"type": "notes_started", "job_id": job_id, "xml": xml, "notes": "(finishing the cut)"})
+
+    def worker():
+        import creator_tools
+        try:
+            result, printed = creator_tools.capture(
+                creator_tools.finish_cut, xml, cmd.get("out"), bool(cmd.get("captions", True)), bool(cmd.get("music", True)), bool(cmd.get("bleep", True)),
+                cmd.get("sfx_at"), int(cmd.get("height", 540)), lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}))
+            for row in printed:
+                log("info", row)
+            emit({"type": "notes_applied", "job_id": job_id, "root": cmd.get("root"), "label": cmd.get("label"), "auto": True, "finish": True, **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "notes_failed", "job_id": job_id, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+            emit({"type": "notes_failed", "job_id": job_id, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
 def handle_ai_review(cmd: dict) -> None:
     """The AI review of a version of the cut: findings come back as notes the review page can carry. Background job (transcribes the cut and asks the local claude CLI)."""
     xml = cmd.get("xml")
@@ -1350,6 +1377,7 @@ HANDLERS = {
     "build_review": handle_build_review,
     "open_review": handle_open_review,
     "apply_notes": handle_apply_notes,
+    "finish_cut": handle_finish_cut,
     "export_xml": handle_export_xml,
     "ai_review": handle_ai_review,
     "auto_edit": handle_auto_edit,

@@ -22,6 +22,8 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "app" / "python_backend"))
+if (REPO_ROOT / "precut_pipeline").is_dir():                                   # the app's bundled copy: python_backend itself plays the repo root
+    sys.path.insert(0, str(REPO_ROOT))
 
 _T = None
 

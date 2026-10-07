@@ -1,0 +1,264 @@
+"""Finish a cut: captions, music (and an effect if asked), bleep, each by the tool that already does it, chained the way `labs/recruit/build_vertical_reel.py` chains them.
+
+    PRECUT_ROOT=~/precut-checkout python3 labs/review_loop/finish_cut.py <cut.xml> --out <folder> [--no-captions] [--no-music] [--no-bleep] [--sfx-at SEC] [--music-reference FILE]
+
+Order (Ryan's rulings, STATUS and labs/recruit/README.md): captions first (the bleep silences a word, and the captions must still hear it), then music as a bed under the voice (generated, modelled on the
+reference track, a beat on frame 0 and on every cut, no effect unless asked for), then the bleep LAST (every cut is scanned, every listed word bleeped). Each tool's own checks gate its step; a step that
+fails stops the run and nothing is kept. The picture is never touched: the finished XML must have the same clips on V1 as the one it started from.
+
+Not idempotent by design: a cut that already carries on-screen layers (`overlay-file-*`) is not captioned again, one that already carries generated audio (`audio-file-*`) gets no second music bed; the
+bleep undoes its own earlier pass and can always run again. Writes `<folder>/<name>_v<N+1>.xml` (the next version), the tools' own folders beside it, and `finish.json`.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+LABS = HERE.parent
+for sub in ("review_loop", "audio", "overlay", "captions", "bleep", "qa", "reconform"):
+    sys.path.insert(0, str(LABS / sub))
+sys.path.insert(0, str(LABS.parent / "safety_net"))
+
+import timeline  # noqa: E402
+
+MUSIC_DB = -6.0
+MUSIC_STYLE = ("upbeat, driving, steady and full from the first beat to the last; bass-heavy groove, clean drums, no build-up and no fade-in; instrumental")
+MUSIC_AVOID = "vocals; sound effects; a slow or quiet start; a long fade out"
+REFERENCE_GLOB = "Downloads/Artlist Library/Music/Aves - Bumpin*"
+
+
+class FinishError(Exception):
+    pass
+
+
+def _tail(text: str, n: int = 12) -> str:
+    lines = [l for l in text.splitlines() if l.strip() and "Warning" not in l and "frames/s" not in l]
+    pick = [l for l in lines if any(k in l for k in ("REFUSING", "FAIL", "Error", "error"))] or lines
+    return "\n".join(pick[-n:])
+
+
+def reference_track() -> Path | None:
+    """The music reference: POSTHOUSE_MUSIC_REFERENCE, else Ryan's Artlist example (Aves - Bumpin'), else none (the music is then made from the style words alone)."""
+    env = os.environ.get("POSTHOUSE_MUSIC_REFERENCE")
+    if env:
+        return Path(env).expanduser() if Path(env).expanduser().is_file() else None
+    for d in sorted(Path.home().glob(REFERENCE_GLOB)):
+        files = sorted(p for p in d.iterdir() if p.suffix.lower() in (".wav", ".mp3", ".m4a", ".aac", ".flac") and not p.name.startswith("."))
+        if files:
+            return files[0]
+    return None
+
+
+def layers_present(xml: Path) -> dict[str, bool]:
+    """Which finishing layers a cut already carries, by the file ids the placing tools give them (timeline.LAYER_*_PREFIX); `bleep` is true when speech has been muted for one."""
+    root = ET.parse(xml).getroot()
+    fids = [(c.find("file").get("id") or "") for c in root.iter("clipitem") if c.find("file") is not None]
+    ids = [c.get("id") or "" for c in root.iter("clipitem")]
+    return {"on_screen": any(f.startswith(timeline.LAYER_VIDEO_PREFIX) for f in fids), "music": any(f.startswith(timeline.LAYER_AUDIO_PREFIX) for f in fids),
+            "bleep": any(i.endswith("-bleep") for i in ids)}
+
+
+def default_bleep(xml: Path, out: Path, requests: list[dict] | None) -> dict:
+    import bleep as bp
+    return bp.bleep(xml, out, requests=requests or None, detail_of=bp.transcribe_detail, reveal_with=bp.transcribe_timed)
+
+
+def version_name(src: Path) -> str:
+    m = re.match(r"^(.*)_v(\d+)$", src.stem)
+    return f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1}.xml"
+
+
+def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
+        music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
+        caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None) -> dict:
+    """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
+
+    `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
+    same cut), then the steps run again on the revised picture. `music_file` is the track the first finish made (before it was fitted to the cuts), so a rebuild never changes the music;
+    `caption_fixes` are the caption lines a person corrected, kept through the rebuild; `bleep_requests` are what bleep notes asked for (bleep.requests_from_notes)."""
+    src, out = Path(xml).expanduser().resolve(), Path(out).expanduser()
+    out.mkdir(parents=True, exist_ok=True)
+    if rebuild:
+        import bleep as bp
+        import reconform
+        unb = out / "_unbleeped.xml"
+        eff = unb if bp.strip_previous(src, unb) != (0, 0) else src
+        clean = out / "_clean.xml"
+        reconform.strip_layers(eff, clean)
+        base = clean
+    else:
+        base = src
+    cut0 = timeline.load_cut(base)
+    zone = cut0.zone_end
+    have = layers_present(base)
+    steps: list[dict] = []
+    cur = base
+    music_raw: str | None = None
+
+    def tool(name: str, script: str, *args) -> None:
+        cmd = [sys.executable, str(LABS / script), *map(str, args)]
+        p = (runner or subprocess.run)(cmd, capture_output=True, text=True, env=os.environ.copy())
+        if p.returncode != 0:
+            raise FinishError(f"{name} failed, so nothing was kept. The tool said:\n{_tail(p.stdout + chr(10) + p.stderr)}")
+
+    # 1. captions: what is said, on screen
+    if captions and have["on_screen"]:
+        steps.append({"name": "captions", "done": False, "summary": "the cut already has on-screen layers, so it was not captioned again"})
+    elif captions:
+        progress("Captions: listening to the cut and making what is said into on-screen text")
+        cargs = ["--xml", cur, "--out", out / "captions", "--start", "0", "--end", f"{zone - 0.001:.3f}"]
+        if caption_fixes:
+            (out / "captions").mkdir(parents=True, exist_ok=True)
+            (out / "captions" / "fixes.json").write_text(json.dumps(caption_fixes, indent=2))
+            cargs += ["--fixes", out / "captions" / "fixes.json"]
+        tool("The captions", "captions/make_captions.py", *cargs)
+        nxt = out / "_step_captions.xml"
+        tool("Placing the captions", "overlay/place_overlay.py", cur, out / "captions", "--out", nxt)
+        cur = nxt
+        steps.append({"name": "captions", "done": True, "summary": "captions of what is said, placed above the picture"})
+
+    # 2. music (and an effect when asked): generated, modelled on the reference, a beat on frame 0 and on every cut, a bed under the voice
+    if music and have["music"]:
+        steps.append({"name": "music", "done": False, "summary": "the cut already has generated audio, so no second music bed was added"})
+    elif music:
+        progress("Music: describing the feel, generating it, fitting it to every cut (a few minutes, uses the music service)")
+        import build_review
+        try:
+            build_review.build(cur, out / "review_for_audio", height=960)
+        except Exception as e:
+            raise FinishError(f"Rendering the cut to fit the music to failed, so nothing was kept: {type(e).__name__}: {e}") from e
+        ref = Path(music_reference).expanduser() if music_reference else reference_track()
+        if music_file:
+            ref = None                                               # a rebuild keeps the track it has: nothing is measured or generated again
+        events = [0.0] + sorted({round(v.tl_start, 4) for v in timeline.load_cut(cur).video if v.tl_start > 0})
+        (out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
+        (out / "audio_in").mkdir(exist_ok=True)
+        plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, round(zone, 1)))), "style": MUSIC_STYLE}]}
+        (out / "score.json").write_text(json.dumps(plan, indent=1))
+        score_args = ["--plan", out / "score.json", "--out", out / "audio_in/music.wav"]
+        feats = None
+        if ref and not music_file:
+            import reference_music
+            feats = reference_music.analyze(ref)
+            (out / "audio_in/reference_features.json").write_text(json.dumps(feats, indent=1, default=float))
+            score_args += ["--reference-features", out / "audio_in/reference_features.json"]
+        if music_file:
+            track = Path(music_file).expanduser()
+        else:
+            tool("The music", "audio/score_music.py", *score_args)
+            track = out / "audio_in/music.wav"
+        tone_note = ""
+        if feats:
+            import tone_match
+            matched = out / "audio_in/music_matched.wav"
+            try:
+                tm = tone_match.match_tone(track, feats, matched)
+                (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
+                track = matched
+            except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
+                tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
+        music_raw = str(track)
+        conformed = out / "audio_in/music_conformed.wav"
+        tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
+        margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
+                 "--mix-style", "bed", "--music-db", f"{MUSIC_DB:g}", "--music-file", conformed]
+        margs += ["--sfx-at", f"{sfx_at:g}"] if sfx_at is not None else ["--no-sfx"]
+        if ref and not tone_note:
+            margs += ["--music-reference", ref]
+        try:
+            tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
+        except FinishError as e:
+            if "REFERENCE-MATCH" not in str(e) or "--music-reference" not in margs:
+                raise
+            # the take does not match the reference on the measures make_audio holds it to: mix it anyway, and say so with the numbers instead of hiding it or failing the whole finish
+            miss = next((l.strip() for l in str(e).splitlines() if "REFERENCE-MATCH" in l), "")
+            margs = [a for i, a in enumerate(margs) if a != "--music-reference" and (i == 0 or margs[i - 1] != "--music-reference")]
+            tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
+            tone_note += "; it does NOT match the reference's feel (" + re.sub(r"^\[FAIL\]\s*REFERENCE-MATCH\s*", "", miss)[:160] + "), so judge it by ear"
+        nxt = out / "_step_music.xml"
+        tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
+        cur = nxt
+        steps.append({"name": "music", "done": True,
+                      "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
+                      + (f", with a sound effect at {sfx_at:g}s" if sfx_at is not None else ", no sound effect") + tone_note})
+
+    # 3. the bleep, last: every listed word is silenced and a bleep laid on it
+    if bleep:
+        progress("Bleep: listening for listed words (takes a few minutes)")
+        try:
+            res = (bleep_fn or default_bleep)(cur, out / "bleep", bleep_requests)
+        except Exception as e:
+            raise FinishError(f"The bleep failed, so nothing was kept: {type(e).__name__}: {e}") from e
+        bad = [n for n, ok, _d in res.get("rows", []) if ok is False]
+        if bad:
+            raise FinishError(f"The bleep failed its own checks ({', '.join(bad)}), so nothing was kept; see {out / 'bleep'}")
+        if res.get("xml"):
+            cur = Path(res["xml"])
+            hits = ", ".join(f"{h['word']} at {h['start']:.1f}s" for h in res.get("hits", []))
+            steps.append({"name": "bleep", "done": True, "summary": f"{len(res.get('spans', []))} stretch(es) silenced and bleeped" + (f": {hits}" if hits else "")})
+        else:
+            steps.append({"name": "bleep", "done": True, "summary": "listened, and no listed word was heard, so nothing was bleeped"})
+
+    final = out / (final_name or version_name(src))
+    if cur == base and not rebuild:
+        raise FinishError("nothing was asked for, or everything asked for was already on the cut, so there is nothing to write")
+    shutil.copy(cur, final)
+    for tmp in list(out.glob("_step_*.xml")) + [out / "_unbleeped.xml", out / "_clean.xml"]:
+        tmp.unlink(missing_ok=True)
+    checks = check(base if not rebuild else src, final, zone)
+    result = {"xml": str(final), "folder": str(out), "steps": steps, "checks": checks, "music_raw": music_raw or (str(music_file) if music_file else None)}
+    (out / "finish.json").write_text(json.dumps({**{k: v for k, v in result.items() if k != "checks"}, "checks": checks,
+                                                 "options": {"captions": captions, "music": music, "bleep": bleep}}, indent=1, default=str))
+    return result
+
+
+def check(before: Path, after: Path, zone: float) -> list[tuple[str, bool | None, str]]:
+    """The finished XML read back: it loads, the picture and length are exactly what they were, and the whole-file export checks pass."""
+    rows: list[tuple[str, bool | None, str]] = []
+    c1, c2 = timeline.load_cut(before), timeline.load_cut(after)
+    same = len(c1.video) == len(c2.video) and all(abs(a.tl_start - b.tl_start) < 1e-3 and abs(a.tl_end - b.tl_end) < 1e-3 and a.src_path == b.src_path
+                                                 and abs(a.src_in - b.src_in) < 1e-3 and abs(a.src_out - b.src_out) < 1e-3 and a.motion == b.motion for a, b in zip(c1.video, c2.video))
+    rows.append(("PICTURE-UNCHANGED", same, f"{len(c2.video)} clips on V1, the same ranges, positions and framing as before" if same else "the picture changed, which finishing must never do"))
+    rows.append(("LENGTH-UNCHANGED", abs(c1.zone_end - c2.zone_end) < 0.01, f"{c2.zone_end:.2f}s (was {c1.zone_end:.2f}s)"))
+    import verify_export
+    rep = verify_export.Report()
+    verify_export.check_xml(after, rep)
+    rows += [("verify_export " + n, ok, d) for n, ok, d in rep.rows]
+    return rows
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("xml", type=Path)
+    ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--no-captions", action="store_true")
+    ap.add_argument("--no-music", action="store_true")
+    ap.add_argument("--no-bleep", action="store_true")
+    ap.add_argument("--sfx-at", type=float, help="put one sound effect (library first, generated only if missing) at this time in the cut; none by default")
+    ap.add_argument("--music-reference", type=Path)
+    a = ap.parse_args()
+    try:
+        r = run(a.xml, a.out, not a.no_captions, not a.no_music, not a.no_bleep, a.sfx_at, a.music_reference, progress=lambda s: print(f"== {s}", flush=True))
+    except (FinishError, timeline.TimelineError) as e:
+        print(f"REFUSING: {e}", file=sys.stderr)
+        return 1
+    for s in r["steps"]:
+        print(f"  [{'DONE' if s['done'] else 'SKIP'}] {s['name']}: {s['summary']}")
+    bad = 0
+    for n, ok, d in r["checks"]:
+        print(f"  [{'PASS' if ok else 'FAIL' if ok is False else 'SKIP'}] {n}  {d}")
+        bad += ok is False
+    print(f"\n{r['xml']}")
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

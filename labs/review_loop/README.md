@@ -191,3 +191,9 @@ minute (cached per file in `~/Library/Application Support/Post House/framing_cac
 The voice follows too: while a person talks only their own recorder is live. The lav clips are cut at the speaker changes, the other person's recorder is switched off under that turn, and the speaker's recorder is added on its
 own track when it is not on the timeline (`apply_voices`). A person may have several recorders, so `speakers.match_lavs_timed` matches the camera against every recorder in 30 s pieces and `segments_for` hands each stretch to the recorder
 that covers it. Read-back: `follow_speaker.check_voices` (revise's `OWN-RECORDER-LIVE`). Running it again replaces its own clips (ids contain `-voice-`) and does not stack. The switch is a hard cut, no crossfade.
+
+## Finish the cut (2026-10-07)
+`finish_cut.py <cut.xml> --out <folder> [--no-captions] [--no-music] [--no-bleep] [--sfx-at SEC]`: captions, then a generated music bed (modelled on the reference track, a beat on frame 0 and on every cut, no effect unless asked), then the bleep last,
+each by the tool that already does it; the picture and length are checked unchanged and `verify_export` runs on the result. Any step that fails stops the run and keeps nothing. A cut that already has on-screen layers is not captioned again, one with generated audio
+gets no second music bed. `run(..., rebuild=True, music_file=..., caption_fixes=..., bleep_requests=...)` is what the app uses after a revision of a layered cut: the bleep is undone and the layers stripped, then everything is made again on the revised picture with the same music.
+Writes `finish.json` (steps, checks, the music track used) beside the version. Limits: see docs/STATUS.md.
