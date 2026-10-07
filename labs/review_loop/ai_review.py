@@ -174,6 +174,34 @@ def note_at(cut: Cut, t: float, text: str, quote: str = "", kind: str = "", sugg
     return n
 
 
+def framing_findings(cut: Cut, dims_fn=None, mic_dir_fn=None) -> Finding:
+    """A punched-in two-person shot whose picture never changes sides: every shot of a camera file sits on one centre, so whoever talks, the frame stays where it is. Only suggested when both people's own
+    recorders are in the cut's recordings folder (that is what tells who is talking); the editor measures the rest (follow_speaker)."""
+    import framing
+    import follow_speaker as fs
+    dims_fn = dims_fn or __import__("render_preview").source_dims
+    mic = (mic_dir_fn or fs.mic_dir_of)(cut)
+    if not mic or not Path(mic).is_dir():
+        return Finding("FRAMING", None, "not checked: the recordings folder is not known, so who is talking cannot be told")
+    have = {fs.person_of(p.name) for p in Path(mic).glob("*.WAV")}
+    if not {"Bob", "Mitch"} <= have:
+        return Finding("FRAMING", None, "not checked: both people's own recorders are not in the recordings folder")
+    notes, same = [], []
+    for path in sorted({c.src_path for c in cut.video if c.motion}):
+        mine = [c for c in cut.video if c.src_path == path and c.motion]
+        sw, _sh = dims_fn(path)
+        if any(framing.window_half_width(c.motion[0], sw, cut.width) * 2 >= framing.NOTHING_TO_DO_WIDTH for c in mine):
+            continue                                                  # a shot already showing nearly the whole width has no room to move
+        if len({round(c.motion[1], 3) for c in mine}) == 1:
+            same.append(Path(path).name)
+            t = mine[0].tl_start + 0.05
+            notes.append(note_at(cut, t, "the picture does not follow who is talking: every shot from this camera sits on the same centre. Both people's recorders are available, so it can be centred on the one talking.",
+                                 quote="follow the speaker", kind="framing", suggested_op={"op": "follow_speaker", "clip": mine[0].idx}))
+    if notes:
+        return Finding("FRAMING", False, f"{', '.join(same)}: the frame stays on one centre", notes)
+    return Finding("FRAMING", True, "no punched-in shot is stuck on one centre")
+
+
 def source_audio_findings(cut: Cut, pcm_fn=pcm, covered: list[tuple[float, float]] | None = None) -> Finding:
     """`covered`: stretches where the voice is replaced on purpose (a bleep layer); not reported as holes."""
     dur = cut.zone_end
@@ -362,6 +390,11 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
     checks: list[Finding] = []
     progress("Checking every cut edge against the voice under it")
     checks.append(edge_findings(cut, words_fn, pcm_fn))
+    progress("Checking whether the picture follows who is talking")
+    try:
+        checks.append(framing_findings(cut))
+    except Exception as exc:
+        checks.append(Finding("FRAMING", None, f"not checked: {type(exc).__name__}: {str(exc)[:160]}"))
     progress("Checking where the voice comes from")
     try:
         import layers as layers_mod
@@ -387,7 +420,7 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
     notes = sorted((n for c in checks for n in c.notes), key=lambda n: n["timeline_sec"])
     return {"schema": "ai_review.v0-draft", "xml": str(xml), "sequence": cut.sequence_name, "duration": round(cut.zone_end, 2), "summary": summary,
             "checks": [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in checks], "notes": notes, "unverified_quotes_dropped": dropped,
-            "not_covered": "the picture (a cropped head, a wrong shot): frames cannot be passed through the free CLI route"}
+            "not_covered": "the picture itself (a cropped head, a wrong shot): frames cannot be passed through the free CLI route; only whether the frame follows the speaker is measured"}
 
 
 def main() -> int:

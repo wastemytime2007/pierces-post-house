@@ -213,3 +213,47 @@ def test_a_story_fix_is_kept_only_when_the_editor_makes_it_and_it_points_at_some
     rows, _ = ar.story_findings(cut, words, fake_client(reply))
     a, b = rows[0].notes
     assert a["kind"] == "story" and a["suggested_op"] == {"op": "drop_clip", "clip": 1} and "suggested_op" not in b
+
+
+# ------------------------------------------------------------------ the picture does not follow who is talking
+
+def _framing_cut(horizs, scale=44.44):
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    for i, h in enumerate(horizs, start=1):
+        cut.video.append(VideoClip(i, (i - 1) * 4.0, i * 4.0, "/cam/A.MP4", 100.0 + i * 5, 104.0 + i * 5, (scale, h, 0.0)))
+    return cut
+
+
+def _mics(tmp_path, names):
+    for n in names:
+        (tmp_path / n).write_bytes(b"")
+    return str(tmp_path)
+
+
+def test_a_frame_stuck_on_one_centre_gets_a_trusted_follow_speaker_fix(tmp_path):
+    f = ar.framing_findings(_framing_cut([0.098, 0.098, 0.098]), dims_fn=lambda p: (7680, 4320), mic_dir_fn=lambda c: _mics(tmp_path, ["wknd_Bob2.WAV", "wknd_Mitch3.WAV"]))
+    assert f.ok is False and len(f.notes) == 1
+    assert f.notes[0]["suggested_op"]["op"] == "follow_speaker" and f.notes[0]["kind"] == "framing"
+
+
+def test_a_frame_that_already_changes_sides_is_left_alone(tmp_path):
+    f = ar.framing_findings(_framing_cut([0.098, -0.074, 0.098]), dims_fn=lambda p: (7680, 4320), mic_dir_fn=lambda c: _mics(tmp_path, ["wknd_Bob2.WAV", "wknd_Mitch3.WAV"]))
+    assert f.ok is True and not f.notes
+
+
+def test_without_both_recorders_nothing_is_suggested_and_it_says_why(tmp_path):
+    f = ar.framing_findings(_framing_cut([0.1, 0.1]), dims_fn=lambda p: (7680, 4320), mic_dir_fn=lambda c: _mics(tmp_path, ["wknd_Mitch3.WAV"]))
+    assert f.ok is None and not f.notes and "recorders" in f.detail
+
+
+def test_a_shot_that_shows_nearly_the_whole_width_is_not_touched(tmp_path):
+    f = ar.framing_findings(_framing_cut([0.0, 0.0], scale=100.0), dims_fn=lambda p: (1080, 1920), mic_dir_fn=lambda c: _mics(tmp_path, ["wknd_Bob2.WAV", "wknd_Mitch3.WAV"]))
+    assert f.ok is True and not f.notes
+
+
+def test_the_trusted_follow_fix_survives_validation_as_it_stands():
+    import ops as opsmod
+    cut = _framing_cut([0.1, 0.1])
+    note = ar.note_at(cut, 1.0, "x", quote="follow the speaker", kind="framing", suggested_op={"op": "follow_speaker", "clip": 1})
+    out = opsmod.validate(opsmod.from_suggestions([note], cut), [note], cut)
+    assert out[0]["op"] == "follow_speaker" and out[0]["clips"] == "all" and out[0]["trusted"]

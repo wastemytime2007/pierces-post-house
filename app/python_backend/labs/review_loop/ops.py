@@ -83,7 +83,7 @@ CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_en
 SAYS_FOLLOW = re.compile(r"\b(follow(s|ing)?|track(s|ing)?|on|center(ed|ing)?|centre(d|ing)?)\b.{0,40}\b(speak(er|ers|ing)|talk(er|ing)|whoever|who(\'s| is) (talking|speaking)|person|both)\b|\b(speak(er|ers|ing)|talk(er|ing)|whoever)\b.{0,40}\b(frame|framed|framing|follow|center|centre|on screen)\b|\bframed on (either|both|neither)\b", re.I)
 # Operations a note may carry as its own measured fix ("suggested_op", written by the AI review): used as they are, the interpreter is not asked, and only structure is checked.
 # The amounts are measured later from the audio, never taken from the note; max_sec only bounds how far the measurement may look (4 s lets an end run on to the next pause).
-SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words"}
+SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", "follow_speaker"}
 SUGGEST_MAX_SEC = 4.0
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
@@ -179,7 +179,9 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"the note was left on a {lane} element: " + (LANE_WHY.get(lane) or f"{op} does not act on that"))
                 if tg.get("clip") is not None and raw.get("clip") is not None and int(raw["clip"]) != int(tg["clip"]):
                     raise ValueError(f"the note was left on clip {tg['clip']}, not clip {raw['clip']}")
-            if raw.get("trusted") and op in SUGGESTIBLE_OPS:
+            if raw.get("trusted") and op == "follow_speaker":
+                out.append({"note": note, "op": op, "clips": "all", "why": why, "trusted": True})
+            elif raw.get("trusted") and op in SUGGESTIBLE_OPS:
                 clip = int(raw["clip"])
                 if not 1 <= clip <= n_clips:
                     raise ValueError(f"clip {clip} does not exist")

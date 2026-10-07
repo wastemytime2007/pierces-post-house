@@ -681,6 +681,8 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                 it = items.get(i, {})
                 if it.get("applied"):
                     done += 1
+                    if n.get("kind") == "framing":
+                        parked[n["key"]] = "already made once; the picture is not re-framed every round"
                 else:
                     parked[n["key"]] = str(it.get("summary") or "the editor could not make this change")
                     if _op_sig(n):
