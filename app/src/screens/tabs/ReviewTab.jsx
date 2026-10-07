@@ -429,6 +429,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const counts = qa ? qa.notes.reduce((a, n) => ({ ...a, [n.status]: (a[n.status] || 0) + 1 }), {}) : {};
   const wholeBad = qa ? qa.whole_cut.filter((w) => w.ok === false) : [];
   const failedChecks = exportResult && !exportResult.verified ? exportResult.rows.filter((r) => r.ok === false) : [];
+  // YOUR notes the editor could not act on matter most: they are never buried among the AI's own. (The AI's notes carry the prefix "AI: ".)
+  const mineLeft = qa ? qa.notes.filter((n) => (n.status === "NOT DONE" || n.status === "FAILED") && !/^AI:/.test(n.text || "")) : [];
 
   return (
     <div className="review-tab" style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
@@ -488,6 +490,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
       )}
 
       {StatusStrip()}
+
+      {mineLeft.length > 0 && (
+        <div className="pm-tab-warnings" role="alert">
+          <div style={{ fontWeight: 600 }}>
+            {mineLeft.length === 1 ? "One of your notes was" : `${mineLeft.length} of your notes were`} not done: the AI editor cannot make {mineLeft.length === 1 ? "this change" : "these changes"}, so {mineLeft.length === 1 ? "it needs" : "they need"} you or another tool.
+          </div>
+          {mineLeft.map((n) => (
+            <div key={n.note} style={{ marginTop: 6 }}>
+              <div>“{n.text}”</div>
+              <div className="sync-section-hint">{(n.rows[0] && n.rows[0].detail) || "no operation exists for this yet"}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{ position: "relative", flex: 1, display: "flex", minHeight: 640 }}>
         {working && (auto.status === "running" || busy === "applying") && (

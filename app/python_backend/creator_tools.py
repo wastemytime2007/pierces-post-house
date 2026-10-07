@@ -314,6 +314,27 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     if ops:
         cmd += ["--ops", str(Path(ops).expanduser())]          # a reviewed plan: the interpretation step is skipped
     p = subprocess.run(cmd, capture_output=True, text=True)
+    set_aside: list[int] = []
+    for _attempt in range(3):
+        if p.returncode == 0:
+            break
+        # A check that names a note ("[FAIL] note 9 SEAM-TEXT ...") says that ONE change did not hold up once made. That note is set aside with the check's own words and the rest are made,
+        # so one bad change never throws away everything that was asked. A failure that names no note (the cut's length, its seams, the export check) is the whole revision's and stays one.
+        text = p.stdout + "\n" + p.stderr
+        bad = {int(m.group(1)): m.group(0) for m in re.finditer(r"\[FAIL\] note (\d+) [^\n]*", text)}
+        plan_file = folder / "ops.json"
+        if not bad or not plan_file.is_file():
+            break
+        plan = json.loads(plan_file.read_text())
+        kept = [o for o in plan if o["note"] not in bad]
+        for n, line in sorted(bad.items()):
+            reason = "made, then its own check failed, so it was not kept: " + re.sub(r"^\[FAIL\] note \d+ ", "", line).strip()[:220]
+            kept.append({"note": n, "op": "unsupported", "reason": reason, "why": ""})
+            set_aside.append(n)
+        retry = folder / "ops_retry.json"
+        retry.write_text(json.dumps(sorted(kept, key=lambda o: o["note"]), indent=2))
+        stage(f"{len(bad)} change{'s' if len(bad) != 1 else ''} did not hold up and {'were' if len(bad) != 1 else 'was'} set aside; making the rest")
+        p = subprocess.run([*cmd[:cmd.index("--out") + 2], "--height", str(height), "--ops", str(retry)], capture_output=True, text=True)
     if p.returncode != 0:
         raise ToolError("The revision did not pass its own checks, so no revised cut was kept.\n" + _tail(p.stdout + "\n" + p.stderr))
     items_file = folder / "changes.json"

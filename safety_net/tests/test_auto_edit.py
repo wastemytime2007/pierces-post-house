@@ -264,3 +264,59 @@ def test_a_failed_story_fix_is_not_tried_again_when_the_next_review_words_it_dif
     assert calls == [["story-v1", "edge-a"], ["edge-a"], ["edge-b"]]                                      # round 1 failed together and retried alone; round 2 did not offer the same story fix again
     assert out["status"] == "left" or out["status"] == "clean"
     assert "story-v2-reworded" not in [k for c in calls for k in c]
+
+
+def test_one_change_that_fails_its_own_check_is_set_aside_and_the_rest_are_made(tmp_path, monkeypatch):
+    """The user's two notes and the reviewer's six: one of the reviewer's story fixes fails its post-check. The whole revision used to be refused; now only that note is set aside."""
+    import json as _json
+    xml = tmp_path / "Cut.xml"
+    xml.write_text("<xmeml/>")
+    notes = tmp_path / "review_notes.json"
+    notes.write_text(_json.dumps({"notes": [{"timeline_sec": 1.0, "clip": 1, "text": "the video does not line up with the audio", "shapes": []},
+                                            {"timeline_sec": 9.0, "clip": 2, "text": "AI: clip 2 may cut off", "shapes": [], "suggested_op": {"op": "extend_end", "clip": 2, "max_sec": 3.0}},
+                                            {"timeline_sec": 12.0, "clip": 3, "text": "AI: starts mid thought", "shapes": [], "suggested_op": {"op": "start_at_words", "clip": 3, "words": "for instance"}}]}))
+    folder = tmp_path / "out"
+    calls = []
+
+    def fake_run(cmd, capture_output=True, text=True):
+        calls.append(cmd)
+        plan_given = cmd[cmd.index("--ops") + 1] if "--ops" in cmd else None
+        if len(calls) == 1:
+            (folder).mkdir(exist_ok=True)
+            (folder / "ops.json").write_text(_json.dumps([{"note": 1, "op": "unsupported", "reason": "not an edit"}, {"note": 2, "op": "extend_end", "clip": 2, "max_sec": 3.0, "trusted": True},
+                                                          {"note": 3, "op": "start_at_words", "clip": 3, "words": "for instance", "trusted": True}]))
+            return SimpleNamespace(returncode=1, stdout="  [PASS] RELOADS-AND-BOUNDS  ok\n  [FAIL] note 3 SEAM-TEXT  V2 audio from the seam reads: \"for instance the house that I bought in Johnston.\"\n", stderr="")
+        plan = _json.loads(Path(plan_given).read_text())
+        assert {o["note"]: o["op"] for o in plan} == {1: "unsupported", 2: "extend_end", 3: "unsupported"}
+        assert "its own check failed" in [o for o in plan if o["note"] == 3][0]["reason"] and "SEAM-TEXT" in [o for o in plan if o["note"] == 3][0]["reason"]
+        (folder / "changes.json").write_text(_json.dumps({"items": [{"note": 1, "applied": False, "summary": "not an edit"}, {"note": 2, "applied": True, "summary": "extended clip 2"},
+                                                                   {"note": 3, "applied": False, "summary": plan[2]["reason"]}]}))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(ct.subprocess, "run", fake_run)
+    monkeypatch.setattr(ct, "_plan_with_suggestions", lambda *a, **k: str(tmp_path / "plan_in.json"))
+    stages = []
+    try:
+        ct.apply_notes(str(xml), str(notes), str(folder), 540, stages.append)
+    except Exception:
+        pass                                                                                                     # what happens after revise (loading V2, the QA pass) is covered elsewhere; this is about the retry
+    assert len(calls) == 2 and "--ops" in calls[1] and calls[1][calls[1].index("--ops") + 1].endswith("ops_retry.json")
+    assert any("did not hold up" in s_ and "set aside" in s_ for s_ in stages)
+
+
+def test_a_failure_that_names_no_note_is_not_retried(tmp_path, monkeypatch):
+    xml = tmp_path / "Cut.xml"
+    xml.write_text("<xmeml/>")
+    notes = tmp_path / "review_notes.json"
+    notes.write_text('{"notes": [{"timeline_sec": 1.0, "clip": 1, "text": "x", "shapes": []}]}')
+    calls = []
+
+    def fake_run(cmd, capture_output=True, text=True):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=1, stdout="  [FAIL] RIPPLE-LENGTH  V1 30.80s +0.00s = 30.80s, V2 is 31.5s\n", stderr="")
+
+    monkeypatch.setattr(ct.subprocess, "run", fake_run)
+    monkeypatch.setattr(ct, "_plan_with_suggestions", lambda *a, **k: None)
+    with pytest.raises(ct.ToolError, match="RIPPLE-LENGTH"):
+        ct.apply_notes(str(xml), str(notes), str(tmp_path / "o"), 540, None)
+    assert len(calls) == 1
