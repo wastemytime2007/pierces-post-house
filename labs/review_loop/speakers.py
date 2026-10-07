@@ -86,12 +86,18 @@ def match_lavs(cam_wav: Path, t0: float, t1: float, mic_dir: Path) -> dict[str, 
     return best
 
 
+STRONG_SCORE = 60.0        # a match this sharp is trusted on its own; a weaker one only where the person's established recorder offset has nothing better (a noise match scored 26 against a true 160)
+
+
 def match_lavs_timed(cam_wav: Path, wav_t0: float, mic_dir: Path, chunk: float = 30.0) -> dict[str, list[tuple[float, float, Path, float, float]]]:
     """{person: [(camera_start, camera_end, recorder file, delta, score)]}: like match_lavs, but a person may have several recorders (a shoot restarts a recorder, or a card fills) so the camera's audio is
-    searched for in `chunk` second pieces and each piece keeps its own best file. `delta` is what to add to a camera time to get the position in the recorder file; times are camera seconds, `wav_t0` being the
-    camera time the audio in `cam_wav` starts at. A piece no recorder of a person matches leaves that stretch uncovered for them (`segments_for` then borrows the nearest piece)."""
+    searched for in `chunk` second pieces. `delta` is what to add to a camera time to get the position in the recorder file; times are camera seconds, `wav_t0` being the camera time the audio in
+    `cam_wav` starts at.
+
+    A recorder keeps its offset to the camera for as long as it runs, so a piece is not judged alone: a sharp match (STRONG_SCORE or more) is taken as it is, but a weak one never overrides the
+    (file, offset) that matched best across the whole stretch, as long as that recorder was running then. (A quiet listener's recorder scores low against the camera, and unrelated noise can score just over
+    the threshold: before this, such a piece was matched to the wrong file at a wrong offset and the person's voice came from somewhere else in the recording.)"""
     cam = sa.load_wav(cam_wav)
-    total = len(cam) / sa.SR
     n_chunk = int(chunk * sa.SR)
     if len(cam) <= n_chunk * 1.5:
         spans = [(0, len(cam))]
@@ -99,7 +105,8 @@ def match_lavs_timed(cam_wav: Path, wav_t0: float, mic_dir: Path, chunk: float =
         k = int(np.ceil(len(cam) / n_chunk))
         n_chunk = int(np.ceil(len(cam) / k))
         spans = [(i * n_chunk, min(len(cam), (i + 1) * n_chunk)) for i in range(k)]
-    best: dict[tuple[str, int], tuple[Path, float, float]] = {}
+    cands: dict[tuple[str, int], list[tuple[Path, float, float]]] = {}
+    lengths: dict[Path, float] = {}
     for lav in sorted(mic_dir.glob("*.WAV")):
         person = "Bob" if "Bob" in lav.stem else "Mitch" if "Mitch" in lav.stem else None
         if person is None or lav.name.startswith("._"):
@@ -108,16 +115,41 @@ def match_lavs_timed(cam_wav: Path, wav_t0: float, mic_dir: Path, chunk: float =
         longest = max(b - a for a, b in spans)
         if len(x) < longest:
             continue
+        lengths[lav] = len(x) / sa.SR
         n = sa.next_fast(len(x) + longest)
         spec = sa._fft.rfft(x.astype(np.float32), n)
         for i, (a, b) in enumerate(spans):
             off, sc = sa.gcc_phat(spec, n, cam[a:b])
-            if sc >= sa.MIN_SCORE and sc > best.get((person, i), (None, 0, 0.0))[2]:
-                best[(person, i)] = (lav, off, sc)
+            if sc >= sa.MIN_SCORE:
+                cands.setdefault((person, i), []).append((lav, off - a / sa.SR - wav_t0, sc))
+    return choose_segments(cands, lengths, [(wav_t0 + a / sa.SR, wav_t0 + b / sa.SR) for a, b in spans])
+
+
+def choose_segments(cands: dict, lengths: dict, spans: list[tuple[float, float]]) -> dict[str, list[tuple[float, float, Path, float, float]]]:
+    """The recorder for each piece. `cands[(person, piece)]` = [(file, delta, score)] for every file that matched the piece above the threshold; `lengths[file]` = its seconds; `spans[piece]` = (camera
+    start, camera end). A sharp match is taken as it is; otherwise the (file, offset) that matched best over all pieces is used if that recorder was running then; otherwise the best weak match."""
     out: dict[str, list] = {}
-    for (person, i), (lav, off, sc) in sorted(best.items()):
-        a, b = spans[i]
-        out.setdefault(person, []).append((wav_t0 + a / sa.SR, wav_t0 + b / sa.SR, lav, off - a / sa.SR - wav_t0, sc))
+    for person in sorted({p for p, _i in cands}):
+        tally: dict[tuple[Path, float], float] = {}                      # (file, offset) -> total score over the pieces it matched
+        for (pn, _i), cs in cands.items():
+            if pn != person:
+                continue
+            for lav, delta, sc in cs:
+                key = next((k for k in tally if k[0] == lav and abs(k[1] - delta) < 0.1), (lav, delta))
+                tally[key] = tally.get(key, 0.0) + sc
+        anchor = max(tally, key=tally.get) if tally else None
+        for i, (cam_a, cam_b) in enumerate(spans):
+            cs = cands.get((person, i), [])
+            best = max(cs, key=lambda c: c[2], default=None)
+            pick = None
+            if best and best[2] >= STRONG_SCORE:
+                pick = best
+            elif anchor and 0 <= cam_a + anchor[1] and cam_b + anchor[1] <= lengths.get(anchor[0], 0) + 1.0:
+                pick = next((c for c in cs if c[0] == anchor[0] and abs(c[1] - anchor[1]) < 0.1), (anchor[0], anchor[1], 0.0))
+            elif best:
+                pick = best
+            if pick:
+                out.setdefault(person, []).append((cam_a, cam_b, pick[0], pick[1], pick[2]))
     return out
 
 

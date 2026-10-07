@@ -38,3 +38,38 @@ def test_the_picture_switches_a_little_before_the_new_speaker_on_a_whole_frame_a
     assert sum(p[1] for p in pcs) == round(7.0 * fps)                                      # nothing lost, nothing added
     assert abs(pcs[1][0] / fps - (3.0 - rr.SWITCH_LEAD)) < 1 / fps                         # cuts to Bob just before he speaks
     assert rr.pieces_for_cut([(0.0, 5.0, "Mitch")], 5.0) == [(0, round(5.0 * fps), "Mitch")]
+
+
+# ------------------------------------------------------------------ a weak match never overrides the offset a recorder has everywhere else
+
+def _cands(*rows):
+    out = {}
+    for person, piece, lav, delta, score in rows:
+        out.setdefault((person, piece), []).append((Path(lav), delta, score))
+    return out
+
+
+SPANS = [(100.0, 130.0), (130.0, 160.0), (160.0, 190.0)]
+LENGTHS = {Path("Bob2.WAV"): 1800.0, Path("Bob1.WAV"): 1800.0}
+
+
+def test_a_noise_match_just_over_the_threshold_does_not_beat_the_offset_that_matched_everywhere_else():
+    import speakers
+    c = _cands(("Bob", 0, "Bob1.WAV", -493.0, 26.4),                       # noise: a quiet listener's recorder, an unrelated file scoring just over the threshold
+               ("Bob", 1, "Bob2.WAV", 336.1, 140.0), ("Bob", 2, "Bob2.WAV", 336.1, 150.0))
+    got = speakers.choose_segments(c, LENGTHS, SPANS)["Bob"]
+    assert [(s[2].name, s[3]) for s in got] == [("Bob2.WAV", 336.1)] * 3                # the first piece uses Bob2 at its offset too
+
+
+def test_a_sharp_match_is_trusted_even_when_it_differs_from_the_anchor():
+    import speakers
+    c = _cands(("Mitch", 0, "Mitch3.WAV", 1000.0, 200.0), ("Mitch", 1, "Mitch3.WAV", 1000.0, 180.0), ("Mitch", 2, "Mitch4.WAV", 700.0, 90.0))
+    got = speakers.choose_segments(c, {Path("Mitch3.WAV"): 1000.0, Path("Mitch4.WAV"): 1500.0}, SPANS)["Mitch"]
+    assert [(s[2].name, s[3]) for s in got] == [("Mitch3.WAV", 1000.0), ("Mitch3.WAV", 1000.0), ("Mitch4.WAV", 700.0)]      # a real hand-over to a second recorder is kept
+
+
+def test_the_anchor_is_not_used_past_the_end_of_its_file():
+    import speakers
+    c = _cands(("Mitch", 0, "Mitch3.WAV", 1000.0, 200.0), ("Mitch", 1, "Mitch3.WAV", 1000.0, 180.0), ("Mitch", 2, "Mitch4.WAV", 700.0, 30.0))
+    got = speakers.choose_segments(c, {Path("Mitch3.WAV"): 1150.0, Path("Mitch4.WAV"): 1500.0}, SPANS)["Mitch"]      # Mitch3 ends 1150 s into its file: camera 160-190 s would be at 1160-1190
+    assert got[2][2].name == "Mitch4.WAV"
