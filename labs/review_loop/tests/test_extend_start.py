@@ -90,10 +90,17 @@ def test_extend_start_says_why_when_it_cannot(tmp_path, media):
     assert not quiet.applied                                                                    # clip 1's start is not mid-sound after the silence: nothing sensible to extend into
 
 
-def test_a_start_that_another_note_trims_is_refused(tmp_path, media):
+def test_a_start_that_another_note_trims_is_set_aside_and_the_trim_is_made(tmp_path, media):
     x = _after_silence(tmp_path, media)
-    with pytest.raises(timeline.TimelineError, match="start .* also being trimmed"):
-        tr._run(x, tmp_path, [{"note": 1, "op": "extend_start", "clip": 2, "max_sec": 1.0}, {"note": 2, "op": "trim_start", "clip": 2, "seconds": 0.5}])
+    cut, out, changes, delta = tr._run(x, tmp_path, [{"note": 1, "op": "extend_start", "clip": 2, "max_sec": 1.0}, {"note": 2, "op": "trim_start", "clip": 2, "seconds": 0.5}])
+    assert not changes[0].applied and "also being trimmed" in changes[0].summary
+    assert changes[1].applied and delta < 0
+
+
+def test_two_fixes_that_extend_the_same_edge_make_one_and_say_the_other_adds_nothing(tmp_path, media):
+    x = _after_silence(tmp_path, media)
+    cut, out, changes, delta = tr._run(x, tmp_path, [{"note": 1, "op": "extend_start", "clip": 2, "max_sec": 1.0}, {"note": 2, "op": "extend_start", "clip": 2, "max_sec": 1.0}])
+    assert changes[0].applied and not changes[1].applied and "already" in changes[1].summary
 
 
 def test_validate_keeps_a_reviewers_own_fix_as_it_is_and_clamps_the_interpreters(xml):

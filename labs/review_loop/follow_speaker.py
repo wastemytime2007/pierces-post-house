@@ -460,7 +460,7 @@ def check_voices(xml_path: Path, cut, info: dict) -> tuple[bool, str]:
     for cam, f in info["files"].items():
         sw = [(g[0], g[1], g[2], g[3]) for who in f.get("lavs", {}) for g in f["lavs"][who]]
         for s0, e0, who in f["runs"]:
-            if e0 - s0 < (SHORT_TURN_SEC + 0.2 if info.get("short_turns") else FRAME_MIN_SEC):
+            if e0 - s0 < (SHORT_TURN_SEC if info.get("short_turns") else FRAME_MIN_SEC) + 0.2:      # the switch starts SWITCH_LEAD early and a piece under the floor is merged: a turn this short may legitimately have no piece of its own
                 continue
             m = (s0 + e0) / 2
             v = next((c for c in cut.video if c.src_path == cam and c.src_in <= m < c.src_out and c.motion), None)

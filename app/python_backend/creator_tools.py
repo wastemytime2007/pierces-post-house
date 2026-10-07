@@ -483,6 +483,9 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
         # so one bad change never throws away everything that was asked. A failure that names no note (the cut's length, its seams, the export check) is the whole revision's and stays one.
         text = p.stdout + "\n" + p.stderr
         bad = {int(m.group(1)): m.group(0) for m in re.finditer(r"\[FAIL\] note (\d+) [^\n]*", text)}
+        for m in re.finditer(r"REFUSING: ([^\n]*)\(notes? ([\d, ]+)\)", text):                 # a refusal that names its notes is those notes' alone: they are set aside with its words
+            for n in re.findall(r"\d+", m.group(2)):
+                bad.setdefault(int(n), f"[FAIL] note {n} REFUSED  {m.group(1).strip()}")
         plan_file = folder / "ops.json"
         if not bad or not plan_file.is_file():
             break

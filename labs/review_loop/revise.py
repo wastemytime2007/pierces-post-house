@@ -88,8 +88,14 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
 
     rep = verify_export.Report()
     verify_export.check_xml(xml2, rep)
+    rep1 = verify_export.Report()                                       # the version being revised is held to the same checks: a revision is answerable for what IT breaks, not for a defect it inherited
+    verify_export.check_xml(xml1, rep1)
+    inherited = {n for n, ok, _d in rep1.rows if ok is False}
     for name, ok, detail in rep.rows:
-        rows.append(("verify_export " + name, ok, detail))
+        if ok is False and name in inherited:
+            rows.append(("verify_export " + name, None, detail + "  [ALREADY FAILING in the version this was made from, so not caused by this revision; the export itself needs fixing]"))
+        else:
+            rows.append(("verify_export " + name, ok, detail))
     return rows
 
 

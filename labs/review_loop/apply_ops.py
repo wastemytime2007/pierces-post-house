@@ -322,6 +322,47 @@ def _pool_overlaps(groups: dict, file_id: str, lo: float, hi: float, fps: float,
     return False
 
 
+def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insertions: list, removed: list[tuple[int, int]], zone_f: int, fps: float) -> list:
+    """The fixes that cannot be made together with the others are set aside one by one, each with its reason, and the rest are made. Before this, one conflicting fix (an extension into a trimmed edge, two
+    extensions of one edge, an extension into footage the selects pool also holds) refused the whole revision, and the editor stopped on a single fix it could have left. Returns the insertions that stand."""
+    tree = ET.parse(xml_path)
+    seq = _seq_for_cut(tree.getroot())
+    vids = sorted(seq.find("media/video/track").findall("clipitem"), key=lambda c: int(c.findtext("start")))
+    clip_file_id = {i + 1: c.find("file").get("id") for i, c in enumerate(vids[:len(cut.video)])}
+    spf_of_file: dict[str, float] = {}
+    for i, el in enumerate(vids[:len(cut.video)]):
+        in_f = int(el.findtext("in") or 0)
+        if in_f > 0 and cut.video[i].src_in > 0:
+            spf_of_file.setdefault(el.find("file").get("id"), cut.video[i].src_in / in_f)
+    pool_groups: dict[tuple[int, int], list] = {}
+    for kind in ("video", "audio"):
+        for track in seq.findall(f"media/{kind}/track"):
+            for c in track.findall("clipitem"):
+                if int(c.findtext("start")) >= zone_f:
+                    pool_groups.setdefault((int(c.findtext("start")), int(c.findtext("end"))), []).append((kind, c))
+    keep, seen = [], set()
+    for ins in insertions:
+        at, ln, idx, clip_idx, side = ins
+        pos_f = round(at * fps)
+        why = None
+        if side == "end" and any(r0 < pos_f and r1 >= pos_f - 1 for r0, r1 in removed):
+            why = f"clip {clip_idx}'s end is also being trimmed by another change in this pass, so it was not extended"
+        elif side == "front" and any(r0 <= pos_f < r1 for r0, r1 in removed):
+            why = f"clip {clip_idx}'s start is also being trimmed by another change in this pass, so it was not started earlier"
+        elif (pos_f, side) in seen:
+            why = f"another change in this pass already {'extends the end' if side == 'end' else 'starts earlier'} the same clip (clip {clip_idx}), so this one adds nothing"
+        elif side == "front":
+            c0 = cut.video[clip_idx - 1]
+            if _pool_overlaps(pool_groups, clip_file_id[clip_idx], c0.src_in - ln, c0.src_in, fps, spf_of_file.get(clip_file_id[clip_idx])):
+                why = f"starting clip {clip_idx} earlier would repeat footage the selects pool also holds, so it was not made (it needs a decision by hand)"
+        if why:
+            changes[idx].applied, changes[idx].summary, changes[idx].check = False, why, None
+        else:
+            seen.add((pos_f, side))
+            keep.append(ins)
+    return keep
+
+
 def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: list[dict]) -> tuple[list[Change], float]:
     fps = cut.fps
     changes, spans, insertions = plan(cut, ops, notes)
@@ -329,14 +370,8 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
     removed = _merge([(max(0, round(s * fps)), min(zone_f, round(e * fps))) for s, e, _ in spans if round(e * fps) > round(s * fps)])
     if zone_f - sum(b - a for a, b in removed) < round(fps):
         raise TimelineError("these operations would remove the whole cut (under 1s would be left)")
+    insertions = _set_aside_conflicts(xml_path, cut, changes, insertions, removed, zone_f, fps)
     inserted_s = [(round(at * fps), max(1, round(ln * fps)), side) for at, ln, _i, _c, side in insertions]
-    for pos_f, _ln, side in inserted_s:
-        if side == "end" and any(r0 < pos_f and r1 >= pos_f - 1 for r0, r1 in removed):
-            raise TimelineError("cannot extend the end of a clip whose end is also being trimmed by another note; resolve the two notes first")
-        if side == "front" and any(r0 <= pos_f < r1 for r0, r1 in removed):
-            raise TimelineError("cannot extend the start of a clip whose start is also being trimmed by another note; resolve the two notes first")
-    if len({(p, sd) for p, _l, sd in inserted_s}) != len(inserted_s):
-        raise TimelineError("two notes both extend the same clip end" if any(sd == "end" for _p, _l, sd in inserted_s) else "two notes both extend the same clip start")
     inserted = [(p, ln) for p, ln, _sd in inserted_s]                      # the shift counts every insertion at or before a frame, front or end
     shift = _shift_fn(removed, inserted)
     for s, _e, idx in spans:
@@ -409,7 +444,10 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
                 raise TimelineError(f"extending the start of clip {clip_idx} would repeat footage the selects pool also holds; resolve by hand")
             continue
         old_out = cut.video[clip_idx - 1].src_out
-        trimmed = _trim_pool(pool_groups, clip_file_id[clip_idx], old_out, old_out + ln, fps, spf_of_file.get(clip_file_id[clip_idx]))
+        try:
+            trimmed = _trim_pool(pool_groups, clip_file_id[clip_idx], old_out, old_out + ln, fps, spf_of_file.get(clip_file_id[clip_idx]))
+        except TimelineError as e:
+            raise TimelineError(f"{e} (note {changes[idx].note})") from e                  # the note is named, so the app can set that one fix aside and make the rest
         if trimmed:
             changes[idx].summary += (f"; also took {trimmed:.2f}s off the front of the selects-pool clip that held the same "
                                      "footage, so the pool still never repeats the cut")

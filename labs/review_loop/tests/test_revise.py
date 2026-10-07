@@ -235,11 +235,12 @@ def test_extend_end_refuses_when_the_sound_never_stops(tmp_path, xml):
     assert delta == 0
 
 
-def test_extend_end_and_a_trim_of_the_same_clip_end_is_refused(tmp_path, media):
+def test_extend_end_and_a_trim_of_the_same_clip_end_sets_the_extension_aside_and_makes_the_trim(tmp_path, media):
     xml = make_xml(tmp_path / "short.xml", *media, first_len=270)
-    with pytest.raises(timeline.TimelineError, match="also being trimmed"):
-        _run(xml, tmp_path, [{"note": 1, "op": "extend_end", "clip": 1, "max_sec": 1.0},
-                              {"note": 2, "op": "trim_end", "clip": 1, "seconds": 0.5}])
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "extend_end", "clip": 1, "max_sec": 1.0},
+                                                    {"note": 2, "op": "trim_end", "clip": 1, "seconds": 0.5}])
+    assert not changes[0].applied and "also being trimmed" in changes[0].summary                  # the conflicting fix is left, with its reason
+    assert changes[1].applied and delta < 0                                                       # the trim, which was fine, is made; the revision is not thrown away
 
 
 def _fake_words(monkeypatch, rows):
@@ -476,3 +477,35 @@ def test_a_caption_fix_takes_its_words_only_from_the_note_and_only_for_a_caption
     assert got[3]["op"] == "edit_caption"                                                                      # no element, but the note says subtitle
     assert got[4]["op"] == "unsupported" and "does not talk about a caption" in got[4]["reason"]
     assert got[5]["op"] == "unsupported" and "left on a Callout element" in got[5]["reason"]
+
+
+# ------------------------------------------------------------------ a defect the version already had is not blamed on the revision
+
+def _overlapping_pool(xml, tmp_path):
+    import xml.etree.ElementTree as ET
+    t = ET.parse(xml)
+    seq = t.getroot().find("sequence")
+    pool = [c for c in seq.find("media/video/track").findall("clipitem") if int(c.findtext("start")) >= 3 * FPS * 10]
+    a, b = pool[0], pool[1]
+    b.find("in").text = str(int(a.findtext("in")) + 5)                                   # the second leftover starts inside the first
+    b.find("out").text = str(int(b.findtext("in")) + int(b.findtext("end")) - int(b.findtext("start")))
+    out = tmp_path / "overlap.xml"
+    t.write(out, encoding="UTF-8", xml_declaration=True)
+    return out
+
+
+def test_a_pool_defect_already_in_the_version_is_reported_but_does_not_block_the_revision(xml, tmp_path):
+    import revise
+    bad = _overlapping_pool(xml, tmp_path)
+    cut = timeline.load_cut(bad)
+    rows = {n: (ok, d) for n, ok, d in revise.verify(cut, bad, bad, 0.0)}
+    ok, detail = rows["verify_export XML-POOL-NO-DUPLICATES"]
+    assert ok is None and "ALREADY FAILING" in detail                                    # said plainly, not hidden, and not counted against the revision
+
+
+def test_a_pool_defect_the_revision_itself_makes_still_blocks_it(xml, tmp_path):
+    import revise
+    bad = _overlapping_pool(xml, tmp_path)
+    cut = timeline.load_cut(xml)
+    rows = {n: ok for n, ok, _d in revise.verify(cut, xml, bad, 0.0)}
+    assert rows["verify_export XML-POOL-NO-DUPLICATES"] is False
