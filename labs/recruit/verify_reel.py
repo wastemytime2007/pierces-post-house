@@ -25,6 +25,7 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "review_loop"))                # sync_audio.py lives with the speaker tools, which the app bundles (recruit/ is not bundled)
 import rough_cut as rc          # noqa: E402
 import sync_audio as sa         # noqa: E402
 
