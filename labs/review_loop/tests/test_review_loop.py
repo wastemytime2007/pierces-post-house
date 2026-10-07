@@ -191,3 +191,14 @@ def test_no_enabled_audio_falls_back_to_camera_audio_and_says_so(tmp_path, media
     out.parent.mkdir()
     info = render_preview(cut, out, height=180)
     assert "camera audio" in info["audio_source"]
+
+
+def test_a_29_97_file_in_a_plain_30_clip_is_read_at_the_clips_own_rate_as_premiere_does():
+    """PreCut's export of 29.97 footage: file 30 NTSC, clip and sequence 30 plain, in-point = seconds x 30. Premiere keeps the picture and the voice recorder in sync, so the loader reads the clip's rate."""
+    order = timeline.video_rate_order((30, True), (30, False))
+    assert [n for n, _r in order] == ["clipitem", "file"]
+    assert timeline._effective_fps(*order[0][1]) == 30.0 and 21666 / timeline._effective_fps(*order[0][1]) == pytest.approx(722.2, abs=0.01)
+    # a different timebase keeps the documented rule: Premiere's own export writes the sequence's rate on the clip and the source's native frames in in/out
+    assert [n for n, _r in timeline.video_rate_order((60, False), (24, False))] == ["file", "clipitem"]
+    assert [n for n, _r in timeline.video_rate_order((30, True), (30, True))] == ["file", "clipitem"]            # identical declarations: nothing to choose
+    assert [n for n, _r in timeline.video_rate_order((30, True), None)] == ["file"] and timeline.video_rate_order(None, None) == []

@@ -56,8 +56,9 @@ def ntsc_explained(lag: float, camera_in_sec: float, tol: float = 0.05) -> bool:
     """True when a lav-to-camera lag is 0.1% of where the clip sits in the camera file, to within `tol` seconds.
 
     That signature means the XML's audio and video in-points disagree only by how the frame count is read: PreCut writes the video in-point as seconds x 30 and keeps the file declared
-    29.97, and the lav in-point as seconds x 30. Read at the sequence's 30 fps the two agree exactly; read at the file's 29.97 they are apart by 0.1% of the position. Which one Premiere
-    applies is not something this code can know, so such a lag is reported as an open question to settle in Premiere, not as a pass and not as a failure."""
+    29.97, and the lav in-point as seconds x 30. Read at the clip's 30 fps the two agree exactly; read at the file's 29.97 they are apart by 0.1% of the position. Ryan opened such an export in
+    Premiere on 2026-10-07 and it was in sync, so Premiere reads the clip's own rate, and timeline.video_rate_order now does the same: this pattern should no longer appear for PreCut's exports.
+    If it does, the loader read the frame counts at the wrong rate for some other XML, and the lag is reported as that open question, not as a pass and not as a failure."""
     return camera_in_sec > 30.0 and abs(lag) >= 0.1 and abs(abs(lag) - camera_in_sec * NTSC_ERR) < tol
 
 

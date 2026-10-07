@@ -13,7 +13,8 @@ What it looks at, and how each finding is grounded (nothing here is a guess dres
                  word whose start or end falls on the other side of the edge is a cut-through word. Reported with the heard words and the time.
   SOURCE-AUDIO   which recorder the voice comes from, for how much of the cut; stretches with no voice under them; voice tracks that are silent.
   SYNC           the voice recorder against the camera's own audio, on a few clips, at the alignment the XML gives. A lag that is exactly 0.1% of the clip's place in the camera file is the
-                 29.97-versus-30 question and is reported as open (it depends on how Premiere reads the XML); any other lag is reported as out of sync.
+                 29.97-versus-30 question. For PreCut's exports it no longer appears (the loader reads the clip's own rate, as Premiere does: confirmed by Ryan 2026-10-07); if it does, the XML is read
+                 at the wrong rate. Any other lag is reported as out of sync.
   STORY          the words of the finished cut, in the order they play, are read by the local Claude CLI (free, no API). It judges the hook, the point and the ending and lists problems with an
                  exact quote. A quote that is not in the transcript is thrown away (counted, never shown): the model's words are checked against the real ones.
 
