@@ -65,6 +65,18 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-08: AI editor makes its reviewer's fixes (Septic interview), awaiting Ryan's run
+
+Not signed off. Commits 75ad972..d3eea7f on `worktree-review-loop-spike`:
+- Editor ops `end_at_words` and `move_clip`; the reviewer takes each fix to the clip that holds its words and asks again for problems it left without a fix.
+- Off-mic detection for the off-camera interviewer question (found at 579-586 s on the real cut).
+- A word at a clip's edge is blocked only by footage another clip really shows (339c05b). This was Ryan's question "why can't it drag the clip out to finish the sentence".
+- A fix's seam time moves with its clip after a move (d3eea7f). Before this, the stale time let the start fix's own check undo it, and the off-camera question came back in V5.
+- A story direction box in the Review tab, kept per cut and passed to the reviewer, which follows it over its own story idea (d3eea7f). Checked in real Chrome: drive_tab.js has 42 PASS and no page errors. Labs has 516 pass.
+
+Not yet verified: a full end-to-end auto-edit run on the Septic cut with these fixes (whether the question stays cut and Bob stays in). EDITOR_REVISION is 2026-10-08.10.
+Known unrelated failure: `test_exporter_golden` differs from the golden master by a `<sourcetrack>` block in PreCut's exporter output. That code was not touched this round, and the cause has not been looked into.
+
 ### CHECKPOINT 2026-10-01: the creator-workflow build in `labs/` (paused by Ryan; read this first)
 
 *Updated 2026-10-05. Changes since 2026-10-01: sound effects are library first and music is generated (built 2026-10-03, guide entry 16, ROADMAP Decision Log 2026-10-03); B-roll is on request only; DeWalt/Milwaukee bleep edits applied; reference notes on opening things and on installed skills and plugins are in § Standing notes. Section C is what is left on the creator-workflow version of the app; the whole of it is still standalone in `labs/`, not in `app/`.*
