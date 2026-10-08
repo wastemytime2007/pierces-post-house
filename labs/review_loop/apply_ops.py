@@ -341,16 +341,34 @@ def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insert
                 if int(c.findtext("start")) >= zone_f:
                     pool_groups.setdefault((int(c.findtext("start")), int(c.findtext("end"))), []).append((kind, c))
     keep, seen = [], set()
+    # every clip's source range as the fixes kept so far leave it; a clip the pass removes outright no longer holds footage
+    gone = {c.idx for c in cut.video if any(r0 <= round(c.tl_start * fps) and round(c.tl_end * fps) <= r1 for r0, r1 in removed)}
+    ranges = {c.idx: [c.src_in, c.src_out] for c in cut.video if c.idx not in gone}
+    slack = 1.5 / fps
     for ins in insertions:
         at, ln, idx, clip_idx, side = ins
         pos_f = round(at * fps)
         why = None
+        c0 = cut.video[clip_idx - 1]
+        new = ([ranges[clip_idx][0], ranges[clip_idx][1] + ln] if side == "end" else [ranges[clip_idx][0] - ln, ranges[clip_idx][1]]) if clip_idx in ranges else None
+        clash = None
+        if new:
+            for other in cut.video:
+                if other.idx == clip_idx or other.idx not in ranges or other.src_path != c0.src_path:
+                    continue
+                a, b = ranges[other.idx]
+                if new[0] < b - slack and a + slack < new[1] and not (c0.src_in < b - slack and a + slack < c0.src_out):
+                    clash = other.idx
+                    break
         if side == "end" and any(r0 < pos_f and r1 >= pos_f - 1 for r0, r1 in removed):
             why = f"clip {clip_idx}'s end is also being trimmed by another change in this pass, so it was not extended"
         elif side == "front" and any(r0 <= pos_f < r1 for r0, r1 in removed):
             why = f"clip {clip_idx}'s start is also being trimmed by another change in this pass, so it was not started earlier"
         elif (pos_f, side) in seen:
             why = f"another change in this pass already {'extends the end' if side == 'end' else 'starts earlier'} the same clip (clip {clip_idx}), so this one adds nothing"
+        elif clash is not None:
+            why = (f"{'extending clip %d' % clip_idx if side == 'end' else 'starting clip %d earlier' % clip_idx} would take footage clip {clash} also shows "
+                   f"(another change in this pass already put that stretch back), so it was not made")
         elif side == "front":
             c0 = cut.video[clip_idx - 1]
             if _pool_overlaps(pool_groups, clip_file_id[clip_idx], c0.src_in - ln, c0.src_in, fps, spf_of_file.get(clip_file_id[clip_idx])):
@@ -360,6 +378,8 @@ def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insert
         else:
             seen.add((pos_f, side))
             keep.append(ins)
+            if new:
+                ranges[clip_idx] = new
     return keep
 
 

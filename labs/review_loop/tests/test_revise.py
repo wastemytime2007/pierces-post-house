@@ -519,3 +519,31 @@ def test_the_shared_export_gate_does_not_blame_a_tool_for_a_defect_its_input_alr
     assert export_gate.row(bad, xml)[1] is False                                           # a defect the tool introduced still fails it
     assert export_gate.row(bad)[1] is False                                                # and with no input to compare against every check is held, as before
     assert export_gate.row(xml, xml)[1] is True
+
+
+def test_two_fixes_that_would_put_back_the_same_footage_keep_the_first_and_set_the_second_aside(xml):
+    """Ryan's run, 2026-10-08: a join put back the 0.77 s between clips 1 and 2, and a second fix started clip 2 earlier into that same stretch; together the cut showed 732-734 s twice and the
+    whole revision was refused (XML-CUT-NO-OVERLAP). Now the second is set aside with its reason and the rest are made."""
+    from types import SimpleNamespace
+    cut = timeline.load_cut(xml)
+    path = cut.video[0].src_path
+    a = SimpleNamespace(idx=1, tl_start=0.0, tl_end=10.0, src_path=path, src_in=100.0, src_out=110.0)
+    b = SimpleNamespace(idx=2, tl_start=10.0, tl_end=20.0, src_path=path, src_in=112.0, src_out=122.0)
+    fake = SimpleNamespace(video=[a, b] + cut.video[2:], fps=cut.fps, zone_end=cut.zone_end)
+    changes = [apply_ops.Change(1, "extend_end", True, "joined clip 1 to clip 2"), apply_ops.Change(2, "extend_start", True, "started clip 2 earlier")]
+    ins = [(10.0, 2.0, 0, 1, "end"), (10.0 + 2.0, 1.0, 1, 2, "front")]
+    kept = apply_ops._set_aside_conflicts(xml, fake, changes, ins, [], round(cut.zone_end * cut.fps), cut.fps)
+    assert kept == ins[:1]
+    assert changes[0].applied and not changes[1].applied and "footage clip 1 also shows" in changes[1].summary
+
+
+def test_an_extension_that_only_meets_its_neighbour_is_not_a_clash(xml):
+    from types import SimpleNamespace
+    cut = timeline.load_cut(xml)
+    path = cut.video[0].src_path
+    a = SimpleNamespace(idx=1, tl_start=0.0, tl_end=10.0, src_path=path, src_in=100.0, src_out=110.0)
+    b = SimpleNamespace(idx=2, tl_start=10.0, tl_end=20.0, src_path=path, src_in=112.0, src_out=122.0)
+    fake = SimpleNamespace(video=[a, b] + cut.video[2:], fps=cut.fps, zone_end=cut.zone_end)
+    changes = [apply_ops.Change(1, "extend_end", True, "joined")]
+    ins = [(10.0, 2.0, 0, 1, "end")]                                                # 110 to 112 exactly: it meets clip 2, it does not overlap it
+    assert apply_ops._set_aside_conflicts(xml, fake, changes, ins, [], round(cut.zone_end * cut.fps), cut.fps) == ins and changes[0].applied
