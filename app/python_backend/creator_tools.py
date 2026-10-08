@@ -879,7 +879,7 @@ def _auto_summary_base(o: dict) -> str:
         "left": f"Ready for your review: {best} ({ran}). {left} thing{'s' if left != 1 else ''} left that the editor could not fix by itself (each says why).",
         "limit": f"Ready for your review: {best} ({ran}, the round limit). {left} thing{'s' if left != 1 else ''} left.",
         "worse": f"Stopped: the last revision left more to fix than before. {best} is the one to review ({ran}).",
-        "short": f"Stopped: another revision would have cut the video below 60% of its length. {best} is the one to review ({ran}).",
+        "short": f"Stopped: another revision would have cut the video below {AUTO_KEEP_FRACTION:.0%} of its length. {best} is the one to review ({ran}).",
         "stopped": f"Stopped by you after {ran}. {best} is the latest good version.",
         "failed": f"The editor could not continue: {o.get('message', '')[:300]}. {best} is the latest good version.",
     }.get(o["status"], f"Finished: {best}.")

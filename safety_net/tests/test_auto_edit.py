@@ -112,10 +112,16 @@ def test_the_loop_stops_at_the_round_limit_with_the_latest_improvement_named(tmp
     assert out["status"] == "limit" and out["best"] == "V3" and len(w.apply_calls) == 2
 
 
-def test_the_cut_is_not_allowed_below_60_percent_of_its_length(tmp_path, monkeypatch):
-    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 30.0})
+def test_the_cut_is_not_allowed_below_half_of_its_length(tmp_path, monkeypatch):
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 27.0})
     out = w.run(monkeypatch)
-    assert out["status"] == "short" and out["best"] == "V1" and "below 60%" in out["summary"]
+    assert out["status"] == "short" and out["best"] == "V1" and "below 50%" in out["summary"]
+
+
+def test_a_cut_to_just_over_half_is_allowed(tmp_path, monkeypatch):
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 33.0})
+    out = w.run(monkeypatch)
+    assert out["status"] == "clean" and out["best"] == "V2"
 
 
 def test_stop_is_honoured_before_the_next_revision(tmp_path, monkeypatch):
