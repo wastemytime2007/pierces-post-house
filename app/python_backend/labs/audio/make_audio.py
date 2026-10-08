@@ -177,9 +177,28 @@ def build_music_stem(raw_mp3: Path, speech: Path, out: Path, dur: float, music_d
     return {"speech_level_db": round(s_lvl, 2), "music_gap_level_db": round(s_lvl + music_db, 2), "duck_db": duck_db}
 
 
-def build_sfx_clip(raw_mp3: Path, speech: Path, out: Path, below_speech_peak_db: float) -> float:
+def loud_part_db(path: Path) -> float:
+    """How loud an effect plays: the RMS level (dB) of its loudest half second, not its first-instant peak (a pop that decays in 50 ms has a high peak and plays quietly)."""
+    import numpy as np
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", "8000", "-f", "f32le", "-"], capture_output=True)
+    x = np.frombuffer(r.stdout, dtype="<f4")
+    n = 400
+    env = [float(np.sqrt((x[i * n:(i + 1) * n] ** 2).mean())) for i in range(len(x) // n)]
+    if not env:
+        raise AudioError(f"could not measure {path}")
+    w = max(1, round(0.5 * 8000 / n))
+    best = max(sum(e * e for e in env[i:i + w]) / len(env[i:i + w]) for i in range(max(1, len(env) - w + 1)))
+    return float(10 * np.log10(max(best, 1e-12)))
+
+
+def build_sfx_clip(raw_mp3: Path, speech: Path, out: Path, below_speech_peak_db: float, below_speech_mean_db: float | None = None) -> float:
+    """The effect at its level in the mix. By default its peak sits `below_speech_peak_db` under the speech's peak (the original rule, right for a short hit). With `below_speech_mean_db` the level is set by how
+    loud the effect PLAYS (its loudest half second) against the speech's average, and its peak is held 4 dB under the speech's peak: right for a whoosh that builds, which a peak rule left nearly silent."""
     s, m = volume(speech), volume(raw_mp3)
-    gain = (s["peak"] - below_speech_peak_db) - m["peak"]
+    if below_speech_mean_db is not None:
+        gain = min((s["mean"] - below_speech_mean_db) - loud_part_db(raw_mp3), (s["peak"] - 4.0) - m["peak"])
+    else:
+        gain = (s["peak"] - below_speech_peak_db) - m["peak"]
     run("-i", raw_mp3, "-af", f"volume={gain:.2f}dB,aformat=sample_rates={SR}:channel_layouts=stereo,afade=t=in:d=0.004", "-ar", SR, "-c:a", "pcm_s16le", out)
     return gain
 
@@ -228,6 +247,8 @@ def main() -> int:
     ap.add_argument("--music-db", type=float, default=None, help="music level in the pauses, relative to the speech level (default -5, or -8 for --mix-style bed)")
     ap.add_argument("--duck-db", type=float, default=None, help="how much further the music drops while the speaker talks (default 12, or 0 for --mix-style bed)")
     ap.add_argument("--sfx-below-peak-db", type=float, default=6.0, help="effect peak below the speech's peak")
+    ap.add_argument("--sfx-below-mean-db", type=float, default=None, help="set the effect's level by how loud it plays (its loudest half second) this far under the speech's average level, peak held 4 dB under the speech's peak")
+    ap.add_argument("--sfx-file", type=Path, help="use exactly this audio file as the effect (no library lookup, nothing generated)")
     ap.add_argument("--preview-video", type=Path, help="video to put the mixed audio under (default: --base)")
     ap.add_argument("--cache", type=Path, help="where generated audio is cached (default: <out>/generated); point it at an earlier folder's to reuse its audio")
     ap.add_argument("--music-reference", type=Path, help="match the music to this track: it is measured, described in words, and the closest of a few generated takes is kept. Wins over --reference-video")
@@ -272,7 +293,15 @@ def main() -> int:
     try:
         speech = a.out / "speech_window.wav"
         speech_wav(a.base, speech, a.start, dur)
-        sfx_mp3, sfx_info = (None, None) if a.no_sfx else get_sfx(a.sfx_prompt, 1.2, cache)
+        if a.no_sfx:
+            sfx_mp3, sfx_info = None, None
+        elif a.sfx_file:
+            if not a.sfx_file.exists():
+                raise AudioError(f"--sfx-file {a.sfx_file} is not there")
+            sfx_mp3, sfx_info = a.sfx_file, {"source": "file", "library_file": a.sfx_file.name, "library_path": str(a.sfx_file.resolve()), "why": "named by the caller", "prompt": "(an existing file)", "cached": True,
+                                              "ms": 0, "salt": "", "file": a.sfx_file.name}
+        else:
+            sfx_mp3, sfx_info = get_sfx(a.sfx_prompt, 1.2, cache)
         music_secs = a.music_ms / 1000 if a.music_ms else max(dur + 1.0, 3.0)
         music_ref = None
         if a.music_file:
@@ -306,7 +335,7 @@ def main() -> int:
         if cache.resolve() != (a.out / "generated").resolve():
             shutil.copytree(cache, a.out / "generated", dirs_exist_ok=True)               # the folder carries its own cache, so a later rebuild from it needs nothing else
         levels = build_music_stem(music_mp3, speech, music_stem, dur, a.music_db, a.duck_db, level_on_active=a.mix_style == "bed")
-        sfx_gain = None if a.no_sfx else build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db)
+        sfx_gain = None if a.no_sfx else build_sfx_clip(sfx_mp3, speech, sfx_clip, a.sfx_below_peak_db, a.sfx_below_mean_db)
         preview = a.out / "audio_preview.mp4"
         mix_preview(a.preview_video or a.base, music_stem, None if a.no_sfx else sfx_clip, preview, a.start, dur, t_sfx)
     except AudioError as e:

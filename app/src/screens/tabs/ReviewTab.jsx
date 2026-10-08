@@ -140,6 +140,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setExportResult(null);
         setIncoming("");
         setInfo("");
+        if (ev.stale) setInfo("This review was made by an older version of the AI editor, so it does not have what has been fixed since (for example cutting an off-camera voice, or finishing with graphics and sound). Press Start over to run the current editor on this cut.");
         const interrupted = !ev.auto_running && !a && autoOnRef.current && vs.length > 0;          // the AI editor never reported how it ended: the app was closed or restarted while it worked
         setActivity([{ t: Date.now(), kind: "info", text: interrupted
           ? `Reopened your earlier review of this cut (${vs.map((v) => v.label).join(", ")}). The AI editor did not finish last time (the app was closed or restarted while it worked), so it is picking up from ${vs[vs.length - 1].label}.`

@@ -249,7 +249,7 @@ class FakeG(Fake):
 
 def plan_stub(spec_labels=("Bob", "Mitch"), times=(0.05, 3.0, 9.5)):
     def fn(cut, mic_dir, cache):
-        return ({"title": {"small": "Topic"}, "labels": [{"text": n} for n in spec_labels]}, list(times), [])
+        return ({"title": {"small": "Topic"}, "lower_thirds": [{"name": n} for n in spec_labels]}, list(times), [])
     return fn
 
 
@@ -259,21 +259,77 @@ def test_graphics_come_before_the_captions_and_the_captions_keep_clear_of_them(x
     assert [s["name"] for s in r["steps"]] == ["graphics", "captions"]
     assert f.calls.index("make_title.py") < f.calls.index("make_captions.py")
     assert "--avoid" in f.caption_args and str(tmp_path / "out" / "graphics") in f.caption_args
-    assert "Bob and Mitch" in r["steps"][0]["summary"]
+    assert "Bob and Mitch" in r["steps"][0]["summary"] and "lower thirds" in r["steps"][0]["summary"]
 
 
-def test_a_sound_effect_comes_on_with_each_graphic_on_one_effect_file(xml, tmp_path):
+@pytest.fixture()
+def whoosh(tmp_path):
+    """A real 2 s audio file standing in for the library's whoosh, and the profile the picker would have measured for it."""
+    f = tmp_path / "Fake - Whoosh.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=2:r=48000:a=0.3", "-ac", "2", str(f)], check=True)
+    return lambda: {"file": str(f), "name": "Fake - Whoosh.wav", "sec": 2.0, "peak_at": 0.8, "body_sec": 0.9}
+
+
+def test_a_sound_effect_comes_on_with_each_graphic_started_early_so_its_peak_lands_on_the_wipe(xml, tmp_path, whoosh):
     f = FakeG()
-    r = fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=True, sfx=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub())
-    assert "--sfx-at" in f.audio_args and f.audio_args[f.audio_args.index("--sfx-at") + 1] == "0.05" and "--no-sfx" not in f.audio_args
+    r = fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=True, sfx=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub(), choose_fn=whoosh)
+    assert "--sfx-at" in f.audio_args and "--no-sfx" not in f.audio_args
+    assert "--sfx-file" in f.audio_args and "--sfx-below-mean-db" in f.audio_args                    # a real file, levelled by how loud it plays
+    assert f.audio_args[f.audio_args.index("--sfx-at") + 1] == "0"                                    # its peak is 0.8 s in and lands 0.2 s into the wipe: 0.05 s minus 0.6 s starts at 0
     meta = json.loads((tmp_path / "out" / "audio" / "placement.json").read_text())
-    assert [c["start_sec"] for c in meta["clips"] if c["kind"] == "sfx"] == [0.05, 3.0, 9.5]            # on the title, and on each name tag
-    assert "a sound effect on each graphic (3)" in next(s for s in r["steps"] if s["name"] == "music")["summary"]
+    assert [c["start_sec"] for c in meta["clips"] if c["kind"] == "sfx"] == [0.0, 2.4, 8.9]          # the others start 0.6 s before their graphic (3.0 s and 9.5 s in the stub)
+    assert (tmp_path / "out" / "audio_in" / "sfx_graphic.wav").is_file()
+    m = next(s for s in r["steps"] if s["name"] == "music")["summary"]
+    assert "a sound effect on each graphic (3)" in m and "Fake - Whoosh" in m
+
+
+def test_two_effects_never_land_on_top_of_each_other(xml, tmp_path, whoosh):
+    f = FakeG()
+    fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=True, sfx=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub(times=(0.05, 2.7, 3.2)), choose_fn=whoosh)
+    meta = json.loads((tmp_path / "out" / "audio" / "placement.json").read_text())
+    starts = [c["start_sec"] for c in meta["clips"] if c["kind"] == "sfx"]
+    assert all(b - a >= fc.SFX_MAX_SEC for a, b in zip(starts, starts[1:])), starts
+
+
+def test_with_no_real_whoosh_in_the_library_it_says_so_and_lets_make_audio_choose(xml, tmp_path):
+    f = FakeG()
+    r = fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=True, sfx=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub(), choose_fn=lambda: None)
+    assert "--sfx-file" not in f.audio_args and "--sfx-at" in f.audio_args
+    assert "no real whoosh was found" in next(s for s in r["steps"] if s["name"] == "music")["summary"]
+
+
+def test_the_picker_takes_a_whoosh_that_builds_and_holds_and_skips_a_faint_click_and_the_generated_store(tmp_path):
+    (tmp_path / "Air - Short Whoosh.wav").write_bytes(b"")
+    (tmp_path / "Generated - soft pop whoosh.mp3").write_bytes(b"")
+    (tmp_path / "Switch - Click.wav").write_bytes(b"")
+    (tmp_path / "Rope - Long Whoosh.wav").write_bytes(b"")
+    profiles = {"Air - Short Whoosh.wav": {"sec": 2.6, "peak_at": 0.8, "body_sec": 0.8}, "Rope - Long Whoosh.wav": {"sec": 4.8, "peak_at": 2.8, "body_sec": 2.6},
+                "Generated - soft pop whoosh.mp3": {"sec": 1.2, "peak_at": 0.0, "body_sec": 0.1}, "Switch - Click.wav": {"sec": 1.2, "peak_at": 0.3, "body_sec": 0.2}}
+    import sfx_library
+    pick = fc.choose_graphic_sfx([tmp_path], profile=lambda p: profiles[p.name])
+    assert pick["name"] == "Air - Short Whoosh.wav"                       # the rope's peak is 2.8 s in and the generated pop is faint and starts at its peak
+
+
+def test_the_effect_is_levelled_by_how_loud_it_plays_not_by_its_first_instant_click(tmp_path):
+    import make_audio as ma
+    speech = tmp_path / "speech.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=3:r=48000:a=0.1", "-ac", "1", str(speech)], check=True)
+    click = tmp_path / "click.wav"                                  # a 20 ms burst at full scale, then silence
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.02:r=48000:a=1.0", "-af", "apad=whole_dur=1.2", "-ac", "1", str(click)], check=True)
+    whoosh_f = tmp_path / "whoosh.wav"                              # half a second of sustained noise
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.8:r=48000:a=0.3", "-ac", "1", str(whoosh_f)], check=True)
+    assert ma.volume(click)["peak"] > ma.volume(whoosh_f)["peak"] + 5                    # by PEAK the click is far louder...
+    assert ma.loud_part_db(whoosh_f) > ma.loud_part_db(click) + 3                        # ...but the whoosh is what plays louder, and that is what sets the level
+    out = tmp_path / "o.wav"
+    ma.build_sfx_clip(whoosh_f, speech, out, 6.0, 6.0)
+    s, e = ma.volume(speech), ma.volume(out)
+    assert e["peak"] <= s["peak"] - 4.0 + 0.6                                            # held under the speech's peak
+    assert ma.loud_part_db(out) <= s["mean"] - 6.0 + 1.0                                 # and never louder than asked (it may be quieter where the peak cap holds a spiky effect down)
 
 
 def test_effects_without_graphics_are_not_invented(xml, tmp_path):
     f = FakeG()
-    fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=False, sfx=True, runner=f, bleep_fn=f.bleep)
+    fc.run(xml, tmp_path / "out", captions=False, bleep=False, graphics=False, sfx=True, runner=f, bleep_fn=f.bleep, choose_fn=lambda: None)
     assert "--no-sfx" in f.audio_args
 
 
@@ -298,8 +354,8 @@ def test_name_tags_come_on_at_each_persons_first_real_turn_and_after_the_title(x
     cut = _cut(xml)
     spec, times, notes = fc.graphics_plan(cut, "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")], 2: [(0.0, 0.5, "Mitch"), (0.5, 6.0, "Mitch")]}))
     assert spec["title"]["small"] == cut.sequence_name.strip() and spec["title"]["big"] == ""         # the words are the sequence's own, nothing invented
-    labels = spec["labels"]
-    assert [l["text"] for l in labels] == ["Bob", "Mitch"]
+    labels = spec["lower_thirds"]
+    assert [l["name"] for l in labels] == ["Bob", "Mitch"]
     assert times[0] == fc.SFX_AT_START and len(times) == 3
     assert times[1] >= fc.TITLE_HOLD + fc.TAG_AFTER_TITLE - 1e-6                                       # Bob's tag waits for the title to go
     assert not notes
@@ -307,21 +363,21 @@ def test_name_tags_come_on_at_each_persons_first_real_turn_and_after_the_title(x
 
 def test_a_turn_under_a_second_earns_no_name_tag_and_the_note_says_so(xml):
     spec, times, notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")], 2: [(0.0, 0.6, "Mitch")]}))
-    assert [l["text"] for l in spec["labels"]] == ["Bob"] and any("Mitch" in n for n in notes)
+    assert [l["name"] for l in spec["lower_thirds"]] == ["Bob"] and any("Mitch" in n for n in notes)
 
 
 def test_without_a_recordings_folder_the_title_still_comes_and_the_tags_are_left_out_with_a_reason(xml):
     spec, times, notes = fc.graphics_plan(_cut(xml), None, None)
-    assert spec["title"] and "labels" not in spec and times == [fc.SFX_AT_START] and "recordings" in notes[0]
+    assert spec["title"] and "lower_thirds" not in spec and times == [fc.SFX_AT_START] and "recordings" in notes[0]
 
 
 def test_a_failed_look_at_who_talks_costs_the_name_tags_only(xml):
     def boom(*a, **k):
         raise RuntimeError("both people's recorders could not be found")
     spec, times, notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=boom)
-    assert spec["title"] and "labels" not in spec and times == [fc.SFX_AT_START] and "could not be found" in notes[0]
+    assert spec["title"] and "lower_thirds" not in spec and times == [fc.SFX_AT_START] and "could not be found" in notes[0]
 
 
 def test_name_tags_sit_above_the_captions_band_so_the_captions_stay_at_the_bottom(xml):
     spec, _times, _notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")]}))
-    assert spec["label_y"] == fc.TAG_Y and fc.TAG_Y < 0.65                                 # the wallpaper reel's own 0.69 would collide with the captions
+    assert spec["lt_y"] == fc.TAG_Y and fc.TAG_Y < 0.65                                 # the wallpaper reel's own 0.69 would collide with the captions

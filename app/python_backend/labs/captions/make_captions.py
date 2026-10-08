@@ -226,6 +226,8 @@ def blocked_from_title(pl: dict, pad: float = 20) -> list[dict]:
         out.append({"t0": start + t["on"][0] - 0.05, "t1": start + t["off"], "rects": [(0 - pad, top - pad, W + 2 * pad, max(bottoms or [top + 100]) - top + 2 * pad)]})
     for lb in plan.get("labels", []):
         out.append({"t0": start + lb["on"] - 0.05, "t1": start + lb["off"], "rects": [(g["label_x"] - pad, g["label_y"] - pad, g["label_w"] + 2 * pad, g["label_px"] * 1.4 + 2 * pad)]})
+    for lt in plan.get("lower_thirds", []):
+        out.append({"t0": start + lt["on"] - 0.05, "t1": start + lt["off"], "rects": [(g["lt_x"] - pad, g["lt_y"] - pad, lt.get("w", g["lt_h"] * 3) + 2 * pad, lt.get("h", g["lt_h"]) + 2 * pad)]})
     return out
 
 

@@ -69,11 +69,12 @@ def layers_present(xml: Path) -> dict[str, bool]:
 
 TITLE_HOLD = 2.4           # the title card stays on this long
 TITLE_BUILDS = [0.0, 0.2, 0.4]
-TAG_SEC = 2.5              # a name tag stays on this long
+TAG_SEC = 3.2              # a lower third stays on this long
 TAG_AFTER_TITLE = 0.3      # and never starts before the title is off
+ROLES = {"Bob": "Builder / Founder", "Mitch": "Operator / CEO"}    # the roles Ryan gives them in his brand notes (his standing context); change them here if they are wrong
 MIN_TURN_SEC = 1.0         # a person's first turn must run this long to earn a name tag
 SFX_AT_START = 0.05
-TAG_Y = 0.56               # a name tag sits this far down the frame (fraction of the height): above the band the captions use, so the captions never have to jump to the top across the speaker's face
+TAG_Y = 0.55               # a lower third's top sits this far down the frame (fraction of the height): above the band the captions use, so the captions never have to jump to the top across the speaker's face
 
 
 def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) -> tuple[dict, list[float], list[str]]:
@@ -84,9 +85,9 @@ def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) ->
     first = cut.video[0]
     spec: dict = {"title": {"anchor": {"source": Path(first.src_path).name, "source_sec": round(first.src_in, 3)}, "small": cut.sequence_name.strip(), "big": "", "builds": TITLE_BUILDS, "hold": TITLE_HOLD}}
     times = [round(first.tl_start + SFX_AT_START, 3)]
-    labels: list[dict] = []
+    thirds: list[dict] = []
     if not mic_dir:
-        notes.append("no name tags: the folder of each person's own recordings is not known, so who is talking cannot be told")
+        notes.append("no lower thirds: the folder of each person's own recordings is not known, so who is talking cannot be told")
     else:
         import framing
         analyse = analyse or framing.analyse
@@ -103,18 +104,64 @@ def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) ->
                         if at + MIN_TURN_SEC > c.tl_start + e or at + TAG_SEC > c.tl_end:
                             continue
                         seen[who] = at
-                        labels.append({"anchor": {"source": Path(path).name, "source_sec": round(c.src_in + (at - c.tl_start), 3)}, "text": who, "word_step": 0.2, "until": TAG_SEC})
+                        thirds.append({"anchor": {"source": Path(path).name, "source_sec": round(c.src_in + (at - c.tl_start), 3)}, "name": who, "sub": ROLES.get(who, ""), "until": TAG_SEC})
                         times.append(round(at, 3))
         except Exception as e:                                            # a failed look at who talks costs the name tags only, never the title or the rest
-            labels, times = [], times[:1]
-            notes.append(f"no name tags: who is talking could not be told ({str(e).splitlines()[0][:140]})")
+            thirds, times = [], times[:1]
+            notes.append(f"no lower thirds: who is talking could not be told ({str(e).splitlines()[0][:140]})")
         for who in ("Bob", "Mitch"):
-            if labels and who not in seen:
-                notes.append(f"no name tag for {who}: no turn of a second or more was heard in the cut")
-    if labels:
-        spec["labels"] = labels
-        spec["label_y"] = TAG_Y
+            if thirds and who not in seen:
+                notes.append(f"no lower third for {who}: no turn of a second or more was heard in the cut")
+    if thirds:
+        spec["lower_thirds"] = thirds
+        spec["lt_y"] = TAG_Y
     return spec, times, notes
+
+
+SFX_WORDS = re.compile(r"woosh|whoosh|swoosh|swish|swipe", re.I)
+SFX_MAX_SEC = 1.6          # the effect is cut to this with a short fade: a whoosh's tail would run under the speech
+SFX_HIT_AT = 0.2           # the effect's peak lands this far into the graphic's wipe
+
+
+def effect_profile(path: Path) -> dict:
+    """Seconds, where it peaks, and how long it stays within 12 dB of its peak (all from the decoded audio)."""
+    import numpy as np
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-ac", "1", "-ar", "8000", "-f", "f32le", "-"], capture_output=True)
+    x = np.frombuffer(r.stdout, dtype="<f4")
+    n = 400
+    env = [20 * np.log10(max(1e-6, float(np.sqrt((x[i * n:(i + 1) * n] ** 2).mean())))) for i in range(len(x) // n)]
+    if not env:
+        return {"sec": 0.0, "peak_at": 0.0, "body_sec": 0.0}
+    pk = int(np.argmax(env))
+    return {"sec": len(x) / 8000, "peak_at": pk * n / 8000, "body_sec": sum(1 for e in env if e > env[pk] - 12) * n / 8000}
+
+
+def choose_graphic_sfx(roots: list[Path] | None = None, profile=effect_profile) -> dict | None:
+    """The library effect for a graphic coming on: a real whoosh, found by measurement, not by asking for "a soft pop" (a faint file the finder once picked decays 8 dB in a tenth of a second and
+    is silent after 0.3 s). Candidates are whooshes in the sound-effects library (never the generated store); the best builds to a peak 0.2 to 1.2 s in and holds its body for at least half a second."""
+    import sfx_library as sl
+    roots = roots or [r for r in sl.default_roots() if r != sl.generated_store()]
+    best = None
+    for it in sl.index(roots):
+        if not SFX_WORDS.search(it["name"]) or it["name"].startswith("Generated"):
+            continue
+        pr = profile(Path(it["file"]))
+        if not (0.2 <= pr["peak_at"] <= 1.2 and pr["body_sec"] >= 0.5 and pr["sec"] >= 0.8):
+            continue
+        score = pr["body_sec"] - abs(pr["peak_at"] - 0.7) - 0.1 * max(0.0, pr["sec"] - 3.0)
+        if best is None or score > best[0]:
+            best = (score, it, pr)
+    return None if best is None else {"file": best[1]["file"], "name": best[1]["name"], **best[2]}
+
+
+def prepare_effect(choice: dict, out: Path) -> Path:
+    """The chosen effect cut to SFX_MAX_SEC with a fade at its end, as the file make_audio is handed."""
+    dest = out / "sfx_graphic.wav"
+    out.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", choice["file"], "-t", f"{SFX_MAX_SEC}", "-af", f"afade=t=out:st={SFX_MAX_SEC - 0.3}:d=0.3", "-ar", "48000", "-ac", "2", str(dest)], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise FinishError("the sound effect could not be prepared: " + r.stderr[-200:])
+    return dest
 
 
 def default_bleep(xml: Path, out: Path, requests: list[dict] | None) -> dict:
@@ -130,7 +177,7 @@ def version_name(src: Path) -> str:
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
         caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
-        graphics: bool = False, sfx: bool = False, graphics_fn=None) -> dict:
+        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None) -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
 
     `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
@@ -167,16 +214,16 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
     if graphics and have["on_screen"]:
         steps.append({"name": "graphics", "done": False, "summary": "the cut already has on-screen layers, so no title card or name tags were added"})
     elif graphics:
-        progress("Graphics: a title card and name tags")
+        progress("Graphics: a title card and lower thirds")
         import follow_speaker as fs
         spec, sfx_times, gnotes = (graphics_fn or graphics_plan)(cut0, fs.mic_dir_of(cut0), Path.home() / "Library" / "Application Support" / "Post House" / "framing_cache.json")
         (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
-        tool("The title card and name tags", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
+        tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
         nxt = out / "_step_graphics.xml"
-        tool("Placing the title card and name tags", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
+        tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
         cur, graphics_folder = nxt, out / "graphics"
-        tags = [l["text"] for l in spec.get("labels", [])]
-        steps.append({"name": "graphics", "done": True, "summary": "a title card with the topic" + (f" and name tags for {' and '.join(tags)}" if tags else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
+        tags = [l["name"] for l in spec.get("lower_thirds", [])]
+        steps.append({"name": "graphics", "done": True, "summary": "a title card with the topic" + (f" and lower thirds for {' and '.join(tags)}" if tags else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
 
     # 1. captions: what is said, on screen
     if captions and have["on_screen"]:
@@ -242,6 +289,17 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
                  "--mix-style", "bed", "--music-db", f"{MUSIC_DB:g}", "--music-file", conformed]
         times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
+        sfx_note = ""
+        if times:
+            choice = (choose_fn or choose_graphic_sfx)()
+            if choice:
+                lead = min(max(choice["peak_at"] - SFX_HIT_AT, 0.0), 0.8)                  # start early so the effect's peak lands as the graphic wipes in
+                times = sorted({round(max(0.0, x - lead), 3) for x in times})
+                times = [x for i, x in enumerate(times) if i == 0 or x - times[i - 1] >= SFX_MAX_SEC]      # never two on top of each other
+                margs += ["--sfx-file", prepare_effect(choice, out / "audio_in"), "--sfx-below-mean-db", "3"]
+                sfx_note = f" ({choice['name'].rsplit('.', 1)[0]})"
+            else:
+                sfx_note = " (no real whoosh was found in the library, so make_audio's own library lookup chose it)"
         margs += ["--sfx-at", f"{times[0]:g}"] if times else ["--no-sfx"]
         if ref and not tone_note:
             margs += ["--music-reference", ref]
@@ -268,7 +326,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         cur = nxt
         steps.append({"name": "music", "done": True,
                       "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
-                      + (f", with a sound effect on each graphic ({len(times)})" if times else ", no sound effect") + tone_note})
+                      + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note})
 
     if sfx and not music and graphics:
         steps.append({"name": "sfx", "done": False, "summary": "the sound effects are mixed and placed with the music step, and the music is off, so none were added"})

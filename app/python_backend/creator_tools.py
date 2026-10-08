@@ -188,6 +188,9 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 # ---------------------------------------------------------------------------------------------------------------------------------------------
 
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
+# Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
+# Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
+EDITOR_REVISION = "2026-10-08.4"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -281,7 +284,7 @@ def record_event(ev: dict) -> None:
     elif t == "ai_review_done":
         s["ai"][ev.get("tag") or "V1"] = {k: ev.get(k) for k in ("notes", "checks", "summary", "unverified_quotes_dropped", "not_covered")}
     elif t == "auto_edit_done":
-        s["auto"] = {k: ev.get(k) for k in ("status", "summary", "best", "left", "versions", "rounds", "message")}
+        s["auto"] = {**{k: ev.get(k) for k in ("status", "summary", "best", "left", "versions", "rounds", "message")}, "editor": EDITOR_REVISION}
     s["updated"] = time.time()
     p = session_path(root)
     tmp = p.with_suffix(".tmp")
@@ -305,7 +308,9 @@ def load_session(root_xml: str | Path) -> dict | None:
     if not versions or versions[0]["label"] != "V1":
         return None
     ai = {k: v for k, v in (s.get("ai") or {}).items() if k in {x["label"] for x in versions}}
-    return {"root": s["root"], "versions": versions, "ai": ai, "auto": s.get("auto"), "updated": s.get("updated")}
+    auto = s.get("auto")
+    return {"root": s["root"], "versions": versions, "ai": ai, "auto": auto, "updated": s.get("updated"),
+            "stale": bool(auto and auto.get("status") not in ("stopped",) and auto.get("editor") != EDITOR_REVISION)}      # made by an older editor than this one (no revision recorded counts as older)
 
 
 def session_summary(root_xml: str | Path) -> dict | None:

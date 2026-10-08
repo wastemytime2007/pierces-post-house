@@ -68,6 +68,7 @@ def main() -> int:
     if plan["title"]:
         spans.append((plan["title"]["on"][0], plan["title"]["off"]))
     spans += [(lb["on"], lb["off"]) for lb in plan["labels"]]
+    spans += [(lt["on"], lt["off"]) for lt in plan.get("lower_thirds", [])]
 
     def free(t: float) -> bool:
         return all(not (a - 0.02 <= t <= b + 0.02) for a, b in spans) and 0 <= t < pl["duration_sec"] - 0.05
@@ -115,6 +116,21 @@ def main() -> int:
         after = lb["off"] + 0.08
         if free(after):
             rows.append((f"LABEL-CLEARS {i}", coverage(frame_at(mov, after, W, H)) < 0.0005, f"fully transparent at {after:.2f}s, just after it clears at {lb['off']:.2f}s"))
+
+    for i, lt in enumerate(plan.get("lower_thirds", []), 1):
+        x0, y0, x1, y1 = g["lt_x"], g["lt_y"], g["lt_x"] + lt["w"], g["lt_y"] + lt["h"]
+        mid = lt["on"] + 0.9                                                      # after the wipe, before the wipe out
+        im = frame_at(mov, mid, W, H)
+        box = band(im, y0, y1)[:, int(x0 / SCALE): int(x1 / SCALE) + 1]
+        solid = float((box[..., 3] > 200).mean())
+        text = white(box)
+        pre_t = lt["on"] - 0.06
+        pre = coverage(frame_at(mov, pre_t, W, H)) if free(pre_t) else None
+        rows.append((f"LOWER-THIRD-ON {i} ({lt['name']})", solid > 0.7 and text > 15 and (pre is None or pre < 0.0005),
+                     f"the panel is {solid * 100:.0f}% solid in its box with {text} white text pixels at {mid:.2f}s" + (f"; empty {lt['on'] - pre_t:.2f}s before it starts" if pre is not None else "")))
+        after = lt["off"] + 0.08
+        if free(after):
+            rows.append((f"LOWER-THIRD-CLEARS {i}", coverage(frame_at(mov, after, W, H)) < 0.0005, f"fully transparent at {after:.2f}s, just after it clears at {lt['off']:.2f}s"))
 
     w = max(len(n) for n, _, _ in rows)
     bad = 0

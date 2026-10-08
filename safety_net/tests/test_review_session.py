@@ -193,3 +193,32 @@ def test_closing_and_reopening_shows_the_review_as_it_was_left_without_rebuildin
     assert "review_started" in [e["type"] for e in fresh] and fresh[-1]["type"] == "review_built"
     after = _talk([{"type": "open_review", "xml": xml}], {"review_session_loaded", "review_built"}, timeout=60)[-1]
     assert [x["label"] for x in after["versions"]] == ["V1"]                                                # the fresh build reset the session
+
+
+def test_a_session_made_by_the_current_editor_is_not_stale_and_an_older_one_is(tmp_path):
+    root, v2 = version(tmp_path, "cut"), version(tmp_path, "cut_v2")
+    for e in events(root, v2):
+        ct.record_event(e)
+    assert ct.load_session(root[0])["stale"] is False                            # recorded just now: made by this editor
+    p = ct.session_path(root[0])
+    d = json.loads(p.read_text())
+    d["auto"]["editor"] = "2026-10-01.1"
+    p.write_text(json.dumps(d))
+    assert ct.load_session(root[0])["stale"] is True                             # an earlier revision of the editor made it
+    del d["auto"]["editor"]
+    p.write_text(json.dumps(d))
+    assert ct.load_session(root[0])["stale"] is True                             # one saved before revisions were recorded counts as older
+
+
+def test_a_run_the_user_stopped_is_not_called_stale_and_a_session_with_no_result_is_not_either(tmp_path):
+    root, v2 = version(tmp_path, "cut"), version(tmp_path, "cut_v2")
+    for e in events(root, v2):
+        ct.record_event(e)
+    p = ct.session_path(root[0])
+    d = json.loads(p.read_text())
+    d["auto"].update({"status": "stopped", "editor": "old"})
+    p.write_text(json.dumps(d))
+    assert ct.load_session(root[0])["stale"] is False
+    d["auto"] = None
+    p.write_text(json.dumps(d))
+    assert ct.load_session(root[0])["stale"] is False                            # an unfinished run is picked up, not called out of date

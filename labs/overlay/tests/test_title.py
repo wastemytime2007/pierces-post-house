@@ -8,6 +8,7 @@ HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 import make_overlay as mo
 import make_title as mt
+sys.path.insert(0, str(HERE.parent / "captions"))
 
 TL = {"clips": [{"idx": 1, "start": 0.0, "end": 5.0, "source": "cam.mp4", "source_path": "/x/cam.mp4", "src_in": 100.0, "src_out": 105.0},
                 {"idx": 2, "start": 5.0, "end": 12.0, "source": "cam.mp4", "source_path": "/x/cam.mp4", "src_in": 200.0, "src_out": 207.0}], "audio": []}
@@ -59,7 +60,7 @@ def test_elements_that_would_overlap_or_run_past_the_cut_are_refused():
 
 
 def test_a_spec_with_missing_or_unordered_parts_is_refused_before_anything_renders():
-    with pytest.raises(mt.TitleError, match="neither a title nor labels"):
+    with pytest.raises(mt.TitleError, match="neither a title, labels nor lower thirds"):
         mt.validate_spec({})
     with pytest.raises(mt.TitleError, match="three offsets"):
         mt.validate_spec(_spec(title={**SPEC["title"], "builds": [0.0, 1.0, 0.5]}))
@@ -92,3 +93,58 @@ def test_the_project_written_has_one_span_per_word_and_events_for_every_element_
     on_off = {e["sel"]: (e["on"], e["off"]) for e in info["events"]}
     assert on_off["#t_big"] == (1.0, 3.2) and on_off["#l0w1"][0] == 5.2                             # hard on at its build, off with the rest of the title; a word at its own time
     assert json.loads(json.dumps(info["events"])) == info["events"]
+
+
+# ------------------------------------------------------------------ a stylised lower third (name and role)
+
+LT_SPEC = {"lower_thirds": [{"anchor": {"source": "cam.mp4", "source_sec": 102.0}, "name": "Bob", "sub": "Builder / Founder", "until": 3.2},
+                            {"anchor": {"source": "cam.mp4", "source_sec": 201.0}, "name": "Mitch", "sub": "", "until": 3.0}]}
+
+
+def test_a_lower_third_gets_its_time_from_its_source_frame_and_clears_after_its_hold():
+    p = mt.plan(LT_SPEC, TL, 12.0)
+    a, b = p["lower_thirds"]
+    assert (a["on"], a["off"]) == (2.0, 5.0 - mt.LABEL_CLEAR) or a["off"] == pytest.approx(5.0 - mt.LABEL_CLEAR)      # asked for 3.2 s but its clip ends at 5 s: it clears just before the cut
+    assert (b["on"], b["off"]) == (6.0, 9.0) and b["name"] == "Mitch" and b["sub"] == ""
+
+
+def test_a_lower_third_too_short_to_read_or_over_another_element_is_refused():
+    short = {"lower_thirds": [{"anchor": {"source": "cam.mp4", "source_sec": 104.2}, "name": "Bob", "until": 3.0}]}                    # 0.8 s left in its clip
+    with pytest.raises(mt.TitleError, match="too short to read"):
+        mt.plan(short, TL, 12.0)
+    clash = _spec(lower_thirds=[{"anchor": {"source": "cam.mp4", "source_sec": 101.0}, "name": "Bob", "until": 2.0}])                 # while the title (0.5 to 3.2) is up
+    with pytest.raises(mt.TitleError, match="on screen together"):
+        mt.plan(clash, TL, 12.0)
+    with pytest.raises(mt.TitleError, match="needs 'name' and 'anchor'"):
+        mt.validate_spec({"lower_thirds": [{"name": " "}]})
+
+
+def test_the_lower_third_sits_above_the_caption_band_and_its_box_is_recorded_for_the_captions():
+    g = mt.layout(1080, 1920)
+    assert g["lt_y"] == round(1920 * 0.55) and g["lt_y"] + g["lt_h"] < 1920 * 0.70                              # clear of where the captions sit
+    assert mt.layout(1080, 1920, None, 0.5)["lt_y"] == 960
+    w_long, _ = mt.lt_box(g, "Mitch", "Operator / CEO")
+    w_short, _ = mt.lt_box(g, "Bob", "")
+    assert w_long > w_short > g["lt_bar"]                                                                       # the panel is as wide as its longer line
+
+
+def test_the_page_builds_the_panel_with_its_name_rule_and_role_and_a_wipe_event(tmp_path):
+    p = mt.plan(LT_SPEC, TL, 12.0)
+    info = mt.write_project(tmp_path / "proj", p, 1080, 1920, 12.0)
+    page = (tmp_path / "proj" / "index.html").read_text()
+    assert 'class="lt-name"' in page and ">Bob<" in page and "Builder / Founder" in page and 'class="lt-rule"' in page
+    assert page.count('class="hf-lt clip"') == 2 and page.count('class="lt-sub"') == 1                           # a lower third with no role draws no empty role line
+    assert [e["kind"] for e in info["events"] if e.get("kind")] == ["lt", "lt"]
+    assert all(lt["w"] > 0 and lt["h"] > 0 for lt in p["lower_thirds"])
+
+
+def test_captions_keep_clear_of_a_lower_third_only_while_it_is_on():
+    import make_captions as mc
+    mc.use_layout(1080, 1920)
+    p = mt.plan(LT_SPEC, TL, 12.0)
+    mt.write_project(Path(__import__("tempfile").mkdtemp()) / "x", p, 1080, 1920, 12.0)
+    pl = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": 0.0, "plan": p, "layout": mt.layout(1080, 1920)}
+    blocked = mc.blocked_for(pl)
+    assert [round(b["t0"], 2) for b in blocked] == [1.95, 5.95]
+    live = {"text": "and all three houses", "show_start": 2.5, "show_end": 3.5}
+    assert mc.pick_position(live, blocked, 0.0) == ("bottom", False)                                            # the band under the lower third is free: the captions do not jump to the top

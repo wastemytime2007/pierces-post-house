@@ -32,6 +32,8 @@ import make_overlay as mo  # noqa: E402  (hf, gsap_file, locate, HF_VERSION, GSA
 import timeline  # noqa: E402
 
 LABEL_CLEAR = 0.15           # a label goes off this long before its clip ends
+LT_MIN_SEC = 1.4             # a lower third on screen less than this cannot be read
+LT_WIPE_IN, LT_WIPE_OUT = 0.38, 0.3
 MIN_LABEL_SEC = 0.9
 PORTRAIT = (1080, 1920)
 
@@ -46,8 +48,8 @@ def sequence_spec(xml: Path) -> dict:
 
 
 def validate_spec(spec: dict) -> None:
-    if not spec.get("title") and not spec.get("labels"):
-        raise TitleError("the spec has neither a title nor labels")
+    if not spec.get("title") and not spec.get("labels") and not spec.get("lower_thirds"):
+        raise TitleError("the spec has neither a title, labels nor lower thirds")
     t = spec.get("title")
     if t:
         for k in ("anchor", "small", "big", "builds", "hold"):
@@ -60,11 +62,14 @@ def validate_spec(spec: dict) -> None:
     for i, lb in enumerate(spec.get("labels", []), 1):
         if not lb.get("text", "").strip() or "anchor" not in lb:
             raise TitleError(f"label {i} needs 'text' and 'anchor'")
+    for i, lt in enumerate(spec.get("lower_thirds", []), 1):
+        if not str(lt.get("name", "")).strip() or "anchor" not in lt:
+            raise TitleError(f"lower third {i} needs 'name' and 'anchor'")
 
 
 def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
     """Every element's time on THIS timeline, from its source anchor. Refuses a moment that is not in the cut and any element that would run past it."""
-    out: dict = {"title": None, "labels": [], "label_y": spec.get("label_y")}                 # optional: where the labels sit, as a fraction of the height (the wallpaper reel's own 0.69 in portrait if absent)
+    out: dict = {"title": None, "labels": [], "lower_thirds": [], "label_y": spec.get("label_y"), "lt_y": spec.get("lt_y")}                 # optional: where the labels sit, as a fraction of the height (the wallpaper reel's own 0.69 in portrait if absent)
     t = spec.get("title")
     if t:
         clip, t0 = mo.locate(t["anchor"], timeline_d)
@@ -87,8 +92,17 @@ def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
         if wt[-1] >= off:
             raise TitleError(f"label {i} ('{lb['text']}'): the last word would come on at {wt[-1]:.2f}s, after the label clears at {off:.2f}s")
         out["labels"].append({"anchor_time": round(t0, 4), "words": words, "word_times": wt, "on": round(t0, 4), "off": off, "text": lb["text"]})
+    for i, lt in enumerate(spec.get("lower_thirds", []), 1):
+        clip, t0 = mo.locate(lt["anchor"], timeline_d)
+        off = min(round(t0 + float(lt.get("until", 3.0)), 4), round(clip["end"] - LABEL_CLEAR, 4))
+        if off - t0 < LT_MIN_SEC:
+            raise TitleError(f"lower third {i} ('{lt['name']}') would be on screen {off - t0:.2f}s, under {LT_MIN_SEC}s: too short to read")
+        if off > zone_end + 1e-6:
+            raise TitleError(f"lower third {i} would run past the end of the cut")
+        out["lower_thirds"].append({"anchor_time": round(t0, 4), "on": round(t0, 4), "off": off, "name": str(lt["name"]).strip(), "sub": str(lt.get("sub", "")).strip()})
     spans = sorted([(out["title"]["on"][0], out["title"]["off"], "title")] if out["title"] else [])
     spans += [(lb["on"], lb["off"], f"label '{lb['text']}'") for lb in out["labels"]]
+    spans += [(lt["on"], lt["off"], f"lower third '{lt['name']}'") for lt in out["lower_thirds"]]
     spans.sort()
     for (a0, a1, an), (b0, b1, bn) in zip(spans, spans[1:]):
         if b0 < a1 - 1e-6:
@@ -96,11 +110,19 @@ def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
     return out
 
 
-def layout(w: int, h: int, label_y: float | None = None) -> dict:
+def lt_box(g: dict, name: str, sub: str) -> tuple[int, int]:
+    """The width and height a lower third occupies (estimated from its text; the panel is as wide as its longer line plus the accent bar and padding)."""
+    text_w = max(len(name) * g["lt_name_px"] * 0.64, len(sub) * g["lt_sub_px"] * 0.74 if sub else 0)
+    return round(g["lt_bar"] + g["lt_pad_l"] + text_w + g["lt_pad_r"]), g["lt_h"]
+
+
+def layout(w: int, h: int, label_y: float | None = None, lt_y: float | None = None) -> dict:
     """Sizes as fractions of the canvas, so the same spec reads right at 1080x1920, 1920x1080 and 3840x2160. Proportions are those measured off the wallpaper reel's labels and the title drawn for Reel 3."""
     portrait = h > w
     u = w if portrait else h * 9 / 16                 # the unit: the frame's short side at 9:16
-    return {"label_px": round(u * 0.072), "label_x": round(u * 0.065), "label_y": round(h * (label_y if label_y is not None else (0.69 if portrait else 0.74))), "label_w": round(w * (0.72 if portrait else 0.5)),
+    return {"lt_x": round(u * 0.065), "lt_y": round(h * (lt_y if lt_y is not None else (0.55 if portrait else 0.7))), "lt_name_px": round(u * 0.066), "lt_sub_px": round(u * 0.031), "lt_bar": round(u * 0.012),
+            "lt_pad_l": round(u * 0.026), "lt_pad_r": round(u * 0.034), "lt_h": round(u * 0.166),
+            "label_px": round(u * 0.072), "label_x": round(u * 0.065), "label_y": round(h * (label_y if label_y is not None else (0.69 if portrait else 0.74))), "label_w": round(w * (0.72 if portrait else 0.5)),
             "small_px": round(u * 0.065), "small_y": round(h * 0.395), "big_px": round(u * 0.23), "big_y": round(h * 0.447), "joke_px": round(u * 0.054), "joke_y": round(h * 0.62)}
 
 
@@ -118,6 +140,13 @@ def body_html(p: dict, g: dict) -> tuple[str, list[dict]]:
                 continue
             parts.append(f'      <div id="t_{key}" class="hf-line {cls} clip" data-start="0" data-duration="{dur}" style="top:{y}px;font-size:{px}px">{html.escape(t[key])}</div>')
             ev.append({"sel": f"#t_{key}", "on": t["on"][k], "off": t["off"]})
+    for i, lt in enumerate(p.get("lower_thirds", [])):
+        sub = f'<div class="lt-sub" style="font-size:{g["lt_sub_px"]}px">{html.escape(lt["sub"])}</div>' if lt["sub"] else ""
+        parts.append(f'      <div id="lt{i}" class="hf-lt clip" data-start="0" data-duration="{dur}" style="left:{g["lt_x"]}px;top:{g["lt_y"]}px;height:{g["lt_h"]}px">'
+                     f'<div class="lt-panel" style="height:{g["lt_h"]}px"><div class="lt-bar" style="width:{g["lt_bar"]}px"></div>'
+                     f'<div class="lt-text" style="padding-left:{g["lt_pad_l"]}px;padding-right:{g["lt_pad_r"]}px"><div class="lt-name" style="font-size:{g["lt_name_px"]}px">{html.escape(lt["name"])}</div>'
+                     f'<div class="lt-rule"></div>{sub}</div></div></div>')
+        ev.append({"sel": f"#lt{i}", "on": lt["on"], "off": lt["off"], "kind": "lt", "wipe_in": LT_WIPE_IN, "wipe_out": LT_WIPE_OUT})
     for i, lb in enumerate(p["labels"]):
         spans = "".join(f'<span id="l{i}w{k}" class="hf-word">{html.escape(w)}</span>' for k, w in enumerate(lb["words"]))
         parts.append(f'      <div id="l{i}" class="hf-label clip" data-start="0" data-duration="{dur}" style="left:{g["label_x"]}px;top:{g["label_y"]}px;width:{g["label_w"]}px;font-size:{g["label_px"]}px">{spans}</div>')
@@ -127,7 +156,9 @@ def body_html(p: dict, g: dict) -> tuple[str, list[dict]]:
 
 
 def write_project(proj: Path, p: dict, w: int, h: int, total: float) -> dict:
-    g = layout(w, h, p.get("label_y"))
+    g = layout(w, h, p.get("label_y"), p.get("lt_y"))
+    for lt in p.get("lower_thirds", []):
+        lt["w"], lt["h"] = lt_box(g, lt["name"], lt["sub"])                                     # recorded so the captions can keep clear of exactly this box
     body, ev = body_html(p, g)
     proj.mkdir(parents=True, exist_ok=True)
     page = ((HERE / "title_template.html").read_text().replace("__W__", str(w)).replace("__H__", str(h)).replace("__DUR__", str(total)).replace("__BODY__", body.replace("__DUR__", str(total)))
@@ -150,7 +181,7 @@ def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_
     proj, mov = out / "hyperframes_project", out / "title.mov"
     info = write_project(proj, p, seq["width"], seq["height"], total)
     n_labels = len(p["labels"])
-    print(f"title layer: {seq['width']}x{seq['height']}, {total:.2f}s, " + (f"title at {p['title']['on'][0]:.2f}s, " if p["title"] else "") + f"{n_labels} label(s)")
+    print(f"title layer: {seq['width']}x{seq['height']}, {total:.2f}s, " + (f"title at {p['title']['on'][0]:.2f}s, " if p["title"] else "") + f"{n_labels} label(s), {len(p['lower_thirds'])} lower third(s)")
     if render is None:
         chk = mo.hf(proj, "check")
         if "Check passed" not in chk.stdout:
@@ -168,7 +199,8 @@ def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_
         render(proj, mov, seq, info)
     placement = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": 0.0, "duration_sec": total, "overlay": mov.name, "overlay_path": str(mov.resolve()),
                  "render": {"width": seq["width"], "height": seq["height"], "fps": seq["fps"], "fps_arg": seq["fps_arg"]},
-                 "anchors": [{"what": "title", **spec["title"]["anchor"]}] * bool(spec.get("title")) + [{"what": f"label: {lb['text']}", **lb["anchor"]} for lb in spec.get("labels", [])],
+                 "anchors": [{"what": "title", **spec["title"]["anchor"]}] * bool(spec.get("title")) + [{"what": f"label: {lb['text']}", **lb["anchor"]} for lb in spec.get("labels", [])]
+                            + [{"what": f"lower third: {lt['name']}", **lt["anchor"]} for lt in spec.get("lower_thirds", [])],
                  "plan": p, "layout": info["layout"], "events": info["events"], "hyperframes": mo.HF_VERSION, "gsap": mo.GSAP_VERSION}
     (out / "placement.json").write_text(json.dumps(placement, indent=2))
     if render is None:

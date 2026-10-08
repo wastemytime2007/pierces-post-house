@@ -134,6 +134,21 @@ require('fs').mkdirSync(OUT, { recursive: true });
   check('IT-SAYS-WHY', /did not finish last time/.test(await pResume.evaluate(() => (document.querySelector('.ai-feed') || {}).innerText || '')), '');
   check('THE-STRIP-SHOWS-IT-WORKING', (await pResume.locator('.ai-strip.working').count()) === 1, '');
 
+  // a finished session made by an older version of the editor: shown as it was left, with a plain notice that it predates the fixes and a pointer to Start over
+  const pStale = await fresh();
+  await pStale.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
+  await pStale.waitForTimeout(300);
+  await pStale.evaluate(e => window.__emit(e), { ...loaded, stale: true });
+  await pStale.waitForTimeout(400);
+  check('AN-OLDER-EDITORS-SESSION-SAYS-SO', /made by an older version of the AI editor/.test(await pStale.evaluate(() => document.body.innerText)) && /Start over/.test(await pStale.evaluate(() => document.body.innerText)), '');
+  check('AND-STARTS-NOTHING-BEHIND-YOUR-BACK', !(await sent(pStale)).includes('auto_edit') && !(await sent(pStale)).includes('build_review'), (await sent(pStale)).join(','));
+  const pFresh = await fresh();
+  await pFresh.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
+  await pFresh.waitForTimeout(300);
+  await pFresh.evaluate(e => window.__emit(e), { ...loaded, stale: false });
+  await pFresh.waitForTimeout(400);
+  check('A-CURRENT-SESSION-HAS-NO-NOTICE', !/older version of the AI editor/.test(await pFresh.evaluate(() => document.body.innerText)), '');
+
   // a project with only an unreviewed cut: nothing is built behind the user's back; the list says so
   const p3 = await fresh();
   await p3.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: [exportsList[0]] });
