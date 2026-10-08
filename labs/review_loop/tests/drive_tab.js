@@ -123,6 +123,17 @@ require('fs').mkdirSync(OUT, { recursive: true });
   check('THE-FEED-SAYS-IT-WAS-REOPENED', /Reopened your earlier review of this cut \(V1, V2, V3\)/.test(await p2.evaluate(() => (document.querySelector('.ai-feed') || {}).innerText || '')), '');
   check('WHAT-IS-LEFT-IS-LISTED', /needs new words/.test(await p2.evaluate(() => document.body.innerText)), '');
 
+  // a session whose AI editor never finished (the app was closed or restarted while it worked): the editor picks it up from the latest version, and says so
+  const pResume = await fresh();
+  await pResume.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
+  await pResume.waitForTimeout(300);
+  await pResume.evaluate(e => window.__emit(e), { ...loaded, auto: null });
+  await pResume.waitForTimeout(400);
+  const sResume = await pResume.evaluate(() => window.__sent.filter(c => c.type === 'auto_edit'));
+  check('AN-UNFINISHED-RUN-IS-PICKED-UP-FROM-THE-LATEST-VERSION', sResume.length === 1 && sResume[0].xml === '/p/cuts/Cut_v3.xml' && sResume[0].tag === 'V3' && sResume[0].root === '/p/cuts/Cut.xml', JSON.stringify(sResume.map(c => [c.xml, c.tag, c.root])));
+  check('IT-SAYS-WHY', /did not finish last time/.test(await pResume.evaluate(() => (document.querySelector('.ai-feed') || {}).innerText || '')), '');
+  check('THE-STRIP-SHOWS-IT-WORKING', (await pResume.locator('.ai-strip.working').count()) === 1, '');
+
   // a project with only an unreviewed cut: nothing is built behind the user's back; the list says so
   const p3 = await fresh();
   await p3.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: [exportsList[0]] });

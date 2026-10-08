@@ -140,7 +140,15 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setExportResult(null);
         setIncoming("");
         setInfo("");
-        setActivity([{ t: Date.now(), kind: "info", text: `Reopened your earlier review of this cut (${vs.map((v) => v.label).join(", ")}). Nothing was rebuilt or reviewed again.` }]);
+        const interrupted = !ev.auto_running && !a && autoOnRef.current && vs.length > 0;          // the AI editor never reported how it ended: the app was closed or restarted while it worked
+        setActivity([{ t: Date.now(), kind: "info", text: interrupted
+          ? `Reopened your earlier review of this cut (${vs.map((v) => v.label).join(", ")}). The AI editor did not finish last time (the app was closed or restarted while it worked), so it is picking up from ${vs[vs.length - 1].label}.`
+          : `Reopened your earlier review of this cut (${vs.map((v) => v.label).join(", ")}). Nothing was rebuilt or reviewed again.` }]);
+        if (interrupted) {
+          const last = vs[vs.length - 1];
+          setAuto({ status: "running", round: 0, of: 4, label: last.label });
+          aiStartRef.current?.(last.xml, last.folder, last.label, vs[0].xml);
+        }
       } else if (ev.type === "review_cut_started") {
         setError("");
         setMaking(`Making the cut${ev.of > 1 ? ` (${ev.n} of ${ev.of})` : ""} from the idea…`);
