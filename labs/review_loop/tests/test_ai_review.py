@@ -337,3 +337,55 @@ def test_without_a_recordings_folder_it_says_it_did_not_check():
     cut.video.append(VideoClip(1, 0.0, 10.0, "/cam/A.MP4", 100.0, 110.0, None))
     f = ar.off_mic_findings(cut, [], mic_dir_fn=lambda c: None)
     assert f.ok is None and not f.notes and "not checked" in f.detail
+
+
+# ------------------------------------------------------------------ the reviewer hands on only what the editor can make (Ryan, 2026-10-08: "It should be able to do all of the requested changes")
+
+def _words_of(cut, clip_words):
+    out, t = [], 0.0
+    for idx, ws in clip_words:
+        c = cut.video[idx - 1]
+        for k, w in enumerate(ws.split()):
+            out.append((c.tl_start + 0.1 + k * 0.3, c.tl_start + 0.35 + k * 0.3, w, c))
+    return out
+
+
+def test_a_fix_naming_the_wrong_clip_is_taken_to_the_clip_that_holds_its_words():
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video.append(VideoClip(1, 0.0, 10.0, "/a.mp4", 100.0, 110.0, None))
+    cut.video.append(VideoClip(2, 10.0, 20.0, "/a.mp4", 200.0, 210.0, None))
+    words = _words_of(cut, [(1, "you know if you dont have curbs"), (2, "right so with the septic systems we wait")])
+    fx = ar._checked_fix({"op": "start_at_words", "clip": 1, "words": "with the septic systems"}, cut, words)
+    assert fx["op"] == "start_at_words" and fx["clip"] == 2                                       # the model said clip 1; the words are in clip 2
+    assert ar._checked_fix({"op": "start_at_words", "clip": 1, "words": "never said at all"}, cut, words) is None
+
+
+def test_problems_raised_without_a_fix_are_asked_about_once_more_and_the_answer_is_checked(monkeypatch):
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video.append(VideoClip(1, 0.0, 10.0, "/a.mp4", 100.0, 110.0, None))
+    cut.video.append(VideoClip(2, 10.0, 20.0, "/a.mp4", 200.0, 210.0, None))
+    words = _words_of(cut, [(1, "so we bought three houses and all"), (2, "right so with the septic systems we wait")])
+    first = '{"story": "s", "hook": "weak", "ending": "clean", "problems": [{"quote": "right so with the", "note": "Starts as a reply. Start at with the septic.", "fix": null}]}'
+    second = '{"fixes": [{"problem": 1, "fix": {"op": "start_at_words", "clip": 2, "words": "with the septic systems"}}]}'
+    replies = iter([first, second])
+    calls = []
+
+    def create(**kw):
+        calls.append(kw["system"][:30])
+        return SimpleNamespace(content=[SimpleNamespace(text=next(replies))])
+    monkeypatch.setattr(ar, "_already_true", lambda fix, cut: False)
+    rows, _ = ar.story_findings(cut, words, SimpleNamespace(messages=SimpleNamespace(create=create)))
+    assert len(calls) == 2                                                                          # asked once more, for the missing fix only
+    fix = rows[0].notes[0]["suggested_op"]
+    assert fix["op"] == "start_at_words" and fix["clip"] == 2 and fix["words"] == "with the septic systems"
+
+
+def test_a_fix_the_editor_hears_as_already_done_is_not_raised(monkeypatch):
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video.append(VideoClip(1, 0.0, 10.0, "/a.mp4", 100.0, 110.0, None))
+    words = _words_of(cut, [(1, "you know if you dont have curbs")])
+    reply = '{"story": "s", "hook": "weak", "ending": "clean", "problems": [{"quote": "you know if you", "note": "Start it on if you dont have curbs.", "fix": {"op": "start_at_words", "clip": 1, "words": "if you dont have curbs"}}]}'
+    import ops as opsmod
+    monkeypatch.setattr(opsmod, "locate_start", lambda *a, **k: {"reason": 'clip 1 already starts at "If"'})
+    rows, _ = ar.story_findings(cut, words, fake_client(reply))
+    assert rows[0].notes == []                                                                      # it would only have come back as "already starts at"

@@ -417,6 +417,54 @@ def _json_object(text: str) -> dict:
     return json.loads(text[a:b + 1])
 
 
+def _clip_holding(want: list[str], words: list, named: int, n_clips: int) -> int | None:
+    """The clip whose words contain `want` in order: the one the model named if they are there, else the one clip they are in."""
+    if not want:
+        return None
+
+    def has(idx: int) -> bool:
+        have = [(words_mod.tokens(w[2]) or [""])[0] for w in words if w[3] is not None and w[3].idx == idx]
+        return any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1))
+    if has(named):
+        return named
+    found = [i for i in range(1, n_clips + 1) if has(i)]
+    return found[0] if len(found) == 1 else None
+
+
+def _already_true(fix: dict | None, cut: Cut) -> bool:
+    """The editor's own measurement says the fix is already so (the clip already starts or ends at those words): the reviewer's transcript and the editor's listening disagree, and the note would
+    only come back as "already". Such a note is not raised."""
+    if not fix or fix.get("op") not in ("start_at_words", "end_at_words"):
+        return False
+    try:
+        import ops as _ops
+        m = (_ops.locate_start if fix["op"] == "start_at_words" else _ops.locate_end)(cut, fix["clip"], fix["words"], fix.get("reach", 6.0), fix.get("max_trim", 3.0))
+        return "already" in str(m.get("reason", ""))
+    except Exception:
+        return False
+
+
+FIX_SYSTEM = """You are a video editor. For each problem below in a short video's transcript, give the ONE edit that solves it, if one of these does:
+{"op": "start_at_words", "clip": n, "words": "<first words to keep, copied EXACTLY from that clip>"}  start the clip later
+{"op": "end_at_words", "clip": n, "words": "<last words to keep, copied EXACTLY from that clip>"}  end the clip earlier
+{"op": "move_clip", "clip": n, "before": m}  play clip n before clip m
+{"op": "drop_clip", "clip": n}  remove the clip
+Reply with ONLY a JSON object: {"fixes": [{"problem": <number>, "fix": <one of the above, or null only if no edit of the footage in the cut can solve it>}]}"""
+
+
+def _ask_for_fixes(client, transcript: str, problems: list[dict]) -> dict[int, dict]:
+    """One more call, for the problems the reviewer raised without a fix: just the edit for each. The answers go through the same checks as any fix."""
+    listing = "\n".join(f"{i}. {p['note']} (quote: \"{p['quote']}\")" for i, p in enumerate(problems, start=1))
+    resp = client.messages.create(system=FIX_SYSTEM, max_tokens=1200, temperature=0, messages=[{"role": "user", "content": f"Transcript:\n{transcript}\n\nProblems:\n{listing}"}])
+    out = {}
+    for f in (_json_object(resp.content[0].text).get("fixes") or []):
+        try:
+            out[int(f.get("problem"))] = f.get("fix")
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
 def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
     """A fix the model proposed for a story problem, kept only if it is one the editor makes and it points at something real: an existing clip, and for start_at_words, words that are in that clip."""
     if not isinstance(raw, dict) or raw.get("op") not in ("drop_clip", "start_at_words", "end_at_words", "move_clip"):
@@ -437,15 +485,15 @@ def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
         return {"op": "move_clip", "clip": clip, "before": before} if 1 <= before <= len(cut.video) and before != clip else None
     if raw["op"] == "end_at_words":
         want = words_mod.tokens(str(raw.get("words", "")))[-8:]                # the last words to keep are what the editor looks for
-        have = [(words_mod.tokens(w[2]) or [""])[0] for w in words if w[3] is not None and w[3].idx == clip]
-        if not want or not any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
+        clip = _clip_holding(want, words, clip, len(cut.video))
+        if clip is None:
             return None
         dur = cut.video[clip - 1].tl_end - cut.video[clip - 1].tl_start
         return {"op": "end_at_words", "clip": clip, "words": " ".join(want), "reach": round(dur + 0.5, 1), "max_trim": round(max(dur - 0.5, 3.0), 1)}     # the words were found in this clip: the editor may look across all of it
     want = words_mod.tokens(str(raw.get("words", "")))[:START_WORDS]    # the editor only needs the first words to find the spot
-    have = [(words_mod.tokens(w[2]) or [""])[0] for w in words if w[3] is not None and w[3].idx == clip]
-    if not want or not any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
-        return None                                                  # the words are not in that clip: the fix is dropped, the note stays
+    clip = _clip_holding(want, words, clip, len(cut.video))
+    if clip is None:
+        return None                                                  # the words are in no clip: the fix is dropped, the note stays
     dur = cut.video[clip - 1].tl_end - cut.video[clip - 1].tl_start
     return {"op": "start_at_words", "clip": clip, "words": " ".join(want), "reach": round(dur + 0.5, 1), "max_trim": round(max(dur - 0.5, 3.0), 1)}
 
@@ -468,17 +516,30 @@ def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], d
     resp = client.messages.create(system=STORY_SYSTEM, max_tokens=2000, temperature=0, messages=[{"role": "user", "content": prompt}])
     data = _json_object(resp.content[0].text)
     toks = [(words_mod.tokens(w[2]) or [""])[0] for w in words]
-    notes, dropped = [], 0
+    notes, dropped, kept = [], 0, []
     for p in (data.get("problems") or [])[:MAX_STORY_NOTES * 2]:
         q = words_mod.tokens(str(p.get("quote", "")))
         at = next((i for i in range(len(toks) - len(q) + 1) if q and toks[i:i + len(q)] == q), None)
         if at is None or not str(p.get("note", "")).strip():
             dropped += 1                                              # the model's quote is not in the real transcript: not shown
             continue
-        fix = _checked_fix(p.get("fix"), cut, words)
-        notes.append(note_at(cut, words[at][0], str(p["note"]).strip(), quote=str(p["quote"]).strip(), kind="story", suggested_op=fix))
-        if len(notes) >= MAX_STORY_NOTES:
+        kept.append((p, at, _checked_fix(p.get("fix"), cut, words)))
+        if len(kept) >= MAX_STORY_NOTES:
             break
+    missing = [k for k, (_p, _a, fx) in enumerate(kept) if fx is None]
+    if missing:                                                       # a problem raised without a usable fix: ask once more, for the edit alone
+        try:
+            more = _ask_for_fixes(client, transcript, [{"note": str(kept[k][0]["note"]), "quote": str(kept[k][0]["quote"])} for k in missing])
+            for n, k in enumerate(missing, start=1):
+                fx = _checked_fix(more.get(n), cut, words)
+                if fx:
+                    kept[k] = (kept[k][0], kept[k][1], fx)
+        except Exception:
+            pass
+    for p, at, fix in kept:
+        if _already_true(fix, cut):
+            continue                                                  # the editor hears it as already done: not a problem to hand on
+        notes.append(note_at(cut, words[at][0], str(p["note"]).strip(), quote=str(p["quote"]).strip(), kind="story", suggested_op=fix))
     hook, ending = str(data.get("hook", "")).lower(), str(data.get("ending", "")).lower()
     rows = [Finding("STORY", None, str(data.get("story", "")).strip() or "(no summary)"),
             Finding("HOOK", hook == "good", f"the opening is {hook or 'not judged'}"),

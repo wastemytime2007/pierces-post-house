@@ -80,14 +80,13 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
     pool_ok = len(p1) == len(p2)
     for (s1, e1, i1, o1), (s2, e2, i2, o2) in zip(p1, p2):
         k = (o1 - i1) / (e1 - s1)
-        front = s1 == s2 and o1 == o2 and i2 >= i1 and e2 <= e1 and abs((i2 - i1) / k - (e1 - e2)) <= 2          # its start given to a clip that grew at its end
-        tail = s1 == s2 and i1 == i2 and o2 <= o1 and e2 <= e1 and abs((o1 - o2) / k - (e1 - e2)) <= 2           # its end given to a clip that now starts earlier
-        if not (front or tail):
+        front_f, tail_f = (i2 - i1) / k, (o1 - o2) / k                    # timeline frames given up at its start (to a clip that grew at its end) and at its end (to a clip that now starts earlier)
+        shrank = s1 == s2 and i2 >= i1 and o2 <= o1 and e2 <= e1 and abs(front_f + tail_f - (e1 - e2)) <= 2
+        if not shrank:
             pool_ok = False
-        elif i2 != i1:
-            lost_front = max(lost_front, (e1 - e2) / cut1.fps)
-        else:
-            lost_tail = max(lost_tail, (e1 - e2) / cut1.fps)
+            continue
+        lost_front = max(lost_front, front_f / cut1.fps)
+        lost_tail = max(lost_tail, tail_f / cut1.fps)
     lost = max(lost_front, lost_tail)
     pool_ok = pool_ok and lost_front <= extra_out + 2.0 / cut1.fps and lost_tail <= extra_in + 2.0 / cut1.fps
     rows.append(("POOL-ONLY-LOST-WHAT-THE-CUT-GAINED", pool_ok,
