@@ -627,3 +627,14 @@ def test_a_tail_of_the_pool_is_given_up_to_a_clip_that_starts_earlier_but_a_whol
     end_before = int(v.findtext("end"))
     took = apply_ops._trim_pool_tail(groups, fid, b - 1.0, b - 0.05, cut.fps)
     assert 0.9 < took < 1.1 and int(v.findtext("end")) == end_before - round(1.0 * cut.fps)
+
+
+def test_a_clip_followed_by_an_earlier_part_of_the_recording_may_still_finish_its_word():
+    """Ryan, 2026-10-08: "Why cant it drag the clip out to finish the sentence?" Clip 3 (750-756 s) was followed by clip 4 from 579 s; the guard compared only that 579 < 756 and refused.
+    Only footage another clip actually shows blocks an extension."""
+    from types import SimpleNamespace
+    c = lambda i, a, b: SimpleNamespace(idx=i, src_path="/cam.mp4", src_in=a, src_out=b)
+    cut = SimpleNamespace(video=[c(1, 727.0, 734.0), c(2, 734.1, 738.0), c(3, 749.6, 755.8), c(4, 579.2, 590.8)])
+    assert opsmod._footage_user(cut, 3, 755.8, 756.0) is None                                 # nothing in the cut shows 755.8-756.0
+    assert opsmod._footage_user(cut, 1, 733.9, 734.3).idx == 2                                 # a real neighbour's footage still blocks
+    assert opsmod._footage_user(cut, 4, 590.8, 591.0) is None

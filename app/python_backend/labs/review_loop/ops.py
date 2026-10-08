@@ -482,6 +482,16 @@ def level_db(path: str, t: float, dur: float = 0.03) -> float:
     return 20 * float(np.log10(max(float(r.mean()) if len(r) else 1e-6, 1e-6)))
 
 
+def _footage_user(cut: Cut, clip_idx: int, a: float, b: float):
+    """The clip (other than `clip_idx`) whose footage overlaps source seconds a..b of the same file, or None. The old guard compared only with the next clip on the TIMELINE by number: a cut that
+    plays a later part of the recording before an earlier one (clip 3 from 750 s, then clip 4 from 579 s) looked like an overlap, and a word cut off at 756 s could not be finished."""
+    me = cut.video[clip_idx - 1]
+    for c in cut.video:
+        if c.idx != clip_idx and c.src_path == me.src_path and c.src_in < b - 0.02 and a + 0.02 < c.src_out:
+            return c
+    return None
+
+
 def measure_tail(cut: Cut, clip_idx: int, max_sec: float) -> dict:
     """How far past the cut the last sound keeps going, read from the audio's decay.
 
@@ -507,9 +517,11 @@ def measure_tail(cut: Cut, clip_idx: int, max_sec: float) -> dict:
     ext = (j - cut_i) * 0.01 + 0.04
     if ext < 0.05:
         return {"reason": "the sound has already decayed at the cut"}
-    nxt = cut.video[clip_idx] if clip_idx < len(cut.video) else None
-    if nxt and nxt.src_path == clip.src_path and nxt.src_in < clip.src_out + ext + 0.02:
-        return {"reason": "extending would run into the next clip's footage"}
+    user = _footage_user(cut, clip_idx, clip.src_out, clip.src_out + ext)
+    if user is not None:
+        if user.idx == clip_idx + 1:
+            return {"reason": "extending would run into the next clip's footage"}          # the words this phrasing is matched on: the editor then tries a join instead
+        return {"reason": f"extending would repeat footage clip {user.idx} already shows"}
     return {"ext": ext, "path": path, "t_end": src_out + ext, "thresh_db": 20 * float(np.log10(thresh)),
             "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
 
@@ -545,9 +557,11 @@ def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
         ext = src_in
         if ext < 0.05:
             return {"reason": "the clip already starts at the beginning of its file"}
-    prev = cut.video[clip_idx - 2] if clip_idx > 1 else None
-    if prev and prev.src_path == clip.src_path and prev.src_out > src_in - ext + 0.02:
-        return {"reason": "extending would run into the previous clip's footage"}
+    user = _footage_user(cut, clip_idx, src_in - ext, src_in)
+    if user is not None:
+        if user.idx == clip_idx - 1:
+            return {"reason": "extending would run into the previous clip's footage"}
+        return {"reason": f"extending would repeat footage clip {user.idx} already shows"}
     return {"ext": ext, "path": path, "t_start": src_in - ext, "thresh_db": 20 * float(np.log10(thresh)),
             "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
 
