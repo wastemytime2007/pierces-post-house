@@ -202,3 +202,34 @@ def test_a_gap_that_is_too_long_or_in_different_footage_is_not_joined(tmp_path, 
     assert opsmod.measure_join(cut2, 1, "next")["ext"] == pytest.approx(0.3, abs=0.02) and opsmod.measure_join(cut2, 2, "prev")["other"] == 1
     cut2.video[1].src_in = cut2.video[0].src_out                                                          # already contiguous
     assert "already run on" in opsmod.measure_join(cut2, 1, "next")["reason"]
+
+
+def test_a_measured_fix_may_reach_and_remove_more_than_the_ordinary_guards_allow(xml, monkeypatch):
+    """The off-camera voice at the start of a clip is longer than the 6.6 s the start search looks at and the 3 s it may remove unconfirmed; the check that measured it passes both, sized to the stretch."""
+    import ops as opsmod
+    import timeline
+    import words as words_mod
+    cut = timeline.load_cut(xml)
+    seen = {}
+
+    def fake_words(path, start, dur):
+        seen["dur"] = dur
+        return [words_mod.W(t, start + a, start + b) for t, a, b in (("tell", 0.7, 0.9), ("me", 0.9, 1.0), ("about", 1.0, 1.3), ("so", 7.6, 7.8), ("with", 7.8, 7.95), ("the", 7.95, 8.05), ("septic", 8.05, 8.4))]
+    monkeypatch.setattr(words_mod, "words_in", fake_words)
+    monkeypatch.setattr(words_mod, "valley", lambda path, a, b: b)
+    refused = opsmod.locate_start(cut, 2, "so with the septic")                                      # the ordinary guards: not found in 6.6 s
+    assert "reason" in refused and seen["dur"] == 6.6
+    ok = opsmod.locate_start(cut, 2, "so with the septic", reach=10.0, max_trim=8.0)
+    assert "trim" in ok and 6.5 < ok["trim"] < 8.0 and seen["dur"] == 10.6
+
+
+def test_validate_bounds_a_reach_that_came_with_a_trusted_fix(xml):
+    import ops as opsmod
+    import timeline
+    cut = timeline.load_cut(xml)
+    note = {"timeline_sec": 12.0, "clip": 2, "text": "AI: x", "suggested_op": {"op": "start_at_words", "clip": 2, "words": "so with the septic", "reach": 400.0, "max_trim": 999.0}}
+    got = opsmod.validate(opsmod.from_suggestions([note], cut), [note], cut)
+    assert got[0]["op"] == "start_at_words" and got[0]["reach"] == 20.0 and got[0]["max_trim"] == 20.0            # bounded, whatever was handed in
+    plain = {"timeline_sec": 12.0, "clip": 2, "text": "AI: x", "suggested_op": {"op": "start_at_words", "clip": 2, "words": "so with the septic"}}
+    got = opsmod.validate(opsmod.from_suggestions([plain], cut), [plain], cut)
+    assert "reach" not in got[0] and "max_trim" not in got[0]                                                      # an ordinary fix keeps the ordinary guards

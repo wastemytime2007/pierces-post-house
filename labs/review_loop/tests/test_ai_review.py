@@ -328,7 +328,7 @@ def test_the_finding_cuts_a_clip_that_opens_with_the_off_camera_voice_where_the_
     assert f.ok is False and len(f.notes) == 1
     n = f.notes[0]
     assert n["kind"] == "offmic" and n["clip"] == 1 and "tell me about" in n["where"]
-    assert n["suggested_op"] == {"op": "start_at_words", "clip": 1, "words": "so with the septic"}
+    assert n["suggested_op"] == {"op": "start_at_words", "clip": 1, "words": "so with the septic", "reach": 6.0, "max_trim": 4.0}      # sized to the 3 s stretch it measured
     assert "systems we wait" not in n["where"]                                  # the answer is not part of what is flagged
 
 

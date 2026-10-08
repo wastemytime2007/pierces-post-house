@@ -221,7 +221,7 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
                                                                "thresh_db": m["thresh_db"], "ext": m["ext"]}))
         elif kind == "start_at_words":
             c = cut.video[o["clip"] - 1]
-            m = locate_start(cut, c.idx, o["words"])
+            m = locate_start(cut, c.idx, o["words"], o.get("reach", 6.0), o.get("max_trim", 3.0))
             if "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:

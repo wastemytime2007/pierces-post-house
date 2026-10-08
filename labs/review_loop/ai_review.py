@@ -273,7 +273,7 @@ def off_mic_findings(cut: Cut, words: list, mic_dir_fn=None, lavs_fn=None, level
                 after = [w for w in words if w[0] >= c.tl_start + b - 0.05 and w[0] < c.tl_end][:4]
                 fix = None
                 if a <= 0.6 and len(after) >= 3:
-                    fix = {"op": "start_at_words", "clip": c.idx, "words": " ".join(w[2] for w in after)}
+                    fix = {"op": "start_at_words", "clip": c.idx, "words": " ".join(w[2] for w in after), "reach": round(b + 3.0, 1), "max_trim": round(b + 1.0, 1)}   # the stretch was measured: let the fix reach past it and remove it
                 where = "at the start of clip %d" % c.idx if a <= 0.6 else "in clip %d" % c.idx
                 notes.append(note_at(cut, c.tl_start + a + 0.05, f"A voice that is not on anyone's microphone ({where}, {b - a:.1f}s): someone off camera, so it is faint and unclear on the recording"
                                      + (". Start the clip where the person on the microphone begins." if fix else ". Cut it or replace it by hand."), quote=heard, kind="offmic", suggested_op=fix))

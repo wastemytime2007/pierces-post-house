@@ -192,6 +192,9 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     d["max_sec"] = min(max(float(raw.get("max_sec", 1.0)), 0.2), SUGGEST_MAX_SEC)
                 if op == "start_at_words":
                     d["words"] = str(raw["words"]).strip()
+                    if raw.get("reach") is not None:                              # measured by the check that proposed it (how long the stretch to remove is): bounded, never taken from a note
+                        d["reach"] = min(max(float(raw["reach"]), 6.0), 20.0)
+                        d["max_trim"] = min(max(float(raw.get("max_trim", 3.0)), 3.0), 20.0)
                     if not words_mod.tokens(d["words"]) or len(words_mod.tokens(d["words"])) > 14:
                         raise ValueError("no usable words")
                 out.append(d)
@@ -553,11 +556,13 @@ def from_suggestions(notes: list[dict], cut: Cut) -> list[dict]:
     return out
 
 
-def locate_start(cut: Cut, clip_idx: int, phrase: str) -> dict:
-    """Where clip `clip_idx` should start so it begins at `phrase`. Returns {"trim": s, ...} or {"reason": ...}."""
+def locate_start(cut: Cut, clip_idx: int, phrase: str, reach: float = 6.0, max_trim: float = 3.0) -> dict:
+    """Where clip `clip_idx` should start so it begins at `phrase`. Returns {"trim": s, ...} or {"reason": ...}.
+    `reach` is how far into the clip the phrase is looked for and `max_trim` the most it may remove without a person confirming; a fix that measured the stretch it removes (the off-camera voice
+    check) passes both, sized to that stretch, so the ordinary guards stay as they were for everything else."""
     clip = cut.video[clip_idx - 1]
     path, src_in, _ = _audio_for(cut, clip)
-    ws = words_mod.words_in(path, src_in - 0.6, 6.6)
+    ws = words_mod.words_in(path, src_in - 0.6, reach + 0.6)
     ws = [w for w in ws if w.end > src_in - 0.05]
     hit = words_mod.find_phrase(ws, phrase)
     if hit is None:
@@ -568,6 +573,6 @@ def locate_start(cut: Cut, clip_idx: int, phrase: str) -> dict:
     dropped = words_mod.heard(ws[:idx])
     if trim < 0.05:
         return {"reason": f"clip {clip_idx} already starts at \"{ws[idx].text}\""}
-    if trim > 3.0:
+    if trim > max_trim:
         return {"reason": f"starting at those words would remove {trim:.1f}s, which is too much to do without confirmation"}
     return {"trim": trim, "dropped": dropped, "at_word": ws[idx].text, "heard": words_mod.heard(ws[:idx + 6])}
