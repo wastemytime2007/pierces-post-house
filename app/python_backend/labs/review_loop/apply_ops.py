@@ -16,7 +16,7 @@ from pathlib import Path
 
 import sys
 
-from ops import KEEP_SEC_DEFAULT, detect_pause, locate_start, measure_head, measure_join, measure_tail
+from ops import KEEP_SEC_DEFAULT, detect_pause, locate_end, locate_start, measure_head, measure_join, measure_tail
 from timeline import Cut, TimelineError, _seq_for_cut
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reframe"))
@@ -219,6 +219,24 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
                                       f"and begins {m['ext']:.2f}s before it, from room level",
                                       o.get("why", ""), check={"kind": "quiet_from", "path": m["path"], "t": m["t_start"],
                                                                "thresh_db": m["thresh_db"], "ext": m["ext"]}))
+        elif kind == "end_at_words":
+            c = cut.video[o["clip"] - 1]
+            m = locate_end(cut, c.idx, o["words"], o.get("reach", 8.0), o.get("max_trim", 6.0))
+            if "reason" in m:
+                changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
+            else:
+                s, e = c.tl_end - m["trim"], c.tl_end
+                spans.append((s, e, len(changes)))
+                dropped = f' dropped "{m["dropped"]}",' if m["dropped"] else ""
+                changes.append(Change(n, kind, True, f'clip {c.idx} now ends after "{m["at_word"]}" ({o["words"]}):{dropped} {m["trim"]:.2f}s trimmed from its end, cut placed at the quietest point after the word',
+                                      o.get("why", ""), (s, e)))
+        elif kind == "move_clip":
+            c, m = cut.video[o["clip"] - 1], cut.video[o["before"] - 1]
+            if c.tl_start < m.tl_start:
+                changes.append(Change(n, kind, False, f"clip {c.idx} already plays before clip {m.idx}", o.get("why", "")))
+            else:
+                changes.append(Change(n, kind, True, f"clip {c.idx} moved to play before clip {m.idx}, with its picture, voice and framing", o.get("why", ""),
+                                      check={"kind": "move", "src_path": c.src_path, "src_in": c.src_in, "src_out": c.src_out, "before_path": m.src_path, "before_in": m.src_in, "before_out": m.src_out}))
         elif kind == "start_at_words":
             c = cut.video[o["clip"] - 1]
             m = locate_start(cut, c.idx, o["words"], o.get("reach", 6.0), o.get("max_trim", 3.0))
@@ -322,6 +340,47 @@ def _pool_overlaps(groups: dict, file_id: str, lo: float, hi: float, fps: float,
     return False
 
 
+def _pool_tail_ok(groups: dict, file_id: str, lo: float, hi: float, fps: float, spf: float | None = None) -> bool:
+    """True when every selects-pool clip of this file that holds footage between lo and hi only reaches into that stretch with its END (it starts before lo), so taking its tail off gives the cut
+    the footage without the pool losing a whole clip."""
+    for (s, e), els in groups.items():
+        v = next((el for kind, el in els if kind == "video" and el.find("file") is not None and el.find("file").get("id") == file_id), None)
+        if v is None or e <= s:
+            continue
+        k = (int(v.findtext("out")) - int(v.findtext("in"))) / (e - s)
+        a, b = (int(v.findtext("in")) * spf, int(v.findtext("out")) * spf) if spf else (int(v.findtext("in")) / (k * fps), int(v.findtext("out")) / (k * fps))
+        if a < hi and b > lo and not (a < lo - 0.5):
+            return False
+    return True
+
+
+def _trim_pool_tail(groups: dict, file_id: str, lo: float, hi: float, fps: float, spf: float | None = None) -> float:
+    """Take the tail off each selects-pool clip of this file that runs into [lo, hi), so it ends at lo (video and its audio together). Returns the most seconds taken."""
+    trimmed = 0.0
+    for (s, e), els in groups.items():
+        v = next((el for kind, el in els if kind == "video" and el.find("file") is not None and el.find("file").get("id") == file_id), None)
+        if v is None or e <= s:
+            continue
+        k = (int(v.findtext("out")) - int(v.findtext("in"))) / (e - s)
+        a, b = (int(v.findtext("in")) * spf, int(v.findtext("out")) * spf) if spf else (int(v.findtext("in")) / (k * fps), int(v.findtext("out")) / (k * fps))
+        if not (a < hi and b > lo):
+            continue
+        cut_f = round((b - lo) / spf / k) if spf else round((b - lo) * fps)
+        if cut_f <= 0:
+            continue
+        if cut_f >= e - s:
+            raise TimelineError("starting this clip earlier would consume a whole selects-pool clip; resolve by hand")
+        for _kind, el in els:
+            ks = (int(el.findtext("out")) - int(el.findtext("in"))) / (e - s)
+            dur = el.findtext("duration")
+            _set(el, "out", int(el.findtext("out")) - round(cut_f * ks))
+            _set(el, "end", int(el.findtext("end")) - cut_f)
+            if dur is not None and int(dur) == e - s:
+                _set(el, "duration", e - s - cut_f)
+        trimmed = max(trimmed, cut_f / fps)
+    return trimmed
+
+
 def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insertions: list, removed: list[tuple[int, int]], zone_f: int, fps: float) -> list:
     """The fixes that cannot be made together with the others are set aside one by one, each with its reason, and the rest are made. Before this, one conflicting fix (an extension into a trimmed edge, two
     extensions of one edge, an extension into footage the selects pool also holds) refused the whole revision, and the editor stopped on a single fix it could have left. Returns the insertions that stand."""
@@ -371,8 +430,9 @@ def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insert
                    f"(another change in this pass already put that stretch back), so it was not made")
         elif side == "front":
             c0 = cut.video[clip_idx - 1]
-            if _pool_overlaps(pool_groups, clip_file_id[clip_idx], c0.src_in - ln, c0.src_in, fps, spf_of_file.get(clip_file_id[clip_idx])):
-                why = f"starting clip {clip_idx} earlier would repeat footage the selects pool also holds, so it was not made (it needs a decision by hand)"
+            fid, spf = clip_file_id[clip_idx], spf_of_file.get(clip_file_id[clip_idx])
+            if _pool_overlaps(pool_groups, fid, c0.src_in - ln, c0.src_in, fps, spf) and not _pool_tail_ok(pool_groups, fid, c0.src_in - ln, c0.src_in, fps, spf):
+                why = f"starting clip {clip_idx} earlier would take a whole clip out of the selects pool, so it was not made (it needs a decision by hand)"
         if why:
             changes[idx].applied, changes[idx].summary, changes[idx].check = False, why, None
         else:
@@ -381,6 +441,53 @@ def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insert
             if new:
                 ranges[clip_idx] = new
     return keep
+
+
+def _move_clip(seq: ET.Element, k: dict, zone_f: int, fps: float, path_of: dict, spf_of: dict, used_ids: set[str]) -> str | None:
+    """Move one clip (as the cut now is: it may have been trimmed or split into pieces) to play just before another, carrying every track with it: the stretch of the timeline the clip occupies and
+    the stretch from the other clip to it swap places, so nothing is lost, nothing overlaps and the length is unchanged. Returns a reason when it cannot, else None."""
+    from follow_speaker import _split_at
+    v1 = sorted([c for c in seq.find("media/video/track").findall("clipitem") if c.findtext("in") is not None and int(c.findtext("start")) < zone_f], key=lambda c: int(c.findtext("start")))
+
+    def run_of(path: str, a: float, b: float) -> tuple[int, int] | None:
+        hits = []
+        for c in v1:
+            fid = c.find("file").get("id") if c.find("file") is not None else None
+            if path_of.get(fid) != path:
+                continue
+            spf = spf_of.get(fid) or 1.0 / fps
+            mid = (int(c.findtext("in")) + int(c.findtext("out"))) / 2 * spf
+            if a - 0.6 <= mid <= b + 0.6:
+                hits.append(c)
+        if not hits:
+            return None
+        return int(hits[0].findtext("start")), int(hits[-1].findtext("end"))
+    seg, tgt = run_of(k["src_path"], k["src_in"], k["src_out"]), run_of(k["before_path"], k["before_in"], k["before_out"])
+    if not seg or not tgt:
+        return "the clip to move, or the one it should come before, is no longer in the cut after the other changes, so nothing was moved"
+    a, b, t0 = seg[0], seg[1], tgt[0]
+    if a <= t0:
+        return "that clip already plays before the other one after the other changes, so nothing was moved"
+    tracks = seq.findall("media/video/track") + seq.findall("media/audio/track")
+    for tr in tracks:
+        for el in [c for c in tr.findall("clipitem") if c.findtext("in") is not None and int(c.findtext("start")) < zone_f]:
+            _split_at(el, tr, [t0, a, b], used_ids)
+    span, gap = b - a, a - t0
+    for tr in tracks:
+        items = [c for c in tr.findall("clipitem") if c.findtext("in") is not None and int(c.findtext("start")) < zone_f]
+        for el in items:
+            s, e = int(el.findtext("start")), int(el.findtext("end"))
+            d = -gap if a <= s < b else span if t0 <= s < a else 0
+            if d:
+                el.find("start").text, el.find("end").text = str(s + d), str(e + d)
+        kids = list(tr)
+        clips = sorted([c for c in kids if c.tag == "clipitem"], key=lambda c: int(c.findtext("start")))
+        rest = [c for c in kids if c.tag != "clipitem"]
+        for c in kids:
+            tr.remove(c)
+        for c in clips + rest:
+            tr.append(c)
+    return None
 
 
 def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: list[dict]) -> tuple[list[Change], float]:
@@ -457,11 +564,23 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
             for ch in follows:
                 ch.summary += f"; {note_}"
 
+    moves = [ch for ch in changes if ch.applied and ch.check and ch.check.get("kind") == "move"]
+    if moves:                                                            # AFTER the cut edits and the framing: a clip moves as it now is, every track with it
+        path_of = {clip_file_id[c.idx]: c.src_path for c in cut.video if c.idx in clip_file_id}
+        new_zone = zone_f - sum(b - a for a, b in removed) + sum(ln for _p, ln in inserted)
+        for ch in moves:
+            why = _move_clip(seq, ch.check, new_zone, fps, path_of, spf_of_file, used_ids)
+            if why:
+                ch.applied, ch.summary, ch.check = False, why, None
+
     for (at, ln, idx, clip_idx, side) in insertions:
         if side == "front":                                                 # footage in front of the clip must not also be in the selects pool (it would play twice)
             c0 = cut.video[clip_idx - 1]
-            if _pool_overlaps(pool_groups, clip_file_id[clip_idx], c0.src_in - ln, c0.src_in, fps, spf_of_file.get(clip_file_id[clip_idx])):
-                raise TimelineError(f"extending the start of clip {clip_idx} would repeat footage the selects pool also holds; resolve by hand")
+            fid, spf = clip_file_id[clip_idx], spf_of_file.get(clip_file_id[clip_idx])
+            if _pool_overlaps(pool_groups, fid, c0.src_in - ln, c0.src_in, fps, spf):
+                took = _trim_pool_tail(pool_groups, fid, c0.src_in - ln, c0.src_in, fps, spf)
+                if took:
+                    changes[idx].summary += (f"; also took {took:.2f}s off the end of the selects-pool clip that held the same footage, so the pool still never repeats the cut")
             continue
         old_out = cut.video[clip_idx - 1].src_out
         try:

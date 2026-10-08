@@ -144,6 +144,13 @@ def edge_findings(cut: Cut, words_fn=None, pcm_fn=pcm) -> Finding:
             reasons.append(f'the {"end" if kind == "end" else "start"} lands inside the word "{straddle[0].text.strip()}"')
         if not reasons:
             continue
+        try:                                                          # the editor's own measurement decides: a note it would answer with "already quiet, nothing cut off" is not raised
+            import ops as _ops
+            m = _ops.measure_tail(cut, clip.idx, EXTEND_LOOKAHEAD) if kind == "end" else _ops.measure_head(cut, clip.idx, EXTEND_LOOKAHEAD)
+            if "already quiet" in str(m.get("reason", "")):
+                continue
+        except Exception:
+            pass
         heard = _heard_near(ws, src_t, kind)
         if kind == "end":
             text = f'Clip {clip.idx} may cut off the end of what is being said ("{heard}"): {"; ".join(reasons)}. Let the clip run a little longer.'
@@ -395,8 +402,9 @@ Reply with one JSON object and nothing else:
  "hook": "good" | "weak" | "missing",
  "ending": "clean" | "abrupt" | "missing",
  "problems": [{"quote": "<words copied EXACTLY from the transcript where the problem is>", "note": "<what is wrong and what to change, plain language, one or two sentences>",
-               "fix": {"op": "drop_clip", "clip": <clip number>} or {"op": "start_at_words", "clip": <clip number>, "words": "<words copied EXACTLY from that clip>"} or null}]}
-A "fix" is optional and only for a clean mechanical move the editor can make: "drop_clip" for a clip that is garbled, contradicts the rest, or has no point of its own; "start_at_words" to start a clip at a later phrase and skip a false start or filler.
+               "fix": {"op": "end_at_words", "clip": <clip number>, "words": "<the LAST words to keep, copied EXACTLY from that clip>"} or {"op": "move_clip", "clip": <clip number>, "before": <clip number it should play before>} or {"op": "drop_clip", "clip": <clip number>} or {"op": "start_at_words", "clip": <clip number>, "words": "<words copied EXACTLY from that clip>"} or null}]}
+The editor can make four kinds of fix: "start_at_words" starts a clip at a later phrase (skip a false start, filler or an off-topic opening); "end_at_words" ends a clip after a phrase (drop a stray word or a sentence that trails off); "move_clip" plays a clip before another one (a line that sets up the point goes first); "drop_clip" removes a clip that is garbled, contradicts the rest, or has no point of its own.
+Whenever one of these would solve a problem, GIVE it: every problem you raise should come with the fix that solves it if the footage in the cut allows it.
 Use null when the problem needs new words or a decision. Never propose a fix that would leave the video without a hook or an ending.
 Rules: list only real problems (at most 6), most important first. Every quote must be copied exactly from the transcript. A fragment that starts or ends mid-thought is a problem. A line that does not follow
 from the one before it is a problem. No praise. No hype words. If the video works, return an empty problems list."""
@@ -411,7 +419,7 @@ def _json_object(text: str) -> dict:
 
 def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
     """A fix the model proposed for a story problem, kept only if it is one the editor makes and it points at something real: an existing clip, and for start_at_words, words that are in that clip."""
-    if not isinstance(raw, dict) or raw.get("op") not in ("drop_clip", "start_at_words"):
+    if not isinstance(raw, dict) or raw.get("op") not in ("drop_clip", "start_at_words", "end_at_words", "move_clip"):
         return None
     try:
         clip = int(raw["clip"])
@@ -421,11 +429,25 @@ def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
         return None
     if raw["op"] == "drop_clip":
         return {"op": "drop_clip", "clip": clip}
+    if raw["op"] == "move_clip":
+        try:
+            before = int(raw["before"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return {"op": "move_clip", "clip": clip, "before": before} if 1 <= before <= len(cut.video) and before != clip else None
+    if raw["op"] == "end_at_words":
+        want = words_mod.tokens(str(raw.get("words", "")))[-8:]                # the last words to keep are what the editor looks for
+        have = [(words_mod.tokens(w[2]) or [""])[0] for w in words if w[3] is not None and w[3].idx == clip]
+        if not want or not any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
+            return None
+        dur = cut.video[clip - 1].tl_end - cut.video[clip - 1].tl_start
+        return {"op": "end_at_words", "clip": clip, "words": " ".join(want), "reach": round(dur + 0.5, 1), "max_trim": round(max(dur - 0.5, 3.0), 1)}     # the words were found in this clip: the editor may look across all of it
     want = words_mod.tokens(str(raw.get("words", "")))[:START_WORDS]    # the editor only needs the first words to find the spot
     have = [(words_mod.tokens(w[2]) or [""])[0] for w in words if w[3] is not None and w[3].idx == clip]
     if not want or not any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
         return None                                                  # the words are not in that clip: the fix is dropped, the note stays
-    return {"op": "start_at_words", "clip": clip, "words": " ".join(want)}
+    dur = cut.video[clip - 1].tl_end - cut.video[clip - 1].tl_start
+    return {"op": "start_at_words", "clip": clip, "words": " ".join(want), "reach": round(dur + 0.5, 1), "max_trim": round(max(dur - 0.5, 3.0), 1)}
 
 
 def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], dict]:

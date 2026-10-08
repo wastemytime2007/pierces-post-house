@@ -229,7 +229,7 @@ def test_validate_bounds_a_reach_that_came_with_a_trusted_fix(xml):
     cut = timeline.load_cut(xml)
     note = {"timeline_sec": 12.0, "clip": 2, "text": "AI: x", "suggested_op": {"op": "start_at_words", "clip": 2, "words": "so with the septic", "reach": 400.0, "max_trim": 999.0}}
     got = opsmod.validate(opsmod.from_suggestions([note], cut), [note], cut)
-    assert got[0]["op"] == "start_at_words" and got[0]["reach"] == 20.0 and got[0]["max_trim"] == 20.0            # bounded, whatever was handed in
+    assert got[0]["op"] == "start_at_words" and got[0]["reach"] == 30.0 and got[0]["max_trim"] == 30.0            # bounded, whatever was handed in
     plain = {"timeline_sec": 12.0, "clip": 2, "text": "AI: x", "suggested_op": {"op": "start_at_words", "clip": 2, "words": "so with the septic"}}
     got = opsmod.validate(opsmod.from_suggestions([plain], cut), [plain], cut)
     assert "reach" not in got[0] and "max_trim" not in got[0]                                                      # an ordinary fix keeps the ordinary guards

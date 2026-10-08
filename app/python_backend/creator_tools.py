@@ -190,7 +190,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-08.5"
+EDITOR_REVISION = "2026-10-08.7"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -662,7 +662,7 @@ def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = 
 
 
 AUTO_MAX_ROUNDS = 4
-AUTO_KEEP_FRACTION = 0.6           # the editor may not cut the video below this share of the length it started the loop with
+AUTO_KEEP_FRACTION = 0.5           # the editor may not cut the video below this share of the length it started the loop with
 AUTO_MIN_CLIPS_PER_MIN = 6.3       # the export check (safety_net/verify_export CUT-GRANULARITY) wants at least 6 clips a minute; a little over, since extensions lengthen the cut
 
 
@@ -682,7 +682,7 @@ def review_score(res: dict) -> int:
 def _op_sig(n: dict):
     """What a story fix asks for, independent of the wording of the note and of clip numbers (both change from version to version): start_at_words is named by its words. Other fixes have none."""
     op = n.get("suggested_op") or {}
-    return ("start_at_words", op.get("words")) if op.get("op") == "start_at_words" and op.get("words") else None
+    return (op.get("op"), op.get("words")) if op.get("op") in ("start_at_words", "end_at_words") and op.get("words") else None
 
 
 def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> list[dict]:
@@ -714,7 +714,9 @@ def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> lis
         op = n["suggested_op"]
         if id(n) in refused:
             continue
-        if op["op"] in ("extend_start", "extend_end", "start_at_words") and op["clip"] in drops:
+        if op["op"] in ("extend_start", "extend_end", "start_at_words", "end_at_words") and op["clip"] in drops:
+            continue                                                  # the clip is going: nothing to extend
+        if op["op"] == "move_clip" and (op["clip"] in drops or op["before"] in drops):
             continue                                                  # the clip is going: nothing to extend
         if op["op"] == "extend_start" and op["clip"] in later:
             continue                                                  # a story fix starts this clip later; it cannot also start earlier

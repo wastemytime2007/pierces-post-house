@@ -191,6 +191,9 @@ def pieces_for_cut(runs: list[tuple[float, float, str]], dur: float, fps: float 
     total = int(round(dur * fps))
     if not runs:
         return []
+    runs = list(runs)
+    while len(runs) > 1 and runs[0][1] - runs[0][0] < 0.3:                # a sliver of the other speaker at the very start (a clip started a little earlier) does not name the clip: the next turn does
+        runs = [(0.0, runs[1][1], runs[1][2])] + runs[2:]
     marks, names = [0], [runs[0][2]]
     for start, _end, who in runs[1:]:
         f = int(round(max(0.0, start - lead) * fps))

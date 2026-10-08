@@ -79,13 +79,14 @@ SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it
 SAYS_FRAMING = re.compile(r"\b(frame|framing|framed|crop(ped)?|cut off|head|screen|position(ed)?|reposition|shot|angle)\b", re.I)
 SAYS_LOWER = re.compile(r"\b(lower|lowered|lowering|down|bring (it|this|them) down|drop (it|this)|move (it|this) down)\b", re.I)
 SAYS_RAISE = re.compile(r"\b(raise|raised|raising|higher|up|bring (it|this|them) up|move (it|this) up)\b", re.I)
-CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "extend_start", "start_at_words", "drop_clip", "reframe_vertical", "follow_speaker"}
+CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "extend_start", "start_at_words", "end_at_words", "move_clip", "drop_clip", "reframe_vertical", "follow_speaker"}
+SAYS_MOVE = re.compile(r"\b(move|moved|moving|put|place|before|after|earlier|first|open(s|ing)? (with|on)|lead (with|in)|order|reorder|swap|switch (the )?order|sets? (it )?up)\b", re.I)
 SAYS_FOLLOW = re.compile(r"\b(follow(s|ing)?|track(s|ing)?|on|center(ed|ing)?|centre(d|ing)?)\b.{0,40}\b(speak(er|ers|ing)|talk(er|ing)|whoever|who(\'s| is) (talking|speaking)|person|both)\b|\b(speak(er|ers|ing)|talk(er|ing)|whoever)\b.{0,40}\b(frame|framed|framing|follow|center|centre|on screen)\b|\bframed on (either|both|neither)\b", re.I)
 SAYS_SWITCH = re.compile(r"\b(re-?frame|cut(ting)? back and forth|back and forth|switch(ing)? (to|between)|audio source|source audio|mic(rophone)? (source )?(to|for))\b.{0,120}\b(speak(er|ers|ing)|talk(er|ing)|person|people|him|her|them)\b|\b(speak(er|ers))\b.{0,120}\b(re-?frame|cut(ting)? back|switch|audio source|source audio)\b", re.I)
 SAYS_SHORT = re.compile(r"\b(yeah|yep|right|uh[- ]?huh|mm+[- ]?hm+|okay|ok|just says?|even if|brief|short|one word|interject\w*|quick)\b", re.I)
 # Operations a note may carry as its own measured fix ("suggested_op", written by the AI review): used as they are, the interpreter is not asked, and only structure is checked.
 # The amounts are measured later from the audio, never taken from the note; max_sec only bounds how far the measurement may look (4 s lets an end run on to the next pause).
-SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", "follow_speaker"}
+SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", "end_at_words", "move_clip", "follow_speaker"}
 SUGGEST_MAX_SEC = 4.0
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
@@ -109,6 +110,8 @@ Operations (times are seconds on the timeline the notes were left on):
 - extend_end {"clip": n, "max_sec": 1.0}  The note says a word or sentence at the END of clip n is cut off too soon or needs more time to finish. "clip" is the note's own clip unless the note says otherwise. The amount is measured from how the sound decays, so never give a duration.
 - extend_start {"clip": n, "max_sec": 1.0}  The note says a word at the START of clip n is cut off, or the clip starts in the middle of a word or sound, or needs a little more lead-in. "clip" is the note's own clip unless the note says otherwise. The amount is measured from the audio, so never give one.
 - start_at_words {"clip": n, "words": "..."}  The note says clip n should START at specific words, dropping words before them (for example "the clean cut should be X to Y": the clip after the seam starts at Y). "words" must be copied from the note. The point is found by listening, so never give a time.
+- end_at_words {"clip": n, "words": "..."}  The note says clip n should END after specific words, dropping what comes after them (for example "trim the out-point to end at 'until we're under contract'"). "words" must be copied from the note: the last words to keep. The point is found by listening, so never give a time.
+- move_clip {"clip": n, "before": m}  The note says clip n should come earlier, before clip m (a line that sets up another should play first). Only when the note asks for the order to change.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming in or out, moving sideways or cropping (those are unsupported).
 - follow_speaker {"clip": n or "all", "short_turns": true or false}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Use it too when the note asks to cut or switch back and forth between the speakers, to reframe to whoever is talking, or to use the talking person's own microphone: the picture and the sound both follow the speaker. Set "short_turns" true when the note says even a short reply ("yeah", "right") should get the cut. Never give a position or a time: who talks when and where each person stands are measured.
@@ -183,6 +186,11 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"the note was left on clip {tg['clip']}, not clip {raw['clip']}")
             if raw.get("trusted") and op == "follow_speaker":
                 out.append({"note": note, "op": op, "clips": "all", "why": why, "trusted": True})
+            elif raw.get("trusted") and op == "move_clip":
+                clip, before = int(raw["clip"]), int(raw["before"])
+                if not (1 <= clip <= n_clips and 1 <= before <= n_clips) or clip == before:
+                    raise ValueError("move_clip needs two different clips that exist")
+                out.append({"note": note, "op": op, "clip": clip, "before": before, "why": why, "trusted": True})
             elif raw.get("trusted") and op in SUGGESTIBLE_OPS:
                 clip = int(raw["clip"])
                 if not 1 <= clip <= n_clips:
@@ -190,11 +198,18 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 d = {"note": note, "op": op, "clip": clip, "why": why, "trusted": True}
                 if op in ("extend_start", "extend_end"):
                     d["max_sec"] = min(max(float(raw.get("max_sec", 1.0)), 0.2), SUGGEST_MAX_SEC)
+                if op == "end_at_words":
+                    d["words"] = str(raw["words"]).strip()
+                    if raw.get("reach") is not None:
+                        d["reach"] = min(max(float(raw["reach"]), 6.0), 30.0)
+                        d["max_trim"] = min(max(float(raw.get("max_trim", 6.0)), 3.0), 30.0)
+                    if not words_mod.tokens(d["words"]) or len(words_mod.tokens(d["words"])) > 14:
+                        raise ValueError("no usable words")
                 if op == "start_at_words":
                     d["words"] = str(raw["words"]).strip()
                     if raw.get("reach") is not None:                              # measured by the check that proposed it (how long the stretch to remove is): bounded, never taken from a note
-                        d["reach"] = min(max(float(raw["reach"]), 6.0), 20.0)
-                        d["max_trim"] = min(max(float(raw.get("max_trim", 3.0)), 3.0), 20.0)
+                        d["reach"] = min(max(float(raw["reach"]), 6.0), 30.0)
+                        d["max_trim"] = min(max(float(raw.get("max_trim", 3.0)), 3.0), 30.0)
                     if not words_mod.tokens(d["words"]) or len(words_mod.tokens(d["words"])) > 14:
                         raise ValueError("no usable words")
                 out.append(d)
@@ -232,6 +247,24 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"clip {clip} does not exist")
                 mx = float(raw.get("max_sec", 1.0))
                 out.append({"note": note, "op": op, "clip": clip, "max_sec": min(max(mx, 0.2), 1.5), "why": why})
+            elif op == "end_at_words":
+                clip = int(raw["clip"])
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                phrase = str(raw["words"]).strip()
+                pt = words_mod.tokens(phrase)
+                if not pt or len(pt) > 14:
+                    raise ValueError("no usable words")
+                if " ".join(pt) not in " ".join(words_mod.tokens(text)):
+                    raise ValueError("those words are not in the note, refusing to invent a target")
+                out.append({"note": note, "op": op, "clip": clip, "words": phrase, "why": why})
+            elif op == "move_clip":
+                clip, before = int(raw["clip"]), int(raw["before"])
+                if not (1 <= clip <= n_clips and 1 <= before <= n_clips) or clip == before:
+                    raise ValueError("move_clip needs two different clips that exist")
+                if not SAYS_MOVE.search(text):
+                    raise ValueError("the note does not ask for the order to change")
+                out.append({"note": note, "op": op, "clip": clip, "before": before, "why": why})
             elif op == "start_at_words":
                 clip = int(raw["clip"])
                 if not 1 <= clip <= n_clips:
@@ -554,6 +587,31 @@ def from_suggestions(notes: list[dict], cut: Cut) -> list[dict]:
             continue
         out.append({**s, "note": i, "trusted": True, "why": s.get("why") or "the reviewer's measured fix"})
     return out
+
+
+def locate_end(cut: Cut, clip_idx: int, phrase: str, reach: float = 8.0, max_trim: float = 6.0) -> dict:
+    """Where clip `clip_idx` should end so it stops right after `phrase` (the last words to keep). Returns {"trim": s from the clip's end, ...} or {"reason": ...}. The cut is placed at the quietest point
+    in the 0.25 s after the last kept word, the way start_at_words places its cut before the first."""
+    clip = cut.video[clip_idx - 1]
+    path, src_in, src_out = _audio_for(cut, clip)
+    lo = max(src_in, src_out - reach)
+    ws = [w for w in words_mod.words_in(path, lo, src_out - lo + 0.3) if w.start < src_out - 0.02]
+    hit = words_mod.find_phrase(ws, phrase)
+    if hit is None:
+        return {"reason": f"could not find \"{phrase}\" near the end of clip {clip_idx}; the audio there reads: \"{words_mod.heard(ws[-10:])}\""}
+    want = words_mod.tokens(phrase)
+    last = want[-1] if want else ""
+    i = hit[0]
+    span = [j for j in range(i, min(len(ws), i + len(want) + 3)) if (words_mod.tokens(ws[j].text) or [""])[0] == last]
+    j = span[-1] if span else min(len(ws) - 1, i + len(want) - 1)
+    t = words_mod.valley(path, ws[j].end, min(ws[j].end + 0.25, src_out))
+    trim = src_out - t
+    dropped = words_mod.heard(ws[j + 1:])
+    if trim < 0.05:
+        return {"reason": f"clip {clip_idx} already ends at \"{ws[j].text.strip()}\""}
+    if trim > max_trim:
+        return {"reason": f"ending at those words would remove {trim:.1f}s, which is too much to do without confirmation"}
+    return {"trim": trim, "dropped": dropped, "at_word": ws[j].text.strip()}
 
 
 def locate_start(cut: Cut, clip_idx: int, phrase: str, reach: float = 6.0, max_trim: float = 3.0) -> dict:

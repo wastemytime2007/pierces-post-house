@@ -547,3 +547,83 @@ def test_an_extension_that_only_meets_its_neighbour_is_not_a_clash(xml):
     changes = [apply_ops.Change(1, "extend_end", True, "joined")]
     ins = [(10.0, 2.0, 0, 1, "end")]                                                # 110 to 112 exactly: it meets clip 2, it does not overlap it
     assert apply_ops._set_aside_conflicts(xml, fake, changes, ins, [], round(cut.zone_end * cut.fps), cut.fps) == ins and changes[0].applied
+
+
+# ------------------------------------------------------------------ the AI editor makes every fix its reviewer asks for that the footage allows (Ryan, 2026-10-08)
+
+def test_end_at_words_ends_the_clip_right_after_the_named_words_and_says_what_it_dropped(tmp_path, xml, monkeypatch):
+    # the fake words are timed from the start of whatever window is asked for; end_at_words asks for the last 8 s of the clip
+    rows = [("so", 4.0, 4.2), ("we", 4.2, 4.4), ("wait", 4.4, 4.8), ("until", 4.8, 5.1), ("we're", 5.1, 5.3), ("under", 5.3, 5.6), ("contract.", 5.6, 6.1), ("lead", 6.6, 6.9), ("time", 6.9, 7.3)]
+    _fake_words(monkeypatch, rows)
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "end_at_words", "clip": 2, "words": "until we're under contract"}])
+    c = changes[0]
+    assert c.applied and 'dropped "lead time"' in c.summary and "contract" in c.summary
+    assert 1.6 < -delta < 2.1                                         # the clip's last 8 s window: 'contract.' ends at 6.1 s, the clip at 8 s; the cut lands within 0.25 s after the word
+    assert timeline.load_cut(out).video[1].src_out < cut.video[1].src_out - 1.6
+
+
+def test_end_at_words_refuses_words_it_cannot_hear_and_changes_nothing(tmp_path, xml, monkeypatch):
+    _fake_words(monkeypatch, [("completely", 0.2, 0.8), ("different", 0.8, 1.2)])
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "end_at_words", "clip": 2, "words": "under contract"}])
+    assert not changes[0].applied and "could not find" in changes[0].summary and delta == 0
+
+
+def test_move_clip_plays_a_clip_earlier_with_its_voice_and_the_length_is_unchanged(tmp_path, xml):
+    import revise
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "move_clip", "clip": 3, "before": 1}])
+    assert changes[0].applied and delta == 0
+    new = timeline.load_cut(out)
+    assert [round(v.src_in, 2) for v in new.video] == [round(cut.video[i].src_in, 2) for i in (2, 0, 1)]      # 3, 1, 2
+    assert abs(new.zone_end - cut.zone_end) < 1e-6
+    rows = {n: ok for n, ok, _d in revise.verify(cut, xml, out, 0.0)}
+    for name in ("RIPPLE-LENGTH", "CONTIGUOUS", "NO-NEW-FOOTAGE", "LAV-SYNC-PRESERVED", "verify_export XML-CUT-NO-OVERLAP"):
+        assert rows[name] is not False, (name, rows[name])                                                        # the voice moved with its picture and stayed in sync
+    assert _items(out, "video")[-2:] == _items(xml, "video")[-2:]                                                 # the selects pool is untouched
+
+
+def test_move_clip_of_a_clip_that_already_plays_first_does_nothing_and_says_so(tmp_path, xml):
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "move_clip", "clip": 1, "before": 3}])
+    assert not changes[0].applied and "already plays before" in changes[0].summary
+
+
+def test_validate_takes_the_new_fixes_from_the_reviewer_and_from_a_note(xml):
+    cut = timeline.load_cut(xml)
+    notes = [{"timeline_sec": 12.0, "text": "AI: x", "clip": 2, "suggested_op": {"op": "end_at_words", "clip": 2, "words": "until we're under contract"}},
+             {"timeline_sec": 14.0, "text": "AI: y", "clip": 3, "suggested_op": {"op": "move_clip", "clip": 3, "before": 1}}]
+    got = opsmod.validate(opsmod.from_suggestions(notes, cut), notes, cut)
+    assert [(o["op"], o.get("words"), o.get("before")) for o in got] == [("end_at_words", "until we're under contract", None), ("move_clip", None, 1)]
+    said = [{"timeline_sec": 3.0, "text": "Trim the out-point to end at 'until we're under contract'"}, {"timeline_sec": 3.0, "text": "make it shorter"}]
+    raw = [{"note": 1, "op": "end_at_words", "clip": 1, "words": "until we're under contract"}, {"note": 2, "op": "move_clip", "clip": 2, "before": 1}]
+    got = opsmod.validate(raw, said, cut)
+    assert got[0]["op"] == "end_at_words" and got[1]["op"] == "unsupported"                                       # "make it shorter" does not ask for the order to change
+
+
+def test_a_sliver_of_the_other_speaker_at_the_start_of_a_clip_does_not_name_the_whole_clip():
+    """The run on 2026-10-08: a clip started 0.1 s earlier, so it opened on 0.1 s of Mitch before Bob's line; the clip was framed on Mitch with Mitch's recorder live under Bob's words."""
+    import speakers
+    pieces = speakers.pieces_for_cut([(0.0, 0.1, "Mitch"), (0.1, 1.7, "Bob"), (1.7, 2.2, "Mitch")], 2.2, fps=30.0)
+    assert pieces[0][2] == "Bob" and pieces[0][0] == 0
+
+
+def test_a_tail_of_the_pool_is_given_up_to_a_clip_that_starts_earlier_but_a_whole_pool_clip_is_not(tmp_path, xml):
+    """Starting a clip earlier into footage the selects pool holds used to be refused outright; now the pool clip's END is taken off, as an end extension already takes its front."""
+    import xml.etree.ElementTree as ET
+    seq = ET.parse(xml).getroot().find("sequence")
+    cut = timeline.load_cut(xml)
+    zone_f = round(cut.zone_end * cut.fps)
+    groups = {}
+    for kind in ("video", "audio"):
+        for track in seq.findall(f"media/{kind}/track"):
+            for c in track.findall("clipitem"):
+                if int(c.findtext("start")) >= zone_f:
+                    groups.setdefault((int(c.findtext("start")), int(c.findtext("end"))), []).append((kind, c))
+    v = next(el for (_s, _e), els in groups.items() for kind, el in els if kind == "video")
+    fid = v.find("file").get("id")
+    (s, e) = next(k for k, els in groups.items() if any(el is v for _kd, el in els))
+    k = (int(v.findtext("out")) - int(v.findtext("in"))) / (e - s)
+    a, b = int(v.findtext("in")) / (k * cut.fps), int(v.findtext("out")) / (k * cut.fps)
+    assert apply_ops._pool_tail_ok(groups, fid, b - 1.0, b - 0.05, cut.fps)           # reaches only the pool clip's last second: its tail can go
+    assert not apply_ops._pool_tail_ok(groups, fid, a - 0.5, b + 0.5, cut.fps)          # would swallow the whole pool clip: refused
+    end_before = int(v.findtext("end"))
+    took = apply_ops._trim_pool_tail(groups, fid, b - 1.0, b - 0.05, cut.fps)
+    assert 0.9 < took < 1.1 and int(v.findtext("end")) == end_before - round(1.0 * cut.fps)

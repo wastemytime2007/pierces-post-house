@@ -76,15 +76,22 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
 
     z1 = round(cut1.zone_end * cut1.fps)
     p1, p2 = _video_items(xml1, z1, False), _video_items(xml2, z1, False)
-    lost, pool_ok = 0.0, len(p1) == len(p2)
+    lost_front = lost_tail = 0.0
+    pool_ok = len(p1) == len(p2)
     for (s1, e1, i1, o1), (s2, e2, i2, o2) in zip(p1, p2):
         k = (o1 - i1) / (e1 - s1)
-        if s1 != s2 or o1 != o2 or i2 < i1 or e2 > e1 or abs((i2 - i1) / k - (e1 - e2)) > 2:
+        front = s1 == s2 and o1 == o2 and i2 >= i1 and e2 <= e1 and abs((i2 - i1) / k - (e1 - e2)) <= 2          # its start given to a clip that grew at its end
+        tail = s1 == s2 and i1 == i2 and o2 <= o1 and e2 <= e1 and abs((o1 - o2) / k - (e1 - e2)) <= 2           # its end given to a clip that now starts earlier
+        if not (front or tail):
             pool_ok = False
-        lost = max(lost, (e1 - e2) / cut1.fps)
-    pool_ok = pool_ok and lost <= extra_out + 2.0 / cut1.fps
+        elif i2 != i1:
+            lost_front = max(lost_front, (e1 - e2) / cut1.fps)
+        else:
+            lost_tail = max(lost_tail, (e1 - e2) / cut1.fps)
+    lost = max(lost_front, lost_tail)
+    pool_ok = pool_ok and lost_front <= extra_out + 2.0 / cut1.fps and lost_tail <= extra_in + 2.0 / cut1.fps
     rows.append(("POOL-ONLY-LOST-WHAT-THE-CUT-GAINED", pool_ok,
-                 "selects pool identical to V1" if p1 == p2 else f"pool only lost footage the cut now holds (front-trimmed by up to {lost:.2f}s)"))
+                 "selects pool identical to V1" if p1 == p2 else f"pool only lost footage the cut now holds (trimmed by up to {lost:.2f}s, front or end)"))
 
     rep = verify_export.Report()
     verify_export.check_xml(xml2, rep)

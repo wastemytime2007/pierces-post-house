@@ -349,6 +349,22 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
                 if not good:
                     status = FAILED
         return Row(n, kind, status, "; ".join(parts))
+    if kind == "move_clip":
+        idx, bef = o["clip"], o["before"]
+        if not (1 <= idx <= len(old.video) and 1 <= bef <= len(old.video)):
+            return Row(n, kind, UNMEASURED, "a clip named is not on the old cut")
+        c, m = old.video[idx - 1], old.video[bef - 1]
+        first = lambda cl: next((i for i, v in enumerate(new.video) if v.src_path == cl.src_path and cl.src_in - 0.6 <= (v.src_in + v.src_out) / 2 <= cl.src_out + 0.6), None)
+        i, j = first(c), first(m)
+        if i is None or j is None:
+            return Row(n, kind, FAILED, "one of the two clips is not on the new cut")
+        return Row(n, kind, VERIFIED if i < j else FAILED, f"the moved clip is now clip {i + 1} and the one it should come before is clip {j + 1} on the new cut")
+    if kind == "end_at_words":
+        seam = item.get("v2_time")
+        if seam is None:
+            return Row(n, kind, UNMEASURED, "the revise record has no seam time to check")
+        ok = any(abs(c.tl_end - seam) <= TOL for c in new.video)
+        return Row(n, kind, VERIFIED if ok else FAILED, f"a clip {'ends' if ok else 'does not end'} at the new seam ({seam:.2f}s) on the new version")
     if kind in ("trim_start", "trim_end", "drop_clip", "extend_end", "extend_start", "start_at_words"):
         idx = o["clip"]
         if not 1 <= idx <= len(old.video):
