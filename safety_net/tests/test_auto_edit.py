@@ -34,7 +34,7 @@ class World:
         self.tmp, self.reviews, self.edits, self.durations = tmp, reviews, edits, durations or {}
         self.review_calls, self.apply_calls, self.events = [], [], []
 
-    def ai_review(self, xml, folder, on_stage=None, story=True):
+    def ai_review(self, xml, folder, on_stage=None, story=True, direction=""):
         label = Path(xml).stem
         self.review_calls.append(label)
         return self.reviews[label]
@@ -200,7 +200,7 @@ def test_when_story_fixes_clash_with_the_edge_fixes_the_editor_retries_with_only
     story = fixnote("story-fix", "start_at_words", 1, words="x")
     edge = fixnote("edge-fix", "extend_end", 2)
     reviews = {"V1": review_of([story, edge]), "V2": review_of([])}
-    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True: reviews[Path(xml).stem])
+    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True, direction="": reviews[Path(xml).stem])
     monkeypatch.setattr(ct, "apply_notes", apply_notes)
     monkeypatch.setattr(timeline, "load_cut", lambda p: cut_of_clips(20, 20, 20))
     (tmp_path / "V1").mkdir()
@@ -234,7 +234,7 @@ def test_a_clashing_batch_records_the_real_refusal_as_the_reason(tmp_path, monke
         return {"folder": str(tmp_path), "items": [{"note": 1, "applied": False, "summary": "no"}], "applied": 0, "notes": 1, "xml": None, "page": None, "qa": None, "message": "x"}
 
     story_fix, edge_fix = fixnote("story-fix", "start_at_words", 1, words="x"), fixnote("edge-fix", "extend_end", 2)
-    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True: review_of([story_fix, edge_fix]))
+    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True, direction="": review_of([story_fix, edge_fix]))
     monkeypatch.setattr(ct, "apply_notes", apply_notes)
     monkeypatch.setattr(timeline, "load_cut", lambda p: cut_of_clips(20, 20, 20))
     (tmp_path / "V1").mkdir()
@@ -262,7 +262,7 @@ def test_a_failed_story_fix_is_not_tried_again_when_the_next_review_words_it_dif
     story2 = fixnote("story-v2-reworded", "start_at_words", 1, words="we ask them to take")             # the next review: same fix, different words in the note, so a different key
     edge_a, edge_b = fixnote("edge-a", "extend_end", 2), fixnote("edge-b", "extend_end", 3)
     reviews = {"V1": review_of([story1, edge_a]), "V2": review_of([story2, edge_b]), "V3": review_of([])}
-    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True: reviews[Path(xml).stem])
+    monkeypatch.setattr(ct, "ai_review", lambda xml, folder, on_stage=None, story=True, direction="": reviews[Path(xml).stem])
     monkeypatch.setattr(ct, "apply_notes", apply_notes)
     monkeypatch.setattr(timeline, "load_cut", lambda p: cut_of_clips(*([5] * 12)))
     (tmp_path / "V1").mkdir()

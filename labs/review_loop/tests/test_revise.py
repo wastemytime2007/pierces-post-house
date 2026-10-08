@@ -638,3 +638,17 @@ def test_a_clip_followed_by_an_earlier_part_of_the_recording_may_still_finish_it
     assert opsmod._footage_user(cut, 3, 755.8, 756.0) is None                                 # nothing in the cut shows 755.8-756.0
     assert opsmod._footage_user(cut, 1, 733.9, 734.3).idx == 2                                 # a real neighbour's footage still blocks
     assert opsmod._footage_user(cut, 4, 590.8, 591.0) is None
+
+
+def test_a_seam_moves_with_its_clip_so_its_own_check_listens_in_the_right_place(tmp_path, xml, monkeypatch):
+    """The run on 2026-10-08: in one pass a fix started clip 4 at "So with the septic" and another moved a clip earlier; the start fix's seam time was the one from before the move, its check
+    heard another clip there ("you're probably on a septic") and undid it, and the off-camera question came back."""
+    rows = [("and", 0.2, 0.7), ("then", 0.7, 0.85), ("step", 0.85, 1.05), ("on", 1.05, 1.2), ("the", 1.2, 1.3), ("tile", 1.3, 1.5)]
+    _fake_words(monkeypatch, rows)
+    cut, out, changes, delta = _run(xml, tmp_path, [{"note": 1, "op": "start_at_words", "clip": 3, "words": "step on the tile"},
+                                                    {"note": 2, "op": "move_clip", "clip": 3, "before": 1}])
+    start, move = changes
+    assert start.applied and move.applied
+    new = timeline.load_cut(out)
+    assert abs(start.v2_time - new.video[0].tl_start) < 1.5 / cut.fps                     # clip 3 now plays first, so its seam is at the start of the cut, not where clip 3 used to be
+    assert round(new.video[0].src_in, 1) > round(cut.video[2].src_in, 1)                   # and it does start later, at the named words

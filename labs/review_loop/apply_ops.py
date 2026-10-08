@@ -443,9 +443,10 @@ def _set_aside_conflicts(xml_path: Path, cut: Cut, changes: list[Change], insert
     return keep
 
 
-def _move_clip(seq: ET.Element, k: dict, zone_f: int, fps: float, path_of: dict, spf_of: dict, used_ids: set[str]) -> str | None:
+def _move_clip(seq: ET.Element, k: dict, zone_f: int, fps: float, path_of: dict, spf_of: dict, used_ids: set[str]):
     """Move one clip (as the cut now is: it may have been trimmed or split into pieces) to play just before another, carrying every track with it: the stretch of the timeline the clip occupies and
-    the stretch from the other clip to it swap places, so nothing is lost, nothing overlaps and the length is unchanged. Returns a reason when it cannot, else None."""
+    the stretch from the other clip to it swap places, so nothing is lost, nothing overlaps and the length is unchanged. Returns (reason, None) when it cannot, else (None, (t0, a, b)): the
+    frames the moved stretch [a, b) and the stretch it jumped [t0, a) occupied, so every other change's seam time can be carried along."""
     from follow_speaker import _split_at
     v1 = sorted([c for c in seq.find("media/video/track").findall("clipitem") if c.findtext("in") is not None and int(c.findtext("start")) < zone_f], key=lambda c: int(c.findtext("start")))
 
@@ -464,10 +465,10 @@ def _move_clip(seq: ET.Element, k: dict, zone_f: int, fps: float, path_of: dict,
         return int(hits[0].findtext("start")), int(hits[-1].findtext("end"))
     seg, tgt = run_of(k["src_path"], k["src_in"], k["src_out"]), run_of(k["before_path"], k["before_in"], k["before_out"])
     if not seg or not tgt:
-        return "the clip to move, or the one it should come before, is no longer in the cut after the other changes, so nothing was moved"
+        return "the clip to move, or the one it should come before, is no longer in the cut after the other changes, so nothing was moved", None
     a, b, t0 = seg[0], seg[1], tgt[0]
     if a <= t0:
-        return "that clip already plays before the other one after the other changes, so nothing was moved"
+        return "that clip already plays before the other one after the other changes, so nothing was moved", None
     tracks = seq.findall("media/video/track") + seq.findall("media/audio/track")
     for tr in tracks:
         for el in [c for c in tr.findall("clipitem") if c.findtext("in") is not None and int(c.findtext("start")) < zone_f]:
@@ -487,7 +488,7 @@ def _move_clip(seq: ET.Element, k: dict, zone_f: int, fps: float, path_of: dict,
             tr.remove(c)
         for c in clips + rest:
             tr.append(c)
-    return None
+    return None, (t0, a, b)
 
 
 def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: list[dict]) -> tuple[list[Change], float]:
@@ -569,9 +570,19 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
         path_of = {clip_file_id[c.idx]: c.src_path for c in cut.video if c.idx in clip_file_id}
         new_zone = zone_f - sum(b - a for a, b in removed) + sum(ln for _p, ln in inserted)
         for ch in moves:
-            why = _move_clip(seq, ch.check, new_zone, fps, path_of, spf_of_file, used_ids)
+            why, moved = _move_clip(seq, ch.check, new_zone, fps, path_of, spf_of_file, used_ids)
             if why:
                 ch.applied, ch.summary, ch.check = False, why, None
+                continue
+            t0, a, b = moved
+            for other in changes:                                        # a seam inside either stretch now plays somewhere else: its check must look there (a start_at_words checked at its old time heard another clip and was undone)
+                if other.v2_time is None:
+                    continue
+                f = round(other.v2_time * fps)
+                if a <= f < b:
+                    other.v2_time = (f - (a - t0)) / fps
+                elif t0 <= f < a:
+                    other.v2_time = (f + (b - a)) / fps
 
     for (at, ln, idx, clip_idx, side) in insertions:
         if side == "front":                                                 # footage in front of the clip must not also be in the selects pool (it would play twice)

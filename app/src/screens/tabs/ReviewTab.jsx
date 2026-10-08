@@ -74,6 +74,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [autoFinish, setAutoFinish] = useState(() => {
     try { return localStorage.getItem("review.autoFinish") !== "off"; } catch (e) { return true; }
   });
+  const [direction, setDirection] = useState("");
+  const directionRef = useRef("");
+  directionRef.current = direction;
+  const dirKey = (root) => `review.direction:${root || ""}`;
   const autoFinishRef = useRef(autoFinish);
   autoFinishRef.current = autoFinish;
   const finishOptsRef = useRef(finishOpts);
@@ -121,6 +125,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         }
       } else if (ev.type === "review_session_loaded") {
         setBusy("");
+        try { setDirection(localStorage.getItem(dirKey(ev.root)) || ""); directionRef.current = localStorage.getItem(dirKey(ev.root)) || ""; } catch (e) { /* private window */ }
         const vs = ev.versions.map((v) => ({ label: v.label, xml: v.xml, folder: v.folder, url: v.url, qa: v.qa, applied: v.applied, notes: v.notes }));
         setVersions(vs);
         const aiState = {};
@@ -193,6 +198,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         if (idx >= 0 && idx < versionsRef.current.length) setCur(idx);
       } else if (ev.type === "review_built") {
         setBusy("");
+        try { setDirection(localStorage.getItem(dirKey(ev.xml)) || ""); directionRef.current = localStorage.getItem(dirKey(ev.xml)) || ""; } catch (e) { /* private window */ }
         aiPending.current = {};
         setAi({});
         setAuto(autoOnRef.current ? { status: "running", round: 0, of: 4, label: "V1" } : { status: "idle" });      // the editor starts the moment the cut opens: do not flash "your turn" before its first event
@@ -347,13 +353,13 @@ export default function ReviewTab({ subscribe, onStatus }) {
   };
 
   aiOnlyRef.current = (xml, folder, tag, root) => {
-    sendCommand({ type: "ai_review", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
+    sendCommand({ type: "ai_review", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml, direction: directionRef.current }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
   };
 
   // A new version (the cut just built, or one made from your notes): the AI editor takes it from here, unless it is switched off, then only the review runs.
   aiStartRef.current = (xml, folder, tag, root) => {
     if (autoOnRef.current) {
-      sendCommand({ type: "auto_edit", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml, finish: autoFinishRef.current ? finishOptsRef.current : null }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
+      sendCommand({ type: "auto_edit", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml, finish: autoFinishRef.current ? finishOptsRef.current : null, direction: directionRef.current }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
     } else {
       aiOnlyRef.current?.(xml, folder, tag, root);
     }
@@ -602,6 +608,15 @@ export default function ReviewTab({ subscribe, onStatus }) {
           Start over
         </button>
       </div>
+
+      {versions.length > 0 && (
+        <label className="sync-section-hint" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          Story direction for the AI editor (what this cut should say and how it should open; it follows this over its own idea of the story)
+          <textarea rows={2} value={direction} placeholder="For example: open on Bob's quick check (no curbs or storm sewer means septic), then Mitch's plan: wait until under contract, $23,000, 10 days before closing."
+            onChange={(e) => { setDirection(e.target.value); try { localStorage.setItem(dirKey(versionsRef.current[0]?.xml), e.target.value); } catch (err) { /* private window */ } }}
+            style={{ width: "100%", font: "inherit", background: "transparent", color: "inherit", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 6, padding: 8 }} />
+        </label>
+      )}
 
       {finishing && (
         <div className="run-pipeline-section" role="dialog" aria-label="Finish the cut">

@@ -190,7 +190,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-08.9"
+EDITOR_REVISION = "2026-10-08.10"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -641,7 +641,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
             "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in r["checks"]]}
 
 
-def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = True) -> dict:
+def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = True, direction: str = "") -> dict:
     """The AI review of a cut (labs/review_loop/ai_review.py): cut edges against the voice, where the voice comes from, the story read from the words. Saved as ai_review.json beside the page."""
     import json
     src = Path(xml).expanduser()
@@ -651,7 +651,7 @@ def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = 
     import ai_review as air
     from timeline import TimelineError
     try:
-        res = air.review(src, story=story, progress=on_stage or (lambda _s: None))
+        res = air.review(src, story=story, progress=on_stage or (lambda _s: None), direction=direction or "")
     except TimelineError as exc:
         raise ToolError(str(exc)) from exc
     if folder:
@@ -725,7 +725,7 @@ def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> lis
 
 
 def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_MAX_ROUNDS, emit=None, cancelled=None, story: bool = True, root: str | None = None,
-              finish: dict | None = None) -> dict:
+              finish: dict | None = None, direction: str = "") -> dict:
     """The AI editor's own loop: review the version, submit the findings it can fix as notes, review the new version, repeat, until the cut has nothing left to fix or the editor cannot do more.
 
     Everything is visible: each review and each revision is announced with the same events a manual review and a manual Submit produce (so the Review tab shows the AI's notes on the page, every
@@ -740,7 +740,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
 
     def review(x: str, f: str, lab: str) -> dict:
         emit({"type": "ai_review_started", "xml": x, "tag": lab, "auto": True})
-        res = ai_review(x, f, lambda st: emit({"type": "ai_review_stage", "xml": x, "tag": lab, "stage": st, "auto": True}), story)
+        res = ai_review(x, f, lambda st: emit({"type": "ai_review_stage", "xml": x, "tag": lab, "stage": st, "auto": True}), story, direction)
         emit({"type": "ai_review_done", "xml": x, "tag": lab, "auto": True, **res})
         return res
 

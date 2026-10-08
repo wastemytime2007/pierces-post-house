@@ -389,3 +389,18 @@ def test_a_fix_the_editor_hears_as_already_done_is_not_raised(monkeypatch):
     monkeypatch.setattr(opsmod, "locate_start", lambda *a, **k: {"reason": 'clip 1 already starts at "If"'})
     rows, _ = ar.story_findings(cut, words, fake_client(reply))
     assert rows[0].notes == []                                                                      # it would only have come back as "already starts at"
+
+
+def test_the_owners_story_direction_reaches_the_reviewer_and_outranks_its_own_idea():
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video.append(VideoClip(1, 0.0, 10.0, "/a.mp4", 100.0, 110.0, None))
+    words = _words_of(cut, [(1, "if you dont have curbs you are probably on septic")])
+    seen = {}
+
+    def create(**kw):
+        seen["prompt"] = kw["messages"][0]["content"]
+        return SimpleNamespace(content=[SimpleNamespace(text='{"story": "s", "hook": "good", "ending": "clean", "problems": []}')])
+    ar.story_findings(cut, words, SimpleNamespace(messages=SimpleNamespace(create=create)), "Open on Bob's quick check, then Mitch's plan.")
+    assert "THE OWNER'S DIRECTION" in seen["prompt"] and "Open on Bob's quick check" in seen["prompt"]
+    ar.story_findings(cut, words, SimpleNamespace(messages=SimpleNamespace(create=create)))
+    assert "DIRECTION" not in seen["prompt"]                                                      # no direction given: the prompt is as it was

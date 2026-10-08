@@ -1200,7 +1200,7 @@ def handle_ai_review(cmd: dict) -> None:
         try:
             result, _printed = creator_tools.capture(creator_tools.ai_review, xml, cmd.get("folder"),
                                                      lambda s: emit({"type": "ai_review_stage", "xml": xml, "tag": tag, "stage": s}),
-                                                     bool(cmd.get("story", True)))
+                                                     bool(cmd.get("story", True)), str(cmd.get("direction") or ""))
             emit({"type": "ai_review_done", "xml": xml, "tag": tag, "root": cmd.get("root"), **result})
         except creator_tools.ToolError as exc:
             emit({"type": "ai_review_failed", "xml": xml, "tag": tag, "message": str(exc)})
@@ -1235,7 +1235,8 @@ def handle_auto_edit(cmd: dict) -> None:
         import creator_tools
         try:
             result, printed = creator_tools.capture(creator_tools.auto_edit, xml, folder, cmd.get("tag") or "V1", int(cmd.get("max_rounds", creator_tools.AUTO_MAX_ROUNDS)), emit,
-                                                    _auto_stop.is_set, bool(cmd.get("story", True)), cmd.get("root"), cmd.get("finish") if isinstance(cmd.get("finish"), dict) else None)
+                                                    _auto_stop.is_set, bool(cmd.get("story", True)), cmd.get("root"), cmd.get("finish") if isinstance(cmd.get("finish"), dict) else None,
+                                                    str(cmd.get("direction") or ""))
             for row in printed:
                 log("info", row)
         except Exception as exc:

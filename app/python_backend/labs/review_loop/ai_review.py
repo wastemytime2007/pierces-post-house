@@ -498,7 +498,7 @@ def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
     return {"op": "start_at_words", "clip": clip, "words": " ".join(want), "reach": round(dur + 0.5, 1), "max_trim": round(max(dur - 0.5, 3.0), 1)}
 
 
-def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], dict]:
+def story_findings(cut: Cut, words: list, client=None, direction: str = "") -> tuple[list[Finding], dict]:
     if not words:
         return [Finding("STORY", None, "no words were heard in the cut, so the story was not judged")], {"dropped": 0}
     if client is None:
@@ -513,6 +513,9 @@ def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], d
         lines[-1] += text + " "
     transcript = "".join(lines).strip()
     prompt = f'The cut is "{cut.sequence_name}", {cut.zone_end:.1f} seconds, {len(cut.video)} clips.\n\nTranscript:\n{transcript}'
+    if direction.strip():                                                # the person who owns the video said what it should be: it outranks the reviewer's own idea of the story
+        prompt += ("\n\nTHE OWNER'S DIRECTION for this video (follow it; never propose a fix that goes against it, such as dropping or moving away what it says to keep or open with; "
+                   "judge the story as the direction describes it):\n" + direction.strip())
     resp = client.messages.create(system=STORY_SYSTEM, max_tokens=2000, temperature=0, messages=[{"role": "user", "content": prompt}])
     data = _json_object(resp.content[0].text)
     toks = [(words_mod.tokens(w[2]) or [""])[0] for w in words]
@@ -548,7 +551,7 @@ def story_findings(cut: Cut, words: list, client=None) -> tuple[list[Finding], d
     return rows, {"dropped": dropped, "story": rows[0].detail}
 
 
-def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True, progress=lambda s: None) -> dict:
+def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True, progress=lambda s: None, direction: str = "") -> dict:
     cut = load_cut(xml)
     checks: list[Finding] = []
     progress("Checking every cut edge against the voice under it")
@@ -587,7 +590,7 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
     if story:
         progress("Reading the finished cut as a story")
         try:
-            rows, meta = story_findings(cut, transcript_rows(), client)
+            rows, meta = story_findings(cut, transcript_rows(), client, direction)
             checks += rows
             dropped, summary = meta.get("dropped", 0), meta.get("story", "")
         except Exception as exc:                                      # the edge and audio findings stand even if the model call cannot run
