@@ -202,6 +202,86 @@ def framing_findings(cut: Cut, dims_fn=None, mic_dir_fn=None) -> Finding:
     return Finding("FRAMING", True, "no punched-in shot is stuck on one centre")
 
 
+OFF_MIC_DIFF_DB = 17.0       # the camera hears it this much louder than the best of the two people's own recorders (measured: an off-camera question +21 to +25 dB, a real answer on a recorder +5 to +14)
+OFF_MIC_NEAR_PEAK_DB = 10.0  # and it is loud on the camera: within this of the clip's loudest stretches (so a quiet room is not "a voice")
+OFF_MIC_MIN_SEC = 2.0
+OFF_MIC_STEP = 0.25
+_lav_cache: dict = {}
+
+
+def _lavs_for(path: str, t0: float, t1: float, mic_dir: str):
+    """Both people's recorders matched to this camera over t0..t1 (cached: the matching takes tens of seconds and a review looks at the same footage again each round)."""
+    key = (path, round(t0), round(t1), mic_dir)
+    if key not in _lav_cache:
+        import tempfile
+        import speakers as sp
+        with tempfile.TemporaryDirectory() as td:
+            wav = Path(td) / "cam.wav"
+            r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{max(0.0, t0):.3f}", "-t", f"{t1 - max(0.0, t0):.3f}", "-i", path, "-vn", "-ac", "1", "-ar", "8000", str(wav)], capture_output=True)
+            if r.returncode != 0:
+                raise RuntimeError("the camera's audio could not be read")
+            _lav_cache[key] = sp.match_lavs_timed(wav, max(0.0, t0), Path(mic_dir))
+    return _lav_cache[key]
+
+
+def off_mic_spans(cam_db: list[float], bob_db: list[float], mit_db: list[float], word_times: list[tuple[float, float]], step: float = OFF_MIC_STEP,
+                  min_sec: float = OFF_MIC_MIN_SEC) -> list[tuple[float, float]]:
+    """Stretches (seconds from the clip's start) where someone is speaking but neither person's own recorder is near them: the camera hears it clearly (loud against the clip's own peaks) and a lot
+    louder than the louder recorder, and the cut has words there. Gaps under 0.6 s inside a stretch are bridged; a stretch must run `min_sec` and hold at least two words."""
+    n = min(len(cam_db), len(bob_db), len(mit_db))
+    if n < 4:
+        return []
+    peak = float(np.percentile(cam_db[:n], 90))
+    flags = [cam_db[i] - max(bob_db[i], mit_db[i]) >= OFF_MIC_DIFF_DB and cam_db[i] >= peak - OFF_MIC_NEAR_PEAK_DB for i in range(n)]
+    spans: list[list[float]] = []
+    for i, f in enumerate(flags):
+        if not f:
+            continue
+        a, b = i * step, (i + 1) * step
+        if spans and a - spans[-1][1] <= 0.6:
+            spans[-1][1] = b
+        else:
+            spans.append([a, b])
+    return [(a, b) for a, b in spans if b - a >= min_sec and sum(1 for s, e in word_times if s >= a - 0.05 and e <= b + 0.15) >= 2]
+
+
+def off_mic_findings(cut: Cut, words: list, mic_dir_fn=None, lavs_fn=None, level_fn=None) -> Finding:
+    """A voice in the cut that is on neither person's microphone, for example the interviewer asking from behind the camera: on the recording it is faint and garbled, and no one's recorder was near it.
+    Found by comparing the camera's level with both recorders'. When it opens a clip, the fix is to start the clip where the person on a microphone begins; anywhere else it is reported for a person to decide."""
+    import follow_speaker as fs
+    import speakers as sp
+    mic = (mic_dir_fn or fs.mic_dir_of)(cut)
+    if not mic or not Path(mic).is_dir():
+        return Finding("OFF-MIC", None, "not checked: the recordings folder is not known, so which voices are on a microphone cannot be told")
+    lavs_fn, level_fn = lavs_fn or _lavs_for, level_fn or sp.level_track
+    notes, found = [], 0
+    for path in dict.fromkeys(c.src_path for c in cut.video):
+        mine = [c for c in cut.video if c.src_path == path]
+        lavs = lavs_fn(path, min(c.src_in for c in mine) - 2.0, max(c.src_out for c in mine) + 2.0, str(mic))
+        if len(lavs) < 2:
+            return Finding("OFF-MIC", None, "not checked: both people's recorders could not be matched to the camera")
+        for c in mine:
+            dur = c.src_out - c.src_in
+            cam = level_fn(path, c.src_in, dur, OFF_MIC_STEP)
+            bob = sp.level_track_timed(lavs["Bob"], c.src_in, dur, OFF_MIC_STEP)
+            mit = sp.level_track_timed(lavs["Mitch"], c.src_in, dur, OFF_MIC_STEP)
+            wt = [(w[0] - c.tl_start, w[1] - c.tl_start) for w in words if c.tl_start - 0.01 <= w[0] < c.tl_end]
+            for a, b in off_mic_spans(cam, bob, mit, wt):
+                found += 1
+                inside = [w for w in words if c.tl_start + a - 0.05 <= w[0] and w[1] <= c.tl_start + b + 0.15]
+                heard = " ".join(w[2] for w in inside)
+                after = [w for w in words if w[0] >= c.tl_start + b - 0.05 and w[0] < c.tl_end][:4]
+                fix = None
+                if a <= 0.6 and len(after) >= 3:
+                    fix = {"op": "start_at_words", "clip": c.idx, "words": " ".join(w[2] for w in after)}
+                where = "at the start of clip %d" % c.idx if a <= 0.6 else "in clip %d" % c.idx
+                notes.append(note_at(cut, c.tl_start + a + 0.05, f"A voice that is not on anyone's microphone ({where}, {b - a:.1f}s): someone off camera, so it is faint and unclear on the recording"
+                                     + (". Start the clip where the person on the microphone begins." if fix else ". Cut it or replace it by hand."), quote=heard, kind="offmic", suggested_op=fix))
+    if found:
+        return Finding("OFF-MIC", False, f"{found} stretch(es) of off-camera voice that no recorder was near", notes)
+    return Finding("OFF-MIC", True, "every voice in the cut is on a person's own microphone")
+
+
 def source_audio_findings(cut: Cut, pcm_fn=pcm, covered: list[tuple[float, float]] | None = None) -> Finding:
     """`covered`: stretches where the voice is replaced on purpose (a bleep layer); not reported as holes."""
     dur = cut.zone_end
@@ -390,6 +470,18 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
     checks: list[Finding] = []
     progress("Checking every cut edge against the voice under it")
     checks.append(edge_findings(cut, words_fn, pcm_fn))
+    tr_rows: list | None = None
+
+    def transcript_rows():
+        nonlocal tr_rows
+        if tr_rows is None:
+            tr_rows = transcript_of(cut, words_fn)
+        return tr_rows
+    progress("Checking for a voice that is on nobody's microphone")
+    try:
+        checks.append(off_mic_findings(cut, transcript_rows()))
+    except Exception as exc:
+        checks.append(Finding("OFF-MIC", None, f"not checked: {type(exc).__name__}: {str(exc)[:160]}"))
     progress("Checking whether the picture follows who is talking")
     try:
         checks.append(framing_findings(cut))
@@ -412,7 +504,7 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
     if story:
         progress("Reading the finished cut as a story")
         try:
-            rows, meta = story_findings(cut, transcript_of(cut, words_fn), client)
+            rows, meta = story_findings(cut, transcript_rows(), client)
             checks += rows
             dropped, summary = meta.get("dropped", 0), meta.get("story", "")
         except Exception as exc:                                      # the edge and audio findings stand even if the model call cannot run

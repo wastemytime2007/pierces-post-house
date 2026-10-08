@@ -340,7 +340,8 @@ def test_after_its_last_round_the_editor_finishes_the_best_version_with_the_chos
     monkeypatch.setattr(ct, "finish_cut", finish_stub(calls))
     w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
     out = w.run(monkeypatch, finish={"captions": True, "music": True, "bleep": True, "graphics": True, "sfx": True})
-    assert out["status"] == "clean" and out["best"] == "V2"
+    assert out["status"] == "clean" and out["picked"] == "V2" and out["best"] == "V3"                              # the tab opens the version named as best: the FINISHED one
+    assert "the finished cut" in out["summary"] and "V3" in out["summary"] and "captions" in out["summary"]
     assert len(calls) == 1 and calls[0]["xml"].endswith("V2.xml") and calls[0]["graphics"] and calls[0]["sfx"]            # the best version, not the last label by accident
     assert out["finished"]["label"] == "V3" and [s["name"] for s in out["finished"]["steps"]] == ["captions", "graphics"]
     fin = [e for e in w.events if e["type"] == "notes_applied" and e.get("finish")]
@@ -353,7 +354,7 @@ def test_a_worse_round_finishes_the_earlier_best_version(tmp_path, monkeypatch):
     monkeypatch.setattr(ct, "finish_cut", finish_stub(calls))
     w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([note("b"), note("c"), note("d")])}, [("V2", [True])])
     out = w.run(monkeypatch, finish={"captions": True})
-    assert out["status"] == "worse" and out["best"] == "V1" and calls[0]["xml"].endswith("V1.xml")
+    assert out["status"] == "worse" and out["picked"] == "V1" and calls[0]["xml"].endswith("V1.xml")
 
 
 def test_a_failed_finish_is_reported_and_the_editors_own_result_stands(tmp_path, monkeypatch):
@@ -361,6 +362,7 @@ def test_a_failed_finish_is_reported_and_the_editors_own_result_stands(tmp_path,
     w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
     out = w.run(monkeypatch, finish={"captions": True})
     assert out["status"] == "clean" and out["best"] == "V2" and "captions failed" in out["finish_failed"] and "finished" not in out
+    assert "could not finish the cut" in out["summary"] and "Ready for your review: V2" in out["summary"]
 
 
 def test_without_the_finish_option_nothing_is_finished(tmp_path, monkeypatch):

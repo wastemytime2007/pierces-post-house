@@ -257,3 +257,83 @@ def test_the_trusted_follow_fix_survives_validation_as_it_stands():
     note = ar.note_at(cut, 1.0, "x", quote="follow the speaker", kind="framing", suggested_op={"op": "follow_speaker", "clip": 1})
     out = opsmod.validate(opsmod.from_suggestions([note], cut), [note], cut)
     assert out[0]["op"] == "follow_speaker" and out[0]["clips"] == "all" and out[0]["trusted"]
+
+
+# ------------------------------------------------------------------ a voice that is on nobody's microphone (the interviewer behind the camera)
+
+def _frames(spec, step=0.25):
+    """[(cam_db, bob_db, mit_db)] per step from [(seconds, cam, bob, mit)]: the numbers measured on the Septic footage (an off-camera question: camera -13, lavs -38; Mitch answering: camera -16, Mitch -23)."""
+    out = []
+    for secs, c, b, m in spec:
+        out += [(c, b, m)] * int(round(secs / step))
+    return [x[0] for x in out], [x[1] for x in out], [x[2] for x in out]
+
+
+def test_an_off_camera_question_is_found_and_a_real_answer_is_not():
+    cam, bob, mit = _frames([(3.0, -13.0, -39.0, -38.0),        # the interviewer: loud on the camera, on nobody's recorder
+                             (4.0, -16.0, -36.0, -23.0)])       # Mitch answering on his own recorder
+    words = [(0.2 + i * 0.4, 0.5 + i * 0.4) for i in range(7)] + [(3.2 + i * 0.4, 3.5 + i * 0.4) for i in range(8)]
+    assert ar.off_mic_spans(cam, bob, mit, words) == [(0.0, 3.0)]
+
+
+def test_bobs_own_speech_is_not_taken_for_an_off_camera_voice():
+    cam, bob, mit = _frames([(4.0, -16.0, -22.0, -39.0)])       # Bob talking: HIS recorder is loud, Mitch's is not
+    words = [(0.2 + i * 0.4, 0.5 + i * 0.4) for i in range(9)]
+    assert ar.off_mic_spans(cam, bob, mit, words) == []
+
+
+def test_a_quiet_room_is_not_a_voice_and_a_stretch_with_no_words_is_ignored():
+    cam, bob, mit = _frames([(3.0, -32.0, -47.0, -45.0), (2.0, -14.0, -16.0, -23.0)])        # a quiet room is far under the clip's own peaks, so it is not a voice
+    assert ar.off_mic_spans(cam, bob, mit, [(0.5, 0.8), (1.0, 1.4)]) == []
+    cam, bob, mit = _frames([(3.0, -13.0, -39.0, -38.0), (2.0, -16.0, -36.0, -23.0)])
+    assert ar.off_mic_spans(cam, bob, mit, []) == []            # loud on the camera but nobody is saying anything
+
+
+def test_a_stretch_shorter_than_two_seconds_is_not_reported():
+    cam, bob, mit = _frames([(1.5, -13.0, -39.0, -38.0), (4.0, -16.0, -36.0, -23.0)])
+    words = [(0.2, 0.5), (0.7, 1.0), (1.1, 1.4)]
+    assert ar.off_mic_spans(cam, bob, mit, words) == []
+
+
+def test_the_finding_cuts_a_clip_that_opens_with_the_off_camera_voice_where_the_answer_begins(tmp_path):
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video.append(VideoClip(1, 0.0, 10.0, "/cam/A.MP4", 100.0, 110.0, (44.44, 0.0, 0.0)))
+    cut.video.append(VideoClip(2, 10.0, 20.0, "/cam/A.MP4", 200.0, 210.0, (44.44, 0.0, 0.0)))
+    words = [(0.2 + i * 0.4, 0.5 + i * 0.4, w, None) for i, w in enumerate("tell me about the septic please".split())] + \
+            [(3.4 + i * 0.4, 3.7 + i * 0.4, w, None) for i, w in enumerate("so with the septic systems we wait".split())] + \
+            [(10.2 + i * 0.4, 10.5 + i * 0.4, w, None) for i, w in enumerate("and the next one is fine".split())]
+    (tmp_path / "x.WAV").write_bytes(b"")
+
+    def lavs_fn(path, t0, t1, mic):
+        return {"Bob": [(0.0, 999.0, Path("Bob2.WAV"), 0.0, 99.0)], "Mitch": [(0.0, 999.0, Path("Mitch3.WAV"), 0.0, 99.0)]}
+
+    def level_fn(path, start, dur, step):
+        n = int(round(dur / step))
+        if abs(start - 100.0) < 1:
+            return [-13.0 if i * step < 3.0 else -16.0 for i in range(n)]
+        return [-16.0] * n
+    import speakers
+    orig = speakers.level_track_timed
+
+    def fake_timed(segs, start, dur, step=0.1):
+        n = int(round(dur / step))
+        if segs[0][2].name == "Mitch3.WAV":
+            return [(-39.0 if i * step < 3.0 else -23.0) if abs(start - 100.0) < 1 else -23.0 for i in range(n)]
+        return [-39.0] * n
+    speakers.level_track_timed = fake_timed
+    try:
+        f = ar.off_mic_findings(cut, words, mic_dir_fn=lambda c: str(tmp_path), lavs_fn=lavs_fn, level_fn=level_fn)
+    finally:
+        speakers.level_track_timed = orig
+    assert f.ok is False and len(f.notes) == 1
+    n = f.notes[0]
+    assert n["kind"] == "offmic" and n["clip"] == 1 and "tell me about" in n["where"]
+    assert n["suggested_op"] == {"op": "start_at_words", "clip": 1, "words": "so with the septic"}
+    assert "systems we wait" not in n["where"]                                  # the answer is not part of what is flagged
+
+
+def test_without_a_recordings_folder_it_says_it_did_not_check():
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video.append(VideoClip(1, 0.0, 10.0, "/cam/A.MP4", 100.0, 110.0, None))
+    f = ar.off_mic_findings(cut, [], mic_dir_fn=lambda c: None)
+    assert f.ok is None and not f.notes and "not checked" in f.detail

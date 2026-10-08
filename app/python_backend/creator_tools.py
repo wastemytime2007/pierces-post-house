@@ -839,6 +839,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                 nxt = "V" + str(top + 1)
                 emit({"type": "notes_applied", "auto": True, "finish": True, "label": nxt, **fin})
                 out["versions"].append({"label": nxt, "xml": fin["xml"], "score": best["score"]})
+                out["picked"], out["best"] = best["label"], nxt                  # the version to review is the FINISHED one (the tab opens the version named here); the plain edit it was made from stays as the one before it
                 out["finished"] = {"label": nxt, "steps": [{"name": i["op"], "done": i["applied"], "summary": i["summary"]} for i in fin["items"]]}
             except ToolError as exc:
                 out["finish_failed"] = str(exc)
@@ -852,6 +853,17 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
 
 
 def _auto_summary(o: dict) -> str:
+    """How the run ended, in words. A finished run names the finished version and what was added; a failed finish is said, not hidden."""
+    if o.get("finished"):
+        n = max(len(o["versions"]) - 2, 0)
+        done = ", ".join(s["name"] for s in o["finished"]["steps"] if s["done"])
+        left = len(o["left"])
+        rest = f" {left} thing{'s' if left != 1 else ''} left that the editor could not fix by itself (each says why)." if left else " The editor found nothing left to fix."
+        return f"Ready for your review: {o['best']}, the finished cut ({done} added to {o.get('picked', '')}, after {n} revision{'s' if n != 1 else ''}).{rest}"
+    return _auto_summary_base(o) + (f" It could not finish the cut: {o['finish_failed'][:240]}" if o.get("finish_failed") else "")
+
+
+def _auto_summary_base(o: dict) -> str:
     n = max(len(o["versions"]) - 1, 0)
     best, left = o["best"], len(o["left"])
     ran = f"{n} revision{'s' if n != 1 else ''}"
