@@ -452,10 +452,11 @@ FIX_SYSTEM = """You are a video editor. For each problem below in a short video'
 Reply with ONLY a JSON object: {"fixes": [{"problem": <number>, "fix": <one of the above, or null only if no edit of the footage in the cut can solve it>}]}"""
 
 
-def _ask_for_fixes(client, transcript: str, problems: list[dict]) -> dict[int, dict]:
+def _ask_for_fixes(client, transcript: str, problems: list[dict], direction: str = "") -> dict[int, dict]:
     """One more call, for the problems the reviewer raised without a fix: just the edit for each. The answers go through the same checks as any fix."""
     listing = "\n".join(f"{i}. {p['note']} (quote: \"{p['quote']}\")" for i, p in enumerate(problems, start=1))
-    resp = client.messages.create(system=FIX_SYSTEM, max_tokens=1200, temperature=0, messages=[{"role": "user", "content": f"Transcript:\n{transcript}\n\nProblems:\n{listing}"}])
+    resp = client.messages.create(system=FIX_SYSTEM, max_tokens=1200, temperature=0, messages=[{"role": "user", "content": f"Transcript:\n{transcript}\n\nProblems:\n{listing}" + (
+        "\n\nTHE OWNER'S DIRECTION (no fix may cut what it says the video opens on, keeps or ends on; a problem only such a cut would solve gets null):\n" + direction.strip() if direction.strip() else "")}])
     out = {}
     for f in (_json_object(resp.content[0].text).get("fixes") or []):
         try:
@@ -532,7 +533,7 @@ def story_findings(cut: Cut, words: list, client=None, direction: str = "") -> t
     missing = [k for k, (_p, _a, fx) in enumerate(kept) if fx is None]
     if missing:                                                       # a problem raised without a usable fix: ask once more, for the edit alone
         try:
-            more = _ask_for_fixes(client, transcript, [{"note": str(kept[k][0]["note"]), "quote": str(kept[k][0]["quote"])} for k in missing])
+            more = _ask_for_fixes(client, transcript, [{"note": str(kept[k][0]["note"]), "quote": str(kept[k][0]["quote"])} for k in missing], direction)
             for n, k in enumerate(missing, start=1):
                 fx = _checked_fix(more.get(n), cut, words)
                 if fx:

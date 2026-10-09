@@ -652,3 +652,13 @@ def test_a_seam_moves_with_its_clip_so_its_own_check_listens_in_the_right_place(
     new = timeline.load_cut(out)
     assert abs(start.v2_time - new.video[0].tl_start) < 1.5 / cut.fps                     # clip 3 now plays first, so its seam is at the start of the cut, not where clip 3 used to be
     assert round(new.video[0].src_in, 1) > round(cut.video[2].src_in, 1)                   # and it does start later, at the named words
+
+
+def test_the_seam_check_hears_the_phrase_when_whisper_drops_its_short_first_word(monkeypatch):
+    """2026-10-08: the start fix "So with the septic systems" was made and then undone; its check heard "with the septic systems, we're not going to replace" (the "So" at the seam was not heard)."""
+    _fake_words(monkeypatch, [("with", 0.4, 0.6), ("the", 0.6, 0.7), ("septic", 0.7, 1.1), ("systems,", 1.1, 1.5), ("we're", 1.6, 1.8), ("not", 1.8, 2.0)])
+    ch = SimpleNamespace(note=3, applied=True, v2_time=10.0, check={"kind": "seam_text", "phrase": "So with the septic systems we're not going"})
+    (name, ok, _detail), = revise.verify_render([ch], Path("/v2.mp4"))
+    assert name == "note 3 SEAM-TEXT" and ok
+    ch.check = {"kind": "seam_text", "phrase": "Then we're out of pocket that"}                 # a different phrase is still a failure
+    assert revise.verify_render([ch], Path("/v2.mp4"))[0][1] is False

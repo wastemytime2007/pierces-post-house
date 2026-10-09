@@ -69,7 +69,7 @@ def test_captions_then_music_then_bleep_in_that_order_and_the_next_version_is_wr
     order = [c for c in f.calls if c in ("make_captions.py", "place_overlay.py", "score_music.py", "conform_music.py", "make_audio.py", "place_audio.py", "bleep")]
     assert order == ["make_captions.py", "place_overlay.py", "score_music.py", "conform_music.py", "make_audio.py", "place_audio.py", "bleep"]      # the bleep LAST, captions before it
     assert Path(r["xml"]).name == fc.version_name(Path(xml)) and Path(r["xml"]).is_file()
-    assert [s["name"] for s in r["steps"]] == ["captions", "music", "bleep"]
+    assert [s["name"] for s in r["steps"] if s["name"] != "punch-in"] == ["captions", "music", "bleep"]
     assert all(ok for _n, ok, _d in r["checks"] if ok is not None), r["checks"]
 
 
@@ -107,7 +107,7 @@ def test_layers_already_on_the_cut_are_not_made_twice(xml, tmp_path):
     f = Fake()
     r = fc.run(layered, tmp_path / "out", music=False, runner=f, bleep_fn=f.bleep)
     assert "make_captions.py" not in f.calls
-    assert r["steps"][0]["name"] == "captions" and r["steps"][0]["done"] is False and "already" in r["steps"][0]["summary"]
+    assert r["steps"][1]["name"] == "captions" and r["steps"][1]["done"] is False and "already" in r["steps"][1]["summary"]
 
 
 def test_nothing_to_do_is_said_plainly(xml, tmp_path):
@@ -256,10 +256,10 @@ def plan_stub(spec_labels=("Bob", "Mitch"), times=(0.05, 3.0, 9.5)):
 def test_graphics_come_before_the_captions_and_the_captions_keep_clear_of_them(xml, tmp_path):
     f = FakeG()
     r = fc.run(xml, tmp_path / "out", music=False, bleep=False, graphics=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub())
-    assert [s["name"] for s in r["steps"]] == ["graphics", "captions"]
+    assert [s["name"] for s in r["steps"] if s["name"] != "punch-in"] == ["graphics", "captions"]
     assert f.calls.index("make_title.py") < f.calls.index("make_captions.py")
     assert "--avoid" in f.caption_args and str(tmp_path / "out" / "graphics") in f.caption_args
-    assert "Bob and Mitch" in r["steps"][0]["summary"] and "lower thirds" in r["steps"][0]["summary"]
+    assert "Bob and Mitch" in r["steps"][1]["summary"] and "lower thirds" in r["steps"][1]["summary"]
 
 
 @pytest.fixture()

@@ -177,7 +177,7 @@ def version_name(src: Path) -> str:
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
         caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
-        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None) -> dict:
+        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None) -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
 
     `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
@@ -195,10 +195,25 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         base = clean
     else:
         base = src
+    picture = base if not rebuild else src                                   # what the finished picture is held to
+    steps: list[dict] = []
+    if punch:
+        # 0. a closer shot on every other clip of a jump cut (Ryan, 2026-10-08), before anything is laid over the picture; the finished picture is then held to this punched one
+        import punch_in as pi
+        punched = out / "_punched.xml"
+        rows = pi.punch_in(base, punched, dims_fn=dims_fn)
+        if rows:
+            bad = [d for _n, ok, d in pi.check(base, punched, rows) if not ok]
+            if bad:
+                raise FinishError("The punch-in failed its own check, so nothing was kept: " + "; ".join(bad))
+            base = picture = punched
+            steps.append({"name": "punch-in", "done": True, "summary": f"a closer shot on every other clip where one person talks across a cut ({len(rows)} clip{'s' if len(rows) != 1 else ''}: "
+                          + ", ".join(str(r["idx"]) for r in rows) + ")"})
+        else:
+            steps.append({"name": "punch-in", "done": False, "summary": "no two clips in a row show the same person framed the same, so there was no jump cut to punch in on"})
     cut0 = timeline.load_cut(base)
     zone = cut0.zone_end
     have = layers_present(base)
-    steps: list[dict] = []
     cur = base
     music_raw: str | None = None
 
@@ -349,15 +364,15 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             steps.append({"name": "bleep", "done": True, "summary": "listened, and no listed word was heard, so nothing was bleeped"})
 
     final = out / (final_name or version_name(src))
-    if cur == base and not rebuild:
+    if cur == src and not rebuild:
         raise FinishError("nothing was asked for, or everything asked for was already on the cut, so there is nothing to write")
     shutil.copy(cur, final)
-    for tmp in list(out.glob("_step_*.xml")) + [out / "_unbleeped.xml", out / "_clean.xml"]:
+    checks = check(picture, final, zone)
+    for tmp in list(out.glob("_step_*.xml")) + [out / "_unbleeped.xml", out / "_clean.xml", out / "_punched.xml"]:
         tmp.unlink(missing_ok=True)
-    checks = check(base if not rebuild else src, final, zone)
     result = {"xml": str(final), "folder": str(out), "steps": steps, "checks": checks, "music_raw": music_raw or (str(music_file) if music_file else None)}
     (out / "finish.json").write_text(json.dumps({**{k: v for k, v in result.items() if k != "checks"}, "checks": checks,
-                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx}}, indent=1, default=str))
+                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx, "punch": punch}}, indent=1, default=str))
     return result
 
 
