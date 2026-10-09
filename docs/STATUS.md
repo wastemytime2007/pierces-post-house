@@ -79,6 +79,13 @@ Not signed off. Commits 75ad972..d3eea7f on `worktree-review-loop-spike`:
   - The length floor is now 30%. At 50% it blocked every fix: V3 was 33.7 s against a 33 s floor.
   - The reviewer now reads its story direction from the chosen idea (`plans/idea_*<id>.json`), found by the id in the cut's name. Ryan: "My direction should come After its already done all of this stuff". The tab's box is now an optional addition.
   - Checked on V1 using the idea alone: the reviewer kept the "three houses" hook and the six-months versus two-years ending, and asked only for trims.
+- Late 2026-10-08 (e3d6edb, b43a42c):
+  - **Punch-in** (`labs/review_loop/punch_in.py`, first step of every finish). Two clips in a row that show the same person from the same camera file are a jump cut. Ryan's rule: every other one goes to 115%. The speaker stays in mid-frame and the top edge of the picture is kept, because scaling about the middle cut off Mitch's head. That vertical move relies on the unconfirmed vertical unit in `labs/reframe/reframe_xml.py`, so check it in Premiere. Tested on Ryan's V2 outside the app: clips 2, 5, 7 and 9 punched in, frames read, and the finish checks pass.
+  - The seam check now accepts a phrase when Whisper drops its short first word ("So"). The editor's fix request now sees the idea's direction.
+  - **"Worse" is judged on measured checks only.** That means edges, off-mic voice, framing and sync. V5 had both edge fixes in it and was thrown away only because the AI story reader called the ending "abrupt".
+  - **Leftover notes say what happened to them.** For example: made in a version that was set aside, not reached before the round limit, or needs different words.
+  - **The finish shows the idea's call to action.** It is the first clause of the CTA ("DM or comment 'septic'"), over the last 3 s, in the name-tag box. A plain white label was tried first and was unreadable over the shirt logo; it also pushed the captions over Mitch's face.
+  - Not yet run end to end in the app.
 - Open conflict for Ryan: on 2026-10-08 he picked "Start with the check", but the idea opens on "three houses, three failed" and left the quick check out.
 
 Not yet verified: a full end-to-end auto-edit run on the Septic cut with these fixes (whether the question stays cut and Bob stays in). EDITOR_REVISION is 2026-10-08.10.
