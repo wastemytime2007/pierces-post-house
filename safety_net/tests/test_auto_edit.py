@@ -56,12 +56,12 @@ class World:
         d = self.durations.get(stem, 60.0)
         return SimpleNamespace(zone_end=d, video=[SimpleNamespace(idx=i, tl_start=(i - 1) * d / 4, tl_end=i * d / 4) for i in range(1, 5)])
 
-    def run(self, monkeypatch, cancelled=None, max_rounds=4, finish=None):
+    def run(self, monkeypatch, cancelled=None, max_rounds=4, finish=None, direction=""):
         monkeypatch.setattr(ct, "ai_review", self.ai_review)
         monkeypatch.setattr(ct, "apply_notes", self.apply_notes)
         monkeypatch.setattr(timeline, "load_cut", lambda p: self.fake_cut(Path(p).stem))
         (self.tmp / "V1").mkdir(exist_ok=True)
-        return ct.auto_edit(str(self.tmp / "V1.xml"), str(self.tmp / "V1"), "V1", max_rounds, self.events.append, cancelled, finish=finish)
+        return ct.auto_edit(str(self.tmp / "V1.xml"), str(self.tmp / "V1"), "V1", max_rounds, self.events.append, cancelled, finish=finish, direction=direction)
 
 
 def test_it_fixes_what_it_can_reviews_again_and_names_the_clean_version_as_ready(tmp_path, monkeypatch):
@@ -112,14 +112,15 @@ def test_the_loop_stops_at_the_round_limit_with_the_latest_improvement_named(tmp
     assert out["status"] == "limit" and out["best"] == "V3" and len(w.apply_calls) == 2
 
 
-def test_the_cut_is_not_allowed_below_half_of_its_length(tmp_path, monkeypatch):
-    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 27.0})
+def test_the_cut_is_not_allowed_below_the_floor(tmp_path, monkeypatch):
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 17.0})
     out = w.run(monkeypatch)
-    assert out["status"] == "short" and out["best"] == "V1" and "below 50%" in out["summary"]
+    assert out["status"] == "short" and out["best"] == "V1" and "below 30%" in out["summary"]
 
 
-def test_a_cut_to_just_over_half_is_allowed(tmp_path, monkeypatch):
-    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 33.0})
+def test_a_cut_to_half_its_length_is_allowed(tmp_path, monkeypatch):
+    """The Septic cut, 2026-10-08: V1 65.9 s, V3 33.7 s, and every fix its reviewer asked for after that was blocked by a 50% floor."""
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])], durations={"V1": 60.0, "V2": 25.0})
     out = w.run(monkeypatch)
     assert out["status"] == "clean" and out["best"] == "V2"
 
@@ -385,3 +386,22 @@ def test_a_stopped_editor_does_not_start_a_finish(tmp_path, monkeypatch):
     w = World(tmp_path, {"V1": review_of([note("a")])}, [])
     out = w.run(monkeypatch, cancelled=lambda: True, finish={"captions": True})
     assert out["status"] == "stopped" and not calls
+
+
+def test_finishing_an_earlier_version_never_writes_over_the_version_after_it(tmp_path):
+    """2026-10-08: the editor finished V3 (its best) into V3's next folder, which already held its own V4; the finished cut took V4's name and address and the tab kept showing the old V4."""
+    v3 = tmp_path / "Cut_v3.xml"
+    v3.write_text("<xmeml/>")
+    (tmp_path / "Cut_v4 - revised").mkdir()
+    (tmp_path / "Cut_v4 - revised" / "Cut_v4.xml").write_text("<xmeml/>")
+    folder, name = ct.free_version_folder(v3)
+    assert folder.name == "Cut_v5 - revised" and name == "Cut_v5.xml"
+    (tmp_path / "Cut_v5 - revised").mkdir()                                                   # an empty folder (a run that stopped before writing) is free to use
+    assert ct.free_version_folder(v3)[0].name == "Cut_v5 - revised"
+
+
+def test_the_summary_says_when_no_story_direction_was_given(tmp_path, monkeypatch):
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
+    assert "No story direction was given" in w.run(monkeypatch)["summary"]
+    w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
+    assert "No story direction" not in w.run(monkeypatch, direction="Open on Bob.")["summary"]

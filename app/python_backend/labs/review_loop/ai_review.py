@@ -147,7 +147,7 @@ def edge_findings(cut: Cut, words_fn=None, pcm_fn=pcm) -> Finding:
         try:                                                          # the editor's own measurement decides: a note it would answer with "already quiet, nothing cut off" is not raised
             import ops as _ops
             m = _ops.measure_tail(cut, clip.idx, EXTEND_LOOKAHEAD) if kind == "end" else _ops.measure_head(cut, clip.idx, EXTEND_LOOKAHEAD)
-            if "already quiet" in str(m.get("reason", "")):
+            if "already quiet" in str(m.get("reason", "")) or "already decayed" in str(m.get("reason", "")):
                 continue
         except Exception:
             pass
@@ -596,7 +596,7 @@ def review(xml: Path, client=None, words_fn=None, pcm_fn=pcm, story: bool = True
         except Exception as exc:                                      # the edge and audio findings stand even if the model call cannot run
             checks.append(Finding("STORY", None, f"the story was not judged: {type(exc).__name__}: {str(exc)[:200]}"))
     notes = sorted((n for c in checks for n in c.notes), key=lambda n: n["timeline_sec"])
-    return {"schema": "ai_review.v0-draft", "xml": str(xml), "sequence": cut.sequence_name, "duration": round(cut.zone_end, 2), "summary": summary,
+    return {"schema": "ai_review.v0-draft", "xml": str(xml), "sequence": cut.sequence_name, "duration": round(cut.zone_end, 2), "summary": summary, "direction": direction.strip(),
             "checks": [{"name": c.name, "ok": c.ok, "detail": c.detail} for c in checks], "notes": notes, "unverified_quotes_dropped": dropped,
             "not_covered": "the picture itself (a cropped head, a wrong shot): frames cannot be passed through the free CLI route; only whether the frame follows the speaker is measured"}
 

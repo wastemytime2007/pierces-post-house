@@ -167,6 +167,18 @@ def next_version_folder(xml: str | Path) -> Path:
     return src.parent / f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1} - revised"
 
 
+def free_version_folder(xml: str | Path) -> tuple[Path, str]:
+    """The next version folder of this XML that does not already hold a version, and the XML name to write in it. Finishing an earlier version (the editor finishes its best one, which need not be
+    its last) must not write over the version that already came after it: on 2026-10-08 the finished V3 went into V4's folder, under V4's name and address, and the tab kept showing the old V4."""
+    import re as _re
+    src = Path(xml).expanduser()
+    m = _re.match(r"^(.*)_v(\d+)$", src.stem)
+    base, n = (m.group(1) if m else src.stem), (int(m.group(2)) if m else 1) + 1
+    while (src.parent / f"{base}_v{n} - revised").exists() and any((src.parent / f"{base}_v{n} - revised").glob("*.xml")):
+        n += 1
+    return src.parent / f"{base}_v{n} - revised", f"{base}_v{n}.xml"
+
+
 def remember_export(project_dir: str | Path, xml_path: str) -> None:
     """Record an XML the app's export just wrote, so the Review tab can start from it (the export dialog lets the XML go anywhere, so the project folder alone does not know)."""
     import json
@@ -190,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-08.10"
+EDITOR_REVISION = "2026-10-08.11"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -620,13 +632,13 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     src = Path(xml).expanduser()
     if not src.is_file():
         raise ToolError(f"that XML is not there: {src}")
-    folder = Path(out).expanduser() if out else next_version_folder(src)
+    folder, name = (Path(out).expanduser(), None) if out else free_version_folder(src)
     use_labs()
     stage = on_stage or (lambda _s: None)
     import finish_cut as fc
     from timeline import TimelineError
     try:
-        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx)
+        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name)
     except (fc.FinishError, TimelineError) as exc:
         raise ToolError(str(exc)) from exc
     failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
@@ -662,7 +674,7 @@ def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = 
 
 
 AUTO_MAX_ROUNDS = 4
-AUTO_KEEP_FRACTION = 0.5           # the editor may not cut the video below this share of the length it started the loop with
+AUTO_KEEP_FRACTION = 0.3           # the editor may not cut the video below this share of the length it started the loop with. 0.5 blocked every fix its reviewer asked for on the Septic cut (2026-10-08: V3 was 33.7 s against a 33 s floor); Ryan: "It should be able to do all of the requested changes"
 AUTO_MIN_CLIPS_PER_MIN = 6.3       # the export check (safety_net/verify_export CUT-GRANULARITY) wants at least 6 clips a minute; a little over, since extensions lengthen the cut
 
 
@@ -854,7 +866,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
         out["status"], out["message"] = "failed", str(exc)
     except Exception as exc:
         out["status"], out["message"] = "failed", f"{type(exc).__name__}: {exc}"
-    out["summary"] = _auto_summary(out)
+    out["summary"] = _auto_summary(out) + ("" if (direction or "").strip() or not story else " No story direction was given, so the reviewer judged the story by its own idea of it.")
     emit({"type": "auto_edit_done", **out})
     return out
 
