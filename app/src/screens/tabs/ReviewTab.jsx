@@ -611,8 +611,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
       {versions.length > 0 && (
         <label className="sync-section-hint" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          Story direction for the AI editor (what this cut should say and how it should open; it follows this over its own idea of the story)
-          <textarea rows={2} value={direction} placeholder="For example: open on Bob's quick check (no curbs or storm sewer means septic), then Mitch's plan: wait until under contract, $23,000, 10 days before closing."
+          Your own direction, after the AI editor has done its pass (optional; it already follows the idea you chose, and this is added on top of that)
+          <textarea rows={2} value={direction} placeholder="For example: open on Bob's quick check, then Mitch's plan. Then press Start over to run the editor again with this added."
             onChange={(e) => { setDirection(e.target.value); try { localStorage.setItem(dirKey(versionsRef.current[0]?.xml), e.target.value); } catch (err) { /* private window */ } }}
             style={{ width: "100%", font: "inherit", background: "transparent", color: "inherit", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 6, padding: 8 }} />
         </label>

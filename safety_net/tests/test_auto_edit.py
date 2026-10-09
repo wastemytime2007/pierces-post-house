@@ -400,8 +400,24 @@ def test_finishing_an_earlier_version_never_writes_over_the_version_after_it(tmp
     assert ct.free_version_folder(v3)[0].name == "Cut_v5 - revised"
 
 
-def test_the_summary_says_when_no_story_direction_was_given(tmp_path, monkeypatch):
+def test_the_summary_says_when_the_cut_has_no_idea_and_no_direction(tmp_path, monkeypatch):
     w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
-    assert "No story direction was given" in w.run(monkeypatch)["summary"]
+    assert "no chosen idea and no direction" in w.run(monkeypatch)["summary"]
     w = World(tmp_path, {"V1": review_of([note("a")]), "V2": review_of([])}, [("V2", [True])])
-    assert "No story direction" not in w.run(monkeypatch, direction="Open on Bob.")["summary"]
+    assert "no chosen idea" not in w.run(monkeypatch, direction="Open on Bob.")["summary"]
+
+
+def test_the_reviewers_direction_comes_from_the_idea_the_cut_was_made_from(tmp_path):
+    """Ryan, 2026-10-08: "Why am i typing direction when the direction was meant to be taken from the generate ideas option that was chosen?" The cut's name carries the idea's id; the idea is read from the project."""
+    import json
+    (tmp_path / "plans").mkdir()
+    (tmp_path / "plans" / "idea_59046f017e.json").write_text(json.dumps({"data": {"brief": {
+        "title": "The septic you don't replace yet", "hook": "We bought three houses. All three failed.", "tone": "Plain-spoken.", "call_to_action": "DM us.",
+        "why_it_works": "Thesis: Why SoldFast waits to replace a septic until a house is under contract.\n\n=== SOURCES ===\n- https://example.com"}}}))
+    cut = tmp_path / "cuts" / "Septic 046f017e 20261007-161712_v2 - revised" / "Septic 046f017e 20261007-161712_v2.xml"
+    cut.parent.mkdir(parents=True)
+    d = ct.idea_direction(cut)
+    assert "The septic you don't replace yet" in d and "waits to replace a septic" in d and "We bought three houses" in d
+    assert "SOURCES" not in d and "example.com" not in d                                         # the research notes and links are not direction
+    assert ct._direction_for(cut, "Open on Bob.").endswith("Open on Bob.")                       # what the person adds comes on top of the idea
+    assert ct.idea_direction(tmp_path / "Brought in from outside.xml") == ""

@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-08.11"
+EDITOR_REVISION = "2026-10-08.12"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -653,6 +653,41 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
             "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in r["checks"]]}
 
 
+def idea_direction(xml: str | Path) -> str:
+    """What the chosen idea says the cut is for, as the direction the AI reviewer judges the story by. A cut made from a generated idea carries the idea's id in its name (`<project> <last 8 of the id> <time>`);
+    the idea (plans/idea_*<id>.json: title, thesis, hook, tone, call to action, and the story order with a label on each range) is read from the project folder. The person does not retype it. Empty when the cut
+    has no idea (an XML brought in from outside)."""
+    import json
+    import re as _re
+    src = Path(xml).expanduser()
+    m = _re.search(r" ([0-9a-f]{8}) \d{8}-\d{6}", src.name)
+    if not m:
+        return ""
+    plans = next((d / "plans" for d in src.parents if (d / "plans").is_dir()), None)
+    if plans is None:
+        return ""
+    found = sorted(plans.glob(f"idea_*{m.group(1)}.json"))
+    if not found:
+        return ""
+    try:
+        data = json.loads(found[0].read_text()).get("data", {})
+    except (OSError, ValueError):
+        return ""
+    b = data.get("brief") or {}
+    lines = [f'The idea this cut was made from: "{b.get("title", "")}".']
+    thesis = str(b.get("why_it_works", "")).strip().split("\n\n")[0].removeprefix("Thesis:").strip()     # the first paragraph says what the cut says; the rest is research notes and links
+    for text, label in ((thesis, "What it says"), (b.get("hook"), "It opens on"), (b.get("tone"), "Tone"), (b.get("call_to_action"), "The call to action at the end")):
+        if str(text or "").strip():
+            lines.append(f"{label}: {str(text).strip()[:700]}")
+    lines.append("The parts of this idea are the cut's story: the opening, the build and the ending it names are meant to be there. Do not propose dropping what carries them.")
+    return "\n".join(lines)
+
+
+def _direction_for(xml: str | Path, extra: str = "") -> str:
+    """The chosen idea's direction, then anything the person added on top of it."""
+    return "\n\n".join(d for d in (idea_direction(xml), (extra or "").strip()) if d)
+
+
 def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = True, direction: str = "") -> dict:
     """The AI review of a cut (labs/review_loop/ai_review.py): cut edges against the voice, where the voice comes from, the story read from the words. Saved as ai_review.json beside the page."""
     import json
@@ -663,7 +698,7 @@ def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = 
     import ai_review as air
     from timeline import TimelineError
     try:
-        res = air.review(src, story=story, progress=on_stage or (lambda _s: None), direction=direction or "")
+        res = air.review(src, story=story, progress=on_stage or (lambda _s: None), direction=_direction_for(src, direction))
     except TimelineError as exc:
         raise ToolError(str(exc)) from exc
     if folder:
@@ -866,7 +901,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
         out["status"], out["message"] = "failed", str(exc)
     except Exception as exc:
         out["status"], out["message"] = "failed", f"{type(exc).__name__}: {exc}"
-    out["summary"] = _auto_summary(out) + ("" if (direction or "").strip() or not story else " No story direction was given, so the reviewer judged the story by its own idea of it.")
+    out["summary"] = _auto_summary(out) + ("" if _direction_for(xml, direction) or not story else " This cut has no chosen idea and no direction, so the reviewer judged the story by its own idea of it.")
     emit({"type": "auto_edit_done", **out})
     return out
 
