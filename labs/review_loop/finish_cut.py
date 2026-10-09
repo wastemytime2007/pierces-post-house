@@ -118,6 +118,32 @@ def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) ->
     return spec, times, notes
 
 
+CTA_SEC = 3.0              # the call to action is on screen over this much of the end of the cut
+CTA_MAX_WORDS = 7
+
+
+def short_cta(text: str) -> str:
+    """The call to action as on-screen words: the idea's own sentence up to its first condition or clause ("DM or comment 'septic' if you're selling..." -> "DM or comment 'septic'").
+    Nothing is reworded; empty when even that first clause is longer than a line can hold."""
+    t = re.split(r"\s+if\s+|\s+or follow\b|[,.;:!?](?=\s|$)", str(text or "").strip(), maxsplit=1)[0].strip()
+    return t if t and len(t.split()) <= CTA_MAX_WORDS else ""
+
+
+def add_cta(spec: dict, cut, cta: str) -> str:
+    """Put the call to action on screen over the end of the cut, in the lower thirds' navy box (anchored to the last clip, clearing just before the cut ends). A plain white label was tried first
+    (2026-10-08): it sat on the white logo of Mitch's shirt and could not be read, and it pushed the captions up over his face. Returns a note in words when it could not be placed, else ""."""
+    words = short_cta(cta)
+    if not words:
+        return "no call to action on screen: the idea has none short enough for one line" if cta else ""
+    last = cut.video[-1]
+    at = max(last.tl_start + 0.2, cut.zone_end - CTA_SEC)
+    if last.tl_end - 0.15 - at < 1.4:
+        return "no call to action on screen: the last clip is too short to hold it"
+    spec.setdefault("lower_thirds", []).append({"anchor": {"source": Path(last.src_path).name, "source_sec": round(last.src_in + (at - last.tl_start), 3)}, "name": words, "sub": "", "until": CTA_SEC})
+    spec.setdefault("lt_y", TAG_Y)
+    return ""
+
+
 SFX_WORDS = re.compile(r"woosh|whoosh|swoosh|swish|swipe", re.I)
 SFX_MAX_SEC = 1.6          # the effect is cut to this with a short fade: a whoosh's tail would run under the speech
 SFX_HIT_AT = 0.2           # the effect's peak lands this far into the graphic's wipe
@@ -177,7 +203,7 @@ def version_name(src: Path) -> str:
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
         caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
-        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None) -> dict:
+        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None, cta: str = "") -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
 
     `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
@@ -232,13 +258,19 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         progress("Graphics: a title card and lower thirds")
         import follow_speaker as fs
         spec, sfx_times, gnotes = (graphics_fn or graphics_plan)(cut0, fs.mic_dir_of(cut0), Path.home() / "Library" / "Application Support" / "Post House" / "framing_cache.json")
+        cta_note = add_cta(spec, cut0, cta)
+        if cta_note:
+            gnotes = list(gnotes) + [cta_note]
         (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
         tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
         nxt = out / "_step_graphics.xml"
         tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
         cur, graphics_folder = nxt, out / "graphics"
         tags = [l["name"] for l in spec.get("lower_thirds", [])]
-        steps.append({"name": "graphics", "done": True, "summary": "a title card with the topic" + (f" and lower thirds for {' and '.join(tags)}" if tags else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
+        ctas = [words for words in [short_cta(cta)] if words and any(l["name"] == words for l in spec.get("lower_thirds", []))]
+        tags = [t for t in tags if t not in ctas]
+        steps.append({"name": "graphics", "done": True, "summary": "a title card with the topic" + (f" and lower thirds for {' and '.join(tags)}" if tags else "")
+                      + (f", and the call to action \"{ctas[-1]}\" over the end" if ctas else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
 
     # 1. captions: what is said, on screen
     if captions and have["on_screen"]:
@@ -372,7 +404,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         tmp.unlink(missing_ok=True)
     result = {"xml": str(final), "folder": str(out), "steps": steps, "checks": checks, "music_raw": music_raw or (str(music_file) if music_file else None)}
     (out / "finish.json").write_text(json.dumps({**{k: v for k, v in result.items() if k != "checks"}, "checks": checks,
-                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx, "punch": punch}}, indent=1, default=str))
+                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx, "punch": punch, "cta": cta}}, indent=1, default=str))
     return result
 
 

@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-08.13"
+EDITOR_REVISION = "2026-10-08.14"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -610,7 +610,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
         r = fc.run(unlayered, folder / "layers", captions=opts.get("captions", have["on_screen"]) and have["on_screen"], music=have["music"], bleep=True, rebuild=True,
                    graphics=bool(opts.get("graphics")) and have["on_screen"], sfx=bool(opts.get("sfx")) and have["music"],
                    music_file=music_raw if music_raw and Path(music_raw).is_file() else None, caption_fixes=fixes or None, bleep_requests=requests or None,
-                   progress=stage, final_name=v2.name)
+                   progress=stage, final_name=v2.name, cta=str(opts.get("cta") or ""))
     except (fc.FinishError, Exception) as exc:
         unlayered.unlink(missing_ok=True)
         raise ToolError(str(exc)) from exc
@@ -638,7 +638,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     import finish_cut as fc
     from timeline import TimelineError
     try:
-        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name)
+        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name, cta=str(idea_brief(src).get("call_to_action") or ""))
     except (fc.FinishError, TimelineError) as exc:
         raise ToolError(str(exc)) from exc
     failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
@@ -657,30 +657,34 @@ def idea_direction(xml: str | Path) -> str:
     """What the chosen idea says the cut is for, as the direction the AI reviewer judges the story by. A cut made from a generated idea carries the idea's id in its name (`<project> <last 8 of the id> <time>`);
     the idea (plans/idea_*<id>.json: title, thesis, hook, tone, call to action, and the story order with a label on each range) is read from the project folder. The person does not retype it. Empty when the cut
     has no idea (an XML brought in from outside)."""
-    import json
-    import re as _re
-    src = Path(xml).expanduser()
-    m = _re.search(r" ([0-9a-f]{8}) \d{8}-\d{6}", src.name)
-    if not m:
+    b = idea_brief(xml)
+    if not b:
         return ""
-    plans = next((d / "plans" for d in src.parents if (d / "plans").is_dir()), None)
-    if plans is None:
-        return ""
-    found = sorted(plans.glob(f"idea_*{m.group(1)}.json"))
-    if not found:
-        return ""
-    try:
-        data = json.loads(found[0].read_text()).get("data", {})
-    except (OSError, ValueError):
-        return ""
-    b = data.get("brief") or {}
     lines = [f'The idea this cut was made from: "{b.get("title", "")}".']
     thesis = str(b.get("why_it_works", "")).strip().split("\n\n")[0].removeprefix("Thesis:").strip()     # the first paragraph says what the cut says; the rest is research notes and links
     for text, label in ((thesis, "What it says"), (b.get("hook"), "It opens on"), (b.get("tone"), "Tone"), (b.get("call_to_action"), "The call to action at the end")):
         if str(text or "").strip():
             lines.append(f"{label}: {str(text).strip()[:700]}")
     lines.append("The parts of this idea are the cut's story: the opening, the build and the ending it names are meant to be there. Do not propose dropping what carries them.")
+    lines.append("When the editing is done, the finish adds captions of every word, a title card, name tags, and the call to action on screen over the end. Do not raise a problem only those solve "
+                 "(a missing call to action, a word viewers might mishear).")
     return "\n".join(lines)
+
+
+def idea_brief(xml: str | Path) -> dict:
+    """The brief of the idea the cut was made from ({} when the cut has none): its id is in the cut's name, the idea in the project's plans folder."""
+    import json
+    import re as _re
+    src = Path(xml).expanduser()
+    m = _re.search(r" ([0-9a-f]{8}) \d{8}-\d{6}", src.name)
+    plans = next((d / "plans" for d in src.parents if (d / "plans").is_dir()), None) if m else None
+    found = sorted(plans.glob(f"idea_*{m.group(1)}.json")) if plans else []
+    if not found:
+        return {}
+    try:
+        return json.loads(found[0].read_text()).get("data", {}).get("brief") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
 
 
 def _direction_for(xml: str | Path, extra: str = "") -> str:
@@ -724,6 +728,37 @@ def review_score(res: dict) -> int:
         elif c["name"] == "SYNC" and c["ok"] is False:
             n += 3
     return n
+
+
+MEASURED_SKIP = ("story",)
+
+
+def measured_score(res: dict) -> int:
+    """review_score without the story reader's verdicts: only what is measured (cut edges, a voice off the microphones, framing, where the voice comes from, sync). The loop decides "worse" on this."""
+    n = 0
+    for note in res.get("notes", []):
+        k = str(note.get("kind", ""))
+        if k in MEASURED_SKIP:
+            continue
+        n += 2 if k.startswith("audio") else 1
+    if any(c["name"] == "SYNC" and c["ok"] is False for c in res.get("checks", [])):
+        n += 3
+    return n
+
+
+def _left_reason(n: dict, parked: dict, last: dict, status: str, best_label: str) -> str:
+    """Why a note is still there, truthfully: what the editor tried and what happened, or why it did not try."""
+    if n.get("key") in parked:
+        return parked[n["key"]]
+    if isinstance(n.get("suggested_op"), dict):
+        if status == "worse" and n.get("key") in last["keys"]:
+            return f"made in {last['label']}, which was set aside because its measured checks got worse than {best_label}'s"
+        if status == "limit":
+            return "not tried: the editor used all its rounds before getting to it"
+        if status in ("worse", "short"):
+            return "not tried: the editor stopped before getting to it"
+        return "not tried"
+    return "needs different words (a cleaner take or a change to the captions), which no cut of this footage can give"
 
 
 def _op_sig(n: dict):
@@ -799,9 +834,10 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
         floor = timeline.load_cut(Path(xml)).zone_end * AUTO_KEEP_FRACTION
         emit({"type": "auto_edit_started", "xml": xml, "tag": label, "max_rounds": max_rounds})
         res = review(cur_xml, cur_folder, cur_label)
-        best = {"label": cur_label, "xml": cur_xml, "score": review_score(res), "res": res}
+        best = {"label": cur_label, "xml": cur_xml, "score": review_score(res), "measured": measured_score(res), "res": res}
         out["versions"].append({"label": cur_label, "xml": cur_xml, "score": best["score"]})
         rounds = 0
+        last = {"keys": set(), "label": ""}                                # the notes the last round submitted, and the version it made
         while True:
             if cancelled():
                 out["status"] = "stopped"
@@ -867,21 +903,23 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                 break
             new_label = f"V{int(cur_label[1:]) + 1}"
             emit({"type": "notes_applied", "auto": True, "label": new_label, **r})
+            last = {"keys": {n.get("key") for i, n in enumerate(fixable, start=1) if items.get(i, {}).get("applied")}, "label": new_label}
             res = review(r["xml"], r["folder"], new_label)
-            sc = review_score(res)
+            sc, ms = review_score(res), measured_score(res)
             out["versions"].append({"label": new_label, "xml": r["xml"], "score": sc})
             cur_xml, cur_folder, cur_label = r["xml"], r["folder"], new_label
             if timeline.load_cut(Path(cur_xml)).zone_end < floor:
                 out["status"] = "short"
                 break
-            if sc > best["score"]:
+            if ms > best["measured"]:
+                # worse on what is MEASURED (cut edges, a voice off the microphones, framing, sync). The story verdicts are not used here: they change from one reading to the next (2026-10-08:
+                # V5 made both edge fixes it was asked for, then scored worse only because the reviewer now called the ending abrupt, and the fixes were thrown away)
                 out["status"] = "worse"
                 break
-            best = {"label": cur_label, "xml": cur_xml, "score": sc, "res": res}
+            best = {"label": cur_label, "xml": cur_xml, "score": sc, "measured": ms, "res": res}
         out["best"] = best["label"]
         final = best["res"] if out["status"] in ("worse", "short") else res
-        left = [{"text": n["text"], "kind": n.get("kind", ""), "reason": parked.get(n.get("key"), "no ready-made fix: needs a decision or new words, not an edit")} for n in final["notes"]]
-        out["left"] = left
+        out["left"] = [{"text": n["text"], "kind": n.get("kind", ""), "reason": _left_reason(n, parked, last, out["status"], best["label"])} for n in final["notes"]]
         out["score"] = best["score"]
         if finish and out["status"] not in ("stopped", "failed") and not cancelled():
             # the editor ends on the best version it made, and finishes that one: captions, title card and name tags, music, an effect on each graphic, the bleep (the same step as the tab's Finish button)

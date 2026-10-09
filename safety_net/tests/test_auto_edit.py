@@ -81,7 +81,7 @@ def test_notes_with_no_fix_are_never_submitted_and_come_back_as_what_is_left(tmp
     out = w.run(monkeypatch)
     assert w.apply_calls == [("V1", ["a"])]                                                                    # only the fixable one went to the editor
     assert out["status"] == "left" and out["best"] == "V2"
-    assert out["left"][0]["text"] == "AI: the ending is abrupt" and "decision or new words" in out["left"][0]["reason"]
+    assert out["left"][0]["text"] == "AI: the ending is abrupt" and "needs different words" in out["left"][0]["reason"]
     assert "1 thing left that the editor could not fix by itself" in out["summary"]
 
 
@@ -421,3 +421,23 @@ def test_the_reviewers_direction_comes_from_the_idea_the_cut_was_made_from(tmp_p
     assert "SOURCES" not in d and "example.com" not in d                                         # the research notes and links are not direction
     assert ct._direction_for(cut, "Open on Bob.").endswith("Open on Bob.")                       # what the person adds comes on top of the idea
     assert ct.idea_direction(tmp_path / "Brought in from outside.xml") == ""
+
+
+def test_a_round_is_not_thrown_away_because_the_story_reader_changed_its_mind(tmp_path, monkeypatch):
+    """2026-10-08: V5 made both edge fixes it was asked for; its review then called the ending abrupt (+2) and it was thrown away as worse. Worse is now judged on what is measured."""
+    w = World(tmp_path, {"V1": review_of([note("a"), note("b")]), "V2": review_of([note("s", fix=False, kind="story")], hook_ok=False)}, [("V2", [True, True])])
+    out = w.run(monkeypatch)
+    assert out["best"] == "V2" and out["status"] != "worse"
+
+
+def test_a_fix_made_in_a_version_that_was_set_aside_says_so():
+    last = {"keys": {"a"}, "label": "V5"}
+    assert ct._left_reason(note("a"), {}, last, "worse", "V4") == "made in V5, which was set aside because its measured checks got worse than V4's"
+    assert "used all its rounds" in ct._left_reason(note("b"), {}, last, "limit", "V4")
+    assert "needs different words" in ct._left_reason(note("c", fix=False, kind="story"), {}, last, "limit", "V4")
+    assert ct._left_reason(note("a"), {"a": "the clip is too short"}, last, "worse", "V4") == "the clip is too short"
+
+
+def test_the_measured_score_leaves_out_the_story_verdicts():
+    res = {"notes": [note("a"), note("s", fix=False, kind="story")], "checks": [{"name": "HOOK", "ok": False}, {"name": "ENDING", "ok": False}, {"name": "SYNC", "ok": False}]}
+    assert ct.measured_score(res) == 1 + 3 and ct.review_score(res) == 2 + 2 + 2 + 3

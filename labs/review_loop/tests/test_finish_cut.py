@@ -381,3 +381,24 @@ def test_a_failed_look_at_who_talks_costs_the_name_tags_only(xml):
 def test_name_tags_sit_above_the_captions_band_so_the_captions_stay_at_the_bottom(xml):
     spec, _times, _notes = fc.graphics_plan(_cut(xml), "/mics", None, analyse=fake_analyse({1: [(0.0, 5.0, "Bob")]}))
     assert spec["lt_y"] == fc.TAG_Y and fc.TAG_Y < 0.65                                 # the wallpaper reel's own 0.69 would collide with the captions
+
+
+def test_the_call_to_action_is_the_ideas_own_words_up_to_its_first_condition():
+    assert fc.short_cta("DM or comment 'septic' if you're selling a house you think might have one, or follow for more.") == "DM or comment 'septic'"
+    assert fc.short_cta("Follow for more.") == "Follow for more"
+    assert fc.short_cta("Tell us in the comments below what you would have done with all three of these houses") == ""     # too long for one line: nothing is shortened by rewording
+    assert fc.short_cta("") == ""
+
+
+def test_the_call_to_action_goes_over_the_end_of_the_cut_in_the_name_tag_box():
+    """A plain white label sat on the white logo of Mitch's shirt and pushed the captions up over his face (2026-10-08)."""
+    from timeline import Cut, VideoClip
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video += [VideoClip(1, 0.0, 12.0, "/c.mp4", 100.0, 112.0), VideoClip(2, 12.0, 20.0, "/c.mp4", 200.0, 208.0)]
+    spec = {"title": {}}
+    assert fc.add_cta(spec, cut, "DM or comment 'septic' if you're selling") == ""
+    lt = spec["lower_thirds"][-1]
+    assert lt["name"] == "DM or comment 'septic'" and lt["anchor"] == {"source": "c.mp4", "source_sec": 205.0} and "labels" not in spec
+    short = Cut("s", 30.0, 1080, 1920, 13.0)
+    short.video += [VideoClip(1, 0.0, 12.0, "/c.mp4", 100.0, 112.0), VideoClip(2, 12.0, 13.0, "/c.mp4", 200.0, 201.0)]
+    assert "too short" in fc.add_cta({}, short, "Follow for more")
