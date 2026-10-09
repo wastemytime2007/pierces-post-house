@@ -73,6 +73,38 @@ def test_captions_then_music_then_bleep_in_that_order_and_the_next_version_is_wr
     assert all(ok for _n, ok, _d in r["checks"] if ok is not None), r["checks"]
 
 
+class DriftingTakes(Fake):
+    """conform_music refuses the first `bad` takes: their beats do not sit on a steady grid (2026-10-09, which failed the whole finish)."""
+    def __init__(self, bad):
+        super().__init__()
+        self.bad = bad
+
+    def __call__(self, cmd, **kw):
+        if Path(cmd[1]).name == "conform_music.py" and self.calls.count("conform_music.py") < self.bad:
+            self.calls.append("conform_music.py")
+            return subprocess.CompletedProcess(cmd, 1, "", "ConformError: the beats do not sit on a steady grid (31 ms off): not quantised, so not conformed")
+        return super().__call__(cmd, **kw)
+
+
+def test_a_take_whose_beats_drift_is_replaced_by_another_take(xml, tmp_path):
+    f = DriftingTakes(bad=1)
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep)
+    assert f.calls.count("score_music.py") == 2 and f.calls.count("conform_music.py") == 2
+    music = next(s for s in r["steps"] if s["name"] == "music")
+    assert music["done"] and "take 2" in music["summary"]
+
+
+def test_when_no_take_can_be_cut_to_the_beat_the_last_is_laid_as_it_is_and_the_rest_of_the_finish_is_kept(xml, tmp_path, monkeypatch):
+    laid = []
+    monkeypatch.setattr(fc, "lay_untimed", lambda track, zone, out: (laid.append((Path(track).name, round(zone, 2))), Path(out).write_bytes(b"")))
+    f = DriftingTakes(bad=5)
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep)
+    assert f.calls.count("score_music.py") == fc.MUSIC_TAKES and len(laid) == 1
+    music = next(s for s in r["steps"] if s["name"] == "music")
+    assert music["done"] and "NOT cut to the beat" in music["summary"]
+    assert [s["name"] for s in r["steps"] if s["name"] != "punch-in"] == ["captions", "music", "bleep"] and Path(r["xml"]).is_file()
+
+
 def test_music_is_a_bed_with_no_effect_unless_one_is_asked_for(xml, tmp_path):
     seen = []
     base = Fake()

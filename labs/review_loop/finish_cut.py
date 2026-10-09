@@ -118,7 +118,19 @@ def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) ->
     return spec, times, notes
 
 
-CTA_SEC = 3.0              # the call to action is on screen over this much of the end of the cut
+MUSIC_TAKES = 2            # generated takes tried before the music is laid without fitting it to the cuts
+FADE_SEC = 1.5
+
+
+def lay_untimed(track: Path, zone: float, out: Path) -> None:
+    """The take as it is, trimmed to the cut and faded over its last FADE_SEC: for a take whose beats drift too much to be fitted to the cuts."""
+    p = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(track), "-af", f"atrim=0:{zone:.4f},afade=t=out:st={max(zone - FADE_SEC, 0):.4f}:d={FADE_SEC}", "-ar", "48000", str(out)],
+                       capture_output=True, text=True)
+    if p.returncode != 0 or not out.is_file():
+        raise FinishError(f"laying the music without fitting it failed, so nothing was kept: {p.stderr[-300:]}")
+
+
+CTA_SEC = 3.0             # the call to action is on screen over this much of the end of the cut
 CTA_MAX_WORDS = 7
 
 
@@ -315,24 +327,39 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             feats = reference_music.analyze(ref)
             (out / "audio_in/reference_features.json").write_text(json.dumps(feats, indent=1, default=float))
             score_args += ["--reference-features", out / "audio_in/reference_features.json"]
-        if music_file:
-            track = Path(music_file).expanduser()
-        else:
-            tool("The music", "audio/score_music.py", *score_args)
-            track = out / "audio_in/music.wav"
-        tone_note = ""
-        if feats:
-            import tone_match
-            matched = out / "audio_in/music_matched.wav"
-            try:
-                tm = tone_match.match_tone(track, feats, matched)
-                (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
-                track = matched
-            except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
-                tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
-        music_raw = str(track)
         conformed = out / "audio_in/music_conformed.wav"
-        tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
+        fit_note = ""
+        for take in range(1 if music_file else MUSIC_TAKES):
+            if music_file:
+                track = Path(music_file).expanduser()
+            else:
+                tool("The music", "audio/score_music.py", *score_args)
+                track = out / "audio_in/music.wav"
+            tone_note = ""
+            if feats:
+                import tone_match
+                matched = out / "audio_in/music_matched.wav"
+                try:
+                    tm = tone_match.match_tone(track, feats, matched)
+                    (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
+                    track = matched
+                except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
+                    tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
+            music_raw = str(track)
+            try:
+                tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
+                fit_note = "" if take == 0 else f"; take {take + 1} (the first take's beats were not steady enough to cut to)"
+                break
+            except FinishError as e:
+                if "steady grid" not in str(e):
+                    raise
+                # a generated take whose beats drift cannot be cut to the beat (2026-10-09: this failed the whole finish, captions and graphics with it). Try another take; after the last,
+                # lay the take as it is, trimmed to the cut and faded, and say so
+                if take == (0 if music_file else MUSIC_TAKES - 1):
+                    lay_untimed(track, zone, conformed)
+                    fit_note = "; NOT cut to the beat: no take had beats steady enough to fit to the cuts, so the last one plays as it is, trimmed and faded at the end"
+                    break
+                progress("Music: that take's beats were not steady enough to cut to; generating another")
         margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
                  "--mix-style", "bed", "--music-db", f"{MUSIC_DB:g}", "--music-file", conformed]
         times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
@@ -373,7 +400,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         cur = nxt
         steps.append({"name": "music", "done": True,
                       "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
-                      + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note})
+                      + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note})
 
     if sfx and not music and graphics:
         steps.append({"name": "sfx", "done": False, "summary": "the sound effects are mixed and placed with the music step, and the music is off, so none were added"})
