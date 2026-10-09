@@ -74,6 +74,13 @@ Not signed off. Commits 75ad972..d3eea7f on `worktree-review-loop-spike`:
 - A fix's seam time moves with its clip after a move (d3eea7f). Before this, the stale time let the start fix's own check undo it, and the off-camera question came back in V5.
 - A story direction box in the Review tab, kept per cut and passed to the reviewer, which follows it over its own story idea (d3eea7f). Checked in real Chrome: drive_tab.js has 42 PASS and no page errors. Labs has 516 pass.
 
+- Later the same day (be614bd, 1b35326):
+  - The finished cut had been written into the next version's folder, over V4, and the tab kept showing the old V4. Finishing now takes a free version folder.
+  - The length floor is now 30%. At 50% it blocked every fix: V3 was 33.7 s against a 33 s floor.
+  - The reviewer now reads its story direction from the chosen idea (`plans/idea_*<id>.json`), found by the id in the cut's name. Ryan: "My direction should come After its already done all of this stuff". The tab's box is now an optional addition.
+  - Checked on V1 using the idea alone: the reviewer kept the "three houses" hook and the six-months versus two-years ending, and asked only for trims.
+- Open conflict for Ryan: on 2026-10-08 he picked "Start with the check", but the idea opens on "three houses, three failed" and left the quick check out.
+
 Not yet verified: a full end-to-end auto-edit run on the Septic cut with these fixes (whether the question stays cut and Bob stays in). EDITOR_REVISION is 2026-10-08.10.
 Known unrelated failure: `test_exporter_golden` differs from the golden master by a `<sourcetrack>` block in PreCut's exporter output. That code was not touched this round, and the cause has not been looked into.
 
