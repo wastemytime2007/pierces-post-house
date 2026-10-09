@@ -178,7 +178,7 @@ class _Messages:
 
         if proc.returncode != 0:
             raise CLIClientError(
-                f"claude CLI exited {proc.returncode}: {(proc.stderr or '').strip()[:400]}"
+                f"claude CLI exited {proc.returncode}: {((proc.stderr or '').strip() or (proc.stdout or '').strip() or 'it printed nothing')[:400]}"     # the CLI prints some refusals (a usage limit) on stdout: an empty stderr hid the reason on 2026-10-09
             )
         out = (proc.stdout or "").strip()
         if not out:
