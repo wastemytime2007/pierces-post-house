@@ -122,6 +122,8 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
             changes.append(Change(n, kind, False, "keeping the graphic on screen longer is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
+        elif kind == "punch_in":
+            changes.append(Change(n, kind, False, "the punch-in on every other cut of a jump cut is made by the finish step (labs/review_loop/punch_in.py), which runs when the cut is finished, not on the timeline", o.get("why", "")))
         elif kind == "bleep_word":
             changes.append(Change(n, kind, False, "bleeping a word is made by the bleep step (labs/bleep/bleep.py, run by reconform), not on the timeline", o.get("why", "")))
         elif kind == "remove_graphic":
