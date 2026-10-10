@@ -136,3 +136,23 @@ def test_refuses_to_run_past_the_end_of_the_cut(tmp_path, cut_media):
     xml = rl.make_xml(tmp_path / "cut.xml", vid, lav)
     with pytest.raises(po.PlaceError, match="outside the cut"):
         po.place(xml, tmp_path / "o.xml", _folder(tmp_path, 39.9, lead=0.2))   # clip 3 ends at source 40s
+
+
+def test_an_overlay_one_frame_longer_than_the_cut_is_trimmed_to_it_not_refused(tmp_path, cut_media):
+    """2026-10-09: a 1560-frame title on a 1559-frame cut refused the whole revision ("the overlay would run outside the cut")."""
+    _d, vid, lav = cut_media
+    xml = rl.make_xml(tmp_path / "cut.xml", vid, lav)
+    folder = _folder(tmp_path, anchor_source_sec=22.0)
+    pl = json.loads((folder / "placement.json").read_text())
+    del pl["anchor"]
+    pl["place_overlay_on_timeline_at_sec"] = 0.0
+    (folder / "placement.json").write_text(json.dumps(pl))
+    cut = timeline.load_cut(xml)
+    fps = 60000 / 1001                                                                 # the fixture sequence's own rate
+    cut_frames = round(cut.zone_end * fps)
+    _mov(folder / "overlay.mov", rate="60000/1001", secs=(cut_frames + 1) / fps)      # one frame more than the cut
+    info = po.place(xml, tmp_path / "placed.xml", folder)
+    assert info["frames"] == cut_frames
+    _mov(folder / "overlay.mov", rate="60000/1001", secs=(cut_frames + 2) / fps)      # two frames over is still refused
+    with pytest.raises(po.PlaceError):
+        po.place(xml, tmp_path / "placed2.xml", folder)

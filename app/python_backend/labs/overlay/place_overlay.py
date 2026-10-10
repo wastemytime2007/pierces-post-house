@@ -92,7 +92,12 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
         t_anchor = None
         start = round(pl["place_overlay_on_timeline_at_sec"] * sp["fps"])
     n = mv["frames"]
-    if start < 0 or start + n > round(cut.zone_end * sp["fps"]):
+    cut_frames = round(cut.zone_end * sp["fps"])
+    if start + n > cut_frames and start + n - cut_frames <= 1:
+        # the overlay is rendered to a whole number of frames, which can be one more than the cut's length (2026-10-09: a 1560-frame title on a 1559-frame cut refused the revision):
+        # the final frame is blank by then, so the overlay is trimmed to the cut rather than refused
+        n = cut_frames - start
+    if start < 0 or start + n > cut_frames:
         raise PlaceError("the overlay would run outside the cut")
 
     ids = {el.get("id") for el in root.iter() if el.get("id")}
