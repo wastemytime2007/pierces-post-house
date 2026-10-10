@@ -610,7 +610,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
         r = fc.run(unlayered, folder / "layers", captions=opts.get("captions", have["on_screen"]) and have["on_screen"], music=have["music"], bleep=True, rebuild=True,
                    graphics=bool(opts.get("graphics")) and have["on_screen"], sfx=bool(opts.get("sfx")) and have["music"],
                    music_file=music_raw if music_raw and Path(music_raw).is_file() else None, caption_fixes=fixes or None, bleep_requests=requests or None,
-                   progress=stage, final_name=v2.name, cta=str(opts.get("cta") or ""))
+                   progress=stage, final_name=v2.name, cta=str(opts.get("cta") or idea_brief(src).get("call_to_action") or ""))   # a finish made before the call to action was recorded still gets it: the idea is the source
     except (fc.FinishError, Exception) as exc:
         unlayered.unlink(missing_ok=True)
         raise ToolError(str(exc)) from exc
@@ -626,7 +626,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
 
 
 def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
-               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False, music_file: str | None = None) -> dict:
+               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False, music_file: str | None = None, cta: str | None = None) -> dict:
     """A cut in; the next version out with the finishing layers on it (captions, a music bed, the bleep), each made by the tool that already does it (labs/review_loop/finish_cut.py). The result has the
     shape of apply_notes' so the Review tab opens it as the next version. Nothing is kept if a step or a check fails."""
     src = Path(xml).expanduser()
@@ -638,7 +638,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     import finish_cut as fc
     from timeline import TimelineError
     try:
-        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name, cta=str(idea_brief(src).get("call_to_action") or ""),
+        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name, cta=cta if cta is not None else str(idea_brief(src).get("call_to_action") or ""),
                    music_file=music_file)                                     # a recorded track (the replay harness): nothing is generated
     except (fc.FinishError, TimelineError) as exc:
         raise ToolError(str(exc)) from exc
@@ -674,10 +674,15 @@ def idea_direction(xml: str | Path) -> str:
     return "\n".join(lines)
 
 
+IDEA_BRIEF_OVERRIDE: dict | None = None      # set by safety_net/replay_cut.py: a replayed copy of a cut lives outside the project, so its idea is given, not searched for
+
+
 def idea_brief(xml: str | Path) -> dict:
     """The brief of the idea the cut was made from ({} when the cut has none): its id is in the cut's name, the idea in the project's plans folder."""
     import json
     import re as _re
+    if IDEA_BRIEF_OVERRIDE is not None:
+        return IDEA_BRIEF_OVERRIDE
     src = Path(xml).expanduser()
     m = _re.search(r" ([0-9a-f]{8}) \d{8}-\d{6}", src.name)
     plans = next((d / "plans" for d in src.parents if (d / "plans").is_dir()), None) if m else None

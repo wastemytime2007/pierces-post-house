@@ -92,8 +92,10 @@ def replay_finish(v: dict, into: Path, src: Path) -> tuple[Path | None, list[tup
     music = rec.get("music_raw")
     music = music if music and Path(music).is_file() else None
     try:
+        # the idea is read from where the cut really lives (the replay's copy is outside the project, so the call to action is passed in)
+        cta = str(ct.idea_brief(v["xml"]).get("call_to_action") or "")
         r = ct.finish_cut(str(src), str(into), bool(opts.get("captions", True)), bool(opts.get("music", True)) and music is not None, bool(opts.get("bleep", True)),
-                          None, 540, None, bool(opts.get("graphics", False)), bool(opts.get("sfx", False)), music_file=music)
+                          None, 540, None, bool(opts.get("graphics", False)), bool(opts.get("sfx", False)), music_file=music, cta=cta)
     except ct.ToolError as e:
         return None, [(f"{v['xml'].stem} FINISH", False, str(e).splitlines()[0][:300])]
     steps = "; ".join(f"{i['op']}{'' if i['applied'] else ' (not done)'}" for i in r["items"])
@@ -128,7 +130,9 @@ def checks(final: Path) -> list[tuple[str, bool | None, str]]:
     pl = next((p for p in [final.parent / "graphics" / "placement.json", final.parent / "layers" / "graphics" / "placement.json"] if p.is_file()), None)
     if pl:
         lts = [lt["name"] for lt in json.loads(pl.read_text()).get("plan", {}).get("lower_thirds", [])]
-        rows.append(("CALL-TO-ACTION-ON", len(lts) >= 2, f"on-screen boxes: {lts}"))
+        cta = str(ct.idea_brief(final).get("call_to_action") or "")
+        want = fc.short_cta(cta)                                                    # the idea's own first clause, as the finish puts it on screen
+        rows.append(("CALL-TO-ACTION-ON", bool(want) and any(want == lt for lt in lts), f"on-screen boxes: {lts}; the idea's call to action: {want!r}"))
     import verify_export
     rep = verify_export.Report()
     verify_export.check_xml(final, rep)
@@ -161,6 +165,7 @@ def main() -> int:
     ap.add_argument("--all", action="store_true", help="every version ever made from this cut, not only the chain to the newest")
     args = ap.parse_args()
     root = args.xml.expanduser().resolve()
+    ct.IDEA_BRIEF_OVERRIDE = ct.idea_brief(root)                              # the idea as the real project has it, for every replayed copy
     out = (args.out or Path.home() / "Library" / "Application Support" / "Post House" / "replays" / f"{root.stem} {time.strftime('%Y%m%d-%H%M%S')}").expanduser()
     out.mkdir(parents=True, exist_ok=True)
     start = out / root.name
