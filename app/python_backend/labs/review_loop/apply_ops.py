@@ -16,6 +16,7 @@ from pathlib import Path
 
 import sys
 
+import capabilities
 from ops import KEEP_SEC_DEFAULT, detect_pause, locate_end, locate_start, measure_head, measure_join, measure_tail
 from timeline import Cut, TimelineError, _seq_for_cut
 
@@ -121,21 +122,21 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         if kind == "unsupported":
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
-            changes.append(Change(n, kind, False, "keeping the graphic on screen longer is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
-        elif kind == "punch_in":
-            changes.append(Change(n, kind, False, "the punch-in on every other cut of a jump cut is made by the finish step (labs/review_loop/punch_in.py), which runs when the cut is finished, not on the timeline", o.get("why", "")))
+            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
+        elif kind == "by_finish":
+            changes.append(Change(n, kind, False, capabilities.result_text(kind, o), o.get("why", "")))
         elif kind == "bleep_word":
             changes.append(Change(n, kind, False, "bleeping a word is made by the bleep step (labs/bleep/bleep.py, run by reconform), not on the timeline", o.get("why", "")))
         elif kind == "remove_graphic":
-            changes.append(Change(n, kind, False, "taking the graphic out is made by the graphics step (labs/overlay/remove_graphic.py and reconform --drop), not on the timeline", o.get("why", "")))
+            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
         elif kind == "edit_caption":
             changes.append(Change(n, kind, False, f'changing the caption to "{o["text"]}" is made by the captions step (labs/captions/fix_caption.py), not on the timeline', o.get("why", "")))
         elif kind == "end_graphic":
-            changes.append(Change(n, kind, False, "making the graphic fade out at this moment is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
+            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
         elif kind == "edit_callout":
-            changes.append(Change(n, kind, False, "changing the callout's words is made by the graphics step (labs/overlay/change_callout.py), not on the timeline", o.get("why", "")))
+            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
         elif kind == "replace_sfx":
-            changes.append(Change(n, kind, False, f'sound effect change to "{o["sound"]}" is made by the audio step (labs/audio/replace_sfx.py), not on the timeline', o.get("why", "")))
+            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
         elif kind == "tighten_pause":
             p = detect_pause(cut, o["at"])
             keep = o.get("keep_sec", KEEP_SEC_DEFAULT)

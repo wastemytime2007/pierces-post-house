@@ -626,7 +626,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
 
 
 def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
-               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False) -> dict:
+               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False, music_file: str | None = None) -> dict:
     """A cut in; the next version out with the finishing layers on it (captions, a music bed, the bleep), each made by the tool that already does it (labs/review_loop/finish_cut.py). The result has the
     shape of apply_notes' so the Review tab opens it as the next version. Nothing is kept if a step or a check fails."""
     src = Path(xml).expanduser()
@@ -638,7 +638,8 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     import finish_cut as fc
     from timeline import TimelineError
     try:
-        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name, cta=str(idea_brief(src).get("call_to_action") or ""))
+        r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name, cta=str(idea_brief(src).get("call_to_action") or ""),
+                   music_file=music_file)                                     # a recorded track (the replay harness): nothing is generated
     except (fc.FinishError, TimelineError) as exc:
         raise ToolError(str(exc)) from exc
     failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
@@ -666,8 +667,10 @@ def idea_direction(xml: str | Path) -> str:
         if str(text or "").strip():
             lines.append(f"{label}: {str(text).strip()[:700]}")
     lines.append("The parts of this idea are the cut's story: the opening, the build and the ending it names are meant to be there. Do not propose dropping what carries them.")
-    lines.append("When the editing is done, the finish adds captions of every word, a title card, name tags, and the call to action on screen over the end. Do not raise a problem only those solve "
-                 "(a missing call to action, a word viewers might mishear).")
+    use_labs()
+    import capabilities                                                    # one list of what the finish makes, shared with the notes reader (capabilities.py)
+    lines.append(f"When the editing is done, the finish adds: {capabilities.finish_adds()}. Do not raise a problem only those solve "
+                 "(a missing call to action, a word viewers might mishear, a jump cut).")
     return "\n".join(lines)
 
 

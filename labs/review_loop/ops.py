@@ -56,6 +56,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import capabilities
 import words as words_mod
 from timeline import Cut
 
@@ -122,7 +123,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
 - bleep_word {}  The note says to bleep, beep, censor or mute a curse word or swear word ("lets bleep the curse word here"). No parameters: the stretch is the note's clip or element, else its moment. Never give a time.
 - A note that says NO to something ("no", "that's not a curse word", "don't bleep it") is never a bleep_word: use unsupported with the reason "rejected".
-- punch_in {}  The note asks for every other cut / jump cut of the same person to be cropped, zoomed or punched in ("make sure every other cut is cropped/reframed to avoid jump cuts"). No parameters. The finish step does this on every cut automatically (labs/review_loop/punch_in.py), so it is reported, not made on the timeline.
+{FINISH_LINES}
 - end_graphic {}  The note says an on-screen GRAPHIC (callout, text bubble, label) should fade out, end or go away at the moment of the note ("have the graphic fade out here"). No parameters: the moment is the note's own time. Use it only when the note is about WHEN the graphic ends, not its words or how long it lasts in general.
 - edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
 - unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing other than moving a shot up or down in the frame (zooming, moving sideways, cropping), adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
@@ -130,6 +131,7 @@ Operations (times are seconds on the timeline the notes were left on):
 A note may say it was left ON a named timeline element (its lane and label). Then it is about that whole element: "make this longer" on a Callout element means the callout, on an SFX element means that sound. Choose only an operation that acts on that lane (Clips/Cuts/Edits: the cut operations; SFX: replace_sfx; Callout: extend_graphic or edit_callout); otherwise unsupported.
 
 Rules: never invent a time or an amount that the note does not give. A note may produce more than one op. Every note must appear at least once. Prefer unsupported over guessing."""
+SYSTEM = SYSTEM.replace("{FINISH_LINES}", capabilities.reader_lines())        # what every finish already makes: one list (capabilities.py), read by the reviewer and the result too
 
 
 def describe_shape(s: dict) -> str:
@@ -348,10 +350,13 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if not SAYS_REMOVE.search(text):
                     raise ValueError("the note does not ask for it to be removed")
                 out.append({"note": note, "op": op, "why": why})
-            elif op == "punch_in":
-                if not SAYS_PUNCH.search(text):
-                    raise ValueError("the note does not ask for a jump cut to be cropped or punched in")
-                out.append({"note": note, "op": op, "why": why})
+            elif op in ("by_finish", "punch_in"):
+                skill = "punch-in" if op == "punch_in" else str(raw.get("skill", ""))     # punch_in: the name this op had in runs recorded on 2026-10-09
+                if skill not in capabilities.SKILL_BY_NAME:
+                    raise ValueError(f"no finish skill called {skill!r}")
+                if not capabilities.skill_asked(skill, text):
+                    raise ValueError(f"the note does not ask for the {skill}")
+                out.append({"note": note, "op": "by_finish", "skill": skill, "why": why})
             elif op == "bleep_word":
                 if SAYS_NO.search(text):
                     raise ValueError("the note says no: this is not a curse word (recorded as a rejected suspect, nothing is bleeped)")

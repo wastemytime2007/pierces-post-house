@@ -348,20 +348,20 @@ def test_edit_callout_takes_its_words_from_the_note_and_removes_only_what_is_ask
 def test_an_edit_callout_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
     cut = timeline.load_cut(xml)
     changes, _s, _i = apply_ops.plan(cut, [{"note": 1, "op": "edit_callout", "title": "X", "subtitle": None, "remove_subtitle": False}], [{"timeline_sec": 14, "text": "change it to X"}])
-    assert len(changes) == 1 and changes[0].applied is False and "graphics step" in changes[0].summary
+    assert len(changes) == 1 and changes[0].applied is False and "nothing in the app makes this yet" in changes[0].summary
 
 
 def test_an_extend_graphic_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
     cut = timeline.load_cut(xml)
     changes, _s, _i = apply_ops.plan(cut, [{"note": 1, "op": "extend_graphic", "seconds": None}], [{"timeline_sec": 14, "text": "keep the arrow up longer"}])
-    assert len(changes) == 1 and changes[0].applied is False and "graphics step" in changes[0].summary
+    assert len(changes) == 1 and changes[0].applied is False and "nothing in the app makes this yet" in changes[0].summary
 
 
 def test_a_sound_effect_note_is_reported_as_not_applied_on_the_timeline(tmp_path, xml):
     cut = timeline.load_cut(xml)
     notes = [{"timeline_sec": 14, "text": "make the sound effect sound like a paper tap"}]
     changes, _spans, _ins = apply_ops.plan(cut, [{"note": 1, "op": "replace_sfx", "sound": "a paper tap"}], notes)
-    assert len(changes) == 1 and changes[0].applied is False and "audio step" in changes[0].summary
+    assert len(changes) == 1 and changes[0].applied is False and "nothing in the app makes this yet" in changes[0].summary
 
 
 def test_validate_refuses_target_words_not_in_the_note_and_clamps_max_sec(xml):
