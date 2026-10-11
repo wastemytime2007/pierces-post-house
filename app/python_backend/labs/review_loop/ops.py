@@ -194,6 +194,51 @@ def _filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | Non
     return None if best is None else (best[1], best[2])
 
 
+VOICED_MIN_SEC, VOICED_MAX_SEC = 0.12, 0.9     # a filler sound is a short burst of voice: shorter is a click, longer is a word
+
+
+def _voiced_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | None:
+    """A filler sound the transcript did not show (Whisper drops "umm"): the short voiced burst in the audio nearest `at` (within `reach`), as a timeline span.
+    Refused when the transcript shows a real word over it, so speech the editor can read is never cut as a sound. Measured from the audio, nothing guessed."""
+    a = next((a for a in cut.audio if a.tl_start - 1e-6 <= at < a.tl_end), None)
+    if a is None:
+        return None
+    src_t = a.src_in + (at - a.tl_start)
+    lo = max(0.0, src_t - reach - 0.3)
+    dur = 2 * reach + 0.6
+    rms = _rms10(_pcm(a.src_path, lo, dur))
+    if len(rms) < 30:
+        return None
+    thresh = _threshold(rms)
+    voiced = rms > thresh
+    runs, start = [], None
+    for i, v in enumerate(list(voiced) + [False]):
+        if v and start is None:
+            start = i
+        elif not v and start is not None:
+            runs.append((start, i))
+            start = None
+    best = None
+    for s, e in runs:
+        t0, t1 = lo + s * 0.01, lo + e * 0.01
+        if not (VOICED_MIN_SEC <= t1 - t0 <= VOICED_MAX_SEC):
+            continue
+        mid = (t0 + t1) / 2
+        if abs(mid - src_t) > reach:
+            continue
+        if best is None or abs(mid - src_t) < best[0]:
+            best = (abs(mid - src_t), t0, t1)
+    if best is None:
+        return None
+    _gap, t0, t1 = best
+    for w in words_mod.words_in(a.src_path, lo, dur):
+        if w.end > t0 and w.start < t1 and not FILLER_WORDS.match((w.text or "").strip().strip(".,?!\"'")):
+            return None                                              # a real word the transcript shows is over it: not a filler sound
+    tl0 = a.tl_start + (t0 - a.src_in)
+    tl1 = a.tl_start + (t1 - a.src_in)
+    return round(max(tl0 - 0.02, a.tl_start), 3), round(min(tl1 + 0.02, a.tl_end), 3)
+
+
 def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
     """Coerce anything invalid into a reported `unsupported`, and make sure every note is accounted for."""
     n_clips, zone = len(cut.video), cut.zone_end
@@ -261,10 +306,15 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
             elif op == "remove_filler":
                 if not SAYS_FILLER.search(text):
                     raise ValueError("the note does not ask to remove a filler word")
-                span = _filler_span(cut, note_time(notes[note - 1]), FILLER_REACH)
+                at = note_time(notes[note - 1])
+                span = _filler_span(cut, at, FILLER_REACH)
+                how = "found in the transcript"
                 if span is None:
-                    raise ValueError(f"no filler word (um, uh, er) heard within {FILLER_REACH:g} s of the note")
-                out.append({"note": note, "op": "remove_range", "start": span[0], "end": span[1], "why": f"the filler word heard at {span[0]:.2f}s, found in the transcript: {why}".strip()})
+                    span = _voiced_filler_span(cut, at, FILLER_REACH)           # the transcript dropped it (Whisper leaves out "umm"): the voiced sound itself, measured
+                    how = "a voiced sound in the audio, which the transcript does not show"
+                if span is None:
+                    raise ValueError(f"no filler word (um, uh, er) in the transcript or as a voiced sound within {FILLER_REACH:g} s of the note")
+                out.append({"note": note, "op": "remove_range", "start": span[0], "end": span[1], "why": f"the filler at {span[0]:.2f}s, {how}: {why}".strip()})
             elif op in ("trim_start", "trim_end"):
                 clip, sec = int(raw["clip"]), float(raw["seconds"])
                 if not 1 <= clip <= n_clips:

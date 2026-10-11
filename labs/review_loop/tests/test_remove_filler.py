@@ -48,6 +48,45 @@ def test_a_filler_word_far_from_the_note_is_not_cut(monkeypatch):
     assert out[0]["op"] == "unsupported" and "no filler word" in out[0]["reason"]
 
 
+def _absolute_words(monkeypatch, rows):
+    """Words at their source times (the cut's audio starts at source 100 s in these tests)."""
+    def fake(path, start, dur):
+        return [words_mod.W(t, a, b) for t, a, b in rows if a < start + dur and b > start]
+    monkeypatch.setattr(words_mod, "words_in", fake)
+
+
+def _burst_audio(monkeypatch, burst_at, burst_len, room_db=-60.0):
+    """Room tone with one voiced burst (a 220 Hz tone) at `burst_at` seconds into the source, as ops._pcm would return it."""
+    import numpy as np
+    import ops
+    sr = ops.SR
+
+    def pcm(path, start, dur):
+        n = int(dur * sr)
+        t = start + np.arange(n) / sr
+        x = np.random.default_rng(0).normal(0, 10 ** (room_db / 20), n).astype(np.float32)
+        on = (t >= burst_at) & (t < burst_at + burst_len)
+        x[on] = (0.2 * np.sin(2 * np.pi * 220 * t[on])).astype(np.float32)
+        return x
+    monkeypatch.setattr(ops, "_pcm", pcm)
+
+
+def test_an_untranscribed_umm_is_cut_as_the_voiced_sound_when_the_transcript_has_nothing_there(monkeypatch):
+    """2026-10-11: "Remove this Umm" — the transcript had no filler there, so the editor refused it. The voiced sound is measured and cut."""
+    _absolute_words(monkeypatch, [("So", 100.2, 100.5), ("that", 102.2, 102.5)])     # real words elsewhere; the burst at 101.2 s (source) is not transcribed
+    _burst_audio(monkeypatch, burst_at=101.2, burst_len=0.4)
+    out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("Remove this Umm", 1.25)], _cut())
+    assert out[0]["op"] == "remove_range", out
+    assert 1.1 < out[0]["start"] < 1.25 and 1.5 < out[0]["end"] < 1.75
+
+
+def test_a_real_word_over_the_sound_is_never_cut_as_a_filler(monkeypatch):
+    _absolute_words(monkeypatch, [("bought", 101.1, 101.6)])                   # the transcript shows a real word there
+    _burst_audio(monkeypatch, burst_at=101.2, burst_len=0.4)
+    out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("Remove this um", 1.25)], _cut())
+    assert out[0]["op"] == "unsupported"
+
+
 def test_a_note_that_does_not_ask_for_a_filler_is_refused(monkeypatch):
     _fake(monkeypatch, [("um", 1.2, 1.5)])
     out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("the picture is too dark", 1.3)], _cut())
