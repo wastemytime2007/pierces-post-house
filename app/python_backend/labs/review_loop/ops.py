@@ -239,6 +239,49 @@ def _voiced_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float
     return round(max(tl0 - 0.02, a.tl_start), 3), round(min(tl1 + 0.02, a.tl_end), 3)
 
 
+PROMPT_WINDOW_SEC = 8.0
+
+
+def _prompted_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | None:
+    """A filler the plain transcript leaves out, found by transcribing the window again with a prompt that lists fillers (words.words_prompted). Kept only when the
+    filler is a voiced sound: a prompted pass can also write a filler where there is only silence, so the level under it must be well above the room."""
+    v = next((c for c in cut.video if c.tl_start - 1e-6 <= at < c.tl_end), None)     # the picture's own file: its sound is what the cut plays under the picture
+    if v is None:
+        return None
+    src_t = v.src_in + (at - v.tl_start)
+    lo = max(0.0, src_t - PROMPT_WINDOW_SEC / 2)                       # a long window: a short one made the prompted pass write nonsense (2026-10-11)
+    dur = PROMPT_WINDOW_SEC
+    best = None
+    for w in words_mod.words_prompted(v.src_path, lo, dur):
+        if not FILLER_WORDS.match((w.text or "").strip().strip(".,?!\"'")):
+            continue
+        mid = (w.start + w.end) / 2
+        if abs(mid - src_t) > reach or not (0.08 <= w.end - w.start <= 1.2):
+            continue
+        if best is None or abs(mid - src_t) < best[0]:
+            best = (abs(mid - src_t), w.start, w.end)
+    if best is None:
+        return None
+    _gap, t0, t1 = best
+    level = _rms10(_pcm(v.src_path, t0, t1 - t0))
+    room = _threshold(_rms10(_pcm(v.src_path, max(0.0, lo), dur)))
+    if len(level) == 0 or float(np.percentile(level, 50)) < room * 3.0:
+        return None                                                  # not a voiced sound: the prompt wrote a filler over silence
+    tl0 = _src_to_tl(cut, v.src_path, t0)
+    if tl0 is None:
+        return None
+    dur = t1 - t0                                                    # the filler's length is kept; it may run over a cut point into the next clip
+    return round(max(tl0 - 0.02, 0.0), 3), round(min(tl0 + dur + 0.02, cut.zone_end), 3)
+
+
+def _src_to_tl(cut: Cut, path: str, t: float) -> float | None:
+    """The timeline time of source time `t` in file `path`, through the clip that shows it (None when no clip shows it)."""
+    for c in cut.video:
+        if c.src_path == path and c.src_in - 1e-6 <= t < c.src_out:
+            return c.tl_start + (t - c.src_in)
+    return None
+
+
 def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
     """Coerce anything invalid into a reported `unsupported`, and make sure every note is accounted for."""
     n_clips, zone = len(cut.video), cut.zone_end
@@ -312,6 +355,9 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if span is None:
                     span = _voiced_filler_span(cut, at, FILLER_REACH)           # the transcript dropped it (Whisper leaves out "umm"): the voiced sound itself, measured
                     how = "a voiced sound in the audio, which the transcript does not show"
+                if span is None:
+                    span = _prompted_filler_span(cut, at, FILLER_REACH)         # the plain transcript leaves it out: transcribed again with fillers in the prompt
+                    how = "a filler the transcript leaves out, found by a second pass with fillers in the prompt"
                 if span is None:
                     raise ValueError(f"no filler word (um, uh, er) in the transcript or as a voiced sound within {FILLER_REACH:g} s of the note")
                 out.append({"note": note, "op": "remove_range", "start": span[0], "end": span[1], "why": f"the filler at {span[0]:.2f}s, {how}: {why}".strip()})

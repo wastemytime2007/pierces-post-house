@@ -53,6 +53,26 @@ def words_in(path: str, start: float, dur: float) -> list[W]:
     return [W(w.text, start + w.start, start + w.end) for p in tr.phrases for w in p.words]
 
 
+FILLER_PROMPT = "Umm, so, uh, you know, um, the, like, uh."
+_WHISPER = None
+
+
+def words_prompted(path: str, start: float, dur: float) -> list[W]:
+    """The same window transcribed with a prompt that lists fillers. Whisper leaves "um" out of a plain transcript, but with the prompt it writes "um," where the
+    speaker says it (2026-10-11, the Septic cut: "um," at 733.8-734.4 s, which the plain pass did not show). Used only to find fillers, never to replace the transcript."""
+    global _WHISPER
+    import whisper
+    start = max(0.0, start)
+    with tempfile.TemporaryDirectory() as d:
+        wav = Path(d) / "window.wav"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}", "-i", path,
+                        "-vn", "-ac", "1", "-ar", "16000", str(wav)], check=True)
+        if _WHISPER is None:
+            _WHISPER = whisper.load_model("base")
+        r = _WHISPER.transcribe(str(wav), word_timestamps=True, initial_prompt=FILLER_PROMPT, language="en", fp16=False)
+    return [W(w["word"], start + w["start"], start + w["end"]) for s in r.get("segments", []) for w in s.get("words", [])]
+
+
 def tokens(text: str) -> list[str]:
     return re.findall(r"[a-z0-9']+", text.lower().replace("’", "'"))
 

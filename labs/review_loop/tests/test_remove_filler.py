@@ -11,6 +11,15 @@ import words as words_mod  # noqa: E402
 from timeline import AudioClip, Cut, VideoClip  # noqa: E402
 
 
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_prompted_pass(monkeypatch):
+    """The second, prompted transcription is off unless a test turns it on: it needs real media."""
+    monkeypatch.setattr(words_mod, "words_prompted", lambda path, start, dur: [])
+
+
 def _cut():
     cut = Cut("s", 30.0, 1080, 1920, 10.0)
     cut.video.append(VideoClip(1, 0.0, 10.0, "/a.mp4", 100.0, 110.0))
@@ -78,6 +87,38 @@ def test_an_untranscribed_umm_is_cut_as_the_voiced_sound_when_the_transcript_has
     out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("Remove this Umm", 1.25)], _cut())
     assert out[0]["op"] == "remove_range", out
     assert 1.1 < out[0]["start"] < 1.25 and 1.5 < out[0]["end"] < 1.75
+
+
+def _continuous_voice(monkeypatch):
+    """Voiced sound all the way through, as ops._pcm returns it: no quiet gap and no burst of its own."""
+    import numpy as np
+    import ops
+    sr = ops.SR
+
+    def pcm(path, start, dur):
+        n = int(dur * sr)
+        t = start + np.arange(n) / sr
+        return (0.2 * np.sin(2 * np.pi * 700.0 * t) + 0.05 * np.sin(2 * np.pi * 1400.0 * t)).astype(np.float32)
+    monkeypatch.setattr(ops, "_pcm", pcm)
+
+
+def test_a_filler_the_plain_transcript_misses_is_cut_where_the_prompted_pass_hears_it(monkeypatch):
+    """2026-10-11, the Septic cut: "um," at 733.8-734.4 s was not in the plain transcript; the prompted pass writes it. The note at 6.65 s (src 734.0) is inside it."""
+    _absolute_words(monkeypatch, [("for", 733.4, 734.9)])                       # the plain pass heard only real words around it
+    _continuous_voice(monkeypatch)                                               # speech all through: no separate burst for the voiced-sound pass to find
+    monkeypatch.setattr(words_mod, "words_prompted", lambda path, start, dur: [words_mod.W("um,", 101.2, 101.8)])
+    out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("REMOVE THIS UM", 1.3)], _cut())
+    assert out[0]["op"] == "remove_range", out
+    assert abs(out[0]["start"] - 1.2) < 0.05 and abs(out[0]["end"] - 1.8) < 0.05
+
+
+def test_a_prompted_filler_over_silence_is_refused(monkeypatch):
+    """A prompted pass can write "um" where the audio is silent; that is not cut."""
+    _absolute_words(monkeypatch, [])
+    _burst_audio(monkeypatch, burst_at=200.0, burst_len=0.1)                     # nothing voiced near 101.2
+    monkeypatch.setattr(words_mod, "words_prompted", lambda path, start, dur: [words_mod.W("um,", 101.2, 101.8)])
+    out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("REMOVE THIS UM", 1.3)], _cut())
+    assert out[0]["op"] == "unsupported"
 
 
 def test_a_real_word_over_the_sound_is_never_cut_as_a_filler(monkeypatch):
