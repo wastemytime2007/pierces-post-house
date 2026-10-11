@@ -109,7 +109,8 @@ def test_a_filler_the_plain_transcript_misses_is_cut_where_the_prompted_pass_hea
     monkeypatch.setattr(words_mod, "words_prompted", lambda path, start, dur: [words_mod.W("um,", 101.2, 101.8)])
     out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("REMOVE THIS UM", 1.3)], _cut())
     assert out[0]["op"] == "remove_range", out
-    assert abs(out[0]["start"] - 1.2) < 0.05 and abs(out[0]["end"] - 1.8) < 0.05
+    # the word is 1.2-1.8 s; the span takes the sound whole: 0.3 s earlier at the onset, 0.15 s later at the tail
+    assert abs(out[0]["start"] - 0.9) < 0.05 and abs(out[0]["end"] - 1.95) < 0.05
 
 
 def test_a_prompted_filler_over_silence_is_refused(monkeypatch):

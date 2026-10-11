@@ -240,6 +240,7 @@ def _voiced_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float
 
 
 PROMPT_WINDOW_SEC = 8.0
+FILLER_PAD_BEFORE, FILLER_PAD_AFTER = 0.3, 0.15     # the sound's onset is often heard late and its tail early (2026-10-11: "u---mmm")
 
 
 def _prompted_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | None:
@@ -252,7 +253,8 @@ def _prompted_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, flo
     lo = max(0.0, src_t - PROMPT_WINDOW_SEC / 2)                       # a long window: a short one made the prompted pass write nonsense (2026-10-11)
     dur = PROMPT_WINDOW_SEC
     best = None
-    for w in words_mod.words_prompted(v.src_path, lo, dur):
+    prompted = words_mod.words_prompted(v.src_path, lo, dur)
+    for w in prompted:
         if not FILLER_WORDS.match((w.text or "").strip().strip(".,?!\"'")):
             continue
         mid = (w.start + w.end) / 2
@@ -267,11 +269,16 @@ def _prompted_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, flo
     room = _threshold(_rms10(_pcm(v.src_path, max(0.0, lo), dur)))
     if len(level) == 0 or float(np.percentile(level, 50)) < room * 3.0:
         return None                                                  # not a voiced sound: the prompt wrote a filler over silence
+    # Whisper's word edges move by up to ~0.3 s between passes (2026-10-11: "u---mmm" was left, the start was late): the span is widened to take the
+    # whole sound, but never back into the word before it
+    before = [w.end for w in prompted if w.end <= t0 - 0.02 and not FILLER_WORDS.match((w.text or "").strip().strip(".,?!\"'"))]
+    t0 = max(t0 - FILLER_PAD_BEFORE, max(before) if before else lo)
+    t1 = t1 + FILLER_PAD_AFTER
     tl0 = _src_to_tl(cut, v.src_path, t0)
     if tl0 is None:
         return None
     dur = t1 - t0                                                    # the filler's length is kept; it may run over a cut point into the next clip
-    return round(max(tl0 - 0.02, 0.0), 3), round(min(tl0 + dur + 0.02, cut.zone_end), 3)
+    return round(max(tl0, 0.0), 3), round(min(tl0 + dur, cut.zone_end), 3)
 
 
 def _src_to_tl(cut: Cut, path: str, t: float) -> float | None:
