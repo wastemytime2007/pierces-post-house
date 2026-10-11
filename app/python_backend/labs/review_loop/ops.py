@@ -166,7 +166,7 @@ def _unsupported(note: int, reason: str, why: str = "") -> dict:
     return {"note": note, "op": "unsupported", "reason": reason, "why": why}
 
 
-FILLER_WORDS = {"um", "uh", "er", "erm", "ah", "hmm"}
+FILLER_WORDS = re.compile(r"^(u+m+|u+h+|e+r+m*|a+h+|h+m+)$", re.I)     # um, umm, uh, uhh, er, erm, ah, ahh, hmm: spelt as the speaker says them (2026-10-11: "Umm" was not matched)
 FILLER_REACH = 1.5                  # a filler word this close to the note's own time is the one the note means
 SAYS_FILLER = re.compile(r"\b(um+|uh+|er+m?|ah+|filler|filler words?|\"?um\"?|\"?uh\"?)\b", re.I)
 
@@ -183,7 +183,7 @@ def _filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | Non
         if dur <= 0.05:
             continue
         for w in words_mod.words_in(a.src_path, a.src_in, dur):
-            if (w.text or "").strip().lower().strip(".,?!\"'") not in FILLER_WORDS:
+            if not FILLER_WORDS.match((w.text or "").strip().strip(".,?!\"'")):
                 continue
             t0, t1 = a.tl_start + (w.start - a.src_in), a.tl_start + (w.end - a.src_in)
             if t1 <= a.tl_start or t0 >= a.tl_end:

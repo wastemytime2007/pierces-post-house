@@ -35,6 +35,13 @@ def test_remove_this_um_cuts_the_measured_um(monkeypatch):
     assert abs(out[0]["start"] - 1.2) < 0.05 and abs(out[0]["end"] - 1.5) < 0.05
 
 
+def test_an_elongated_filler_is_cut_as_the_speaker_says_it(monkeypatch):
+    """2026-10-11: the note "Remove this 'Umm'" was refused; the transcript has "umm", which the list did not know."""
+    _fake(monkeypatch, [("So", 0.5, 0.8), ("umm,", 1.2, 1.6), ("bought", 1.7, 2.1)])
+    out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("Remove this “Umm”", 1.3)], _cut())
+    assert out[0]["op"] == "remove_range" and abs(out[0]["end"] - 1.6) < 0.05
+
+
 def test_a_filler_word_far_from_the_note_is_not_cut(monkeypatch):
     _fake(monkeypatch, [("um", 8.0, 8.3)])
     out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("remove this um", 1.0)], _cut())
