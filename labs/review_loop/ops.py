@@ -115,6 +115,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - end_at_words {"clip": n, "words": "..."}  The note says clip n should END after specific words, dropping what comes after them (for example "trim the out-point to end at 'until we're under contract'"). "words" must be copied from the note: the last words to keep. The point is found by listening, so never give a time.
 - move_clip {"clip": n, "before": m}  The note says clip n should come earlier, before clip m (a line that sets up another should play first). Only when the note asks for the order to change.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
+- remove_filler {}                   The note asks to remove a filler word ("remove this um", "cut the uh", "take out the er") at the note's moment. No parameters: the word is found in the transcript near the note's time and its measured start and end are cut. Never give a time.
 - reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming in or out, moving sideways or cropping (those are unsupported).
 - follow_speaker {"clip": n or "all", "short_turns": true or false}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Use it too when the note asks to cut or switch back and forth between the speakers, to reframe to whoever is talking, or to use the talking person's own microphone: the picture and the sound both follow the speaker. Set "short_turns" true when the note says even a short reply ("yeah", "right") should get the cut. Never give a position or a time: who talks when and where each person stands are measured.
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
@@ -163,6 +164,34 @@ def _json_array(text: str) -> list:
 
 def _unsupported(note: int, reason: str, why: str = "") -> dict:
     return {"note": note, "op": "unsupported", "reason": reason, "why": why}
+
+
+FILLER_WORDS = {"um", "uh", "er", "erm", "ah", "hmm"}
+FILLER_REACH = 1.5                  # a filler word this close to the note's own time is the one the note means
+SAYS_FILLER = re.compile(r"\b(um+|uh+|er+m?|ah+|filler|filler words?|\"?um\"?|\"?uh\"?)\b", re.I)
+
+
+def note_time(note: dict) -> float:
+    return float(note.get("timeline_sec", 0.0))
+
+
+def _filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | None:
+    """The timeline span of the filler word nearest `at` (within `reach` seconds), read from the voice's own word timing. None when there is none."""
+    best = None
+    for a in cut.audio:
+        dur = a.tl_end - a.tl_start
+        if dur <= 0.05:
+            continue
+        for w in words_mod.words_in(a.src_path, a.src_in, dur):
+            if (w.text or "").strip().lower().strip(".,?!\"'") not in FILLER_WORDS:
+                continue
+            t0, t1 = a.tl_start + (w.start - a.src_in), a.tl_start + (w.end - a.src_in)
+            if t1 <= a.tl_start or t0 >= a.tl_end:
+                continue
+            gap = 0.0 if t0 <= at <= t1 else min(abs(t0 - at), abs(t1 - at))
+            if gap <= reach and (best is None or gap < best[0]):
+                best = (gap, round(max(t0 - 0.02, 0.0), 3), round(t1 + 0.02, 3))
+    return None if best is None else (best[1], best[2])
 
 
 def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
@@ -229,6 +258,13 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if not HAS_NUMBER.search(text):
                     raise ValueError("note states no explicit time, refusing to invent one")
                 out.append({"note": note, "op": op, "start": s, "end": e, "why": why})
+            elif op == "remove_filler":
+                if not SAYS_FILLER.search(text):
+                    raise ValueError("the note does not ask to remove a filler word")
+                span = _filler_span(cut, note_time(notes[note - 1]), FILLER_REACH)
+                if span is None:
+                    raise ValueError(f"no filler word (um, uh, er) heard within {FILLER_REACH:g} s of the note")
+                out.append({"note": note, "op": "remove_range", "start": span[0], "end": span[1], "why": f"the filler word heard at {span[0]:.2f}s, found in the transcript: {why}".strip()})
             elif op in ("trim_start", "trim_end"):
                 clip, sec = int(raw["clip"]), float(raw["seconds"])
                 if not 1 <= clip <= n_clips:
