@@ -53,7 +53,7 @@ def words_in(path: str, start: float, dur: float) -> list[W]:
     return [W(w.text, start + w.start, start + w.end) for p in tr.phrases for w in p.words]
 
 
-FILLER_PROMPT = "Umm, so, uh, you know, um, the, like, uh."
+FILLER_PROMPT = "Um, uh, umm, uhh, er, ah, hmm. So, um, you know, I, uh, think, um, that, uh, we, umm, should."   # tested 2026-10-11: the short prompt wrote zero-length "uh"s; this one gives the one real "um," and the same answer every run
 _WHISPER = None
 
 
@@ -68,8 +68,9 @@ def words_prompted(path: str, start: float, dur: float) -> list[W]:
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.4f}", "-t", f"{dur:.4f}", "-i", path,
                         "-vn", "-ac", "1", "-ar", "16000", str(wav)], check=True)
         if _WHISPER is None:
-            _WHISPER = whisper.load_model("base")
-        r = _WHISPER.transcribe(str(wav), word_timestamps=True, initial_prompt=FILLER_PROMPT, language="en", fp16=False)
+            _WHISPER = whisper.load_model("small")             # "base" moved its answer with the window and the settings; "small" gave the same tight "um," every time (2026-10-11)
+        r = _WHISPER.transcribe(str(wav), word_timestamps=True, initial_prompt=FILLER_PROMPT, language="en", fp16=False,
+                                temperature=0.0, condition_on_previous_text=False)       # no random sampling: the same window gives the same words (2026-10-11: two runs of one cut disagreed)
     return [W(w["word"], start + w["start"], start + w["end"]) for s in r.get("segments", []) for w in s.get("words", [])]
 
 

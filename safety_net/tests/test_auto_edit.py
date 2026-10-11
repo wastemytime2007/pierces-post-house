@@ -441,3 +441,40 @@ def test_a_fix_made_in_a_version_that_was_set_aside_says_so():
 def test_the_measured_score_leaves_out_the_story_verdicts():
     res = {"notes": [note("a"), note("s", fix=False, kind="story")], "checks": [{"name": "HOOK", "ok": False}, {"name": "ENDING", "ok": False}, {"name": "SYNC", "ok": False}]}
     assert ct.measured_score(res) == 1 + 3 and ct.review_score(res) == 2 + 2 + 2 + 3
+
+
+def _filler_world(monkeypatch, found):
+    """A two-clip cut and a filler pass that finds `found` ([(start, end, word)]), so only the wiring is tested."""
+    import fillers
+    from timeline import Cut, VideoClip
+    cut = Cut("s", 30.0, 1080, 1920, 20.0)
+    cut.video += [VideoClip(1, 0.0, 10.0, "/a.mp4", 100.0, 110.0), VideoClip(2, 10.0, 20.0, "/a.mp4", 200.0, 210.0)]
+    monkeypatch.setattr(timeline, "load_cut", lambda p: cut)
+    monkeypatch.setattr(fillers, "find", lambda c: [{"start": s, "end": e, "words": [w]} for s, e, w in found])
+    return cut
+
+
+def test_every_um_and_uh_the_cut_has_becomes_a_note_with_its_measured_cut(tmp_path, monkeypatch):
+    """Ryan, 2026-10-11: "where there's an um or uh cut that audio and footage out". Each filler goes through the editor like any other note."""
+    _filler_world(monkeypatch, [(6.75, 7.16, "um"), (14.0, 14.4, "uh")])
+    mine = [{"timeline_sec": 3.0, "clip": 1, "text": "make it tighter", "shapes": []}]
+    notes, nfile = ct._with_filler_notes(tmp_path / "v.xml", mine, tmp_path / "n.json", tmp_path / "out")
+    assert len(notes) == 3 and notes[0]["text"] == "make it tighter"                         # the person's own notes come first, unchanged
+    um, uh = notes[1], notes[2]
+    assert um["suggested_op"] == {"op": "remove_range", "start": 6.75, "end": 7.16, "why": um["suggested_op"]["why"]} and um["clip"] == 1
+    assert uh["suggested_op"]["start"] == 14.0 and uh["clip"] == 2 and "uh" in uh["text"]
+    assert nfile.name == "notes_with_fillers.json" and nfile.is_file()
+
+
+def test_a_filler_the_person_already_asked_to_remove_is_left_to_their_note(tmp_path, monkeypatch):
+    _filler_world(monkeypatch, [(6.75, 7.16, "um")])
+    mine = [{"timeline_sec": 6.65, "clip": 1, "text": "Remove this “Umm”", "shapes": []}]
+    notes, nfile = ct._with_filler_notes(tmp_path / "v.xml", mine, tmp_path / "n.json", tmp_path / "out")
+    assert len(notes) == 1 and nfile == tmp_path / "n.json"                                   # no second note for the same um, and the original notes file is kept
+
+
+def test_a_cut_with_no_fillers_keeps_the_original_notes_file(tmp_path, monkeypatch):
+    _filler_world(monkeypatch, [])
+    mine = [{"timeline_sec": 3.0, "clip": 1, "text": "tighter", "shapes": []}]
+    notes, nfile = ct._with_filler_notes(tmp_path / "v.xml", mine, tmp_path / "n.json", tmp_path / "out")
+    assert notes == mine and nfile == tmp_path / "n.json"

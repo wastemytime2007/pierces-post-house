@@ -109,8 +109,8 @@ def test_a_filler_the_plain_transcript_misses_is_cut_where_the_prompted_pass_hea
     monkeypatch.setattr(words_mod, "words_prompted", lambda path, start, dur: [words_mod.W("um,", 101.2, 101.8)])
     out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("REMOVE THIS UM", 1.3)], _cut())
     assert out[0]["op"] == "remove_range", out
-    # the word is 1.2-1.8 s; the span takes the sound whole: 0.3 s earlier at the onset, 0.15 s later at the tail
-    assert abs(out[0]["start"] - 0.9) < 0.05 and abs(out[0]["end"] - 1.95) < 0.05
+    # the word is 1.2-1.8 s; the span takes the sound whole with a short margin: 0.10 s at the onset, 0.08 s at the tail (the small model times fillers tightly)
+    assert abs(out[0]["start"] - 1.1) < 0.03 and abs(out[0]["end"] - 1.88) < 0.03
 
 
 def test_a_prompted_filler_over_silence_is_refused(monkeypatch):
@@ -133,3 +133,12 @@ def test_a_note_that_does_not_ask_for_a_filler_is_refused(monkeypatch):
     _fake(monkeypatch, [("um", 1.2, 1.5)])
     out = opsmod.validate([{"note": 1, "op": "remove_filler"}], [_note("the picture is too dark", 1.3)], _cut())
     assert out[0]["op"] == "unsupported"
+
+
+def test_a_note_can_carry_a_measured_remove_range_as_its_own_fix():
+    """The whole-cut filler pass hands each filler to the editor as a note with its measured span (fillers.py)."""
+    n = {"note": 1, "text": "AI: removing the filler", "timeline_sec": 1.3, "clip": 1, "shapes": [], "suggested_op": {"op": "remove_range", "start": 1.2, "end": 1.7}}
+    out = opsmod.validate(opsmod.from_suggestions([n], _cut()), [n], _cut())
+    assert out[0]["op"] == "remove_range" and out[0]["start"] == 1.2 and out[0]["end"] == 1.7 and out[0]["trusted"]
+    bad = opsmod.validate([{"note": 1, "op": "remove_range", "start": 5.0, "end": 99.0, "trusted": True}], [n], _cut())
+    assert bad[0]["op"] == "unsupported"

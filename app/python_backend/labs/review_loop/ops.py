@@ -88,7 +88,7 @@ SAYS_SWITCH = re.compile(r"\b(re-?frame|cut(ting)? back and forth|back and forth
 SAYS_SHORT = re.compile(r"\b(yeah|yep|right|uh[- ]?huh|mm+[- ]?hm+|okay|ok|just says?|even if|brief|short|one word|interject\w*|quick)\b", re.I)
 # Operations a note may carry as its own measured fix ("suggested_op", written by the AI review): used as they are, the interpreter is not asked, and only structure is checked.
 # The amounts are measured later from the audio, never taken from the note; max_sec only bounds how far the measurement may look (4 s lets an end run on to the next pause).
-SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", "end_at_words", "move_clip", "follow_speaker"}
+SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", "end_at_words", "move_clip", "follow_speaker", "remove_range"}
 SUGGEST_MAX_SEC = 4.0
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
@@ -240,7 +240,7 @@ def _voiced_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float
 
 
 PROMPT_WINDOW_SEC = 8.0
-FILLER_PAD_BEFORE, FILLER_PAD_AFTER = 0.3, 0.15     # the sound's onset is often heard late and its tail early (2026-10-11: "u---mmm")
+FILLER_PAD_BEFORE, FILLER_PAD_AFTER = 0.10, 0.08     # the small model times a filler tightly (734.06-734.48 s on the Septic cut); the base model needed 0.3 s because it heard onsets late ("u---mmm", 2026-10-11)
 
 
 def _prompted_filler_span(cut: Cut, at: float, reach: float) -> tuple[float, float] | None:
@@ -319,6 +319,11 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if not (1 <= clip <= n_clips and 1 <= before <= n_clips) or clip == before:
                     raise ValueError("move_clip needs two different clips that exist")
                 out.append({"note": note, "op": op, "clip": clip, "before": before, "why": why, "trusted": True})
+            elif raw.get("trusted") and op == "remove_range":
+                s, e = float(raw["start"]), float(raw["end"])               # the whole-cut filler pass measured these (fillers.py); no explicit time needs to be in the note's text
+                if not 0 <= s < e <= zone:
+                    raise ValueError(f"range {s}-{e} outside the cut or empty")
+                out.append({"note": note, "op": op, "start": s, "end": e, "why": why, "trusted": True})
             elif raw.get("trusted") and op in SUGGESTIBLE_OPS:
                 clip = int(raw["clip"])
                 if not 1 <= clip <= n_clips:

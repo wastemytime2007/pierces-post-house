@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-09.3"
+EDITOR_REVISION = "2026-10-11.1"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -460,7 +460,42 @@ def _plan_with_suggestions(src: Path, note_list: list[dict], folder: Path, stage
     return str(f)
 
 
-def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540, on_stage=None, ops: str | None = None) -> dict:
+def _with_filler_notes(src: Path, note_list: list[dict], nfile: Path, folder: Path) -> tuple[list[dict], Path]:
+    """The notes plus one note for every um or uh the cut still has (labs/review_loop/fillers.py), each carrying its measured cut as its own fix. A filler a note of the person's already
+    asks to remove (its moment inside the filler, the note saying um or uh) is left to that note. Returns the notes and the file they are in (the original file when no
+    filler was added)."""
+    import timeline
+    use_labs()
+    import fillers
+    import ops as ops_mod
+    cut = timeline.load_cut(src)
+    found = fillers.find(cut)
+    asked = [float(n.get("timeline_sec", 0.0)) for n in note_list if ops_mod.SAYS_FILLER.search(str(n.get("text", "")))]
+    added = list(note_list)
+    for f in found:
+        if any(f["start"] - 0.3 <= t <= f["end"] + 0.3 for t in asked):
+            continue
+        mid = (f["start"] + f["end"]) / 2
+        clip = next((c.idx for c in cut.video if c.tl_start <= mid < c.tl_end), 1)
+        words = " ".join(f["words"])
+        added.append({"timeline_sec": round(mid, 2), "clip": clip, "source": Path(cut.video[clip - 1].src_path).name, "source_sec": round(cut.video[clip - 1].src_in + (mid - cut.video[clip - 1].tl_start), 2),
+                      "where": f"filler at {f['start']:.2f}s", "text": f'AI: removing the filler "{words}" ({f["start"]:.2f} to {f["end"]:.2f} seconds): an um or uh is cut from the sound and the picture.',
+                      "shapes": [], "ai": True, "kind": "filler", "key": f"filler-{f['start']:.2f}",
+                      "suggested_op": {"op": "remove_range", "start": f["start"], "end": f["end"], "why": f"the filler '{words}', measured by listening again with fillers in the prompt"}})
+    if len(added) == len(note_list):
+        return note_list, nfile
+    return added, _notes_path(folder, added)
+
+
+def _notes_path(folder: Path, notes: list[dict]) -> Path:
+    import json
+    folder.mkdir(parents=True, exist_ok=True)
+    f = folder / "notes_with_fillers.json"
+    f.write_text(json.dumps({"schema": "review_notes.v0-draft", "sequence": "", "notes": notes}, indent=2))
+    return f
+
+
+def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540, on_stage=None, ops: str | None = None, auto_fillers: bool = True) -> dict:
     """An export XML and a review_notes.json in; a revised cut (next version XML + review page) and the QA pass on it out.
 
     The revise step is the tool's own script (labs/review_loop/revise.py), run as it is run by hand, and the QA pass is labs/qa/qa_pass.qa on its files. Nothing about
@@ -481,6 +516,13 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
     folder = Path(out).expanduser() if out else next_version_folder(src)
     use_labs()
     stage = on_stage or (lambda _s: None)
+    if not ops and auto_fillers:
+        # every um and uh in the cut is cut out of the sound and the picture, on every revision (Ryan, 2026-10-11): each one is a note of its own, made and checked like any other
+        stage("Listening for every um and uh")
+        try:
+            note_list, nfile = _with_filler_notes(src, note_list, nfile, folder)
+        except Exception as exc:                                       # a failed listen costs the filler cuts only, never the revision
+            stage(f"The um and uh pass did not run ({type(exc).__name__}: {str(exc)[:120]}); the notes were still made")
 
     if all(isinstance(n.get("suggested_op"), dict) for n in note_list):
         stage("Making the changes the notes ask for")
