@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-11.1"
+EDITOR_REVISION = "2026-10-12.1"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -573,11 +573,11 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
             layered = any(_fc.layers_present(src).values())
         except Exception:
             ops_now, layered = [], False
-        if not (layered and any(o.get("op") in ("edit_caption", "bleep_word") for o in ops_now)):
+        if not (layered and any(o.get("op") in REBUILD_OPS for o in ops_now)):
             return {**base, "xml": None, "page": None, "qa": None, "message": "Nothing in the notes could be applied to the timeline, so no new version was written."}
         v2.write_text(src.read_text())                                            # the picture is unchanged; the layers are what this version changes
         for i in items:
-            if i.get("op") in ("edit_caption", "bleep_word"):
+            if i.get("op") in REBUILD_OPS:
                 i["applied"], i["summary"] = True, "made when the layers were rebuilt below"
         base["applied"] = sum(1 for i in items if i.get("applied"))
 
@@ -597,8 +597,31 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
         layers_made = _put_layers_back(src, v2, folder, note_list, stage, height)
     except ToolError as exc:
         message = f"The picture was revised, but the captions, music and bleep could not be put back on it, so this version has none of them: {exc}"
+        for it in items:
+            if it.get("op") in REBUILD_OPS:                                  # a change the rebuild was to make is NOT made: it says so, in the rebuild's own words
+                it["applied"], it["summary"] = False, "not made: the layers could not be rebuilt (" + str(exc).splitlines()[0][:160] + ")"
+        base["applied"] = sum(1 for i in items if i.get("applied"))
+        if not (folder / "review.html").is_file():
+            try:
+                from build_review import build
+                build(v2, folder, height=height)                              # the revised picture still gets its review page, so the failure is seen, not a crash
+            except Exception as build_exc:
+                message += f" (and its review page could not be built: {build_exc})"
     if layers_made:
         message = "The captions, music and bleep were put back on the revised cut: " + "; ".join(f"{s['name']}: {s['summary']}" for s in layers_made["steps"] if s["done"])
+        for it in items:                                                      # a note the rebuild made says so (it was reported "not on the timeline" before the rebuild ran)
+            res = layers_made.get("edit_results", {}).get(it.get("note"))
+            if res:
+                it["applied"], it["summary"] = res
+            elif it.get("op") in REBUILD_OPS:
+                it["applied"], it["summary"] = True, "made when the layers were rebuilt"
+        base["applied"] = sum(1 for i in items if i.get("applied"))
+        done = layers_made.get("edit_results", {})
+        for entry in qa_out["notes"]:                                         # a row about a graphic, the music or an effect was measured BEFORE the rebuild made it: it now says what the rebuild did
+            for row in entry["rows"]:
+                if row["op"] in REBUILD_OPS and row["op"] not in ("edit_caption", "bleep_word") and entry["note"] in done:
+                    row["status"] = qa_pass.UNMEASURED
+                    row["detail"] = ("made: " if done[entry["note"]][0] else "not made: ") + done[entry["note"]][1] + "; read back by the revision battery (safety_net/battery_revisions.py), not by this pass"
     return {**base, "xml": str(v2), "page": str(folder / "review.html"), "url": serve_review(folder), "qa": qa_out, "message": message, "layers": layers_made}
 
 
@@ -612,6 +635,120 @@ def _finish_record(src: Path) -> dict | None:
             except ValueError:
                 return None
     return None
+
+
+MUSIC_STEP_DB = 4.0
+REBUILD_OPS = ("edit_caption", "bleep_word", "edit_callout", "remove_graphic", "extend_graphic", "end_graphic", "music_volume", "remove_music", "remove_sfx", "replace_sfx")     # what the layer rebuild makes (labs/review_loop/capabilities.py)
+
+
+def _sfx_named_in(rec: dict) -> str:
+    """The effect the last finish put on its graphics, read from the music step's own summary ("... a sound effect on each graphic (3) (Air Slicers - Short Dirty Woosh)")."""
+    import re
+    for s in rec.get("steps", []):
+        m = re.search(r"sound effect on each graphic \(\d+\) \(([^()]+)\)", str(s.get("summary", "")))
+        if m:
+            return m.group(1).strip()
+    return ""
+
+
+def _finish_edits(ops: list[dict], note_list: list[dict], rec: dict, cta: str = "") -> tuple[dict, dict[int, tuple[bool, str]]]:
+    """What the notes change in the finish itself (Ryan, 2026-10-12: anything the editor made, it must be able to change from a note): the title card, the name tags and the call to action
+    (their words, taking one out, keeping it up longer or ending it), the music level or the music, the sound effects. Returns the cumulative changes (earlier ones are kept, so a later
+    rebuild does not undo them) and, per note, whether it was made and what was done, in words."""
+    import json
+    import re
+    use_labs()
+    import finish_cut as fc
+    opts = dict(rec.get("options") or {})
+    gedits = list(opts.get("graphics_edits") or [])
+    music_db = opts.get("music_db")
+    sfx_exclude = list(opts.get("sfx_exclude") or [])
+    no_music = no_sfx = False
+    results: dict[int, tuple[bool, str]] = {}
+    cta_short = fc.short_cta(cta or opts.get("cta") or "")
+    targets: list[tuple[str, str, float, float]] = []                    # (edit target, how to say it, on, off) for every graphic the last finish put on the cut
+    try:
+        folder = Path(rec.get("folder", ""))
+        spec = json.loads((folder / "graphics_spec.json").read_text())
+        plan = json.loads((folder / "graphics" / "placement.json").read_text())["plan"]
+        if plan.get("title"):
+            targets.append(("title", "the title card", plan["title"]["on"][0], plan["title"]["off"]))
+        for ls, lp in zip(spec.get("lower_thirds", []), plan.get("lower_thirds", [])):
+            key = ls.get("key") or ls["name"]
+            if key == "cta" or (cta_short and ls["name"] == cta_short):          # a finish made before the call to action was marked in its plan: found by its words
+                key = "cta"
+            targets.append(("cta" if key == "cta" else "name:" + key, f'the "{lp["name"]}" graphic', lp["on"], lp["off"]))
+    except (OSError, ValueError, KeyError):
+        targets = []
+
+    def pick(text: str, at: float):
+        low = text.lower()
+        if re.search(r"call to action|\bcta\b", low):
+            hit = next((x for x in targets if x[0] == "cta"), None)
+            if hit:
+                return hit
+        if re.search(r"\btitle\b", low):
+            hit = next((x for x in targets if x[0] == "title"), None)
+            if hit:
+                return hit
+        for x in targets:
+            if x[0].startswith("name:") and x[0][5:].lower() in low:
+                return x
+        inside = [x for x in targets if x[2] - 0.4 <= at <= x[3] + 0.4]
+        if inside:
+            return min(inside, key=lambda x: x[3] - x[2])
+        near = min(targets, key=lambda x: min(abs(at - x[2]), abs(at - x[3])), default=None)
+        return near if near and min(abs(at - near[2]), abs(at - near[3])) <= 2.0 else None
+
+    for o in ops:
+        kind, n = o.get("op"), o.get("note")
+        note = note_list[n - 1] if isinstance(n, int) and 1 <= n <= len(note_list) else {}
+        at, text = float(note.get("timeline_sec", 0.0)), str(note.get("text", ""))
+        if kind in ("edit_callout", "remove_graphic", "extend_graphic", "end_graphic"):
+            hit = pick(text, at)
+            if hit is None:
+                results[n] = (False, "no title card, name tag or call to action is on screen at that moment or named in the note")
+                continue
+            key, label, on, off = hit
+            said = []
+            if kind == "edit_callout":
+                if o.get("title"):
+                    gedits.append({"target": key, "do": "text", "text": o["title"]})
+                    said.append(f'{label} now reads "{o["title"]}"')
+                if o.get("subtitle"):
+                    gedits.append({"target": key, "do": "sub", "text": o["subtitle"]})
+                    said.append(f'its second line now reads "{o["subtitle"]}"')
+                elif o.get("remove_subtitle"):
+                    gedits.append({"target": key, "do": "sub", "text": ""})
+                    said.append("its second line is taken out")
+            elif kind == "remove_graphic":
+                gedits.append({"target": key, "do": "remove"})
+                said.append(f"{label} is taken out")
+            elif kind == "extend_graphic":
+                secs = o.get("seconds")
+                gedits.append({"target": key, "do": "longer", "seconds": secs})
+                said.append(f"{label} stays up {secs if secs else fc.GFX_LONGER_DEFAULT:g} s longer")
+            elif kind == "end_graphic":
+                cut_by = max(off - at, 0.3)
+                gedits.append({"target": key, "do": "shorter", "seconds": cut_by})
+                said.append(f"{label} ends {cut_by:.1f} s sooner")
+            results[n] = (True, "; ".join(said) + ", made when the layers were rebuilt") if said else (False, "the note asked for no change to the words")
+        elif kind == "music_volume":
+            base = fc.MUSIC_DB if music_db is None else music_db
+            music_db = max(min(base + (MUSIC_STEP_DB if o.get("direction") == "up" else -MUSIC_STEP_DB), -1.0), -24.0)
+            results[n] = (True, f"the music is {'louder' if o.get('direction') == 'up' else 'quieter'}: {music_db:g} dB under the voice (was {base:g}), made when the layers were rebuilt")
+        elif kind == "remove_music":
+            no_music = no_sfx = True
+            results[n] = (True, "the music and the sound effects riding on it are taken out, made when the layers were rebuilt")
+        elif kind == "replace_sfx":
+            current = opts.get("sfx_name") or _sfx_named_in(rec)                  # a finish made before the effect's name was recorded still says which it used, in its own summary
+            if current and current not in sfx_exclude:
+                sfx_exclude.append(current)
+            results[n] = (True, f"the sound effect is swapped for another whoosh from your library (not \"{current or 'the current one'}\"); it is picked by how it plays" + (f", not by the description \"{o.get('sound')}\"" if o.get("sound") else "") + ", made when the layers were rebuilt")
+        elif kind == "remove_sfx":
+            no_sfx = True
+            results[n] = (True, "the sound effects are taken out, made when the layers were rebuilt")
+    return {"graphics_edits": gedits, "music_db": music_db, "no_music": no_music, "no_sfx": no_sfx, "sfx_exclude": sfx_exclude}, results
 
 
 def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], stage, height: int) -> dict | None:
@@ -645,14 +782,17 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
     except Exception:
         requests = []
     music_raw = rec.get("music_raw")
+    upd, edit_results = _finish_edits(ops, note_list, rec, str((rec.get("options") or {}).get("cta") or idea_brief(src).get("call_to_action") or ""))
     unlayered = folder / f"{v2.stem} (before layers).xml"
     unlayered.write_text(v2.read_text())
     try:
         opts = rec.get("options") or {}
-        r = fc.run(unlayered, folder / "layers", captions=opts.get("captions", have["on_screen"]) and have["on_screen"], music=have["music"], bleep=True, rebuild=True,
-                   graphics=bool(opts.get("graphics")) and have["on_screen"], sfx=bool(opts.get("sfx")) and have["music"],
+        r = fc.run(unlayered, folder / "layers", captions=opts.get("captions", have["on_screen"]) and have["on_screen"], music=have["music"] and not upd["no_music"], bleep=True, rebuild=True,
+                   graphics=bool(opts.get("graphics")) and have["on_screen"], sfx=bool(opts.get("sfx")) and have["music"] and not upd["no_sfx"] and not upd["no_music"],
                    music_file=music_raw if music_raw and Path(music_raw).is_file() else None, caption_fixes=fixes or None, bleep_requests=requests or None,
-                   progress=stage, final_name=v2.name, cta=str(opts.get("cta") or idea_brief(src).get("call_to_action") or ""))   # a finish made before the call to action was recorded still gets it: the idea is the source
+                   progress=stage, final_name=v2.name, cta=str(opts.get("cta") or idea_brief(src).get("call_to_action") or ""),   # a finish made before the call to action was recorded still gets it: the idea is the source
+                   graphics_edits=upd["graphics_edits"], music_db=upd["music_db"], sfx_exclude=upd["sfx_exclude"],
+                   sfx_keep=str(opts.get("sfx_name") or _sfx_named_in(rec)))
     except (fc.FinishError, Exception) as exc:
         unlayered.unlink(missing_ok=True)
         raise ToolError(str(exc)) from exc
@@ -664,7 +804,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
     stage("Building the review page with the layers")
     from build_review import build
     build(v2, folder, height=height)
-    return {"steps": r["steps"], "folder": r["folder"]}
+    return {"steps": r["steps"], "folder": r["folder"], "edit_results": edit_results}
 
 
 def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,

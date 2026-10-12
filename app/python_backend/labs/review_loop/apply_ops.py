@@ -21,6 +21,7 @@ from ops import KEEP_SEC_DEFAULT, detect_pause, locate_end, locate_start, measur
 from timeline import Cut, TimelineError, _seq_for_cut
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reframe"))
+ZOOM_LITTLE, ZOOM_LOT, ZOOM_TOTAL_MAX = 1.15, 1.35, 1.6      # one step of zoom, a big step, and the most a clip may be scaled to, as a multiple of the widest framing of its camera file in the cut (past that the picture is soft)
 REFRAME_STEP = 0.12          # one "lower" or "raise" moves the shot by this fraction of the height of the window it shows
 
 HEADER = '<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE xmeml>\n'
@@ -122,21 +123,23 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         if kind == "unsupported":
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
-            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
+            changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
+        elif kind in ("music_volume", "remove_music", "remove_sfx"):
+            changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "by_finish":
             changes.append(Change(n, kind, False, capabilities.result_text(kind, o), o.get("why", "")))
         elif kind == "bleep_word":
             changes.append(Change(n, kind, False, "bleeping a word is made by the bleep step (labs/bleep/bleep.py, run by reconform), not on the timeline", o.get("why", "")))
         elif kind == "remove_graphic":
-            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
+            changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "edit_caption":
             changes.append(Change(n, kind, False, f'changing the caption to "{o["text"]}" is made by the captions step (labs/captions/fix_caption.py), not on the timeline', o.get("why", "")))
         elif kind == "end_graphic":
-            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
+            changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "edit_callout":
-            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
+            changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "replace_sfx":
-            changes.append(Change(n, kind, False, capabilities.result_text(kind), o.get("why", "")))
+            changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "tighten_pause":
             p = detect_pause(cut, o["at"])
             keep = o.get("keep_sec", KEEP_SEC_DEFAULT)
@@ -182,6 +185,29 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
                                           f"clip {c.idx} moved {'down' if o['direction'] == 'lower' else 'up'} in the frame by {shown:.0f} px (one step, {REFRAME_STEP:.0%} of the shot's height{limited}); Position y should now read "
                                           f"{rx.expected_position_y(y1, scale, cut.height, sh):.0f} (it was {rx.expected_position_y(y0, scale, cut.height, sh):.0f}). This rests on the vertical rule that has not been confirmed in Premiere",
                                           o.get("why", ""), check={"kind": "motion", "clip": c.idx, "vert": v1, "vert_before": vert, "scale": scale, "direction": o["direction"], "src_path": c.src_path, "src_in": c.src_in}))
+        elif kind == "zoom_clip":
+            from render_preview import source_dims
+            import punch_in as pi
+            c = cut.video[o["clip"] - 1]
+            if not c.motion:
+                changes.append(Change(n, kind, False, f"clip {c.idx} has no scale and position set, so there is nothing to zoom; set its framing first (labs/reframe)", o.get("why", "")))
+            else:
+                factor = ZOOM_LOT if o.get("amount") == "lot" else ZOOM_LITTLE
+                sw, sh = source_dims(c.src_path)
+                floor = pi.widest_scale(cut.width or 1080, cut.height or 1920, sw, sh)
+                target = c.motion[0] * (factor if o.get("direction", "in") == "in" else 1.0 / factor)
+                limited = ""
+                if target < floor:
+                    target, limited = floor, "; stopped where the picture fills the frame"
+                widest = min(x.motion[0] for x in cut.video if x.src_path == c.src_path and x.motion)
+                if target > widest * ZOOM_TOTAL_MAX:
+                    target, limited = widest * ZOOM_TOTAL_MAX, "; stopped at the closest the picture holds up"
+                if abs(target - c.motion[0]) < 0.5:
+                    changes.append(Change(n, kind, False, f"clip {c.idx} is already as {'close' if o.get('direction', 'in') == 'in' else 'wide'} as it can go", o.get("why", "")))
+                else:
+                    row = pi.zoom_row(c, target, source_dims, cut.width or 1080, cut.height or 1920)
+                    changes.append(Change(n, kind, True, f"clip {c.idx} {'zoomed in' if o.get('direction', 'in') == 'in' else 'zoomed out'} from {c.motion[0]:.0f}% to {target:.0f}%; the person stays where they were in the frame and the top of the picture stays put{limited}",
+                                          o.get("why", ""), check={"kind": "zoom", "clip": c.idx, **row}))
         elif kind == "follow_speaker":
             import follow_speaker as fs
             from framing import FramingError
@@ -515,6 +541,11 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
     tree = ET.parse(xml_path)
     root = tree.getroot()
     seq = _seq_for_cut(root)
+    for ch in changes:                                                 # a zoom is written the same way: before the cut edits, so every piece a clip is split into carries it
+        if ch.applied and ch.check and ch.check.get("kind") == "zoom":
+            import punch_in as pi
+            ci = sorted(seq.find("media/video/track").findall("clipitem"), key=lambda c: int(c.findtext("start")))[ch.check["clip"] - 1]
+            pi._set_motion(ci, ch.check["scale"], ch.check["horiz"], ch.check["vert"])
     for ch in changes:                                                 # a reframe is written BEFORE the cut edits, so every piece a clip is split into carries it
         if ch.applied and ch.check and ch.check.get("kind") == "motion":
             ci = sorted(seq.find("media/video/track").findall("clipitem"), key=lambda c: int(c.findtext("start")))[ch.check["clip"] - 1]      # the cut is the FIRST video track, as load_cut reads it; an overlay on V2 must not shift the count

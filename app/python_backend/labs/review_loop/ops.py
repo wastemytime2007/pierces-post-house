@@ -64,9 +64,9 @@ SR = 8000
 KEEP_SEC_DEFAULT = 0.15
 MIN_SILENCE_SEC = 0.25
 NOTE_WORDS = r"one|two|three|four|five|six|seven|eight|nine|ten|half"
-HAS_NUMBER = re.compile(rf"\d|\b({NOTE_WORDS})\b", re.I)
+HAS_NUMBER = re.compile(rf"\d|\b({NOTE_WORDS})\b|\b(a|the last|the first|the final) (full )?second\b", re.I)          # "the last second" is a stated amount too (2026-10-12)
 SAYS_SOUND = re.compile(r"\b(sfx|sound effects?|sound|noise|whoosh|swoosh|pop|click|ding|chime|beep|clap|thud)\b", re.I)
-SAYS_GRAPHIC = re.compile(r"\b(text|graphic|graphics|arrow|callout|call-out|bubble|label|title|caption box|highlight|overlay|box|cards?|screenshot)\b", re.I)
+SAYS_GRAPHIC = re.compile(r"\b(text|graphic|graphics|arrow|callout|call-out|bubble|label|title|title card|caption box|highlight|overlay|box|cards?|end card|screenshot|name ?tags?|name ?plates?|lower[- ]thirds?|call to action|cta)\b", re.I)
 SAYS_FOOTAGE = re.compile(r"\b(clip|shot|footage|scene|take|b-?roll)\b", re.I)
 SAYS_LONGER = re.compile(r"\b(longer|more time|more seconds?|extra (time|seconds?)|linger|stay(s)?|sit|hold|too (short|fast|quick|brief)|only (shows?|appears?|lasts?)|half a second|barely)\b|\bkeep\b[^.]{0,40}\b(up|on)\b", re.I)
 SAYS_END = re.compile(r"\b(fade(s|d)? out|fade(s|d)? away|end(s)? here|stop(s)? here|disappear|go(es)? away|come(s)? off|take (it|this|that) off|off the screen|off screen|shorter|less time)\b", re.I)
@@ -76,7 +76,7 @@ SAYS_NO = re.compile(r"^\s*(no|nope|nah|wrong|not (it|this|that|a curse word)|ig
 SAYS_PUNCH = re.compile(r"\b(jump ?cuts?|crop|cropped|reframe[ds]?|punch(ed)? in|zoom(ed)? in|every other (cut|clip|shot))\b", re.I)
 SAYS_EDIT = re.compile(r"\b(change|rename|reword|replace|instead|say(s)?|read(s)?|wording|words|remove|delete|get rid|drop|without|shorten|simplify|no )\b", re.I)
 SAYS_SUBTITLE = re.compile(r"\b(subtitle|sub-title|second line|smaller text|small text|smaller line|description|underneath|line (below|under)|sub text|subtext)\b", re.I)
-SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|take (this|it|that|the [a-z ]{1,30}?) (out|off)|cut (this|it|that)( out| clip| shot)?)\b", re.I)
+SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|turn (it |this |that )?off|take (this |it |that |them )?(out|off)|take (this|it|that|the [a-z ]{1,30}?) (out|off)|cut (this|it|that)( out| clip| shot)?)\b", re.I)
 
 SAYS_FRAMING = re.compile(r"\b(frame|framing|framed|crop(ped)?|cut off|head|screen|position(ed)?|reposition|shot|angle)\b", re.I)
 SAYS_LOWER = re.compile(r"\b(lower|lowered|lowering|down|bring (it|this|them) down|drop (it|this)|move (it|this) down)\b", re.I)
@@ -107,7 +107,7 @@ Reply with ONLY a JSON array. Each item: {"note": <1-based note number>, "op": <
 
 Operations (times are seconds on the timeline the notes were left on):
 - tighten_pause {"at": t}            The note says a pause/gap/silence/dead air should be tighter or cut. Use the note's own time as "at". The pause is located later by measuring the audio, so never guess a duration.
-- remove_range {"start": s, "end": e}  ONLY if the note itself states both times.
+- remove_range {"start": s, "end": e}  ONLY if the note itself states both times. A note that asks to remove an "um", "uh", "umm" or any filler word is NEVER remove_range: it is remove_filler.
 - trim_start {"clip": n, "seconds": x}, trim_end {"clip": n, "seconds": x}  ONLY if the note states how many seconds.
 - extend_end {"clip": n, "max_sec": 1.0}  The note says a word or sentence at the END of clip n is cut off too soon or needs more time to finish. "clip" is the note's own clip unless the note says otherwise. The amount is measured from how the sound decays, so never give a duration.
 - extend_start {"clip": n, "max_sec": 1.0}  The note says a word at the START of clip n is cut off, or the clip starts in the middle of a word or sound, or needs a little more lead-in. "clip" is the note's own clip unless the note says otherwise. The amount is measured from the audio, so never give one.
@@ -116,9 +116,10 @@ Operations (times are seconds on the timeline the notes were left on):
 - move_clip {"clip": n, "before": m}  The note says clip n should come earlier, before clip m (a line that sets up another should play first). Only when the note asks for the order to change.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
 - remove_filler {}                   The note asks to remove a filler word ("remove this um", "cut the uh", "take out the er") at the note's moment. No parameters: the word is found in the transcript near the note's time and its measured start and end are cut. Never give a time.
-- reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming in or out, moving sideways or cropping (those are unsupported).
+- reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming (that is zoom_clip) or moving sideways (unsupported).
+- zoom_clip {"clip": n, "direction": "in" or "out", "amount": "little" or "lot"}  The note asks to zoom in or out on a shot, punch in, crop in, make it closer or tighter, or wider ("zoom in on this shot", "crop this one in a bit", "too tight, pull back"). "clip" is the note's own clip unless the note says otherwise. "direction" is "in" for closer or tighter, "out" for wider. "amount" is "lot" only when the note says a lot, way in, much or big; otherwise "little". The person stays framed and the top of the picture stays, so never give a position or a size.
 - follow_speaker {"clip": n or "all", "short_turns": true or false}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Use it too when the note asks to cut or switch back and forth between the speakers, to reframe to whoever is talking, or to use the talking person's own microphone: the picture and the sound both follow the speaker. Set "short_turns" true when the note says even a short reply ("yeah", "right") should get the cut. Never give a position or a time: who talks when and where each person stands are measured.
-- replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") at this moment should sound different, and says what it should sound like. "sound" must be copied from the note's own words describing the wanted sound. The effect and its time are found from the audio project, so never give a time.
+- replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") should sound different, be swapped, or be something else. "sound" is copied from the note's own words if it describes the wanted sound, and "" if it only asks for a different one. The effect is swapped for another from the library; never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
 - edit_caption {"text": "..."}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ..."). "text" must be copied from the note's own words (usually quoted); never write your own. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
 - remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
@@ -127,7 +128,10 @@ Operations (times are seconds on the timeline the notes were left on):
 {FINISH_LINES}
 - end_graphic {}  The note says an on-screen GRAPHIC (callout, text bubble, label) should fade out, end or go away at the moment of the note ("have the graphic fade out here"). No parameters: the moment is the note's own time. Use it only when the note is about WHEN the graphic ends, not its words or how long it lasts in general.
 - edit_callout {"title": "..." or null, "subtitle": "..." or null, "remove_subtitle": true or false}  The note asks to change the WORDS of a callout (text bubble, label, on-screen text) or to remove its smaller second line. New wording must be copied from the note (quoted or plainly stated); never write your own. Only remove what the note says to remove. Leave a field null/false if the note does not mention it. The callout is found from the graphics project, so never give a time.
-- unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing other than moving a shot up or down in the frame (zooming, moving sideways, cropping), adding graphics or text, music, audio levels, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
+- music_volume {"direction": "up" or "down"}  The note says the MUSIC (the background track, the song, the score) is too loud or too quiet, or asks to turn it up or down ("the music is too loud", "bring the music down", "I can't hear the music"). "direction" is the way the volume should go: "down" when it is too loud, "up" when it is too quiet. The amount is a fixed step, so never give one. Not for the voice or for sound effects.
+- remove_music {}  The note asks for the music to be taken out entirely ("no music", "remove the music", "take out the background track").
+- remove_sfx {}  The note asks for the sound effects (the whooshes and hits on the graphics) to be taken out entirely ("no sound effects", "remove the whooshes"). Not for one sound at one moment that should sound different (that is replace_sfx).
+- unsupported {"reason": "..."}      Anything else: swapping to different footage, reframing other than moving a shot up or down in the frame or zooming it (moving it sideways), adding graphics or text beyond the ones already on the cut, changing the music's style, the voice's level, colour, vague taste notes, or drawings that need interpretation. Say plainly what would be needed.
 
 A note may say it was left ON a named timeline element (its lane and label). Then it is about that whole element: "make this longer" on a Callout element means the callout, on an SFX element means that sound. Choose only an operation that acts on that lane (Clips/Cuts/Edits: the cut operations; SFX: replace_sfx; Callout: extend_graphic or edit_callout); otherwise unsupported.
 
@@ -168,6 +172,13 @@ def _unsupported(note: int, reason: str, why: str = "") -> dict:
 
 FILLER_WORDS = re.compile(r"^(u+m+|u+h+|e+r+m*|a+h+|h+m+)$", re.I)     # um, umm, uh, uhh, er, erm, ah, ahh, hmm: spelt as the speaker says them (2026-10-11: "Umm" was not matched)
 FILLER_REACH = 1.5                  # a filler word this close to the note's own time is the one the note means
+SAYS_ZOOM = re.compile(r"\b(zoom(ed|ing)?|punch(ed|ing)? in|crop(ped|ping)? in|closer|tighter|tight(er)? shot|bigger|scale (it |this )?(up|down)|pull(ed)? back|wider|farther|further out|too (close|tight|zoomed))\b", re.I)
+SAYS_SWAP = re.compile(r"\b(swap|swapped|replace|replaced|different|something else|another|change (it|the|that)|instead|new (one|sound|effect)|doesn't fit|does not fit|annoying|hate|don't like)\b", re.I)
+SAYS_TAKE_OUT = re.compile(r"\b(remove|delete|drop|get rid|take (it |them |this |that )?(out|off)|turn (it |them )?off|kill|mute|no|without|lose)\b", re.I)
+SAYS_MUSIC = re.compile(r"\b(music|song|soundtrack|score|background track|beat)\b", re.I)
+SAYS_SFX = re.compile(r"\b(sound effects?|sfx|whoosh(es)?|swoosh(es)?|effects?)\b", re.I)
+SAYS_QUIETER = re.compile(r"\b(too loud|louder than|quieter|quiet(er)?|softer|lower(ed)?|down|turn (it )?down|bring (it )?down|drowns?|overpower)", re.I)
+SAYS_LOUDER = re.compile(r"\b(too (quiet|soft|low)|louder|turn (it )?up|bring (it )?up|can'?t hear|cannot hear|barely hear)", re.I)
 SAYS_FILLER = re.compile(r"\b(um+|uh+|er+m?|ah+|filler|filler words?|\"?um\"?|\"?uh\"?)\b", re.I)
 
 
@@ -355,6 +366,12 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 s, e = float(raw["start"]), float(raw["end"])
                 if not 0 <= s < e <= zone:
                     raise ValueError(f"range {s}-{e} outside the cut or empty")
+                if not HAS_NUMBER.search(text) and SAYS_FILLER.search(text):
+                    span = _filler_span(cut, note_time(notes[note - 1]), FILLER_REACH) or _prompted_filler_span(cut, note_time(notes[note - 1]), FILLER_REACH)
+                    if span is None:
+                        raise ValueError(f"no filler word (um, uh, er) heard within {FILLER_REACH:g} s of the note")
+                    out.append({"note": note, "op": "remove_range", "start": span[0], "end": span[1], "why": "the filler the note names, found by listening"})
+                    continue                                                  # the reader chose remove_range for "remove this um": it is a filler removal, never an invented time
                 if not HAS_NUMBER.search(text):
                     raise ValueError("note states no explicit time, refusing to invent one")
                 out.append({"note": note, "op": op, "start": s, "end": e, "why": why})
@@ -458,13 +475,15 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
             elif op == "replace_sfx":
                 sound = str(raw.get("sound", "")).strip()
                 st, nt = words_mod.tokens(sound), set(words_mod.tokens(text))
-                if not st or len(sound) > 200:
+                if len(sound) > 200:
                     raise ValueError("no usable description of the wanted sound")
                 if not says_sound:
                     raise ValueError("the note does not talk about a sound effect")
-                if sum(w in nt for w in st) < 0.7 * len(st):
+                if st and sum(w in nt for w in st) < 0.7 * len(st):
                     raise ValueError("that description is not in the note, refusing to invent a sound")
-                out.append({"note": note, "op": op, "sound": sound, "why": why})
+                if not st and not SAYS_SWAP.search(text):
+                    raise ValueError("no usable description of the wanted sound, and the note does not ask for a different one")      # "the sound effect is too loud" is not a swap
+                out.append({"note": note, "op": op, "sound": sound, "why": why})         # no description is fine: the effect is swapped for the next best whoosh in the library
             elif op == "extend_graphic":
                 if not says_graphic:
                     raise ValueError("the note does not talk about an on-screen graphic")
@@ -493,6 +512,35 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("the note does not talk about an on-screen graphic")
                 if not SAYS_REMOVE.search(text):
                     raise ValueError("the note does not ask for it to be removed")
+                out.append({"note": note, "op": op, "why": why})
+            elif op == "zoom_clip":
+                clip = int(raw["clip"])
+                if not 1 <= clip <= n_clips:
+                    raise ValueError(f"clip {clip} does not exist")
+                direction = str(raw.get("direction", "in")).lower()
+                if direction not in ("in", "out"):
+                    raise ValueError("zoom_clip needs direction in or out")
+                if not SAYS_ZOOM.search(text):
+                    raise ValueError("the note does not ask to zoom, crop in or make the shot closer or wider")
+                out.append({"note": note, "op": op, "clip": clip, "direction": direction, "amount": "lot" if str(raw.get("amount", "")).lower() == "lot" else "little", "why": why})
+            elif op == "music_volume":
+                direction = str(raw.get("direction", "")).lower()
+                if direction not in ("up", "down"):
+                    raise ValueError("music_volume needs direction up or down")
+                if not SAYS_MUSIC.search(text):
+                    raise ValueError("the note does not talk about the music")
+                if direction == "down" and not SAYS_QUIETER.search(text):
+                    raise ValueError("the note does not say the music is too loud or should come down")
+                if direction == "up" and not SAYS_LOUDER.search(text):
+                    raise ValueError("the note does not say the music is too quiet or should come up")
+                out.append({"note": note, "op": op, "direction": direction, "why": why})
+            elif op == "remove_music":
+                if not SAYS_MUSIC.search(text) or not SAYS_TAKE_OUT.search(text):
+                    raise ValueError("the note does not ask for the music to be removed")
+                out.append({"note": note, "op": op, "why": why})
+            elif op == "remove_sfx":
+                if not SAYS_SFX.search(text) or not SAYS_TAKE_OUT.search(text):
+                    raise ValueError("the note does not ask for the sound effects to be removed")
                 out.append({"note": note, "op": op, "why": why})
             elif op in ("by_finish", "punch_in"):
                 skill = "punch-in" if op == "punch_in" else str(raw.get("skill", ""))     # punch_in: the name this op had in runs recorded on 2026-10-09

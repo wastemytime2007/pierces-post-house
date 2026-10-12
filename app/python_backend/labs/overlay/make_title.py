@@ -171,6 +171,12 @@ def write_project(proj: Path, p: dict, w: int, h: int, total: float) -> dict:
     return {"layout": g, "events": ev}
 
 
+def anchors_of(spec: dict) -> list[dict]:
+    """The source frame every element of the spec is tied to. A spec with no title card (a person's note took it out) has no title anchor: the title is optional, as validate_spec allows."""
+    return (([{"what": "title", **spec["title"]["anchor"]}] if spec.get("title") else []) + [{"what": f"label: {lb['text']}", **lb["anchor"]} for lb in spec.get("labels", [])]
+            + [{"what": f"lower third: {lt['name']}", **lt["anchor"]} for lt in spec.get("lower_thirds", [])])
+
+
 def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_spec) -> tuple[int, dict | None]:
     validate_spec(spec)
     seq = spec_of(xml)
@@ -199,8 +205,7 @@ def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_
         render(proj, mov, seq, info)
     placement = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": 0.0, "duration_sec": total, "overlay": mov.name, "overlay_path": str(mov.resolve()),
                  "render": {"width": seq["width"], "height": seq["height"], "fps": seq["fps"], "fps_arg": seq["fps_arg"]},
-                 "anchors": [{"what": "title", **spec["title"]["anchor"]}] * bool(spec.get("title")) + [{"what": f"label: {lb['text']}", **lb["anchor"]} for lb in spec.get("labels", [])]
-                            + [{"what": f"lower third: {lt['name']}", **lt["anchor"]} for lt in spec.get("lower_thirds", [])],
+                 "anchors": anchors_of(spec),
                  "plan": p, "layout": info["layout"], "events": info["events"], "hyperframes": mo.HF_VERSION, "gsap": mo.GSAP_VERSION}
     (out / "placement.json").write_text(json.dumps(placement, indent=2))
     if render is None:

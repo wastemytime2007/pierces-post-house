@@ -65,6 +65,18 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-12: every skill that makes the cut can be revised from a note (Septic cut), awaiting Ryan's run
+
+Ryan: "We need to give the AI editor the ability to do ALL SKILLS that were originally used to make the cut ... Anything it did in the first place it should be able to edit if requested as a revision." Not signed off.
+
+- **Gap found by measuring, not by Ryan:** footage edits and caption edits already worked (a caption change on the real finished cut reached the revised version). The title card, name tags, call to action, music and sound effects could not be changed by a note: the notes were understood and the rebuild dropped them, while the notes list said "made by the graphics step", which never ran.
+- **Made (labs/review_loop/finish_cut.py, creator_tools._finish_edits, ops.py):** change the words of the title / a name tag / the call to action, take any out, keep one up longer or end it sooner; music up or down (4 dB a step, never above -1 dB), remove the music, remove the sound effects, swap an effect for the next best library whoosh; zoom a shot in or out (`zoom_clip`, the punch-in geometry: speaker stays framed, top of the picture stays). The edits are saved in finish.json so a later rebuild keeps them.
+- **Whole-cut um/uh pass:** every revision first listens for each filler (`fillers.py`: Whisper `small` with fillers in the prompt, long window, loop guard, a tight second pass that must agree) and adds a note per filler. The `base` model was not repeatable; `small` gave the same tight "um" at every window size.
+- **`safety_net/battery_revisions.py`:** six revisions made on the real finished cut with no AI calls and read back from the result. Run 1 found four real failures (call-to-action key on older finishes, take-out wording refused, the title tool crashing when the title card is removed, a failed rebuild crashing with no message); all fixed. Run 3: 23 of 25. The two left were a trim worded "the last second" (refused for stating no amount) and an effect swap that could not know which effect the cut had; both fixed since.
+- **`capabilities.py`:** every op the reader can choose must be made by something; a test fails if one is not.
+- **Note reader checked on 20 plain notes (one real call):** 18 right; the other two were a swap with no description (fixed) and an "um" where there is none (correct refusal).
+- Not yet: case F rerun on the real cut, the replay before restart, the app restarted on this code.
+
 ### 2026-10-08: AI editor makes its reviewer's fixes (Septic interview), awaiting Ryan's run
 
 Not signed off. Commits 75ad972..d3eea7f on `worktree-review-loop-spike`:

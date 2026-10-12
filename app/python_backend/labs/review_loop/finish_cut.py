@@ -141,6 +141,63 @@ def short_cta(text: str) -> str:
     return t if t and len(t.split()) <= CTA_MAX_WORDS else ""
 
 
+GFX_LONGER_DEFAULT = 1.5      # seconds a note adds when it says "longer" without an amount
+
+
+def apply_graphics_edits(spec: dict, times: list[float], edits: list[dict], cta: str = "") -> tuple[dict, list[float], list[str]]:
+    """The person's changes to the graphics the finish made (Ryan, 2026-10-12: anything the editor made it must be able to change from a note), applied to the plan before the layer is made:
+    each edit is {"target": "title" | "cta" | "name:<tag>", "do": "text" | "sub" | "remove" | "longer" | "shorter", "text": ..., "seconds": ...}. A tag is named by the name it was first made with, so
+    a later edit still finds it after its words were changed. `times` are the seconds a sound effect goes on each graphic (title first, then each lower third); an effect goes with its graphic.
+    Returns the plan, the effect times, and a note in words for every edit that matched nothing."""
+    notes: list[str] = []
+    times = list(times)
+    lts = spec.get("lower_thirds", [])
+    for i, lt in enumerate(lts):
+        lt.setdefault("key", "cta" if lt.get("name") == short_cta(cta) and short_cta(cta) else lt["name"])
+    for e in edits:
+        target, do = str(e.get("target", "")), e.get("do")
+        if target == "title":
+            ti = spec.get("title")
+            if not ti:
+                notes.append("there is no title card to change")
+                continue
+            if do == "text" and str(e.get("text", "")).strip():
+                ti["small"] = str(e["text"]).strip()
+            elif do == "remove":
+                spec.pop("title")
+                if times:
+                    times.pop(0)
+            elif do in ("longer", "shorter"):
+                step = float(e.get("seconds") or GFX_LONGER_DEFAULT) * (1 if do == "longer" else -1)
+                ti["hold"] = max(float(ti["hold"]) + step, float(ti["builds"][-1]) + 0.4)
+            else:
+                notes.append(f"the title card cannot be changed by '{do}'")
+            continue
+        key = "cta" if target == "cta" else target.removeprefix("name:")
+        idx = next((j for j, lt in enumerate(lts) if lt.get("key") == key or lt.get("name") == key), None)
+        if idx is None:
+            notes.append(f"there is no '{key}' graphic to change")
+            continue
+        lt = lts[idx]
+        if do == "text" and str(e.get("text", "")).strip():
+            lt["name"] = str(e["text"]).strip()
+        elif do == "sub":
+            lt["sub"] = str(e.get("text", "")).strip()
+        elif do == "remove":
+            lts.pop(idx)
+            off = 1 if spec.get("title") else 0                              # the title's effect time comes first, then each name tag's; the call to action has none
+            if idx + off < len(times):
+                times.pop(idx + off)
+        elif do in ("longer", "shorter"):
+            step = float(e.get("seconds") or GFX_LONGER_DEFAULT) * (1 if do == "longer" else -1)
+            lt["until"] = max(float(lt.get("until", 3.0)) + step, 1.6)
+        else:
+            notes.append(f"the '{key}' graphic cannot be changed by '{do}'")
+    if "lower_thirds" in spec and not spec["lower_thirds"]:
+        spec.pop("lower_thirds")
+    return spec, times, notes
+
+
 def add_cta(spec: dict, cut, cta: str) -> str:
     """Put the call to action on screen over the end of the cut, in the lower thirds' navy box (anchored to the last clip, clearing just before the cut ends). A plain white label was tried first
     (2026-10-08): it sat on the white logo of Mitch's shirt and could not be read, and it pushed the captions up over his face. Returns a note in words when it could not be placed, else ""."""
@@ -174,19 +231,21 @@ def effect_profile(path: Path) -> dict:
     return {"sec": len(x) / 8000, "peak_at": pk * n / 8000, "body_sec": sum(1 for e in env if e > env[pk] - 12) * n / 8000}
 
 
-def choose_graphic_sfx(roots: list[Path] | None = None, profile=effect_profile) -> dict | None:
+def choose_graphic_sfx(roots: list[Path] | None = None, profile=effect_profile, exclude: tuple = (), prefer: str = "") -> dict | None:
     """The library effect for a graphic coming on: a real whoosh, found by measurement, not by asking for "a soft pop" (a faint file the finder once picked decays 8 dB in a tenth of a second and
     is silent after 0.3 s). Candidates are whooshes in the sound-effects library (never the generated store); the best builds to a peak 0.2 to 1.2 s in and holds its body for at least half a second."""
     import sfx_library as sl
     roots = roots or [r for r in sl.default_roots() if r != sl.generated_store()]
     best = None
     for it in sl.index(roots):
-        if not SFX_WORDS.search(it["name"]) or it["name"].startswith("Generated"):
+        if not SFX_WORDS.search(it["name"]) or it["name"].startswith("Generated") or it["name"] in exclude or Path(it["name"]).stem in exclude:     # an effect the person asked to swap out is never chosen again (by its file name or its name without the extension)
             continue
         pr = profile(Path(it["file"]))
         if not (0.2 <= pr["peak_at"] <= 1.2 and pr["body_sec"] >= 0.5 and pr["sec"] >= 0.8):
             continue
         score = pr["body_sec"] - abs(pr["peak_at"] - 0.7) - 0.1 * max(0.0, pr["sec"] - 3.0)
+        if prefer and Path(it["name"]).stem == Path(prefer).stem:
+            score += 1000.0                                                           # the effect the cut already has stays unless it was asked to change (a revision must not swap it by itself)
         if best is None or score > best[0]:
             best = (score, it, pr)
     return None if best is None else {"file": best[1]["file"], "name": best[1]["name"], **best[2]}
@@ -215,7 +274,8 @@ def version_name(src: Path) -> str:
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
         caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
-        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None, cta: str = "") -> dict:
+        graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None, cta: str = "",
+        graphics_edits: list[dict] | None = None, music_db: float | None = None, sfx_exclude: list[str] | None = None, sfx_keep: str = "") -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
 
     `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
@@ -264,6 +324,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
     # 1a. graphics: a title card and name tags (made and placed before the captions, which then keep clear of them)
     sfx_times: list[float] = []
     graphics_folder: Path | None = None
+    sfx_name = ""
     if graphics and have["on_screen"]:
         steps.append({"name": "graphics", "done": False, "summary": "the cut already has on-screen layers, so no title card or name tags were added"})
     elif graphics:
@@ -273,16 +334,22 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         cta_note = add_cta(spec, cut0, cta)
         if cta_note:
             gnotes = list(gnotes) + [cta_note]
-        (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
-        tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
-        nxt = out / "_step_graphics.xml"
-        tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
-        cur, graphics_folder = nxt, out / "graphics"
-        tags = [l["name"] for l in spec.get("lower_thirds", [])]
-        ctas = [words for words in [short_cta(cta)] if words and any(l["name"] == words for l in spec.get("lower_thirds", []))]
-        tags = [t for t in tags if t not in ctas]
-        steps.append({"name": "graphics", "done": True, "summary": "a title card with the topic" + (f" and lower thirds for {' and '.join(tags)}" if tags else "")
-                      + (f", and the call to action \"{ctas[-1]}\" over the end" if ctas else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
+        if graphics_edits:
+            spec, sfx_times, enotes = apply_graphics_edits(spec, sfx_times, graphics_edits, cta)       # the person's changes to what the finish made, kept on every later rebuild
+            gnotes = list(gnotes) + enotes
+        if not spec.get("title") and not spec.get("lower_thirds"):
+            steps.append({"name": "graphics", "done": True, "summary": "no graphics: every one was taken out by your notes" + ("; " + "; ".join(gnotes) if gnotes else "")})
+        else:
+            (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
+            tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
+            nxt = out / "_step_graphics.xml"
+            tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
+            cur, graphics_folder = nxt, out / "graphics"
+            tags = [l["name"] for l in spec.get("lower_thirds", [])]
+            ctas = [l["name"] for l in spec.get("lower_thirds", []) if l.get("key") == "cta"]
+            tags = [t for t in tags if t not in ctas]
+            steps.append({"name": "graphics", "done": True, "summary": ("a title card with the topic" if spec.get("title") else "no title card") + (f" and lower thirds for {' and '.join(tags)}" if tags else "")
+                          + (f", and the call to action \"{ctas[-1]}\" over the end" if ctas else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
 
     # 1. captions: what is said, on screen
     if captions and have["on_screen"]:
@@ -361,11 +428,13 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
                     break
                 progress("Music: that take's beats were not steady enough to cut to; generating another")
         margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
-                 "--mix-style", "bed", "--music-db", f"{MUSIC_DB:g}", "--music-file", conformed]
+                 "--mix-style", "bed", "--music-db", f"{(MUSIC_DB if music_db is None else music_db):g}", "--music-file", conformed]
         times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
         sfx_note = ""
+        sfx_name = ""
         if times:
-            choice = (choose_fn or choose_graphic_sfx)()
+            choice = choose_fn() if choose_fn else choose_graphic_sfx(exclude=tuple(sfx_exclude or ()), prefer=sfx_keep)
+            sfx_name = choice["name"] if choice else ""
             if choice:
                 lead = min(max(choice["peak_at"] - SFX_HIT_AT, 0.0), 0.8)                  # start early so the effect's peak lands as the graphic wipes in
                 times = sorted({round(max(0.0, x - lead), 3) for x in times})
@@ -431,7 +500,8 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         tmp.unlink(missing_ok=True)
     result = {"xml": str(final), "folder": str(out), "steps": steps, "checks": checks, "music_raw": music_raw or (str(music_file) if music_file else None)}
     (out / "finish.json").write_text(json.dumps({**{k: v for k, v in result.items() if k != "checks"}, "checks": checks,
-                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx, "punch": punch, "cta": cta}}, indent=1, default=str))
+                                                 "options": {"captions": captions, "music": music, "bleep": bleep, "graphics": graphics, "sfx": sfx, "punch": punch, "cta": cta, "graphics_edits": graphics_edits or [], "music_db": music_db,
+                                                             "sfx_exclude": sfx_exclude or [], "sfx_name": sfx_name}}, indent=1, default=str))
     return result
 
 

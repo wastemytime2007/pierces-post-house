@@ -56,14 +56,26 @@ def plan(cut, dims_fn, factor: float = PUNCH) -> list[dict]:
                 and abs(prev[1] - x) < SAME_X and abs(prev[0].motion[0] - scale) < SAME_SCALE)
         run_pos = run_pos + 1 if jump else 0
         if run_pos % 2 == 1 and scale <= widest[c.src_path] * 1.01:          # only a clip still at the widest framing: a revised cut that splits a punched clip is never punched closer again
-            s2 = scale * factor
-            s1, s2p = scale / 100.0, s2 / 100.0
-            top = min(max(sh / 2 - vert * sh / s1 - out_h / (2 * s1), 0.0), max(sh - out_h / s1, 0.0))   # the source row at the top of the wide shot (render_preview's geometry)
-            cy2 = min(max(top + out_h / (2 * s2p), out_h / (2 * s2p)), sh - out_h / (2 * s2p))        # the tight shot starts on the same row, kept inside the source
-            rows.append({"idx": c.idx, "scale": round(s2, 4), "horiz": framing.horiz_for_person(x, s2, sw, out_w), "vert": round((sh / 2 - cy2) * s2p / sh, 6),
-                         "was_scale": scale, "x": round(x, 4)})
+            rows.append({"idx": c.idx, **zoom_row(c, scale * factor, dims_fn, out_w, out_h)})
         prev = (c, x)
     return rows
+
+
+def zoom_row(c, new_scale: float, dims_fn, out_w: int, out_h: int) -> dict:
+    """The framing of clip `c` at `new_scale` percent: the same person stays in mid-frame and the TOP of the picture stays on the same row of the source (so a closer shot never cuts off a head:
+    scaling about the middle did, on the Septic cut). {"scale", "horiz", "vert", "was_scale", "x"}."""
+    scale, horiz, vert = c.motion
+    sw, sh = dims_fn(c.src_path)
+    x = framing.x_for_horiz(horiz, scale, sw)
+    s1, s2p = scale / 100.0, new_scale / 100.0
+    top = min(max(sh / 2 - vert * sh / s1 - out_h / (2 * s1), 0.0), max(sh - out_h / s1, 0.0))     # the source row at the top of the shot as it is (render_preview's geometry)
+    cy2 = min(max(top + out_h / (2 * s2p), out_h / (2 * s2p)), sh - out_h / (2 * s2p))             # the new shot starts on the same row, kept inside the source
+    return {"scale": round(new_scale, 4), "horiz": framing.horiz_for_person(x, new_scale, sw, out_w), "vert": round((sh / 2 - cy2) * s2p / sh, 6), "was_scale": scale, "x": round(x, 4)}
+
+
+def widest_scale(cut_w: int, cut_h: int, src_w: float, src_h: float) -> float:
+    """The smallest scale (percent) at which the frame is still filled by the source: wider than this would show black."""
+    return max(cut_w / src_w, cut_h / src_h) * 100.0
 
 
 def punch_in(xml_in: Path, xml_out: Path, dims_fn=None, factor: float = PUNCH) -> list[dict]:

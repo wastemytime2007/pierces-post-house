@@ -342,6 +342,28 @@ def test_the_picker_takes_a_whoosh_that_builds_and_holds_and_skips_a_faint_click
     assert pick["name"] == "Air - Short Whoosh.wav"                       # the rope's peak is 2.8 s in and the generated pop is faint and starts at its peak
 
 
+def test_a_swapped_effect_is_replaced_by_the_next_best_whoosh_and_never_chosen_again(tmp_path):
+    """Ryan, 2026-10-12: a note asking for a different sound effect: the one in use is skipped and the next best is taken."""
+    for n in ("Air - Short Whoosh.wav", "Rope - Whoosh.wav"):
+        (tmp_path / n).write_bytes(b"")
+    profiles = {"Air - Short Whoosh.wav": {"sec": 2.6, "peak_at": 0.7, "body_sec": 1.5}, "Rope - Whoosh.wav": {"sec": 2.9, "peak_at": 0.9, "body_sec": 1.0}}
+    first = fc.choose_graphic_sfx([tmp_path], profile=lambda p: profiles[p.name])
+    second = fc.choose_graphic_sfx([tmp_path], profile=lambda p: profiles[p.name], exclude=(first["name"],))
+    assert first["name"] == "Air - Short Whoosh.wav" and second["name"] == "Rope - Whoosh.wav"
+    assert fc.choose_graphic_sfx([tmp_path], profile=lambda p: profiles[p.name], exclude=(first["name"], second["name"])) is None
+
+
+def test_a_revision_keeps_the_effect_the_cut_already_has_unless_it_was_asked_to_swap_it(tmp_path):
+    """Adding a folder to the effects library changed which effect a fresh finish picks; a revision must not change the cut's effect by itself."""
+    for n in ("Air - Short Whoosh.wav", "Rope - Whoosh.wav"):
+        (tmp_path / n).write_bytes(b"")
+    profiles = {"Air - Short Whoosh.wav": {"sec": 2.6, "peak_at": 0.7, "body_sec": 1.5}, "Rope - Whoosh.wav": {"sec": 2.9, "peak_at": 0.9, "body_sec": 1.0}}
+    prof = lambda p: profiles[p.name]   # noqa: E731
+    assert fc.choose_graphic_sfx([tmp_path], profile=prof)["name"] == "Air - Short Whoosh.wav"                              # the better one when nothing is kept
+    assert fc.choose_graphic_sfx([tmp_path], profile=prof, prefer="Rope - Whoosh")["name"] == "Rope - Whoosh.wav"            # the cut's own effect stays, named by its summary without the extension
+    assert fc.choose_graphic_sfx([tmp_path], profile=prof, prefer="Rope - Whoosh", exclude=("Rope - Whoosh.wav",))["name"] == "Air - Short Whoosh.wav"   # asked to swap it: not kept
+
+
 def test_the_effect_is_levelled_by_how_loud_it_plays_not_by_its_first_instant_click(tmp_path):
     import make_audio as ma
     speech = tmp_path / "speech.wav"
@@ -434,3 +456,52 @@ def test_the_call_to_action_goes_over_the_end_of_the_cut_in_the_name_tag_box():
     short = Cut("s", 30.0, 1080, 1920, 13.0)
     short.video += [VideoClip(1, 0.0, 12.0, "/c.mp4", 100.0, 112.0), VideoClip(2, 12.0, 13.0, "/c.mp4", 200.0, 201.0)]
     assert "too short" in fc.add_cta({}, short, "Follow for more")
+
+
+def _gfx_spec():
+    """A title card, name tags for Bob and Mitch and the call to action, as the finish makes them, with an effect time on the title and on each name tag."""
+    spec = {"title": {"anchor": {}, "small": "The septic you don't replace yet", "big": "", "builds": [0.0, 0.2, 0.4], "hold": 2.4},
+            "lower_thirds": [{"anchor": {}, "name": "Bob", "sub": "Builder / Founder", "until": 3.2}, {"anchor": {}, "name": "Mitch", "sub": "Operator / CEO", "until": 3.2},
+                             {"anchor": {}, "name": "DM or comment 'septic'", "sub": "", "until": 3.0}]}
+    return spec, [0.1, 2.7, 17.5]
+
+
+CTA = "DM or comment 'septic' if you're selling"
+
+
+def test_a_note_can_change_the_words_of_the_title_a_name_tag_and_the_call_to_action():
+    """Ryan, 2026-10-12: anything the editor made, it must be able to change from a note."""
+    spec, times = _gfx_spec()
+    spec, times, notes = fc.apply_graphics_edits(spec, times, [{"target": "title", "do": "text", "text": "Septic timing"}, {"target": "name:Bob", "do": "text", "text": "Bob, founder"},
+                                                                {"target": "cta", "do": "text", "text": "DM us 'septic'"}, {"target": "name:Mitch", "do": "sub", "text": ""}], CTA)
+    assert spec["title"]["small"] == "Septic timing" and notes == []
+    assert [l["name"] for l in spec["lower_thirds"]] == ["Bob, founder", "Mitch", "DM us 'septic'"] and spec["lower_thirds"][1]["sub"] == ""
+
+
+def test_an_edit_still_finds_a_tag_after_its_words_were_changed():
+    spec, times = _gfx_spec()
+    edits = [{"target": "name:Bob", "do": "text", "text": "Bob, founder"}, {"target": "name:Bob", "do": "longer", "seconds": 2.0}]      # the second edit names Bob by his first name
+    spec, times, notes = fc.apply_graphics_edits(spec, times, edits, CTA)
+    assert notes == [] and spec["lower_thirds"][0]["name"] == "Bob, founder" and spec["lower_thirds"][0]["until"] == 5.2
+
+
+def test_taking_a_graphic_out_takes_its_sound_effect_with_it():
+    spec, times = _gfx_spec()
+    spec, times, _n = fc.apply_graphics_edits(spec, times, [{"target": "name:Bob", "do": "remove"}], CTA)
+    assert [l["name"] for l in spec["lower_thirds"]] == ["Mitch", "DM or comment 'septic'"] and times == [0.1, 17.5]       # Bob's effect (2.7 s) is gone, the others stay on their graphics
+    spec, times, _n = fc.apply_graphics_edits(spec, times, [{"target": "title", "do": "remove"}], CTA)
+    assert "title" not in spec and times == [17.5]
+    spec, times, _n = fc.apply_graphics_edits(spec, times, [{"target": "cta", "do": "remove"}, {"target": "name:Mitch", "do": "remove"}], CTA)
+    assert "lower_thirds" not in spec and times == []                                                                     # nothing left: the finish skips the graphics layer
+
+
+def test_a_graphic_can_be_kept_up_longer_or_ended_sooner_but_not_below_a_readable_time():
+    spec, times = _gfx_spec()
+    spec, _t, _n = fc.apply_graphics_edits(spec, times, [{"target": "title", "do": "longer"}, {"target": "cta", "do": "shorter", "seconds": 9.0}, {"target": "name:Bob", "do": "longer", "seconds": 1.0}], CTA)
+    assert spec["title"]["hold"] == 2.4 + fc.GFX_LONGER_DEFAULT and spec["lower_thirds"][2]["until"] == 1.6 and spec["lower_thirds"][0]["until"] == 4.2
+
+
+def test_an_edit_that_matches_no_graphic_says_so():
+    spec, times = _gfx_spec()
+    _s, _t, notes = fc.apply_graphics_edits(spec, times, [{"target": "name:Nobody", "do": "remove"}], CTA)
+    assert notes == ["there is no 'Nobody' graphic to change"]

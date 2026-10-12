@@ -41,20 +41,15 @@ NOWHERE = "nowhere"
 OP_MADE_BY: dict[str, str] = {
     "tighten_pause": TIMELINE, "remove_range": TIMELINE, "trim_start": TIMELINE, "trim_end": TIMELINE, "extend_end": TIMELINE,
     "extend_start": TIMELINE, "start_at_words": TIMELINE, "end_at_words": TIMELINE, "move_clip": TIMELINE, "drop_clip": TIMELINE,
-    "reframe_vertical": TIMELINE, "follow_speaker": TIMELINE, "remove_filler": TIMELINE,
+    "reframe_vertical": TIMELINE, "follow_speaker": TIMELINE, "remove_filler": TIMELINE, "zoom_clip": TIMELINE,
     "edit_caption": REBUILD, "bleep_word": REBUILD,
+    "edit_callout": REBUILD, "remove_graphic": REBUILD, "extend_graphic": REBUILD, "end_graphic": REBUILD,
+    "music_volume": REBUILD, "remove_music": REBUILD, "remove_sfx": REBUILD, "replace_sfx": REBUILD,
     "by_finish": FINISH,
-    "extend_graphic": NOWHERE, "end_graphic": NOWHERE, "edit_callout": NOWHERE, "remove_graphic": NOWHERE, "replace_sfx": NOWHERE,
     "unsupported": NOWHERE,
 }
 
-NOWHERE_SAY = {
-    "extend_graphic": "keeping a graphic on screen longer",
-    "end_graphic": "ending a graphic at a set moment",
-    "edit_callout": "changing a graphic's words",
-    "remove_graphic": "taking a graphic out",
-    "replace_sfx": "swapping a sound effect for a different one",
-}
+NOWHERE_SAY: dict[str, str] = {}      # every op the reader can choose is now made by something; an op added later with no maker is listed here, and the test fails until it is
 
 
 def finish_adds() -> str:

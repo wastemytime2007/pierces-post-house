@@ -189,3 +189,58 @@ def test_qa_measures_the_reframe_from_the_two_xmls_and_fails_a_move_the_wrong_wa
     good = qa_pass.check_op(o, item, NOTES[0], cut, new, {}, None, {})
     wrong = qa_pass.check_op({**o, "direction": "raise"}, item, NOTES[0], cut, new, {}, None, {})
     assert good.status == qa_pass.VERIFIED and wrong.status == qa_pass.FAILED
+
+
+ZOOM_NOTES = [{"timeline_sec": 12.0, "clip": 2, "text": "Zoom in on this shot a little"}, {"timeline_sec": 12.0, "clip": 2, "text": "The shot is too tight, pull back"},
+              {"timeline_sec": 12.0, "clip": 2, "text": "Make the pause shorter"}]
+
+
+def test_a_note_can_zoom_a_shot_in_or_out_and_only_when_it_says_so(framed):
+    """Ryan, 2026-10-12: "Zoom in on this shot" was reported unsupported although the punch-in tool does exactly this."""
+    cut = timeline.load_cut(framed)
+    ops = [{"note": 1, "op": "zoom_clip", "clip": 2, "direction": "in", "amount": "little"}, {"note": 2, "op": "zoom_clip", "clip": 2, "direction": "out", "amount": "little"},
+           {"note": 3, "op": "zoom_clip", "clip": 2, "direction": "in"}, {"note": 1, "op": "zoom_clip", "clip": 99, "direction": "in"}, {"note": 1, "op": "zoom_clip", "clip": 2, "direction": "sideways"}]
+    got = opsmod.validate(ops, ZOOM_NOTES, cut)
+    assert [(o["note"], o["op"], o.get("direction")) for o in got if o["op"] == "zoom_clip"] == [(1, "zoom_clip", "in"), (2, "zoom_clip", "out")]
+    assert sum(1 for o in got if o["op"] == "unsupported") == 3                      # no zoom words in note 3, a clip that does not exist, a direction that is not one
+
+
+def test_zooming_in_scales_only_that_clip_keeps_the_top_of_the_picture_and_changes_no_timing(tmp_path, framed):
+    cut = timeline.load_cut(framed)
+    out = tmp_path / "v2.xml"
+    changes, delta = apply_ops.apply_ops(framed, out, cut, [{"note": 1, "op": "zoom_clip", "clip": 2, "direction": "in", "amount": "little"}], ZOOM_NOTES)
+    assert changes[0].applied and delta == 0
+    before, after = _verts(framed), _verts(out)
+    assert after[0] == before[0] and after[2] == before[2]                           # other clips untouched
+    assert abs(after[1][0] - 150 * apply_ops.ZOOM_LITTLE) < 0.01
+    import punch_in as pi                                                           # the top edge of the picture is on the same source row before and after
+    s0, v0, s1, v1 = before[1][0] / 100, before[1][2], after[1][0] / 100, after[1][2]
+    top0 = 180 / 2 - v0 * 180 / s0 - 180 / (2 * s0)
+    top1 = 180 / 2 - v1 * 180 / s1 - 180 / (2 * s1)
+    assert abs(top0 - top1) < 0.5 and pi.widest_scale(320, 180, 320, 180) == 100.0
+
+
+def test_zooming_out_never_goes_wider_than_the_picture_fills_the_frame_and_zooming_in_stops_at_the_cap(tmp_path, framed):
+    cut = timeline.load_cut(framed)
+    out = tmp_path / "v2.xml"
+    changes, _d = apply_ops.apply_ops(framed, out, cut, [{"note": 1, "op": "zoom_clip", "clip": 2, "direction": "out", "amount": "lot"}], ZOOM_NOTES)
+    assert changes[0].applied and abs(_verts(out)[1][0] - 150 / apply_ops.ZOOM_LOT) < 0.01 and _verts(out)[1][0] >= 100.0       # 111%: still fills the frame
+    out2 = tmp_path / "v3.xml"
+    changes, _d = apply_ops.apply_ops(framed, out2, cut, [{"note": 1, "op": "zoom_clip", "clip": 2, "direction": "in", "amount": "lot"}], ZOOM_NOTES)
+    assert changes[0].applied and abs(_verts(out2)[1][0] - 150 * apply_ops.ZOOM_LOT) < 0.01                       # 202.5%: under the cap (1.6 times the widest framing of the file in the cut, 240%)
+    cut2 = timeline.load_cut(out2)
+    out3 = tmp_path / "v4.xml"
+    changes, _d = apply_ops.apply_ops(out2, out3, cut2, [{"note": 1, "op": "zoom_clip", "clip": 2, "direction": "in", "amount": "lot"}], ZOOM_NOTES)       # a second big step would pass the cap
+    assert changes[0].applied and abs(_verts(out3)[1][0] - 150 * apply_ops.ZOOM_TOTAL_MAX) < 0.01 and "stopped at the closest" in changes[0].summary
+
+
+def test_the_qa_measures_a_zoom_from_the_two_versions(tmp_path, framed):
+    import qa_pass
+    cut = timeline.load_cut(framed)
+    out = tmp_path / "v2.xml"
+    apply_ops.apply_ops(framed, out, cut, [{"note": 1, "op": "zoom_clip", "clip": 2, "direction": "in", "amount": "little"}], ZOOM_NOTES)
+    new = timeline.load_cut(out)
+    o = {"note": 1, "op": "zoom_clip", "clip": 2, "direction": "in"}
+    item = {"applied": True, "summary": "x"}
+    assert qa_pass.check_op(o, item, ZOOM_NOTES[0], cut, new, {}, None, {}).status == qa_pass.VERIFIED
+    assert qa_pass.check_op({**o, "direction": "out"}, item, ZOOM_NOTES[0], cut, new, {}, None, {}).status == qa_pass.FAILED

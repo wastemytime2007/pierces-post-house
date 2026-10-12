@@ -40,13 +40,13 @@ def test_ops_the_registry_says_the_rebuild_makes_are_really_used_by_the_rebuild(
     import creator_tools as ct
     src = inspect.getsource(ct._put_layers_back)
     assert '"edit_caption"' in src and "requests_from_notes" in src
-    assert {op for op, by in caps.OP_MADE_BY.items() if by == caps.REBUILD} == {"edit_caption", "bleep_word"}
+    assert {op for op, by in caps.OP_MADE_BY.items() if by == caps.REBUILD} == set(ct.REBUILD_OPS)
 
 
 def test_ops_the_registry_says_nothing_makes_are_really_made_by_nothing_in_the_app():
     """If a step starts making one of these, this fails until the registry says so (and the result stops saying 'nothing makes this')."""
     src = (REPO / "app" / "python_backend" / "creator_tools.py").read_text()
-    for tool in ("change_callout", "remove_graphic", "replace_sfx", "reconform"):
+    for tool in ("replace_sfx.py", "change_callout.py"):                                   # the scripts that would make the one op still made by nothing (replace_sfx)
         assert tool not in src, f"creator_tools now uses {tool}: update capabilities.OP_MADE_BY"
 
 
@@ -78,6 +78,27 @@ def test_a_finish_skill_the_note_does_not_ask_for_is_refused():
     assert opsmod.validate([{"note": 1, "op": "by_finish", "skill": "punch-in"}], [n], _cut())[0]["op"] == "unsupported"
 
 
-def test_a_note_nothing_makes_says_so_plainly():
-    assert "nothing in the app makes this yet" in caps.result_text("remove_graphic")
-    assert "made by the graphics step" not in caps.result_text("extend_graphic")
+def test_every_op_the_reader_can_choose_is_made_by_something_and_an_unmade_one_must_say_so():
+    """Ryan, 2026-10-12: anything the editor made, it must be able to change from a note. Only "unsupported" may be made by nothing; an op added with no maker fails here until it has one."""
+    unmade = {op for op, by in caps.OP_MADE_BY.items() if by == caps.NOWHERE} - {"unsupported"}
+    assert unmade == set(caps.NOWHERE_SAY), f"ops made by nothing: {unmade}"
+    assert all("nothing in the app makes this yet" in caps.result_text(op) for op in unmade)
+    assert caps.result_text("extend_graphic") == ""
+
+
+def test_a_request_to_swap_a_sound_effect_needs_no_description_of_the_new_sound():
+    """2026-10-12: "swap it for something else" was refused for not describing a sound; the effect is swapped for the next best whoosh in the library."""
+    n = {"note": 1, "text": "That sound effect on the name tag is annoying, swap it for something else", "timeline_sec": 3.0, "clip": 1, "shapes": []}
+    out = opsmod.validate([{"note": 1, "op": "replace_sfx", "sound": ""}], [n], _cut())
+    assert out[0]["op"] == "replace_sfx" and out[0]["sound"] == ""
+    pic = {"note": 1, "text": "the picture is too dark", "timeline_sec": 3.0, "clip": 1, "shapes": []}
+    assert opsmod.validate([{"note": 1, "op": "replace_sfx", "sound": ""}], [pic], _cut())[0]["op"] == "unsupported"
+
+
+def test_a_trim_of_the_last_second_is_a_stated_amount():
+    """2026-10-12: "cut the last second off this clip" was refused for stating no amount."""
+    cut = _cut()
+    n = {"note": 1, "text": "cut the last second off this clip", "timeline_sec": 4.0, "clip": 1, "shapes": []}
+    assert opsmod.validate([{"note": 1, "op": "trim_end", "clip": 1, "seconds": 1.0}], [n], cut)[0]["op"] == "trim_end"
+    vague = {"note": 1, "text": "trim a little off the end of this clip", "timeline_sec": 4.0, "clip": 1, "shapes": []}
+    assert opsmod.validate([{"note": 1, "op": "trim_end", "clip": 1, "seconds": 1.0}], [vague], cut)[0]["op"] == "unsupported"

@@ -32,9 +32,12 @@ class LibraryError(RuntimeError):
     pass
 
 
+EDITING_SFX = Path("/Users/ryandossey/Documents/ACTIVE PROJECTS/SFX")      # the effects Ryan's own projects already use (freesound whooshes and hits); the Artlist folder has two whooshes, so a swap had no choice (2026-10-12)
+
+
 def default_roots() -> list[Path]:
     lib = os.environ.get("POSTHOUSE_SFX_LIBRARY")
-    roots = [Path(p).expanduser() for p in lib.split(":") if p] if lib else [Path.home() / "Downloads" / "Artlist Library" / "Sound Effects"]
+    roots = [Path(p).expanduser() for p in lib.split(":") if p] if lib else [Path.home() / "Downloads" / "Artlist Library" / "Sound Effects", EDITING_SFX]
     return roots + [generated_store()]
 
 

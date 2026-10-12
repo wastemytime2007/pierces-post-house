@@ -310,20 +310,31 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
         return Row(n, kind, NOT_DONE, f"not done: {o.get('reason', 'not supported')}")
     if kind == "replace_sfx":
         return check_replace_sfx(o, note, audio)
+    if kind in ("music_volume", "remove_music", "remove_sfx"):
+        # the music and the effects are rebuilt with the layers after this check runs (creator_tools._put_layers_back), so there is nothing here to measure
+        return Row(n, kind, UNMEASURED, "made when the finishing layers are rebuilt on the revised cut; not measured by this pass")
     if kind == "extend_graphic":
         return check_extend_graphic(o, note, layers)
     if kind == "end_graphic":
         return check_end_graphic(o, note, layers)
     if kind == "remove_graphic":
         return check_remove_graphic(o, note, layers)
+    if kind == "edit_callout":
+        return check_edit_callout(o, note, layers)
     if kind == "edit_caption":
         return check_edit_caption(o, note, layers)
     if kind == "bleep_word":
         return check_bleep_word(o, note, layers)
-    if kind == "edit_callout":
-        return check_edit_callout(o, note, layers)
     if not applied:
         return Row(n, kind, NOT_DONE, f"not applied: {(item or {}).get('summary', 'no record from the revise step')}")
+
+    if kind == "zoom_clip":
+        i = o["clip"] - 1
+        if not (0 <= i < len(old.video) and 0 <= i < len(new.video)) or not old.video[i].motion or not new.video[i].motion:
+            return Row(n, kind, UNMEASURED, "the clip numbers moved in this revision, so its scale could not be compared")
+        a, b = old.video[i].motion[0], new.video[i].motion[0]
+        ok = b > a * 1.05 if o.get("direction", "in") == "in" else b < a / 1.05
+        return Row(n, kind, VERIFIED if ok else FAILED, f"clip {o['clip']} is scaled {a:.1f}% -> {b:.1f}% ({'closer' if o.get('direction', 'in') == 'in' else 'wider'})")
 
     if kind in ("tighten_pause", "remove_range"):
         rem = item.get("removed")

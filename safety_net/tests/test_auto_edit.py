@@ -478,3 +478,64 @@ def test_a_cut_with_no_fillers_keeps_the_original_notes_file(tmp_path, monkeypat
     mine = [{"timeline_sec": 3.0, "clip": 1, "text": "tighter", "shapes": []}]
     notes, nfile = ct._with_filler_notes(tmp_path / "v.xml", mine, tmp_path / "n.json", tmp_path / "out")
     assert notes == mine and nfile == tmp_path / "n.json"
+
+
+CTA_FULL = "DM or comment 'septic' if you're selling a house you think might have one"
+
+
+def _recorded_finish(tmp_path, cta_marked=True):
+    """What the last finish left behind: its graphics spec and the plan with each graphic's time (a title card, name tags for Bob and Mitch, the call to action)."""
+    import json
+    g = tmp_path / "graphics"
+    g.mkdir()
+    spec = {"title": {"small": "Topic"}, "lower_thirds": [{"name": "Bob", "key": "Bob"}, {"name": "Mitch", "key": "Mitch"}, {"name": "DM or comment 'septic'", **({"key": "cta"} if cta_marked else {})}]}
+    plan = {"title": {"on": [0.0, 0.2, 0.4], "off": 2.4, "small": "Topic"},
+            "lower_thirds": [{"name": "Bob", "on": 2.7, "off": 5.9}, {"name": "Mitch", "on": 17.5, "off": 20.7}, {"name": "DM or comment 'septic'", "on": 33.0, "off": 36.0}]}
+    (tmp_path / "graphics_spec.json").write_text(json.dumps(spec))
+    (g / "placement.json").write_text(json.dumps({"plan": plan}))
+    return {"folder": str(tmp_path), "options": {"cta": CTA_FULL, "music_db": None}}
+
+
+def _note(text, at):
+    return {"timeline_sec": at, "clip": 1, "text": text, "shapes": []}
+
+
+def test_notes_about_the_title_a_name_tag_and_the_call_to_action_become_edits_that_find_their_graphic(tmp_path):
+    rec = _recorded_finish(tmp_path, cta_marked=False)                                            # an older finish did not mark the call to action: it is found by its words
+    notes = [_note("change the title card to say Septic timing", 1.0), _note("make this name tag say Bob, founder", 3.5), _note("change the call to action to say DM us", 34.0),
+             _note("keep this up two seconds longer", 18.0), _note("remove the call to action", 34.0)]
+    ops = [{"note": 1, "op": "edit_callout", "title": "Septic timing"}, {"note": 2, "op": "edit_callout", "title": "Bob, founder"}, {"note": 3, "op": "edit_callout", "title": "DM us"},
+           {"note": 4, "op": "extend_graphic", "seconds": 2.0}, {"note": 5, "op": "remove_graphic"}]
+    upd, res = ct._finish_edits(ops, notes, rec, CTA_FULL)
+    assert upd["graphics_edits"] == [{"target": "title", "do": "text", "text": "Septic timing"}, {"target": "name:Bob", "do": "text", "text": "Bob, founder"},
+                                     {"target": "cta", "do": "text", "text": "DM us"}, {"target": "name:Mitch", "do": "longer", "seconds": 2.0}, {"target": "cta", "do": "remove"}]
+    assert all(ok for ok, _s in res.values()) and "Septic timing" in res[1][1]
+
+
+def test_a_note_about_a_graphic_that_is_not_there_says_so_and_changes_nothing(tmp_path):
+    rec = _recorded_finish(tmp_path)
+    upd, res = ct._finish_edits([{"note": 1, "op": "remove_graphic"}], [_note("take this graphic out", 28.0)], rec, CTA_FULL)         # 28 s: nothing is on screen within 2 s of it
+    assert upd["graphics_edits"] == [] and res[1][0] is False and "no title card" in res[1][1]
+
+
+def test_music_and_sound_effect_notes_become_a_level_a_removal_and_a_swap(tmp_path):
+    rec = _recorded_finish(tmp_path)
+    rec["options"].update({"music_db": -6.0, "sfx_name": "Air - Whoosh.wav", "sfx_exclude": ["Old.wav"]})
+    ops = [{"note": 1, "op": "music_volume", "direction": "down"}, {"note": 2, "op": "replace_sfx", "sound": "punchier"}]
+    upd, res = ct._finish_edits(ops, [_note("the music is too loud", 5.0), _note("make the effect punchier", 2.0)], rec, CTA_FULL)
+    assert upd["music_db"] == -6.0 - ct.MUSIC_STEP_DB and upd["sfx_exclude"] == ["Old.wav", "Air - Whoosh.wav"]
+    assert res[1][0] and res[2][0]
+    upd, _res = ct._finish_edits([{"note": 1, "op": "remove_music"}], [_note("no music", 5.0)], rec, CTA_FULL)
+    assert upd["no_music"] and upd["no_sfx"]                                                      # the effects ride on the music: they go with it
+    upd, _res = ct._finish_edits([{"note": 1, "op": "remove_sfx"}], [_note("no sound effects", 5.0)], rec, CTA_FULL)
+    assert upd["no_sfx"] and not upd["no_music"]
+    up2, _r = ct._finish_edits([{"note": 1, "op": "music_volume", "direction": "up"}] * 8, [_note("the music is too quiet", 5.0)], rec, CTA_FULL)
+    assert up2["music_db"] == -1.0                                                                # never louder than the voice
+
+
+def test_the_effect_a_finish_used_is_read_from_its_summary_when_it_was_not_recorded_and_is_swapped_out(tmp_path):
+    rec = _recorded_finish(tmp_path)
+    rec["steps"] = [{"name": "music", "summary": "a music bed modelled on Aves, with a sound effect on each graphic (3) (Air Slicers - Short Dirty Woosh)"}]
+    assert ct._sfx_named_in(rec) == "Air Slicers - Short Dirty Woosh" and ct._sfx_named_in({"steps": []}) == ""
+    upd, res = ct._finish_edits([{"note": 1, "op": "replace_sfx", "sound": ""}], [_note("swap the sound effect for something else", 2.0)], rec, CTA_FULL)
+    assert upd["sfx_exclude"] == ["Air Slicers - Short Dirty Woosh"] and "not \"Air Slicers - Short Dirty Woosh\"" in res[1][1]

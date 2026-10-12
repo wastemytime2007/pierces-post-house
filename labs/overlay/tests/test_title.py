@@ -148,3 +148,9 @@ def test_captions_keep_clear_of_a_lower_third_only_while_it_is_on():
     assert [round(b["t0"], 2) for b in blocked] == [1.95, 5.95]
     live = {"text": "and all three houses", "show_start": 2.5, "show_end": 3.5}
     assert mc.pick_position(live, blocked, 0.0) == ("bottom", False)                                            # the band under the lower third is free: the captions do not jump to the top
+
+
+def test_a_spec_without_a_title_card_has_anchors_for_what_it_has():
+    """2026-10-12: taking the title card out (a note) crashed the title tool with KeyError 'title', and the whole revision with it."""
+    assert [a["what"] for a in mt.anchors_of(LT_SPEC)] == ["lower third: Bob", "lower third: Mitch"]
+    assert [a["what"] for a in mt.anchors_of(SPEC)] == ["title", "label: The closing"]
