@@ -671,6 +671,11 @@ def _angle_from_dict(d: dict):
     # cutlist.StoryAngle.pool_ranges docstring. Empty for any angle that
     # doesn't set it (e.g. PreCut's own generate_angles output).
     pool_ranges = _parse_ranges(d.get("pool_ranges"))
+    try:
+        from posthouse.story_architect import normalize_pool_ranges
+        pool_ranges = normalize_pool_ranges(pool_ranges, source_ranges)        # no leftover over another, none over the cut: an idea saved with overlaps was exported with them
+    except ImportError:
+        pass
     return StoryAngle(
         angle_id=d.get("angle_id", ""),
         brief=brief,

@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-13.1"
+EDITOR_REVISION = "2026-10-13.2"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -383,8 +383,22 @@ def premiere_app(prefer: str | None = None, apps: list[dict] | None = None) -> s
     return paths[0] if paths else None
 
 
-def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None) -> dict:
-    """The XML a version of the cut is, checked by the export check and (only if it passes) opened in Premiere. Never hands over an export it has not verified."""
+def root_xml_of(xml: Path) -> Path | None:
+    """The first version of the cut this one was made from: versions are written inside the folder of the one before ("<cut>_v2 - revised/..."), so the first sits beside that folder as "<cut>.xml".
+    None when this XML is itself the first."""
+    import re as _re
+    for p in xml.parents:
+        m = _re.match(r"^(.*)_v2 - revised$", p.name)
+        if m and (p.parent / f"{m.group(1)}.xml").is_file():
+            return p.parent / f"{m.group(1)}.xml"
+    return None
+
+
+def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, root: str | None = None) -> dict:
+    """The XML a version of the cut is, checked by the export check and (only if it passes) opened in Premiere. Never hands over an export it has not verified.
+
+    A check that already failed on the FIRST version of the cut is a defect the export came in with, not one the editing made (2026-10-13: the original export's leftover bin had two clips over the same
+    footage, so every version of the cut was refused and "Open in Premiere" failed on all of them). It is reported, and does not block; a check that fails only on this version still does."""
     import os
     src = Path(xml).expanduser()
     if not src.is_file():
@@ -397,7 +411,16 @@ def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None) 
     skip = {"CUT-GRANULARITY"} if export_gate.is_whole_file(src) else set()
     rows = [{"name": n, "ok": ok, "detail": d} for n, ok, d in rep.rows]
     failed = [r["name"] for r in rows if r["ok"] is False and r["name"] not in skip]
-    out = {"xml": str(src), "verified": not failed, "failed": failed, "rows": rows, "opened": False, "app": None}
+    inherited: list[str] = []
+    base = Path(root).expanduser() if root else root_xml_of(src)
+    if failed and base and base.is_file() and base.resolve() != src.resolve():
+        rep0 = verify_export.Report()
+        verify_export.check_xml(base, rep0)
+        skip0 = {"CUT-GRANULARITY"} if export_gate.is_whole_file(base) else set()          # a check skipped for that version is not a defect it had
+        before = {n for n, ok, _d in rep0.rows if ok is False and n not in skip0}
+        inherited = [n for n in failed if n in before]
+        failed = [n for n in failed if n not in before]
+    out = {"xml": str(src), "verified": not failed, "failed": failed, "inherited": inherited, "rows": rows, "opened": False, "app": None}
     if failed or not open_in_premiere:
         return out
     chosen = premiere_app(app)

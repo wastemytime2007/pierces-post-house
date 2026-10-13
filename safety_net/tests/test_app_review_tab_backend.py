@@ -167,6 +167,34 @@ def test_export_checks_the_xml_and_only_a_passing_one_is_opened(tmp_path):
         os.environ.pop("POSTHOUSE_NO_OPEN", None)
 
 
+def test_a_defect_the_first_export_already_had_does_not_block_every_later_version_but_a_new_one_still_does(tmp_path):
+    """2026-10-13: the original export's leftover bin had two clips over the same footage, so "Open in Premiere" was refused for every version of the cut, the editing's own included."""
+    creator_tools, good = _short_cut(tmp_path)
+    import os
+    import shutil
+    os.environ["POSTHOUSE_NO_OPEN"] = "1"
+    try:
+        bad_text = "<xmeml version='4'><sequence id='s'><name>x</name></sequence></xmeml>"
+        first = tmp_path / "Cut.xml"
+        first.write_text(bad_text)                                                        # the first export, with a defect of its own
+        later = tmp_path / "Cut_v2 - revised" / "Cut_v2.xml"
+        later.parent.mkdir()
+        later.write_text(bad_text)                                                        # a later version with the same defect: made by the exporter, not by the editing
+        r = creator_tools.export_xml(str(later))
+        assert r["verified"] is True and r["failed"] == [] and r["inherited"], r
+        assert creator_tools.export_xml(str(first))["verified"] is False                  # the first version itself is still checked
+        import xml_from_media
+        clean_first = xml_from_media.make(tmp_path / "Clip.mp4", tmp_path / "Clean.xml")      # a first version that passes its own export check
+        assert creator_tools.export_xml(str(clean_first))["verified"] is True
+        worse = tmp_path / "Clean_v2 - revised" / "Clean_v2.xml"
+        worse.parent.mkdir()
+        worse.write_text(bad_text)                                                        # a defect the first version did not have: it blocks
+        refused = creator_tools.export_xml(str(worse))
+        assert refused["verified"] is False and refused["failed"] and refused["inherited"] == []
+    finally:
+        os.environ.pop("POSTHOUSE_NO_OPEN", None)
+
+
 def test_an_export_the_app_just_made_is_remembered_and_listed_newest_first_and_a_deleted_one_is_not(tmp_path):
     """The export dialog lets the XML go anywhere, so the project records each export; the Review tab starts from the newest one."""
     sys.path.insert(0, str(REPO / "app" / "python_backend"))

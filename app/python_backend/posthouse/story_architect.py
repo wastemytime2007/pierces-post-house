@@ -849,6 +849,46 @@ def _compute_pool_leftovers(
     return deduped
 
 
+def normalize_pool_ranges(pool: List[TopicRange], used: List[TopicRange], min_sec: float = 0.5) -> List[TopicRange]:
+    """The leftover bin as it must be laid on the timeline: no two leftovers over the same footage, and none over footage the cut uses.
+
+    2026-10-13: an idea saved with two overlapping leftovers (624.9-628.8 s and 625.5-637.4 s of one file) was exported as it was, and the export check refused every version of the cut ("Open
+    in Premiere" failed). The bin built at generation time already merges overlaps (see `_compute_pool_leftovers`); a bin read back from a saved idea did not go through that. Overlapping or touching
+    leftovers of one file become one, then the cut's own ranges are taken out of them. A remnant shorter than `min_sec` is dropped. Order is by file, then time."""
+    by_file: Dict[str, List[TopicRange]] = {}
+    for r in pool:
+        by_file.setdefault(str(r.source_file), []).append(r)
+    cut_by_file: Dict[str, List[tuple]] = {}
+    for r in used:
+        cut_by_file.setdefault(str(r.source_file), []).append((r.source_start_sec, r.source_end_sec))
+    out: List[TopicRange] = []
+    for f, rs in by_file.items():
+        merged: List[List] = []
+        for r in sorted(rs, key=lambda r: r.source_start_sec):
+            if merged and r.source_start_sec <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], r.source_end_sec)
+            else:
+                merged.append([r.source_start_sec, r.source_end_sec, r])
+        for a, b, proto in merged:
+            pieces = [(a, b)]
+            for ca, cb in sorted(cut_by_file.get(f, [])):
+                nxt = []
+                for x, y in pieces:
+                    if cb <= x or ca >= y:
+                        nxt.append((x, y))
+                        continue
+                    if ca > x:
+                        nxt.append((x, ca))
+                    if cb < y:
+                        nxt.append((cb, y))
+                pieces = nxt
+            for x, y in pieces:
+                if y - x >= min_sec:
+                    out.append(TopicRange(source_file=proto.source_file, source_start_sec=x, source_end_sec=y, topic_label=proto.topic_label, summary=proto.summary))
+    out.sort(key=lambda r: (str(r.source_file), r.source_start_sec))
+    return out
+
+
 def _snap_to_phrase_bounds(
     start_sec: float, end_sec: float, phrases: List[dict]
 ) -> Optional[tuple]:

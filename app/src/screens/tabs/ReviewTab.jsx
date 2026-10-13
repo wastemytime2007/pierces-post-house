@@ -667,7 +667,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className={exportResult.verified ? "sync-section-hint" : "pm-tab-warnings"} role="status">
           {exportResult.verified
             ? exportResult.opened
-              ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}`
+              ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}` + (exportResult.inherited?.length ? `. Already in the original export, not made by the editing: ${exportResult.inherited.join(", ")} (footage in the leftover bin overlaps; your cut is not affected).` : "")
               : `Checked: ${fileName(exportResult.xml)} (not opened${exportResult.app ? "" : "; Premiere was not found"}).`
             : `Not opened: the export check failed (${exportResult.failed.join(", ")}). ${failedChecks.map((r) => r.detail).join(" ")}`}
         </div>
