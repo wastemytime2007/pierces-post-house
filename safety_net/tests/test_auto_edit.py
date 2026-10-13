@@ -539,3 +539,23 @@ def test_the_effect_a_finish_used_is_read_from_its_summary_when_it_was_not_recor
     assert ct._sfx_named_in(rec) == "Air Slicers - Short Dirty Woosh" and ct._sfx_named_in({"steps": []}) == ""
     upd, res = ct._finish_edits([{"note": 1, "op": "replace_sfx", "sound": ""}], [_note("swap the sound effect for something else", 2.0)], rec, CTA_FULL)
     assert upd["sfx_exclude"] == ["Air Slicers - Short Dirty Woosh"] and "not \"Air Slicers - Short Dirty Woosh\"" in res[1][1]
+
+
+def test_each_note_is_given_the_caption_lines_around_its_moment(tmp_path):
+    """The notes reader was blind to the captions, so "move the 23 to the next caption" replaced a whole line (2026-10-12)."""
+    import json
+    cap = tmp_path / "captions"
+    cap.mkdir()
+    (cap / "captions.json").write_text(json.dumps({"window": {"start": 0.0, "end": 30.0}, "groups": [
+        {"show_start": 15.0, "show_end": 16.6, "text": "so the plan is"}, {"show_start": 17.0, "show_end": 18.9, "text": "this septic, it costs $23"},
+        {"show_start": 19.0, "show_end": 20.4, "text": "000 is the quote we"}]}))
+    (tmp_path / "finish.json").write_text(json.dumps({"folder": str(tmp_path)}))
+    xml = tmp_path / "cut.xml"
+    xml.write_text("<xmeml/>")
+    notes = [{"timeline_sec": 18.0, "text": "move the 23 to the next caption"}, {"timeline_sec": 2.0, "text": "a note nowhere near a caption"}]
+    out, nfile = ct._with_caption_context(xml, notes, tmp_path / "n.json", tmp_path / "out")
+    assert out[0]["caption_lines"] == {"previous": "so the plan is", "this": "this septic, it costs $23", "next": "000 is the quote we"}
+    assert "caption_lines" not in out[1]                                                       # more than 1.5 s from any caption: nothing is attached
+    assert nfile.name == "notes_with_captions.json" and json.loads(nfile.read_text())["notes"][0]["caption_lines"]["next"] == "000 is the quote we"
+    plain, same = ct._with_caption_context(tmp_path / "other" / "cut.xml", notes, tmp_path / "n.json", tmp_path / "out")
+    assert plain == notes and same == tmp_path / "n.json"                                      # a cut with no captions layer: the notes are left alone

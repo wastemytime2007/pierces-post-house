@@ -223,10 +223,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
           setInfo(ev.message || "Nothing in the notes could be applied to the timeline.");
           return;
         }
-        if (!ev.auto) {                                                                                  // the editor's own revisions are reviewed by its loop; yours start it again
-          const lab = `V${versionsRef.current.length + 1}`;
-          if (autoOnRef.current) setAuto({ status: "running", round: 0, of: 4, label: lab });
-          aiStartRef.current?.(ev.xml, ev.folder, lab);
+        if (!ev.auto) {                                                                                  // YOUR revision is the end of the run: made as you asked, and the AI editor does not start cutting again (it did, on 2026-10-12: it dropped two more clips after a caption fix)
+          setAuto({ status: "done", summary: "Your notes were made on this version. The AI editor has left it alone: press \"Let the AI editor continue\" on the version if you want it to review and edit this one too.", left: [], versions: [], rounds: [] });
         }
         setVersions((vs) => {
           const next = [...vs, { label: `V${vs.length + 1}`, xml: ev.xml, folder: ev.folder, url: ev.url, qa: ev.qa, applied: ev.applied, notes: ev.notes }];
@@ -727,6 +725,18 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
+      {!aiState && version && auto.status !== "running" && (
+        <div className="run-pipeline-section">
+          <div className="pm-tab-row" style={{ alignItems: "center" }}>
+            <div className="run-pipeline-section-label" style={{ margin: 0 }}>{version.label}: made from your notes, and the AI editor has not touched it</div>
+            <span style={{ flex: 1 }} />
+            <button className="btn btn-ghost" disabled={!!busy} onClick={() => aiOnlyRef.current?.(version.xml, version.folder, version.label)}>Review it</button>
+            <button className="btn btn-ghost" disabled={!!busy} title="The AI editor reviews this version and makes the fixes it can, round after round, as it did on the first cut"
+              onClick={() => { setAuto({ status: "running", round: 0, of: 4, label: version.label }); aiStartRef.current?.(version.xml, version.folder, version.label); }}>Let the AI editor continue</button>
+          </div>
+        </div>
+      )}
+
       {aiState && (
         <div className="run-pipeline-section">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
@@ -740,6 +750,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
             {aiState.status === "done" && <button className="btn btn-ghost" onClick={() => setShowAi((x) => !x)}>{showAi ? "Hide" : "Show"} details</button>}
             {aiState.status !== "running" && (
               <button className="btn btn-ghost" disabled={!!busy} onClick={() => aiOnlyRef.current?.(version.xml, version.folder, version.label)}>Review again</button>
+            )}
+            {aiState.status !== "running" && auto.status !== "running" && (
+              <button className="btn btn-ghost" disabled={!!busy} title="The AI editor reviews this version and makes the fixes it can, round after round, as it did on the first cut"
+                onClick={() => { setAuto({ status: "running", round: 0, of: 4, label: version.label }); aiStartRef.current?.(version.xml, version.folder, version.label); }}>Let the AI editor continue</button>
             )}
           </div>
           {aiState.status === "failed" && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{aiState.message}</div>}

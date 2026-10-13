@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-12.1"
+EDITOR_REVISION = "2026-10-13.1"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -487,10 +487,44 @@ def _with_filler_notes(src: Path, note_list: list[dict], nfile: Path, folder: Pa
     return added, _notes_path(folder, added)
 
 
-def _notes_path(folder: Path, notes: list[dict]) -> Path:
+def _caption_lines_of(src: Path) -> list[tuple[float, float, str]]:
+    """The caption lines of the cut `src` (the layered cut a note was left on): [(start, end, words)] on the timeline, in order. Empty when the cut has no captions."""
+    import json
+    rec = _finish_record(src) or {}
+    cj = Path(rec.get("folder", "")) / "captions" / "captions.json"
+    if not cj.is_file():
+        return []
+    try:
+        j = json.loads(cj.read_text())
+        ws = float(j["window"]["start"])
+        return [(g["show_start"] + ws, g["show_end"] + ws, str(g["text"])) for g in j["groups"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def _with_caption_context(src: Path, note_list: list[dict], nfile: Path, folder: Path) -> tuple[list[dict], Path]:
+    """Each note gets the caption lines around its moment (`caption_lines`: previous / this / next), so the notes reader can see what the captions say (it was blind to them: "move the 23 to the next
+    caption" replaced a whole line with "$23,000") and the check can accept words that stay or move between neighbouring lines. Returns the notes and the file they are in."""
+    lines = _caption_lines_of(src)
+    if not lines:
+        return note_list, nfile
+    out = []
+    for n in note_list:
+        t = float(n.get("timeline_sec", 0.0))
+        k = next((i for i, (a, b, _x) in enumerate(lines) if a - 0.05 <= t <= b + 0.05), None)
+        if k is None:
+            k = min(range(len(lines)), key=lambda i: min(abs(t - lines[i][0]), abs(t - lines[i][1])))
+            if min(abs(t - lines[k][0]), abs(t - lines[k][1])) > 1.5:
+                out.append(n)
+                continue
+        out.append({**n, "caption_lines": {"previous": lines[k - 1][2] if k > 0 else "", "this": lines[k][2], "next": lines[k + 1][2] if k + 1 < len(lines) else ""}})
+    return out, _notes_path(folder, out, "notes_with_captions.json")
+
+
+def _notes_path(folder: Path, notes: list[dict], name: str = "notes_with_fillers.json") -> Path:
     import json
     folder.mkdir(parents=True, exist_ok=True)
-    f = folder / "notes_with_fillers.json"
+    f = folder / name
     f.write_text(json.dumps({"schema": "review_notes.v0-draft", "sequence": "", "notes": notes}, indent=2))
     return f
 
@@ -523,6 +557,12 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
             note_list, nfile = _with_filler_notes(src, note_list, nfile, folder)
         except Exception as exc:                                       # a failed listen costs the filler cuts only, never the revision
             stage(f"The um and uh pass did not run ({type(exc).__name__}: {str(exc)[:120]}); the notes were still made")
+
+    if not ops:
+        try:
+            note_list, nfile = _with_caption_context(src, note_list, nfile, folder)       # the notes reader sees the caption lines around each note
+        except Exception as exc:
+            stage(f"The captions around the notes could not be read ({type(exc).__name__}: {str(exc)[:100]}); the notes were still read")
 
     if all(isinstance(n.get("suggested_op"), dict) for n in note_list):
         stage("Making the changes the notes ask for")

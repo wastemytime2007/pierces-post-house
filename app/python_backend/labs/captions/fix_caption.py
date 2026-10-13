@@ -41,6 +41,11 @@ def collect(ops: list[dict], notes: list[dict], groups: list[dict], window_start
         e = {"note": n, "op": "edit_caption", "note_time": t, "note_text": notes[n - 1].get("text", ""), "applied": False, "reason": ""}
         ledger.append(e)
         line = next((g for g in groups if g["show_start"] + window_start - 0.05 <= t <= g["show_end"] + window_start + 0.05), None)
+        if line is not None and o.get("line", "this") != "this":                     # the note moves words to the next or the previous caption: that neighbour is the line changed
+            k = groups.index(line) + (1 if o["line"] == "next" else -1)
+            line = groups[k] if 0 <= k < len(groups) else None
+            if line is not None:
+                t = (line["show_start"] + line["show_end"]) / 2 + window_start        # the fix is kept at the neighbour's own time
         if line is None:
             e["reason"] = f"no caption line is showing at {t:.2f}s (the captions cover {window_start:.1f}-{window_start + max(g['show_end'] for g in groups):.1f}s)"
             continue

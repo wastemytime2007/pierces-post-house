@@ -121,7 +121,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - follow_speaker {"clip": n or "all", "short_turns": true or false}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Use it too when the note asks to cut or switch back and forth between the speakers, to reframe to whoever is talking, or to use the talking person's own microphone: the picture and the sound both follow the speaker. Set "short_turns" true when the note says even a short reply ("yeah", "right") should get the cut. Never give a position or a time: who talks when and where each person stands are measured.
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") should sound different, be swapped, or be something else. "sound" is copied from the note's own words if it describes the wanted sound, and "" if it only asks for a different one. The effect is swapped for another from the library; never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
-- edit_caption {"text": "..."}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ..."). "text" must be copied from the note's own words (usually quoted); never write your own. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
+- edit_caption {"text": "...", "line": "this" or "next" or "previous"}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ...", "move the 23 to the next caption"). "text" is the whole new wording of ONE line: the words the note gives, plus the words of that line or its neighbour that stay (the note lists the captions around it; use only those words and the note's). "line" is which one changes: "this" (the one showing at the note's moment, the default), "next" or "previous". A note that moves words from one caption to its neighbour is TWO edit_caption ops, one for each line, each with that line's complete new wording. Never write words that are in neither the note nor those captions. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
 - remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
 - bleep_word {}  The note says to bleep, beep, censor or mute a curse word or swear word ("lets bleep the curse word here"). No parameters: the stretch is the note's clip or element, else its moment. Never give a time.
 - A note that says NO to something ("no", "that's not a curse word", "don't bleep it") is never a bleep_word: use unsupported with the reason "rejected".
@@ -155,6 +155,9 @@ def build_prompt(cut: Cut, notes: list[dict]) -> str:
         on = f' [left ON the {tg["lane"]} element "{tg.get("label", "")}", {tg.get("start")}-{tg.get("end")}s]' if tg else ""
         lines.append(f'note {i} at {n["timeline_sec"]}s (clip {n.get("clip")}){on}: "{n.get("text", "")}"'
                      + (f"  [drawn on frame: {drawn}]" if drawn else ""))
+        cl = n.get("caption_lines")
+        if isinstance(cl, dict) and cl.get("this"):
+            lines.append("    the captions around this note: " + " | ".join(f'{k} line "{cl[k]}"' for k in ("previous", "this", "next") if cl.get(k)))
     return "\n".join(lines)
 
 
@@ -502,11 +505,19 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("the note does not talk about a caption")
                 new = str(raw.get("text", "")).strip().strip('"\u201c\u201d')
                 toks, nt = words_mod.tokens(new), set(words_mod.tokens(text))
+                which = str(raw.get("line", "this")).lower()
+                if which not in ("this", "next", "previous"):
+                    raise ValueError("edit_caption line must be this, next or previous")
+                cl = notes[note - 1].get("caption_lines") or {}
+                for k in ("this", "next", "previous"):                               # the words of the captions around the note are the person's words too: they stay, or move to the neighbour
+                    nt |= set(words_mod.tokens(str(cl.get(k, ""))))
+                if which != "this" and not cl.get(which):
+                    raise ValueError(f"there is no {which} caption line to change")
                 if not toks or len(new) > 90:
                     raise ValueError("no usable caption wording")
                 if sum(w in nt for w in toks) < 0.9 * len(toks):
-                    raise ValueError("that wording is not in the note, refusing to write words the note did not give")
-                out.append({"note": note, "op": op, "text": new, "why": why})
+                    raise ValueError("that wording is not in the note or the captions around it, refusing to write words nobody gave")
+                out.append({"note": note, "op": op, "text": new, "line": which, "why": why})
             elif op == "remove_graphic":
                 if not says_graphic:
                     raise ValueError("the note does not talk about an on-screen graphic")

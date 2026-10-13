@@ -73,11 +73,21 @@ require('fs').mkdirSync(OUT, { recursive: true });
   check('TAB-LABEL-SAYS-V2-OPEN', /V2 open/.test(label), label);
 
   // a manual submit whose result leaves two of the user's own notes undone
+  const sentBefore = await page.evaluate(() => window.__sent.length);
   await emit({ type: 'notes_applied', xml: '/p/cuts/Cut_v3.xml', folder: '/p/cuts/Cut_v3 - revised', url: 'about:blank', applied: 1, notes: 3,
     qa: { notes: [{ note: 1, time: 5, status: 'VERIFIED', text: 'AI: Clip 1 may cut off the end', rows: [{ op: 'extend_end', status: 'VERIFIED', detail: 'clip 1 now runs 0.2s longer' }] },
                   { note: 2, time: 8, status: 'NOT DONE', text: 'the video on screen doesnt line up with the audio being spoken', rows: [{ op: 'unsupported', status: 'NOT DONE', detail: 'not done: needs a resync, not a supported operation' }] },
                   { note: 3, time: 9, status: 'NOT DONE', text: 'the framing should follow the speaker', rows: [{ op: 'unsupported', status: 'NOT DONE', detail: 'not done: only moving a shot up or down is supported' }] }], whole_cut: [], unrequested: [] } });
   await shot('8a-your-notes-not-done');
+  // YOUR revision is the end of the run: the AI editor must not start cutting again by itself (2026-10-12: after a caption fix it dropped two more clips), and only starts if you ask
+  const sentAfter = await page.evaluate((n) => window.__sent.slice(n).map(c => c.type), sentBefore);
+  check('YOUR-REVISION-STARTS-NO-AI-EDITING', !sentAfter.includes('auto_edit') && !sentAfter.includes('ai_review'), sentAfter.join(',') || 'nothing sent');
+  const stripNow = await text('.ai-strip');
+  check('AND-SAYS-IT-LEFT-THE-CUT-ALONE', /Your notes were made/.test(stripNow) && /Let the AI editor continue/.test(stripNow), stripNow.slice(0, 160).replace(/\n/g, ' | '));
+  check('THE-CONTINUE-BUTTON-IS-THERE', (await page.getByRole('button', { name: 'Let the AI editor continue' }).count()) >= 1, '');
+  await page.getByRole('button', { name: 'Let the AI editor continue' }).first().click();
+  const sentContinue = await page.evaluate((n) => window.__sent.slice(n).map(c => c.type), sentBefore);
+  check('CONTINUE-STARTS-THE-AI-EDITOR-ON-THAT-VERSION', sentContinue.includes('auto_edit'), sentContinue.join(','));
   const warn = await text('.pm-tab-warnings');
   check('YOUR-UNDONE-NOTES-ARE-CALLED-OUT-WITH-THEIR-REASONS', /2 of your notes were not done/.test(warn) && /line up with the audio/.test(warn) && /follow the speaker/.test(warn) && /only moving a shot up or down/.test(warn) && !/Clip 1 may cut off/.test(warn), warn.slice(0, 150).replace(/\n/g, ' | '));
   await emit({ type: 'auto_edit_done', status: 'failed', best: 'V2', versions: [], rounds: [], message: 'x', summary: 'The editor could not continue: REFUSING: cannot extend the end of a clip. V2 is the latest good version.', left: [] });

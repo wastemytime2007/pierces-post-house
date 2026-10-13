@@ -128,6 +128,30 @@ def test_a_fix_replaces_the_line_showing_at_the_moment_and_spreads_the_new_words
     assert out[1]["text"] == "next line here"                                                                                          # the other line is untouched
 
 
+def _line(text, start):
+    ws = [mc.Word(t, start + i * 0.3, start + i * 0.3 + 0.25) for i, t in enumerate(text.split())]
+    return {"words": ws, "text": text, "show_start": start - 0.05, "show_end": ws[-1].end + 0.05, "pos": "bottom"}
+
+
+def test_a_saved_fix_finds_its_line_by_the_words_it_changed_not_by_the_time_and_never_lands_on_another_line():
+    """2026-10-12: a fix saved at 22.59 s turned "So the idea is with" into "$23,000" after the cut had changed and that time was a different line."""
+    groups = [_line("this septic, it costs $23", 17.0), _line("000 is the quote we", 19.0), _line("So the idea is with", 22.0)]
+    fix = {"at": 22.59, "text": "$23,000", "was": "this septic, it costs $23"}                            # the line it changed is now at 17 s, the time points at another line
+    dropped = []
+    out = mc.apply_fixes([dict(g) for g in groups], [fix], 0.0, dropped)
+    assert [g["text"] for g in out] == ["$23,000", "000 is the quote we", "So the idea is with"] and dropped == []     # found by its words
+    gone = {"at": 22.59, "text": "$23,000", "was": "a line that is no longer in the cut"}
+    dropped = []
+    out = mc.apply_fixes([dict(g) for g in groups], [gone], 0.0, dropped)
+    assert [g["text"] for g in out] == [g["text"] for g in groups] and dropped == [gone]                       # the line is gone: the fix is dropped, nothing else is touched
+
+
+def test_two_lines_with_the_same_words_get_the_fix_on_the_one_nearest_its_time():
+    groups = [_line("so the idea is", 5.0), _line("something else", 8.0), _line("so the idea is", 12.0)]
+    out = mc.apply_fixes([dict(g) for g in groups], [{"at": 12.4, "text": "the plan is", "was": "so the idea is"}], 0.0, [])
+    assert out[0]["text"] == "so the idea is" and out[1]["text"] == "something else" and out[2]["text"].lower() == "the plan is"       # the second "so the idea is" (at 12 s) took the fix
+
+
 def test_a_fix_for_a_moment_with_no_line_showing_is_refused_and_the_window_offset_is_respected():
     w = [mc.Word("a", 1.0, 1.2)]
     g = [{"words": w, "text": "a", "show_start": 0.95, "show_end": 1.5, "pos": "bottom"}]

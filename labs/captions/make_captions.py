@@ -102,15 +102,25 @@ def tidy_case(new: str, old: str) -> str:
     return t
 
 
-def apply_fixes(groups: list[dict], fixes: list[dict], start: float) -> list[dict]:
+def apply_fixes(groups: list[dict], fixes: list[dict], start: float, dropped: list | None = None) -> list[dict]:
     """Replace the words of the caption line showing at each fix's time (window-relative `start` is subtracted). The new words are spread
     over the old line's spoken span in proportion to their length, so the word-by-word highlight still runs from the first word to the last."""
+    dropped = dropped if dropped is not None else []
     for fx in fixes:
         t = float(fx["at"]) - start
-        hit = [g for g in groups if g["show_start"] - 0.05 <= t <= g["show_end"] + 0.05]
-        if not hit:
-            raise CaptionError(f"no caption line is showing at {fx['at']:.2f}s, so \"{fx['text']}\" has no line to replace")
-        g = min(hit, key=lambda g: abs(t - (g["words"][0].start + g["words"][-1].end) / 2))
+        if fx.get("was"):
+            # a fix is tied to the words of the line it changed, not to a time: the cut changes between revisions and a time then lands on a different line (2026-10-12: "So the idea is with"
+            # became "$23,000" because an earlier fix sat at 22.6 s). No line with those words any more: the fix is dropped and said so, never put on another line.
+            same = [g for g in groups if g["text"].strip().lower() == fx["was"].strip().lower() and "fixed_from" not in g]
+            if not same:
+                dropped.append(fx)
+                continue
+            g = min(same, key=lambda g: abs(t - (g["words"][0].start + g["words"][-1].end) / 2))
+        else:
+            hit = [g for g in groups if g["show_start"] - 0.05 <= t <= g["show_end"] + 0.05]
+            if not hit:
+                raise CaptionError(f"no caption line is showing at {fx['at']:.2f}s, so \"{fx['text']}\" has no line to replace")
+            g = min(hit, key=lambda g: abs(t - (g["words"][0].start + g["words"][-1].end) / 2))
         text = tidy_case(fx["text"], g["text"])
         toks = text.split(" ")
         a, b = g["words"][0].start, g["words"][-1].end
@@ -317,10 +327,13 @@ def main() -> int:
         return 1
     groups = group_words(ws, max_words=GROUP_WORDS, max_chars=GROUP_CHARS)
     fixes = json.loads(a.fixes.read_text()) if a.fixes and a.fixes.exists() else []
+    fixes_were_given = bool(fixes)
+    dropped_fixes: list[dict] = []
     try:
         for g in groups:
             g["was"] = g["text"]
-        groups = apply_fixes(groups, fixes, a.start)
+        groups = apply_fixes(groups, fixes, a.start, dropped_fixes)
+        fixes = [f for f in fixes if f not in dropped_fixes]                      # a fix whose line is no longer in the cut is not kept (it would land on another line later)
     except CaptionError as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
@@ -361,7 +374,7 @@ def main() -> int:
                           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-t", f"{dur}", str(preview)], check=True)
 
     (a.out / "captions.json").write_text(json.dumps({
-        "window": {"start": a.start, "end": a.end}, "style": a.style, "fixes": fixes,
+        "window": {"start": a.start, "end": a.end}, "style": a.style, "fixes": fixes, "fixes_dropped": dropped_fixes if fixes_were_given else [],
         "groups": [{"text": g["text"], "pos": g["pos"], "show_start": g["show_start"], "show_end": g["show_end"],
                     "words": [{"text": w.text, "start": w.start, "end": w.end} for w in g["words"]]} for g in groups]}, indent=2))
     (a.out / "placement.json").write_text(json.dumps({
