@@ -140,7 +140,11 @@ export default function ReviewTab({ subscribe, onStatus }) {
         else if (a) setAuto({ status: "done", summary: a.summary, best: a.best, left: a.left || [], versions: a.versions || [], rounds: a.rounds || [], outcome: a.status });
         else setAuto({ status: "idle" });
         const bestIdx = a && a.best ? vs.findIndex((v) => v.label === a.best) : -1;
-        setCur(bestIdx >= 0 ? bestIdx : vs.length - 1);
+        // A version the editor did not make is YOURS (its notes from you): reopening lands on the latest of them, not on the version the editor named before you went on (2026-10-13: the tab reopened on the
+        // editor's V5 while V6 and V7 were yours, and "Open in Premiere" opened V5).
+        const editorMade = new Set(((a && a.versions) || []).map((v) => v.label));
+        const yours = a ? vs.filter((v) => !editorMade.has(v.label)) : [];
+        setCur(yours.length ? vs.length - 1 : bestIdx >= 0 ? bestIdx : vs.length - 1);
         setNoteCount(0);
         setExportResult(null);
         setIncoming("");
@@ -588,7 +592,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           Finish the cut…
         </button>
         <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere. Nothing to download.">
-          {premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere"}
+          {(premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere") + (version ? `: ${version.label}` : "")}
         </button>
         {premiereApps.length > 1 && (
           <button className="btn btn-ghost" onClick={() => setChoosing((x) => !x)} disabled={!!busy} title="Choose which version of Premiere opens it">

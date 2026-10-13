@@ -133,6 +133,24 @@ require('fs').mkdirSync(OUT, { recursive: true });
   check('THE-FEED-SAYS-IT-WAS-REOPENED', /Reopened your earlier review of this cut \(V1, V2, V3\)/.test(await p2.evaluate(() => (document.querySelector('.ai-feed') || {}).innerText || '')), '');
   check('WHAT-IS-LEFT-IS-LISTED', /needs new words/.test(await p2.evaluate(() => document.body.innerText)), '');
 
+  // the editor named V2 as its best, then the person made V3 and V4 from their own notes: reopening lands on THEIR latest (V4), and the button says which version it opens
+  // (2026-10-13: it reopened on the editor's V5 while V6 and V7 were the person's, and Open in Premiere opened V5, a cut "completely different" from the one they had been working on)
+  const pMine = await fresh();
+  await pMine.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
+  await pMine.waitForTimeout(300);
+  const four = [...loaded.versions, { label: 'V4', xml: '/p/cuts/Cut_v4.xml', folder: '/p/cuts/Cut_v4 - revised', url: 'about:blank', qa: null, applied: 1, notes: 1 }];
+  await pMine.evaluate(e => window.__emit(e), { ...loaded, versions: four, auto: { ...loaded.auto, best: 'V2', versions: [{ label: 'V1', score: 5 }, { label: 'V2', score: 3 }] } });
+  await pMine.waitForTimeout(400);
+  check('REOPENS-ON-YOUR-LATEST-VERSION-NOT-THE-EDITORS-EARLIER-ONE', /V4 open/.test(await pMine.evaluate(() => document.getElementById('tablabel').innerText)), await pMine.evaluate(() => document.getElementById('tablabel').innerText));
+  check('THE-BUTTON-NAMES-THE-VERSION-IT-OPENS', (await pMine.getByRole('button', { name: /Open in .*: V4/ }).count()) >= 1, '');
+  // the editor made every version itself (V3 was its worse round): reopening still lands on the one it named
+  const pEd = await fresh();
+  await pEd.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
+  await pEd.waitForTimeout(300);
+  await pEd.evaluate(e => window.__emit(e), { ...loaded, auto: { ...loaded.auto, best: 'V2', versions: [{ label: 'V1', score: 5 }, { label: 'V2', score: 3 }, { label: 'V3', score: 4 }] } });
+  await pEd.waitForTimeout(400);
+  check('ALL-VERSIONS-THE-EDITORS-REOPENS-ON-THE-ONE-IT-NAMED', /V2 open/.test(await pEd.evaluate(() => document.getElementById('tablabel').innerText)), await pEd.evaluate(() => document.getElementById('tablabel').innerText));
+
   // a session whose AI editor never finished (the app was closed or restarted while it worked): the editor picks it up from the latest version, and says so
   const pResume = await fresh();
   await pResume.evaluate(e => window.__emit(e), { type: 'exports_listed', exports: exportsList });
@@ -218,7 +236,7 @@ require('fs').mkdirSync(OUT, { recursive: true });
   check('THE-CHOICE-IS-REMEMBERED', (await q1.evaluate(() => localStorage.getItem('review.premiere'))) === apps2[1].path, '');
   await q1.evaluate(() => { window.__sent.length = 0; });
   const label1 = await q1.evaluate(() => [...document.querySelectorAll('.btn')].map(b => b.innerText).find(t => /^Open in/.test(t)));
-  check('THE-BUTTON-NAMES-THE-REMEMBERED-VERSION', label1 === 'Open in Premiere Pro (Beta)', label1);
+  check('THE-BUTTON-NAMES-THE-REMEMBERED-VERSION', /^Open in Premiere Pro \(Beta\)(: V\d+)?$/.test(label1), label1);
   await q1.getByRole('button', { name: 'Open in Premiere Pro (Beta)' }).click();
   await q1.waitForTimeout(300);
   const e2 = await exp(q1);
