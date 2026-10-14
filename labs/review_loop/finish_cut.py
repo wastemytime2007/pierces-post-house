@@ -191,6 +191,8 @@ def apply_graphics_edits(spec: dict, times: list[float], edits: list[dict], cta:
         elif do in ("longer", "shorter"):
             step = float(e.get("seconds") or GFX_LONGER_DEFAULT) * (1 if do == "longer" else -1)
             lt["until"] = max(float(lt.get("until", 3.0)) + step, 1.6)
+            if step > 0:
+                lt["past_clip"] = True                                           # longer means longer, even where its clip ends sooner (the plan used to clear it at the clip's end and ignore the note)
         else:
             notes.append(f"the '{key}' graphic cannot be changed by '{do}'")
     if "lower_thirds" in spec and not spec["lower_thirds"]:

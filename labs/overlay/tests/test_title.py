@@ -108,6 +108,19 @@ def test_a_lower_third_gets_its_time_from_its_source_frame_and_clears_after_its_
     assert (b["on"], b["off"]) == (6.0, 9.0) and b["name"] == "Mitch" and b["sub"] == ""
 
 
+def test_a_tag_the_person_asked_to_keep_up_longer_stays_past_its_clip_and_stops_before_the_next_graphic():
+    import copy
+    spec = copy.deepcopy(LT_SPEC)
+    spec["lower_thirds"][0].update(until=5.0, past_clip=True)                      # Bob at 2.0 s, a 3 s clip tail: 'two seconds longer' used to be cleared at the clip's end (4.95 s) and ignored
+    a, b = mt.plan(spec, TL, 12.0)["lower_thirds"]
+    assert a["off"] == pytest.approx(5.9)                                          # stops 0.1 s before Mitch's tag comes on at 6.0 s, not at 7.0 s
+    spec["lower_thirds"][0]["until"] = 3.5
+    a, _b = mt.plan(spec, TL, 12.0)["lower_thirds"]
+    assert a["off"] == pytest.approx(5.5) and a["off"] > 5.0 - mt.LABEL_CLEAR       # longer than its clip
+    spec["lower_thirds"][0].pop("past_clip")
+    assert mt.plan(spec, TL, 12.0)["lower_thirds"][0]["off"] == pytest.approx(5.0 - mt.LABEL_CLEAR)      # without the request the clip still ends it
+
+
 def test_a_lower_third_too_short_to_read_or_over_another_element_is_refused():
     short = {"lower_thirds": [{"anchor": {"source": "cam.mp4", "source_sec": 104.2}, "name": "Bob", "until": 3.0}]}                    # 0.8 s left in its clip
     with pytest.raises(mt.TitleError, match="too short to read"):

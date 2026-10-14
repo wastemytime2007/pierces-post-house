@@ -160,6 +160,16 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "drop_clip":
             c = cut.video[o["clip"] - 1]
             add(o, c.tl_start, c.tl_end, f"clip {c.idx} dropped as the note asked")
+        elif kind == "restore_footage":
+            from ops import locate_restore
+            m = locate_restore(cut, o["words"], o.get("before"))
+            if "reason" in m:
+                changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
+            else:
+                where = (f"after clip {m['after']}" if m["after"] else f"before clip {m['before']}" if m["before"] else "at the end of the cut")
+                changes.append(Change(n, kind, True,
+                                      f'put back "{m["heard"][:120]}" ({m["t1"] - m["t0"]:.1f}s of the recording, {_fmt(m["t0"])}-{_fmt(m["t1"])} in the file), {where}',
+                                      o.get("why", ""), check={"kind": "restore", **m}))
         elif kind == "reframe_vertical":
             from render_preview import source_dims
             import reframe_xml as rx
@@ -520,6 +530,222 @@ def _move_clip(seq: ET.Element, k: dict, zone_f: int, fps: float, path_of: dict,
     return None, (t0, a, b)
 
 
+def _trim_pool_for(groups: dict, file_id: str, lo: float, hi: float, fps: float, spf: float | None) -> tuple[str | None, float]:
+    """Footage put back into the cut must not also be in the selects pool (it would play twice). Each pool clip of this file that holds any of [lo, hi) gives it up: a clip that starts inside gives up its
+    front, a clip that starts before and ends inside gives up its end. A pool clip that holds the whole stretch, or sits inside it, is not touched and the reason is returned: nothing is changed then.
+    Returns (reason or None, most seconds taken)."""
+    slack = 1.5 / fps
+    todo = []
+    for (s, e), els in groups.items():
+        v = next((el for kind, el in els if kind == "video" and el.find("file") is not None and el.find("file").get("id") == file_id), None)
+        if v is None or e <= s:
+            continue
+        k = (int(v.findtext("out")) - int(v.findtext("in"))) / (e - s)
+        a, b = (int(v.findtext("in")) * spf, int(v.findtext("out")) * spf) if spf else (int(v.findtext("in")) / (k * fps), int(v.findtext("out")) / (k * fps))
+        if not (a < hi and b > lo):
+            continue
+        if a >= lo - slack and b > hi + slack:
+            todo.append(("front", (s, e), els, round((hi - a) / spf / k) if spf else round((hi - a) * fps)))
+        elif a < lo - slack and b <= hi + slack:
+            todo.append(("end", (s, e), els, round((b - lo) / spf / k) if spf else round((b - lo) * fps)))
+        else:
+            return "the line is also in the selects pool as a whole clip (or inside a longer one), and putting it back would make the pool repeat the cut or split a pool clip; that needs a decision by hand", 0.0
+    took = 0.0
+    for side, (s, e), els, cut_f in todo:
+        if cut_f <= 0:
+            continue
+        if cut_f >= e - s:
+            return "putting the line back would take a whole clip out of the selects pool; that needs a decision by hand", 0.0
+    for side, (s, e), els, cut_f in todo:
+        if cut_f <= 0:
+            continue
+        for _kind, el in els:
+            ks = (int(el.findtext("out")) - int(el.findtext("in"))) / (e - s)
+            dur = el.findtext("duration")
+            if side == "front":
+                _set(el, "in", int(el.findtext("in")) + round(cut_f * ks))
+            else:
+                _set(el, "out", int(el.findtext("out")) - round(cut_f * ks))
+            _set(el, "end", int(el.findtext("end")) - cut_f)
+            if dur is not None and int(dur) == e - s:
+                _set(el, "duration", e - s - cut_f)
+        took = max(took, cut_f / fps)
+    return None, took
+
+
+def _defs_first(root: ET.Element) -> None:
+    """Every <file> is defined in full by the first clip that names it (in document order); a clip put in front of the one that held the definition must carry it instead."""
+    first: dict[str, ET.Element] = {}
+    held: dict[str, ET.Element] = {}
+    for f in root.iter("file"):
+        fid = f.get("id")
+        if not fid:
+            continue
+        first.setdefault(fid, f)
+        if len(list(f)) > 0:
+            held.setdefault(fid, f)
+    for fid, f0 in first.items():
+        h = held.get(fid)
+        if h is not None and h is not f0:
+            for ch in list(h):
+                f0.append(copy.deepcopy(ch))
+                h.remove(ch)
+
+
+def _restore_footage(seq: ET.Element, root: ET.Element, ch: Change, zone_now: int, zone_f: int, fps: float, cut: Cut, clip_file_id: dict, spf_of_file: dict, pool_groups: dict, used_ids: set[str]) -> tuple[str | None, int]:
+    """Put a stretch of the recording back on the timeline: one new piece on every track that has sound or picture under the clip it is taken after, cut from the same recorders, the lav lines
+    carried to the same moment of the recording by the sync those clips already have. Everything after it moves right by its length. Returns (reason it could not, 0) or (None, frames added)."""
+    from follow_speaker import _split_at
+    k = ch.check
+    t0, t1 = k["t0"], k["t1"]
+    tmpl_clip = cut.video[k["template"] - 1]
+    fid = clip_file_id.get(tmpl_clip.idx)
+    if fid is None:
+        return "the clip to take the picture and sound from is not on the timeline", 0
+    spf = spf_of_file.get(fid) or 1.0 / fps
+    spf_pool = spf_of_file.get(fid)
+    L = max(1, round((t1 - t0) * fps))                                                           # sequence frames, as every other length here; a clip's own frames per sequence frame (k) turn it into source frames
+    pool_starts = [s for (s, _e) in pool_groups]
+    if pool_starts and zone_now + L > min(pool_starts) - 1:
+        return f"there is no room for {L / fps:.1f}s more before the selects pool starts, so the line was not put back", 0
+    reason, took = _trim_pool_for(pool_groups, fid, t0, t1, fps, spf_pool)
+    if reason:
+        return reason, 0
+    path_of = {clip_file_id[c.idx]: c.src_path for c in cut.video if c.idx in clip_file_id}
+    tracks = seq.findall("media/video/track") + seq.findall("media/audio/track")
+
+    def zone_items(tr: ET.Element) -> list[ET.Element]:
+        return [c for c in tr.findall("clipitem") if c.findtext("in") is not None and c.findtext("out") is not None and int(c.findtext("start")) < zone_now]
+
+    v1 = seq.find("media/video/track")
+    here = sorted(zone_items(v1), key=lambda c: int(c.findtext("start")))
+
+    def run_of(clip) -> tuple[int, int] | None:
+        hits = []
+        for c in here:
+            f = c.find("file")
+            if f is None or path_of.get(f.get("id")) != clip.src_path:
+                continue
+            s_ = spf_of_file.get(f.get("id")) or 1.0 / fps
+            mid = (int(c.findtext("in")) + int(c.findtext("out"))) / 2 * s_
+            if clip.src_in - 0.6 <= mid <= clip.src_out + 0.6:
+                hits.append(c)
+        return (int(hits[0].findtext("start")), int(hits[-1].findtext("end"))) if hits else None
+
+    end_of_cut = max(int(c.findtext("end")) for c in here)
+    P, where = end_of_cut, "at the end of the cut"
+    if k.get("after"):
+        run = run_of(cut.video[k["after"] - 1])
+        if run:
+            P, where = run[1], f"after the clip that ends at {run[1] / fps:.1f}s"
+    elif k.get("before"):
+        run = run_of(cut.video[k["before"] - 1])
+        if run:
+            P, where = run[0], f"before the clip that starts at {run[0] / fps:.1f}s"
+    for tr in tracks:
+        for el in zone_items(tr):
+            _split_at(el, tr, [P], used_ids)
+    here = sorted(zone_items(v1), key=lambda c: int(c.findtext("start")))
+
+    def src_gap(c: ET.Element) -> float:
+        f = c.find("file")
+        if f is None or f.get("id") != fid:
+            return 1e9
+        s_ = spf_of_file.get(fid) or 1.0 / fps
+        a, b = int(c.findtext("in")) * s_, int(c.findtext("out")) * s_
+        return 0.0 if a <= t0 <= b else min(abs(a - t1), abs(b - t0))
+    T = min(here, key=src_gap)
+    if src_gap(T) > 1e8:
+        return "no clip of that recording is on the timeline to take the picture and sound from", 0
+    x = (int(T.findtext("start")) + int(T.findtext("end"))) // 2
+    kT = (int(T.findtext("out")) - int(T.findtext("in"))) / (int(T.findtext("end")) - int(T.findtext("start")))
+    t_at_x = (int(T.findtext("in")) + (x - int(T.findtext("start"))) * kT) * spf                  # the recording's own time at the middle of that clip
+    dt = t0 - t_at_x
+    spf_of_fid: dict[str, float] = {fid: spf}                                                    # seconds one frame of each recorder's clips lasts, read from the clips the cut already reads in the same way
+    from timeline import _collect_file_defs, _decode_pathurl
+    defs = _collect_file_defs(root)
+    for tr in tracks[len(seq.findall("media/video/track")):]:
+        for el in zone_items(tr):
+            f = el.find("file")
+            if f is None or f.get("id") in spf_of_fid or int(el.findtext("in")) <= 0 or not defs.get(f.get("id"), {}).get("pathurl"):
+                continue
+            apath = _decode_pathurl(defs[f.get("id")]["pathurl"])[0]
+            a = next((a for a in cut.audio if abs(a.tl_start * fps - int(el.findtext("start"))) <= 2 and a.src_path == apath), None)      # an enabled clip of the SAME file at the same place: the one the cut was read from
+            if a is not None:
+                spf_of_fid[f.get("id")] = a.src_in / int(el.findtext("in"))
+    made: list[tuple[ET.Element, ET.Element]] = []
+    lavs: list[tuple[ET.Element, str, float, float]] = []
+    for tr in tracks:
+        E = next((c for c in zone_items(tr) if int(c.findtext("start")) <= x < int(c.findtext("end"))), None)
+        if E is None:
+            continue
+        kE = (int(E.findtext("out")) - int(E.findtext("in"))) / (int(E.findtext("end")) - int(E.findtext("start")))
+        f = E.find("file")
+        spf_e = spf_of_fid.get(f.get("id") if f is not None else "", 1.0 / fps)
+        in_new = int(E.findtext("in")) + (x - int(E.findtext("start"))) * kE + dt / spf_e
+        in_new = round(in_new)
+        if in_new < 0:
+            continue
+        el = copy.deepcopy(E)
+        fl = el.find("file")
+        if fl is not None:
+            for c in list(fl):
+                fl.remove(c)
+        for lk in el.findall("link"):
+            el.remove(lk)
+        base, i = E.get("id") or "clipitem", 1
+        while f"{base}-restore{i}" in used_ids:
+            i += 1
+        el.set("id", f"{base}-restore{i}")
+        used_ids.add(el.get("id"))
+        dur = E.findtext("duration")
+        for tag, v in (("start", P), ("end", P + L), ("in", in_new), ("out", in_new + round(L * kE))):
+            el.find(tag).text = str(int(v))
+        if dur is not None and int(dur) == int(E.findtext("end")) - int(E.findtext("start")):
+            el.find("duration").text = str(L)
+        if tr in seq.findall("media/audio/track") and not (f is not None and f.get("id") == fid):
+            en = el.find("enabled")
+            if en is not None:
+                en.text = "TRUE"                                                                # a recorder switched off under the neighbour's turn is on until the levels below say whose line it is
+            pu = defs.get(f.get("id"), {}).get("pathurl") if f is not None else None
+            if pu and _decode_pathurl(pu)[0].lower().endswith(".wav"):
+                lavs.append((el, _decode_pathurl(pu)[0], in_new * spf_e, L * spf_e))
+        made.append((tr, el))
+    if not any(tr is v1 for tr, _e in made):
+        return "the picture could not be placed (no clip of that recording under the one it goes next to)", 0
+    voice = ""
+    if len(lavs) > 1:                                                                            # whose line it is: the recorder that hears it loudest (each person wears their own), when it leads by a clear margin
+        from ops import level_db
+        lv = sorted(((level_db(path, at, dur), el, path) for el, path, at, dur in lavs), key=lambda r: -r[0])
+        if lv[0][0] - lv[1][0] >= 3.0:
+            for _db, el, _path in lv[1:]:
+                el.find("enabled").text = "FALSE"
+            voice = f"; only {Path(lv[0][2]).name} is live under it (it hears the line {lv[0][0] - lv[1][0]:.0f} dB louder than the other recorder)"
+    for tr in tracks:
+        for el in zone_items(tr):
+            if int(el.findtext("start")) >= P:
+                el.find("start").text = str(int(el.findtext("start")) + L)
+                el.find("end").text = str(int(el.findtext("end")) + L)
+    for tr, el in made:
+        tr.append(el)
+        clips = sorted([c for c in tr if c.tag == "clipitem"], key=lambda c: int(c.findtext("start")))
+        rest = [c for c in tr if c.tag != "clipitem"]
+        for c in list(tr):
+            tr.remove(c)
+        for c in clips + rest:
+            tr.append(c)
+    for m in seq.findall("marker"):
+        tm = int(m.findtext("in") or 0)
+        if P <= tm < zone_now:
+            m.find("in").text = str(tm + L)
+    _defs_first(root)
+    ch.v2_time = P / fps
+    ch.check = {**ch.check, "frames": L, "at_frame": P}
+    ch.summary += f"; it plays at {P / fps:.1f}s and everything after it moves {L / fps:.1f}s later" + (voice or "; every recorder that was under the neighbouring clip is live under it (none was clearly the one speaking)") + (
+        f"; also took {took:.2f}s out of the selects pool, which held part of the same footage, so the pool still never repeats the cut" if took else "")
+    return None, L
+
+
 def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: list[dict]) -> tuple[list[Change], float]:
     fps = cut.fps
     changes, spans, insertions = plan(cut, ops, notes)
@@ -650,6 +876,15 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
                         f.append(copy.deepcopy(ch))
                     break
 
+    restored_f = 0
+    zone_now = zone_f - sum(b - a for a, b in removed) + sum(ln for _p, ln in inserted)
+    for ch in [c for c in changes if c.applied and c.check and c.check.get("kind") == "restore"]:
+        why, added = _restore_footage(seq, root, ch, zone_now + restored_f, zone_f, fps, cut, clip_file_id, spf_of_file, pool_groups, used_ids)
+        if why:
+            ch.applied, ch.summary, ch.check = False, why, None
+        else:
+            restored_f += added
+
     ET.indent(root, space="\t")
     out_xml.write_text(HEADER + ET.tostring(root, encoding="unicode") + "\n")
-    return changes, (sum(ln for _p, ln in inserted) - sum(b - a for a, b in removed)) / fps
+    return changes, (sum(ln for _p, ln in inserted) + restored_f - sum(b - a for a, b in removed)) / fps

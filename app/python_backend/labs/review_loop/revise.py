@@ -38,7 +38,7 @@ def _video_items(xml: Path, zone_f: int, before: bool) -> list[tuple[int, int, i
     return sorted(r for r in rows if (r[0] < zone_f) == before)
 
 
-def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float = 0.0, extra_in: float = 0.0) -> list[tuple[str, bool | None, str]]:
+def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float = 0.0, extra_in: float = 0.0, restored: list[tuple[str, float, float]] | None = None) -> list[tuple[str, bool | None, str]]:
     rows: list[tuple[str, bool | None, str]] = []
     cut2 = load_cut(xml2)                                # bounds-checks every clip against real media
     rows.append(("RELOADS-AND-BOUNDS", True, f"{len(cut2.video)} clips, every range inside its real file"))
@@ -49,9 +49,11 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
     rows.append(("CONTIGUOUS", all(g < 1e-3 for g in gaps), f"largest seam {max(gaps or [0]) * 1000:.2f}ms"))
 
     slack = 2.0 / cut1.fps
+    restored = restored or []
     stray = [p for p in cut2.video
-             if not any(p.src_path == c.src_path and p.src_in >= c.src_in - extra_in - slack and p.src_out <= c.src_out + extra_out + slack for c in cut1.video)]
-    ext_txt = "".join([f" (plus the measured {extra_out:.2f}s extension at an end)" if extra_out else "", f" (plus the measured {extra_in:.2f}s extension at a start)" if extra_in else ""])
+             if not any(p.src_path == c.src_path and p.src_in >= c.src_in - extra_in - slack and p.src_out <= c.src_out + extra_out + slack for c in cut1.video)
+             and not any(p.src_path == path and p.src_in >= a - slack and p.src_out <= b + slack for path, a, b in restored)]
+    ext_txt = "".join([f" (plus {len(restored)} line(s) put back as asked)" if restored else "", f" (plus the measured {extra_out:.2f}s extension at an end)" if extra_out else "", f" (plus the measured {extra_in:.2f}s extension at a start)" if extra_in else ""])
     rows.append(("NO-NEW-FOOTAGE", not stray,
                  ("every V2 piece lies inside a V1 clip" + ext_txt)
                  if not stray else f"{len(stray)} piece(s) outside V1 ranges"))
@@ -75,7 +77,7 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
     rows.append(("LAV-SYNC-PRESERVED", not bad, "every lav piece keeps its V1 offset to camera" if not bad else f"{len(bad)} piece(s) drifted, first at {bad[0][0]:.2f}s"))
 
     z1 = round(cut1.zone_end * cut1.fps)
-    p1, p2 = _video_items(xml1, z1, False), _video_items(xml2, z1, False)
+    p1, p2 = _video_items(xml1, z1, False), _video_items(xml2, max(z1, round(cut2.zone_end * cut1.fps)), False)           # a cut that grew (a line put back) now reaches past where it ended: its own end divides the cut from the pool
     lost_front = lost_tail = 0.0
     pool_ok = len(p1) == len(p2)
     for (s1, e1, i1, o1), (s2, e2, i2, o2) in zip(p1, p2):
@@ -88,7 +90,8 @@ def verify(cut1: Cut, xml1: Path, xml2: Path, delta_sec: float, extra_out: float
         lost_front = max(lost_front, front_f / cut1.fps)
         lost_tail = max(lost_tail, tail_f / cut1.fps)
     lost = max(lost_front, lost_tail)
-    pool_ok = pool_ok and lost_front <= extra_out + 2.0 / cut1.fps and lost_tail <= extra_in + 2.0 / cut1.fps
+    put_back = max([b - a for _p, a, b in restored] or [0.0])                                  # footage put back into the cut may be taken out of the pool's front or end
+    pool_ok = pool_ok and lost_front <= extra_out + put_back + 2.0 / cut1.fps and lost_tail <= extra_in + put_back + 2.0 / cut1.fps
     rows.append(("POOL-ONLY-LOST-WHAT-THE-CUT-GAINED", pool_ok,
                  "selects pool identical to V1" if p1 == p2 else f"pool only lost footage the cut now holds (trimmed by up to {lost:.2f}s, front or end)"))
 
@@ -151,6 +154,13 @@ def verify_render(changes, preview: Path) -> list[tuple[str, bool | None, str]]:
             db = level_db(k["path"], k["t"], 0.03)
             rows.append((f"note {c.note} START-IN-QUIET", db <= k["thresh_db"] + 1.0,
                          f"level just after the new start {db:.0f} dB, room-level threshold {k['thresh_db']:.0f} dB"))
+        elif k["kind"] == "restore":
+            at = c.v2_time
+            after = [w for w in words_mod.words_in(str(preview), at - 0.2, min(k["t1"] - k["t0"] + 0.6, 12.0)) if w.start >= at - 0.1]
+            heard = [w for x in after for w in words_mod.tokens(x.text)]
+            held = [w for w in k["want"] if any(words_mod._sim(w, h) >= 0.8 for h in heard)]
+            rows.append((f"note {c.note} LINE-HEARD-WHERE-PUT-BACK", len(heard) >= 3,                    # speech is there, not silence or another place; the words themselves are shown, since the transcript mishears
+                         f'V2 audio from {at:.2f}s reads: "{words_mod.heard(after[:14])}"' + (f" (words of the note heard: {', '.join(held)})" if held else " (none of the note's distinctive words heard; the transcript may mishear them, so listen)")))
         elif k["kind"] == "seam_text":
             after = [w for w in words_mod.words_in(str(preview), c.v2_time - 0.3, 4.0) if w.start >= c.v2_time - 0.1]
             hit = words_mod.find_phrase(after, k["phrase"])
@@ -195,6 +205,7 @@ def main() -> int:
               "applied": c.applied, "summary": c.summary, "v2_time": c.v2_time, "why": c.why,
               "op": c.op, "removed": [round(c.removed[0], 3), round(c.removed[1], 3)] if c.removed else None,
               "extended_sec": round(c.check["ext"], 3) if c.check and c.check.get("kind") in ("quiet_at", "quiet_from", "joined") else None,
+              "restored": {k: c.check[k] for k in ("path", "t0", "t1", "heard", "want", "frames", "at_frame")} if c.applied and c.check and c.check.get("kind") == "restore" else None,
               "follow": c.check if c.check and c.check.get("kind") == "follow" else None} for c in changes]
     print(f"\n{lab_in} {cut1.zone_end:.2f}s, {len(notes)} notes, {sum(c.applied for c in changes)} applied, {sum(not c.applied for c in changes)} not applied\n")
     for it in items:
@@ -211,7 +222,8 @@ def main() -> int:
             return max([c.check["ext"] for c in changes if c.applied and c.check and c.check.get("kind") in kinds and (side is None or c.check.get("side") == side)] or [0.0])
         extra_out = max(ext_of(("quiet_at",)), ext_of(("joined",), "end"))
         extra_in = max(ext_of(("quiet_from",)), ext_of(("joined",), "front"))
-        rows = verify(cut1, args.xml, v2_xml, delta, extra_out, extra_in)
+        put_back = [(c.check["path"], c.check["t0"], c.check["t1"]) for c in changes if c.applied and c.check and c.check.get("kind") == "restore"]
+        rows = verify(cut1, args.xml, v2_xml, delta, extra_out, extra_in, put_back)
         rows += verify_motion(cut1, changes, load_cut(v2_xml))
         rows += verify_follow(changes, load_cut(v2_xml), v2_xml)
     except TimelineError as e:

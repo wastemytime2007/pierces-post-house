@@ -65,6 +65,16 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-13: put a cut line back; the editor stays out after your notes; captions, export and reopen fixes (Septic cut), awaiting Ryan's run
+
+Ryan: "The editor removed the part of the video where bob mentions 'if there arent any curbs youre probably on a septic system' which was really valuable to a viewer. I asked the editor to put that back in and it couldnt." Not signed off.
+
+- **`restore_footage` (the reverse of `drop_clip` and of a trim):** the note's words are searched for in PreCut's transcript of the footage, weighted by how rare each word is in the recording; a line found only by common words or one known word is confirmed by the model, which may say none (a "weather" note no longer brings back "storm sewer water"). It is placed where it was said, with its picture, the lav lines at the same sync offset and only the recorder that hears it loudest live. Pool footage it takes is trimmed out of the pool. Proven on Ryan's V7 (not on his V1, where the line is still in the cut and the op says so): `revise.py` run end to end, 38.03 s from 34.27 s, every check passing, the render listened to ("you know, if you don't have curbs in storm sewer water, you're probably on a septic"), the line ends in quiet on Bob's recorder. The real notes reader chose the op from Ryan's wording and `drop_clip` for "remove this clip". 15 new tests; battery case G (7 checks).
+- **Found on the way and fixed:** a name tag asked to stay up longer was cleared at its clip's end and the request ignored while reported made (`past_clip`); the captions step's word-by-word check failed the whole rebuild when the longest line had a word timed at 0.04 s (now prefers a line whose words last).
+- **Earlier today, committed:** the editor stays out after the person's own revision (button to let it continue); caption notes see the lines around them and can move words between neighbours; a saved caption fix follows its words; Open in Premiere no longer refuses every version over a defect the first export already had (inherited checks reported, first version still blocked) and the leftover bin is tidied; reopening a saved review lands on the latest version the person made, and the button names it.
+- **Checked:** full labs suite 586 passed; app-side tests 79 passed; replay of the whole Septic history, 0 failed; battery A-G.
+- **Not yet:** Ryan running it on his own notes; an SRT export of the captions (offered, not asked for); whether the punch-in and zoom vertical rule is right in Premiere.
+
 ### 2026-10-12: every skill that makes the cut can be revised from a note (Septic cut), awaiting Ryan's run
 
 Ryan: "We need to give the AI editor the ability to do ALL SKILLS that were originally used to make the cut ... Anything it did in the first place it should be able to edit if requested as a revision." Not signed off.

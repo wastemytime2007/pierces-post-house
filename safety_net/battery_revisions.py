@@ -8,7 +8,7 @@ requested as a revision ... i've yet to see it implement even one revision ive g
 creator_tools.apply_notes with the operations the notes reader produces (recorded here, so nothing is sent to a model), and then READ BACK from the new version: the title's words in the graphics plan,
 the music level in the finish record, the layers on the cut. A case that says "applied" but is not in the result fails.
 
-Cases:  A graphics words and time   B music level and sound effects   C music taken out   D graphics taken out   E footage, captions and the layers kept   F zoom, a different effect, a trim and a filler cut
+Cases:  A graphics words and time   B music level and sound effects   C music taken out   D graphics taken out   E footage, captions and the layers kept   F zoom, a different effect, a trim and a filler cut   G a line that was cut is put back
 """
 from __future__ import annotations
 
@@ -139,7 +139,7 @@ def case_d(src: Path, out: Path) -> list[tuple[str, bool, str]]:
 
 def case_e(src: Path, out: Path) -> list[tuple[str, bool, str]]:
     cut = timeline.load_cut(src)
-    notes = [{"timeline_sec": 12.0, "clip": 3, "text": 'fix the caption to say "TESTING A NEW CAPTION"', "shapes": []},
+    notes = [{"timeline_sec": cut.video[1].tl_start + 1.0, "clip": 2, "text": 'fix the caption to say "TESTING A NEW CAPTION"', "shapes": []},          # on a clip that stays: a fix on the line of the clip dropped below is rightly dropped with it (on V7 12.0 s was inside clip 4)
              {"timeline_sec": cut.video[3].tl_start + 1.0, "clip": 4, "text": "drop this clip", "shapes": []}]
     ops = [{"note": 1, "op": "edit_caption", "text": "TESTING A NEW CAPTION", "why": "battery"}, {"note": 2, "op": "drop_clip", "clip": 4, "why": "battery"}]
     r, d = _run(src, out, "E_footage_captions", notes, ops)
@@ -176,7 +176,36 @@ def case_f(src: Path, out: Path) -> list[tuple[str, bool, str]]:
             ("F5 reported made", all(i["applied"] for i in r["items"]), "; ".join(f"{i['note']}:{i['applied']}" for i in r["items"]))]
 
 
-CASES = {"A": case_a, "B": case_b, "C": case_c, "D": case_d, "E": case_e, "F": case_f}
+LINE_WORDS = "if there arent any curbs youre probably on a septic system"          # Ryan, 2026-10-13: the editor removed this line of Bob's, he asked for it back and the editor could not
+
+
+def case_g(src: Path, out: Path) -> list[tuple[str, bool, str]]:
+    """A line that was cut is put back, with its picture and the right recorder, where it was said; the layers are rebuilt on the longer cut and the captions carry the line."""
+    import ops as opsmod
+    cut = timeline.load_cut(src)
+    found = opsmod.locate_restore(cut, LINE_WORDS)
+    if "reason" in found and "already in the cut" in found["reason"]:
+        return [("G0 the line is already in this cut, nothing to put back", True, found["reason"][:200])]
+    notes = [{"timeline_sec": 2.0, "clip": 1, "text": "Bob says 'if there arent any curbs youre probably on a septic system' and the editor removed it. Put that back in.", "shapes": []}]
+    ops = [{"note": 1, "op": "restore_footage", "words": LINE_WORDS}]
+    r, d = _run(src, out, "G_put_a_line_back", notes, ops)
+    new = timeline.load_cut(Path(r["xml"]))
+    item = r["items"][0]
+    t0, t1 = found.get("t0", 0.0), found.get("t1", 0.0)
+    shows = [c for c in new.video if c.src_path == found.get("path") and c.src_in - 0.1 <= t0 + 0.2 and t1 - 0.2 <= c.src_out + 0.1]
+    was = [c for c in cut.video if c.src_path == found.get("path") and c.src_in - 0.1 <= t0 + 0.2 and t1 - 0.2 <= c.src_out + 0.1]
+    cj_path = d / "layers" / "captions" / "captions.json"
+    caps = json.dumps(json.loads(cj_path.read_text())["groups"]).lower() if cj_path.is_file() else ""
+    return [("G1 the line was found in the footage", "reason" not in found, found.get("heard", found.get("reason", ""))[:140]),
+            ("G2 a clip of the new version shows it and the old one did not", bool(shows) and not was, f"{len(was)} clip(s) showed it before, {len(shows)} now" + (f", at {shows[0].tl_start:.1f}s" if shows else "")),
+            ("G3 the cut grew by the line", abs((new.zone_end - cut.zone_end) - (t1 - t0)) < 0.2, f"{cut.zone_end:.2f} -> {new.zone_end:.2f} s (the line is {t1 - t0:.2f} s)"),
+            ("G4 the layers are all still on, on the longer cut", all(fc.layers_present(Path(r["xml"])).get(k) for k in ("on_screen", "music")), str(fc.layers_present(Path(r["xml"])))),
+            ("G5 the captions carry the line", "curbs" in caps, "captions.json has 'curbs'" if "curbs" in caps else "the word is not in the captions (the line may be mis-heard: look at the page)"),
+            ("G6 reported made", bool(item["applied"]), item.get("summary", "")[:200]),
+            ("G7 the layers were rebuilt on the longer cut, not left off", "were put back on the revised cut" in (r.get("message") or ""), (r.get("message") or "")[:160])]       # the first run passed G4 and G5 while the captions step had failed: the message is what says so
+
+
+CASES = {"A": case_a, "B": case_b, "C": case_c, "D": case_d, "E": case_e, "F": case_f, "G": case_g}
 
 
 def main() -> int:

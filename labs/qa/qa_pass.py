@@ -370,6 +370,19 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
         if i is None or j is None:
             return Row(n, kind, FAILED, "one of the two clips is not on the new cut")
         return Row(n, kind, VERIFIED if i < j else FAILED, f"the moved clip is now clip {i + 1} and the one it should come before is clip {j + 1} on the new cut")
+    if kind == "restore_footage":
+        r = item.get("restored")
+        if not r:
+            return Row(n, kind, FAILED if applied else NOT_DONE, "the editor did not put the line back" + (f": {item.get('summary')}" if item and item.get("summary") else ""))
+        was = any(c.src_path == r["path"] and c.src_in - TOL <= r["t0"] + 0.2 and r["t1"] - 0.2 <= c.src_out + TOL for c in old.video)
+        now = [c for c in new.video if c.src_path == r["path"] and c.src_in - TOL <= r["t0"] + 0.2 and r["t1"] - 0.2 <= c.src_out + TOL]
+        if was:
+            return Row(n, kind, UNMEASURED, "the line was already in the old version, so there was nothing to put back")
+        if not now:
+            return Row(n, kind, FAILED, f"no clip on the new version shows the line ({r['t0']:.1f}-{r['t1']:.1f}s of the recording)")
+        c = now[0]
+        grew = new.zone_end - old.zone_end
+        return Row(n, kind, VERIFIED, f"clip {c.idx} of the new version shows the recording from {c.src_in:.1f} to {c.src_out:.1f}s at {c.tl_start:.1f}s, which holds the line ({r['t0']:.1f}-{r['t1']:.1f}s); the cut grew {grew:+.1f}s. Heard there: \"{r.get('heard', '')[:100]}\"")
     if kind == "end_at_words":
         seam = item.get("v2_time")
         if seam is None:

@@ -95,11 +95,18 @@ def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
     for i, lt in enumerate(spec.get("lower_thirds", []), 1):
         clip, t0 = mo.locate(lt["anchor"], timeline_d)
         off = min(round(t0 + float(lt.get("until", 3.0)), 4), round(clip["end"] - LABEL_CLEAR, 4))
+        if lt.get("past_clip"):                                                  # the person asked for it to stay up longer (2026-10-13): that outranks clearing at its clip's end, which silently ate the request on a short clip
+            off = max(off, min(round(t0 + float(lt.get("until", 3.0)), 4), round(zone_end - LABEL_CLEAR, 4)))
         if off - t0 < LT_MIN_SEC:
             raise TitleError(f"lower third {i} ('{lt['name']}') would be on screen {off - t0:.2f}s, under {LT_MIN_SEC}s: too short to read")
         if off > zone_end + 1e-6:
             raise TitleError(f"lower third {i} would run past the end of the cut")
         out["lower_thirds"].append({"anchor_time": round(t0, 4), "on": round(t0, 4), "off": off, "name": str(lt["name"]).strip(), "sub": str(lt.get("sub", "")).strip()})
+    for lt_in, lt_out in zip(spec.get("lower_thirds", []), out["lower_thirds"]):          # a tag kept up past its clip stops where the next graphic comes on
+        if lt_in.get("past_clip"):
+            later = [o["on"] for o in out["lower_thirds"] if o["on"] > lt_out["on"] + 1e-6] + [lb["on"] for lb in out["labels"] if lb["on"] > lt_out["on"] + 1e-6]
+            if later:
+                lt_out["off"] = min(lt_out["off"], round(min(later) - 0.1, 4))
     spans = sorted([(out["title"]["on"][0], out["title"]["off"], "title")] if out["title"] else [])
     spans += [(lb["on"], lb["off"], f"label '{lb['text']}'") for lb in out["labels"]]
     spans += [(lt["on"], lt["off"], f"lower third '{lt['name']}'") for lt in out["lower_thirds"]]

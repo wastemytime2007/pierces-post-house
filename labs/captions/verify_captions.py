@@ -119,7 +119,8 @@ def main() -> int:
 
     many = [g for g in groups if len(g["words"]) >= 4 and bboxes.get(groups.index(g))]
     if many:
-        g = max(many, key=lambda x: len(x["words"]))
+        solid = [x for x in many if all(w["end"] - w["start"] >= 0.08 for w in x["words"])]          # a word timed at 0.04 s ("it." closing a fast line, 2026-10-13) is a frame or two: its highlight cannot be sampled, so the line that tests the sweep is one whose words last
+        g = max(solid or many, key=lambda x: len(x["words"]))
         pts = []
         for w in g["words"]:
             f = fr((w["start"] + w["end"]) / 2)

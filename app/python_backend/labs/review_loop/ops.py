@@ -12,6 +12,8 @@ LLM) only chooses among them; it does not get to invent a time.
   trim_start / trim_end {clip, seconds}   only when the note states the amount
   extend_start {clip, max_sec}   a word at the START of the clip is cut off (the clip starts in the middle of a sound); the start moves earlier to where the sound begins, measured
   drop_clip {clip}               only when the note says to remove the clip
+  restore_footage {words}        the note asks to put BACK a line of the recording the cut no longer has ("put the part where Bob says ... back in"). The line is found in the transcript of
+                                 the footage the cut is made from by the note's own words, then put on the timeline, with its picture and every recorder, where it was said in the story.
   reframe_vertical {clip, direction}   a punched-in shot sits too high or too low in the vertical frame (Reel 3: "lower it so Mitch's head isn't cropped off at
                                  the top"). direction is "lower" or "raise" and must be the note's own. The amount is one step (12% of the shot's height)
                                  unless a later version learns to read one; it changes the clip's Basic Motion in the XML, not its timing, so nothing ripples.
@@ -53,6 +55,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -81,7 +84,7 @@ SAYS_REMOVE = re.compile(r"\b(remove|delete|drop|get rid|lose|kill|turn (it |thi
 SAYS_FRAMING = re.compile(r"\b(frame|framing|framed|crop(ped)?|cut off|head|screen|position(ed)?|reposition|shot|angle)\b", re.I)
 SAYS_LOWER = re.compile(r"\b(lower|lowered|lowering|down|bring (it|this|them) down|drop (it|this)|move (it|this) down)\b", re.I)
 SAYS_RAISE = re.compile(r"\b(raise|raised|raising|higher|up|bring (it|this|them) up|move (it|this) up)\b", re.I)
-CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "extend_start", "start_at_words", "end_at_words", "move_clip", "drop_clip", "reframe_vertical", "follow_speaker"}
+CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_end", "extend_start", "start_at_words", "end_at_words", "move_clip", "drop_clip", "reframe_vertical", "follow_speaker", "restore_footage"}
 SAYS_MOVE = re.compile(r"\b(move|moved|moving|put|place|before|after|earlier|first|open(s|ing)? (with|on)|lead (with|in)|order|reorder|swap|switch (the )?order|sets? (it )?up)\b", re.I)
 SAYS_FOLLOW = re.compile(r"\b(follow(s|ing)?|track(s|ing)?|on|center(ed|ing)?|centre(d|ing)?)\b.{0,40}\b(speak(er|ers|ing)|talk(er|ing)|whoever|who(\'s| is) (talking|speaking)|person|both)\b|\b(speak(er|ers|ing)|talk(er|ing)|whoever)\b.{0,40}\b(frame|framed|framing|follow|center|centre|on screen)\b|\bframed on (either|both|neither)\b", re.I)
 SAYS_SWITCH = re.compile(r"\b(re-?frame|cut(ting)? back and forth|back and forth|switch(ing)? (to|between)|audio source|source audio|mic(rophone)? (source )?(to|for))\b.{0,120}\b(speak(er|ers|ing)|talk(er|ing)|person|people|him|her|them)\b|\b(speak(er|ers))\b.{0,120}\b(re-?frame|cut(ting)? back|switch|audio source|source audio)\b", re.I)
@@ -115,6 +118,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - end_at_words {"clip": n, "words": "..."}  The note says clip n should END after specific words, dropping what comes after them (for example "trim the out-point to end at 'until we're under contract'"). "words" must be copied from the note: the last words to keep. The point is found by listening, so never give a time.
 - move_clip {"clip": n, "before": m}  The note says clip n should come earlier, before clip m (a line that sets up another should play first). Only when the note asks for the order to change.
 - drop_clip {"clip": n}              ONLY if the note clearly says to remove/delete that clip or shot.
+- restore_footage {"words": "..."}   The note asks to put BACK, bring back or add back a line or moment of the recording that the cut no longer has ("put the part where Bob says 'if there aren't any curbs you're probably on a septic system' back in", "that line should not have been cut"). "words" is the note's own description or quote of that line, copied from the note (never your own words). The line is found by searching the transcript, so never give a time or a clip. Not for a graphic, and not for a word cut off at the edge of a clip (that is extend_end or extend_start).
 - remove_filler {}                   The note asks to remove a filler word ("remove this um", "cut the uh", "take out the er") at the note's moment. No parameters: the word is found in the transcript near the note's time and its measured start and end are cut. Never give a time.
 - reframe_vertical {"clip": n, "direction": "lower" or "raise"}  The note says a shot sits too HIGH or too LOW in the (vertical) frame and should be moved down or up on screen, for example a head cropped at the top of the frame ("lower it so his head isn't cut off" is "lower": the picture moves down on screen). "clip" is the note's own clip unless the note says otherwise. "direction" must be the way the note says to move it. The amount is a fixed step, so never give one. Not for zooming (that is zoom_clip) or moving sideways (unsupported).
 - zoom_clip {"clip": n, "direction": "in" or "out", "amount": "little" or "lot"}  The note asks to zoom in or out on a shot, punch in, crop in, make it closer or tighter, or wider ("zoom in on this shot", "crop this one in a bit", "too tight, pull back"). "clip" is the note's own clip unless the note says otherwise. "direction" is "in" for closer or tighter, "out" for wider. "amount" is "lot" only when the note says a lot, way in, much or big; otherwise "little". The person stays framed and the top of the picture stays, so never give a position or a size.
@@ -182,6 +186,12 @@ SAYS_MUSIC = re.compile(r"\b(music|song|soundtrack|score|background track|beat)\
 SAYS_SFX = re.compile(r"\b(sound effects?|sfx|whoosh(es)?|swoosh(es)?|effects?)\b", re.I)
 SAYS_QUIETER = re.compile(r"\b(too loud|louder than|quieter|quiet(er)?|softer|lower(ed)?|down|turn (it )?down|bring (it )?down|drowns?|overpower)", re.I)
 SAYS_LOUDER = re.compile(r"\b(too (quiet|soft|low)|louder|turn (it )?up|bring (it )?up|can'?t hear|cannot hear|barely hear)", re.I)
+SAYS_RESTORE = re.compile(r"\b(put|bring|add|stick|slot|get|place|work)\b[^.]{0,70}\bback\b|\b(restore|re-?add|reinstate|re-?insert|re-?include)\b|\b(shouldn'?t|should not|should never|did ?n'?t need to|never should) (have )?(been |be )?(cut|removed|dropped|taken out|left out|deleted)\b|\bshould (still )?(be|have been|stay) (in|kept|left in|included)\b|\b(was|were|got|is|are) (cut|removed|dropped|taken out|left out|deleted|missing)\b|\bwhy (was|were|did)\b[^.]{0,60}\b(cut|removed|dropped|out)\b", re.I)
+RESTORE_STOP = set("a an the and or but if is it its it's in on of to for so that this there here are was were be been am i you your youre you're we they he she them his her at as by with from any all just not dont don't aren't arent isnt isn't do does did have has had will would can could should one some then than what when who which how like yeah okay really very kind know say says said mention mentions mentioned part line moment bit video clip footage back put into out about where".split())
+RESTORE_MIN_SCORE = 0.5            # the share of the note's distinctive words the line must hold (Whisper mishears: "septic system" was written "out of substances", so a full match cannot be asked for)
+RESTORE_COMMON_DF = 4              # a word said in more phrases than this names no line: a line found only by such words is for the model to confirm
+RESTORE_CLEAR_LEAD = 1.4           # the best line must beat the next by this much to be taken on the words alone; otherwise the model chooses
+RESTORE_MIN_WORDS = 2              # a line named by two or more distinctive words must hold at least this many of them; a note naming it by one word ("the curbs part") is left to the model to place when more than one line holds it
 SAYS_FILLER = re.compile(r"\b(um+|uh+|er+m?|ah+|filler|filler words?|\"?um\"?|\"?uh\"?)\b", re.I)
 
 
@@ -453,6 +463,21 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if lane in ("Callout", "Card") or (SAYS_GRAPHIC.search(text) and not SAYS_FOOTAGE.search(text)):
                     raise ValueError("the note is about a graphic, not the footage; dropping the clip would delete footage (remove_graphic takes a graphic out)")
                 out.append({"note": note, "op": op, "clip": clip, "why": why})
+            elif op == "restore_footage":
+                phrase = str(raw.get("words", "")).strip().strip('"\u201c\u201d')
+                pt, nt = [w.strip("'") for w in words_mod.tokens(phrase)], {w.strip("'") for w in words_mod.tokens(text)}          # a quoted line carries its quote marks on its first and last word
+                if not SAYS_RESTORE.search(text):
+                    raise ValueError("the note does not ask for footage to be put back")
+                if lane in ("Callout", "Card") or (SAYS_GRAPHIC.search(text) and not SAYS_FOOTAGE.search(text) and not re.search(r"\b(says?|said|mentions?|talks?)\b", text, re.I)):
+                    raise ValueError("the note is about a graphic, not footage")
+                if not [w for w in pt if w not in RESTORE_STOP and len(w) > 2] or len(pt) > 40:
+                    raise ValueError("the note does not say which line to put back in enough words to find it")
+                if sum(w in nt for w in pt) < 0.9 * len(pt):
+                    raise ValueError("those words are not in the note, refusing to search for words nobody gave")
+                before = raw.get("before")
+                if before is not None and not (isinstance(before, int) and 1 <= before <= n_clips):
+                    before = None
+                out.append({"note": note, "op": op, "words": phrase, "before": before, "why": why})
             elif op == "reframe_vertical":
                 clip = int(raw.get("clip", (tg or {}).get("clip") or notes[note - 1].get("clip", 0)))
                 if not 1 <= clip <= n_clips:
@@ -862,3 +887,168 @@ def locate_start(cut: Cut, clip_idx: int, phrase: str, reach: float = 6.0, max_t
     if trim > max_trim:
         return {"reason": f"starting at those words would remove {trim:.1f}s, which is too much to do without confirmation"}
     return {"trim": trim, "dropped": dropped, "at_word": ws[idx].text, "heard": words_mod.heard(ws[:idx + 6])}
+
+
+def _transcript_phrases(path: str) -> list[dict] | None:
+    """PreCut's own transcript of this file (phrases with word timing), from the project folders; the newest one whose source is this file. None when there is none."""
+    import os
+    root = Path(os.environ.get("POSTHOUSE_PROJECTS") or Path.home() / "Library" / "Application Support" / "Post House" / "projects")
+    found = sorted(root.glob(f"*/transcripts/{Path(path).stem}.json"), key=lambda f: f.stat().st_mtime, reverse=True)
+    for f in found:
+        try:
+            j = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        if Path(str(j.get("source_path", ""))).stem.lower() == Path(path).stem.lower() and isinstance(j.get("phrases"), list):       # the transcript is of the proxy (.mp4, lower case) the cut's original (.MP4) was made from: the same recording
+            return j["phrases"]
+    return None
+
+
+def _distinctive(text: str) -> list[str]:
+    seen: list[str] = []
+    for w in (x.strip("'") for x in words_mod.tokens(text)):
+        if w not in RESTORE_STOP and len(w) > 2 and w not in seen:
+            seen.append(w)
+    return seen
+
+
+def _line_candidates(phrases: list[dict], want: list[str], keep: int = 5) -> list[dict]:
+    """The runs of one to three consecutive transcript phrases that best hold the wanted words, best first, none overlapping another: {"rank", "share", "span": (first, last), "held"}.
+
+    A word counts by how rare it is in this recording (a word said in two phrases of two hundred names a line; "septic" in a recording about a septic system names nothing), so the share held is
+    weighted by that. The rank also falls with every phrase the words are spread over (0.7 a phrase): words found in separate sentences are far likelier to be chance than words found in one. Each end
+    phrase of a run must hold one of the words. The best run that holds the rarest word is always kept: a transcript mishears the common words around it."""
+    import math
+    toks = [words_mod.tokens(p.get("text", "")) for p in phrases]
+    n_ph = len(phrases)
+    df = {w: sum(any(words_mod._sim(w, h) >= 0.8 for h in ts) for ts in toks) for w in want}
+    idf = {w: max(math.log((n_ph + 1) / (df[w] + 0.5)), 0.05) for w in want}           # smoothed, and never zero: in a transcript of one phrase every word is "common"
+    total = sum(idf[w] for w in want if df[w]) or 1.0                                       # a word the recording never has (the note's own paraphrase, or a word the transcript mishears) neither helps nor hurts
+    rows = []
+    for i in range(n_ph):
+        for n in (1, 2, 3):
+            if i + n > n_ph:
+                break
+            heard = [w for ts in toks[i:i + n] for w in ts]
+            held = [w for w in want if any(words_mod._sim(w, h) >= 0.8 for h in heard)]
+            ends_ok = n == 1 or all(any(words_mod._sim(w, h) >= 0.8 for h in toks[k] for w in want) for k in (i, i + n - 1))
+            if held and ends_ok:
+                share = sum(idf[w] for w in held) / total
+                rows.append({"rank": share * 0.7 ** (n - 1), "share": share, "span": (i, i + n - 1), "held": held, "known": sum(1 for w in want if df[w]), "min_df": min(df[w] for w in held)})
+    rows.sort(key=lambda r: -r["rank"])
+    out: list[dict] = []
+    for r in rows:
+        if all(r["span"][1] < o["span"][0] or r["span"][0] > o["span"][1] for o in out):
+            out.append(r)
+        if len(out) == keep:
+            break
+    rarest = min(want, key=lambda w: df[w])
+    if df[rarest] and not any(rarest in r["held"] for r in out):
+        extra = next((r for r in rows if rarest in r["held"]), None)
+        if extra:
+            out.append(extra)
+    return out
+
+
+def _pick_line(note_words: str, options: list[str], client=None) -> int | None:
+    """Which of the candidate lines the note means, chosen by the model, which can see that a transcript's "out of substances" is "on a septic system". None when it says none of them is."""
+    if client is None:
+        from posthouse.cli_llm_client import CLIBackedClient
+        client = CLIBackedClient()
+    listing = "\n".join(f"{k + 1}. {o}" for k, o in enumerate(options))
+    prompt = (f'A video editor wrote a note asking to put back a line of an interview. The words of the note: "{note_words}"\n\nCandidate lines from an automatic transcript. It mishears words '
+              f'(for example "septic system" can be written "out of substances"), so judge by sound and sense, not spelling:\n{listing}\n\nWhich candidate is the line the note means? Be strict: a candidate '
+              'counts only if what the note describes is what is said there, or a misheard version of it by sound. A single shared ordinary word ("water" for "weather") is NOT a match, and a wrong '
+              'line put into a video costs the editor more than no line, so when you are not sure say none. Reply with ONLY JSON: {"pick": <candidate number>} or {"pick": null}.')
+    resp = client.messages.create(system="You pick the transcript line an editor's note refers to. Reply with only JSON.", max_tokens=100, temperature=0, messages=[{"role": "user", "content": prompt}])
+    m = re.search(r"\{.*\}", resp.content[0].text, re.S)
+    try:
+        pick = json.loads(m.group(0)).get("pick") if m else None
+    except ValueError:
+        return None
+    return int(pick) - 1 if isinstance(pick, int) and 1 <= pick <= len(options) else None
+
+
+def locate_restore(cut: Cut, phrase: str, before: int | None = None) -> dict:
+    """Where in the recording the line the note names is, and where in the cut it goes. Returns {"path", "t0", "t1" (source seconds of the camera file), "heard", "held", "after"/"before" (the clip it
+    goes next to), "lav", "lav_offset"} or {"reason": ...}.
+
+    The line is searched in the transcript of each file the cut is made from, by the note's distinctive words (a transcript mishears, so half of them is enough, but at least two). What the cut already
+    shows of it is not put back twice. Its ends are placed at the quietest moment next to the first and last word, the way every other cut here is. It goes where it was said: after the clip of the same
+    recording that ends nearest before it, else before the one that starts nearest after it, unless the note names the clip it must come before."""
+    want = _distinctive(phrase)
+    if not want:
+        return {"reason": "the note does not name the line in enough distinctive words to find it"}
+    pool, missing = [], []
+    for path in sorted({c.src_path for c in cut.video}):
+        ph = _transcript_phrases(path)
+        if ph is None:
+            missing.append(Path(path).name)
+            continue
+        pool += [(c, path, ph) for c in _line_candidates(ph, want)]
+    pool.sort(key=lambda x: -x[0]["rank"])
+    if not pool:
+        why = f" (there is no transcript for {', '.join(missing)})" if missing else ""
+        return {"reason": f"could not find that line in the footage the cut is made from{why}; the words searched for were: {', '.join(want)}"}
+    top, by_model = pool[0], False
+    weak = pool[0][0]["known"] < RESTORE_MIN_WORDS or pool[0][0]["min_df"] > RESTORE_COMMON_DF                    # one known word, or only common words: the words alone cannot say it is the line ("weather" is 0.83 like "water")
+    if weak or (len(pool) > 1 and pool[0][0]["rank"] < RESTORE_CLEAR_LEAD * pool[1][0]["rank"]):           # no clear winner by the words alone: the model chooses among what was found, and may say none
+        by_model = True
+        shown = pool[:6]
+        pick = _pick_line(phrase, [" ".join(p["text"] for p in sp[c["span"][0]:c["span"][1] + 1]).strip() + f"  [{sp[c['span'][0]]['start']:.0f}s]" for c, _pa, sp in shown])
+        if pick is None:
+            return {"reason": "could not tell which line in the footage the note means; the closest were: " + " / ".join('"' + " ".join(p["text"] for p in sp[c["span"][0]:c["span"][1] + 1]).strip()[:90] + '"' for c, _pa, sp in shown[:3])}
+        top = shown[pick]
+    cand, path, ph = top
+    score, (i, j), held = cand["share"], cand["span"], cand["held"]
+    if not by_model and (score < RESTORE_MIN_SCORE or len(held) < min(RESTORE_MIN_WORDS, cand["known"])):
+        return {"reason": f"the closest line in the footage holds only {', '.join(held)} of the words searched for ({', '.join(want)}), too little to be sure it is the one"}
+    w0, w1 = ph[i], ph[j]
+    t0, t1 = float(w0["start"]), float(w1["end"])
+    heard = " ".join(p["text"] for p in ph[i:j + 1]).strip()
+    used = sorted((c.src_in, c.src_out) for c in cut.video if c.src_path == path)          # what the cut already shows of it: not put back twice
+    free, cur = [], t0
+    for a, b in used:
+        if b <= cur:
+            continue
+        if a >= t1:
+            break
+        if a > cur:
+            free.append((cur, a))
+        cur = max(cur, b)
+    if cur < t1:
+        free.append((cur, t1))
+    free_len = sum(b - a for a, b in free)
+    if free_len < 0.5:
+        at = next((c for c in cut.video if c.src_path == path and c.src_in - 0.3 <= t0 and t1 <= c.src_out + 0.3), None)
+        where = f" (it plays in clip {at.idx}, at {at.tl_start:.1f}s)" if at else ""
+        return {"reason": f'that line is already in the cut{where}: "{heard}"'}
+    if len(free) > 1 or free_len < 0.5 * (t1 - t0):
+        return {"reason": f'part of that line is in the cut already and the rest is split around other clips, so it cannot be put back as one piece: "{heard}"'}
+    f0, f1 = free[0]
+    tmpl = min((c for c in cut.video if c.src_path == path), key=lambda c: 0.0 if c.src_in <= f0 <= c.src_out else min(abs(c.src_in - f1), abs(c.src_out - f0)), default=None)
+    if tmpl is None:
+        return {"reason": "no clip of that recording is in the cut to take the sound and framing from"}
+    lav, a_in, _ = _audio_for(cut, tmpl)
+    off = a_in - tmpl.src_in                                                               # the recorder's time minus the camera's at that clip
+    if f0 > t0 + 0.05:
+        t0 = f0                                                                            # a neighbour already holds the start of the line: the free edge stays as it is
+    else:
+        t0 = max(0.0, words_mod.valley(lav, t0 + off - 0.15, t0 + off) - off)
+    if f1 < t1 - 0.05:
+        t1 = f1
+    else:
+        t1 = words_mod.valley(lav, t1 + off, t1 + off + 0.3) - off
+    if t1 - t0 < 0.5:
+        return {"reason": "the line is shorter than half a second once placed, so nothing was put back"}
+    if before is not None and not 1 <= before <= len(cut.video):
+        before = None
+    after_c = None
+    if before is None:
+        prev = [c for c in cut.video if c.src_path == path and c.src_out <= t0 + 0.5]
+        nxt = [c for c in cut.video if c.src_path == path and c.src_in >= t1 - 0.5]
+        if prev:
+            after_c = max(prev, key=lambda c: c.src_out)
+        elif nxt:
+            before = min(nxt, key=lambda c: c.src_in).idx
+    return {"path": path, "t0": t0, "t1": t1, "heard": heard, "held": held, "want": want, "before": before, "after": after_c.idx if after_c else None, "template": tmpl.idx, "lav": lav, "lav_offset": off}
