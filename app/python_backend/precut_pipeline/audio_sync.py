@@ -140,6 +140,30 @@ def _camera_clock_start(path: str) -> Optional[float]:
         return None
 
 
+CLOCK_MARGIN_SEC = 1800.0     # recorders' clocks are not the camera's (each has its own offset, see _recorder_id), so a pair is ruled out only when the recordings are more than this far apart in time
+
+
+def clocks_rule_out_overlap(pair, margin_sec: float = CLOCK_MARGIN_SEC, camera_duration_sec: Optional[float] = None) -> Optional[str]:
+    """Why a pair cannot overlap in time, from the clock stamps in both file names, or None when it might (or when either has no stamp, or a duration cannot be read: then nothing is skipped).
+
+    Ryan, 2026-10-15: a new project (4 clips shot 9:43-10:55, 9 recorder files, six of them recorded 6:39-8:11) sat in the windowed "rescue" pass for over twenty minutes with the progress stuck at
+    "36": the rescue ran its ten-window correlation on every one of the 30 weak pairs, 24 of which are hours away from the clip in time. This only skips the rescue (the whole-file pass has already
+    run on every pair and a real match scores strongly there); it never invents a sync. The two real pairs measured on that footage put the recorder's clock about a minute from the camera's."""
+    cam0, aud0 = _camera_clock_start(pair.aroll_file), _audio_clock_start(pair.audio_file)
+    if cam0 is None or aud0 is None:
+        return None
+    cam_dur = camera_duration_sec
+    if cam_dur is None:
+        cam_dur = _probe_audio_duration(Path(pair.aroll_proxy))               # ffprobe's container duration; the proxy keeps the camera's sound
+    aud_dur = getattr(pair, "audio_duration_sec", None)
+    if not cam_dur or not aud_dur:
+        return None
+    gap = max(aud0 - (cam0 + cam_dur), cam0 - (aud0 + aud_dur))               # positive: the two recordings do not overlap by this many seconds
+    if gap <= margin_sec:
+        return None
+    return f"recorded {gap / 60:.0f} min apart by their clocks"
+
+
 def offset_is_corroborated(pair, state) -> bool:
     """Whether a mid-scoring pair's offset is independently confirmed.
 

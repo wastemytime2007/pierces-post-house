@@ -420,12 +420,23 @@ def _run_audio_sync(
     # pairs on every click when nothing about them has changed.
     to_reuse = []
     to_scan = []
+    ruled_out = []
+    from precut_pipeline.audio_sync import clocks_rule_out_overlap
     for pair in unreliable:
         prev = previous_rescues.get((pair.aroll_file, pair.audio_file))
         if prev is not None:
             to_reuse.append((pair, prev))
+            continue
+        why = clocks_rule_out_overlap(pair)
+        if why:                                                              # no stretch of this audio can be in this clip: nothing to rescue (and nothing to try again next time)
+            pair.rescue_attempted = True
+            ruled_out.append((pair, why))
         else:
             to_scan.append(pair)
+    if ruled_out:
+        emit({"type": "log", "level": "dim", "job_id": job.job_id,
+              "message": f"Skipping the rescue for {len(ruled_out)} pair(s) whose recordings cannot overlap in time "
+                         f"(e.g. {Path(ruled_out[0][0].aroll_file).name} / {Path(ruled_out[0][0].audio_file).name}: {ruled_out[0][1]}); {len(to_scan)} left to check."})
 
     rescued_count = 0
     if to_reuse:
@@ -452,6 +463,8 @@ def _run_audio_sync(
             if job.cancel_flag.is_set():
                 break
             pair.rescue_attempted = True
+            emit({"type": "log", "level": "dim", "job_id": job.job_id,
+                  "message": f"  Checking {Path(pair.aroll_file).name} / {Path(pair.audio_file).name} ({i + 1}/{len(to_scan)})..."})          # so the panel is not silent for minutes at a time
             try:
                 coverage = analyze_pair_coverage(
                     Path(pair.aroll_proxy), Path(pair.audio_file),
