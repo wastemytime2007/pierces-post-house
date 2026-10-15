@@ -32,6 +32,8 @@ LLM) only chooses among them; it does not get to invent a time.
                                  labs/captions/fix_caption.py, not on the timeline, so revise.py reports it as not applied here.
   redo_captions {}               the note says the captions do not match what is said, are wrong or out of step, and gives no words ("the captions dont match whats being said. Fix the captions"). The
                                  words are in the audio, so the captions are made again from the cut's own sound. Made by the layer rebuild, not on the timeline.
+  cta_reason {}                  the note says the on-screen CALL TO ACTION (the "DM ..." words at the end) has no reason, says what to do but not why, or does not make sense, and gives no wording ("This CTA
+                                 doesnt make sense. It says 'DM Septic' but gives no reason"). The idea's own words give the reason, so it goes on the box's second line. Made by the layer rebuild.
   remove_graphic {}              the note wants an on-screen graphic (a callout or an image card) taken out entirely. The graphic is
                                  found from the note's element or its moment. Made by labs/overlay/remove_graphic.py plus reconform
                                  --drop, not on the timeline, so revise.py reports it as not applied here.
@@ -77,6 +79,8 @@ SAYS_LONGER = re.compile(r"\b(longer|more time|more seconds?|extra (time|seconds
 SAYS_END = re.compile(r"\b(fade(s|d)? out|fade(s|d)? away|end(s)? here|stop(s)? here|disappear|go(es)? away|come(s)? off|take (it|this|that) off|off the screen|off screen|shorter|less time)\b", re.I)
 SAYS_CAPTION = re.compile(r"\b(captions?|subtitles?)\b", re.I)
 SAYS_CAPTION_OFF = re.compile(r"\b(don'?t|do not|doesn'?t|does not|aren'?t|are not|isn'?t|is not|not|never|nothing|none|no)\b[^.]{0,40}\b(match(es|ing)?|line[sd]? up|sync(ed|ing)?|right|correct|accurate|what'?s (being )?said|what (he|she|they|bob|mitch|anyone) (say|said|says))\b|\b(wrong|incorrect|inaccurate|out of sync|out of step|mismatch(ed)?|misaligned|garbled|gibberish|off by|behind|ahead|late|early|different from)\b", re.I)
+SAYS_CTA = re.compile(r"\b(call[- ]to[- ]action|cta)\b", re.I)
+SAYS_CTA_UNCLEAR = re.compile(r"\b(no reason|any reason|without (a |any )?(reason|context|explanation)|(gives?|says?|has|tells?|explains?)\b[^.]{0,20}\b(no|nothing)\b[^.]{0,20}\b(reason|why|context|explanation)|why|what for|for what|reason|(doesn'?t|does not|don'?t|do not|isn'?t|is not|not)\b[^.]{0,20}\b(make sense|clear|explain|say why|give a reason)|unclear|confusing|vague|missing|lacks?|needs? (a |an |some )?(reason|context|explanation|more))\b", re.I)
 SAYS_BLEEP = re.compile(r"\b(bleep|beep|censor|curse word|swear|profanity|cuss|expletive|f-?word|mute (that|the|this) word)", re.I)
 SAYS_NO = re.compile(r"^\s*(no|nope|nah|wrong|not (it|this|that|a curse word)|ignore|skip|false|that'?s not)\b|\b(not a curse word|isn'?t a curse word|is not a curse word|don'?t bleep|do not bleep|no bleep|leave (it|that|this) (alone|in))\b", re.I)
 SAYS_PUNCH = re.compile(r"\b(jump ?cuts?|crop|cropped|reframe[ds]?|punch(ed)? in|zoom(ed)? in|every other (cut|clip|shot))\b", re.I)
@@ -99,7 +103,7 @@ SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", 
 SUGGEST_MAX_SEC = 4.0
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
-LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption", "redo_captions"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
+LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption", "redo_captions"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic", "cta_reason"}}
 LANE_WHY = {"Music": "no tool changes the music bed from a note yet"}
 
 
@@ -131,6 +135,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
 - redo_captions {}  The note says the CAPTIONS (subtitles) do not match what is being said, are wrong, garbled or out of step with the speech, and does NOT give the right words ("the captions dont match whats being said. Fix the captions"). No parameters: the right words are in the cut's own audio, so the captions are made again from it. Use edit_caption only when the note gives the words.
 - edit_caption {"text": "...", "line": "this" or "next" or "previous"}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ...", "move the 23 to the next caption"). "text" is the whole new wording of ONE line: the words the note gives, plus the words of that line or its neighbour that stay (the note lists the captions around it; use only those words and the note's). "line" is which one changes: "this" (the one showing at the note's moment, the default), "next" or "previous". A note that moves words from one caption to its neighbour is TWO edit_caption ops, one for each line, each with that line's complete new wording. Never write words that are in neither the note nor those captions. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
+- cta_reason {}  The note says the on-screen CALL TO ACTION (the "DM ..." / "comment ..." words near the end) has no reason, says what to do but not why, or does not make sense, and gives NO new wording ("This CTA doesnt make sense. It says 'DM Septic' but gives no reason"). No parameters: the idea's own words give the reason and it is added from them. If the note gives the words it wants, use edit_callout instead.
 - remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
 - bleep_word {}  The note says to bleep, beep, censor or mute a curse word or swear word ("lets bleep the curse word here"). No parameters: the stretch is the note's clip or element, else its moment. Never give a time.
 - A note that says NO to something ("no", "that's not a curse word", "don't bleep it") is never a bleep_word: use unsupported with the reason "rejected".
@@ -553,6 +558,12 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError("the note does not talk about the captions")
                 if not SAYS_CAPTION_OFF.search(text):
                     raise ValueError("the note does not say the captions are wrong or do not match the speech")
+                out.append({"note": note, "op": op, "why": why})
+            elif op == "cta_reason":
+                if not SAYS_CTA.search(text):
+                    raise ValueError("the note does not talk about the call to action")
+                if not SAYS_CTA_UNCLEAR.search(text):
+                    raise ValueError("the note does not say the call to action lacks a reason or makes no sense")
                 out.append({"note": note, "op": op, "why": why})
             elif op == "remove_graphic":
                 if not says_graphic:

@@ -310,7 +310,7 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
         return Row(n, kind, NOT_DONE, f"not done: {o.get('reason', 'not supported')}")
     if kind == "replace_sfx":
         return check_replace_sfx(o, note, audio)
-    if kind in ("music_volume", "remove_music", "remove_sfx", "redo_captions"):
+    if kind in ("music_volume", "remove_music", "remove_sfx", "redo_captions", "cta_reason"):
         # the music and the effects are rebuilt with the layers after this check runs (creator_tools._put_layers_back), so there is nothing here to measure
         return Row(n, kind, UNMEASURED, "made when the finishing layers are rebuilt on the revised cut; not measured by this pass")
     if kind == "extend_graphic":

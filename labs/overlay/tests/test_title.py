@@ -167,3 +167,18 @@ def test_a_spec_without_a_title_card_has_anchors_for_what_it_has():
     """2026-10-12: taking the title card out (a note) crashed the title tool with KeyError 'title', and the whole revision with it."""
     assert [a["what"] for a in mt.anchors_of(LT_SPEC)] == ["lower third: Bob", "lower third: Mitch"]
     assert [a["what"] for a in mt.anchors_of(SPEC)] == ["title", "label: The closing"]
+
+
+def test_a_second_line_longer_than_the_frame_wraps_and_the_box_grows_taller_inside_the_margins():
+    """2026-10-15: the call to action's reason (50 characters) ran off the right edge of a 1080-wide frame ("...MIGHT HAV")."""
+    g = mt.layout(1080, 1920)
+    _short_w, short_h = mt.lt_box(g, "Bob", "Builder / Founder")
+    assert short_h == g["lt_h"]                                                    # a short line: the box is as it always was
+    w, h = mt.lt_box(g, "DM or comment 'septic'", "if you're selling a house you think might have one")
+    assert h > g["lt_h"]                                                           # wraps onto a second line: taller
+    assert mt.lt_text_max(g) + g["lt_bar"] + g["lt_pad_l"] + g["lt_pad_r"] + 2 * g["lt_x"] == 1080      # the wrapped line is held to the frame less the same margin at both sides
+    spec = {"lower_thirds": [{"anchor": {"source": "cam.mp4", "source_sec": 102.0}, "name": "DM or comment 'septic'", "sub": "if you're selling a house you think might have one", "until": 3.0}]}
+    p = mt.plan(spec, TL, 12.0)
+    p["lower_thirds"][0]["w"], p["lower_thirds"][0]["h"] = w, h
+    body, _ev = mt.body_html(p, g)
+    assert f"height:{h}px" in body and "white-space:normal" in body and f"max-width:{mt.lt_text_max(g)}px" in body

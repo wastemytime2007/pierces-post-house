@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-14.1"
+EDITOR_REVISION = "2026-10-15.1"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -701,7 +701,7 @@ def _finish_record(src: Path) -> dict | None:
 
 
 MUSIC_STEP_DB = 4.0
-REBUILD_OPS = ("edit_caption", "redo_captions", "bleep_word", "edit_callout", "remove_graphic", "extend_graphic", "end_graphic", "music_volume", "remove_music", "remove_sfx", "replace_sfx")     # what the layer rebuild makes (labs/review_loop/capabilities.py)
+REBUILD_OPS = ("edit_caption", "redo_captions", "cta_reason", "bleep_word", "edit_callout", "remove_graphic", "extend_graphic", "end_graphic", "music_volume", "remove_music", "remove_sfx", "replace_sfx")     # what the layer rebuild makes (labs/review_loop/capabilities.py)
 
 
 def _sfx_named_in(rec: dict) -> str:
@@ -796,6 +796,17 @@ def _finish_edits(ops: list[dict], note_list: list[dict], rec: dict, cta: str = 
                 gedits.append({"target": key, "do": "shorter", "seconds": cut_by})
                 said.append(f"{label} ends {cut_by:.1f} s sooner")
             results[n] = (True, "; ".join(said) + ", made when the layers were rebuilt") if said else (False, "the note asked for no change to the words")
+        elif kind == "cta_reason":
+            hit = next((x for x in targets if x[0] == "cta"), None)
+            full = cta or opts.get("cta") or ""
+            reason = fc.cta_reason(full)
+            if hit is None:
+                results[n] = (False, "no call to action is on screen on this cut, so there is none to give a reason")
+            elif not reason:
+                results[n] = (False, "the idea's own call to action gives no reason that fits a line (" + (f'"{full[:120]}"' if full else "the idea has none") + "); tell me the words you want under it and I will put them there")
+            else:
+                gedits.append({"target": "cta", "do": "sub", "text": reason})
+                results[n] = (True, f'the call to action now carries the idea\'s own reason on a second line: "{reason}", made when the layers were rebuilt')
         elif kind == "music_volume":
             base = fc.MUSIC_DB if music_db is None else music_db
             music_db = max(min(base + (MUSIC_STEP_DB if o.get("direction") == "up" else -MUSIC_STEP_DB), -1.0), -24.0)

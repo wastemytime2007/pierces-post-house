@@ -124,7 +124,7 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
             changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
-        elif kind in ("music_volume", "remove_music", "remove_sfx", "redo_captions"):
+        elif kind in ("music_volume", "remove_music", "remove_sfx", "redo_captions", "cta_reason"):
             changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "by_finish":
             changes.append(Change(n, kind, False, capabilities.result_text(kind, o), o.get("why", "")))

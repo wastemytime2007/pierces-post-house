@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -117,17 +118,28 @@ def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
     return out
 
 
+SUB_LINE_H = 1.3          # a wrapped second line's height, as a multiple of its font size
+
+
+def lt_text_max(g: dict) -> int:
+    """The widest the words of a lower third may be: the frame less the same margin at both sides, less the accent bar and the padding."""
+    return g["lt_max_w"] - g["lt_bar"] - g["lt_pad_l"] - g["lt_pad_r"]
+
+
 def lt_box(g: dict, name: str, sub: str) -> tuple[int, int]:
-    """The width and height a lower third occupies (estimated from its text; the panel is as wide as its longer line plus the accent bar and padding)."""
-    text_w = max(len(name) * g["lt_name_px"] * 0.64, len(sub) * g["lt_sub_px"] * 0.74 if sub else 0)
-    return round(g["lt_bar"] + g["lt_pad_l"] + text_w + g["lt_pad_r"]), g["lt_h"]
+    """The width and height a lower third occupies (estimated from its text; the panel is as wide as its longer line plus the accent bar and padding). A second line longer than the frame has room for
+    wraps onto more lines and the panel grows taller (2026-10-15: the call to action's reason, 50 characters, ran off the right edge of the frame: "...MIGHT HAV")."""
+    sub_w = len(sub) * g["lt_sub_px"] * 0.8 if sub else 0               # uppercase, letter-spaced: 0.8 of its size a character, a little over the measured 0.74
+    lines = max(1, math.ceil(sub_w / lt_text_max(g))) if sub else 1
+    text_w = max(len(name) * g["lt_name_px"] * 0.64, min(sub_w, lt_text_max(g)))
+    return round(g["lt_bar"] + g["lt_pad_l"] + text_w + g["lt_pad_r"]), g["lt_h"] + (lines - 1) * round(g["lt_sub_px"] * SUB_LINE_H)
 
 
 def layout(w: int, h: int, label_y: float | None = None, lt_y: float | None = None) -> dict:
     """Sizes as fractions of the canvas, so the same spec reads right at 1080x1920, 1920x1080 and 3840x2160. Proportions are those measured off the wallpaper reel's labels and the title drawn for Reel 3."""
     portrait = h > w
     u = w if portrait else h * 9 / 16                 # the unit: the frame's short side at 9:16
-    return {"lt_x": round(u * 0.065), "lt_y": round(h * (lt_y if lt_y is not None else (0.55 if portrait else 0.7))), "lt_name_px": round(u * 0.066), "lt_sub_px": round(u * 0.031), "lt_bar": round(u * 0.012),
+    return {"lt_x": round(u * 0.065), "lt_y": round(h * (lt_y if lt_y is not None else (0.55 if portrait else 0.7))), "lt_name_px": round(u * 0.066), "lt_sub_px": round(u * 0.031), "lt_bar": round(u * 0.012), "lt_max_w": w - 2 * round(u * 0.065),
             "lt_pad_l": round(u * 0.026), "lt_pad_r": round(u * 0.034), "lt_h": round(u * 0.166),
             "label_px": round(u * 0.072), "label_x": round(u * 0.065), "label_y": round(h * (label_y if label_y is not None else (0.69 if portrait else 0.74))), "label_w": round(w * (0.72 if portrait else 0.5)),
             "small_px": round(u * 0.065), "small_y": round(h * 0.395), "big_px": round(u * 0.23), "big_y": round(h * 0.447), "joke_px": round(u * 0.054), "joke_y": round(h * 0.62)}
@@ -148,9 +160,10 @@ def body_html(p: dict, g: dict) -> tuple[str, list[dict]]:
             parts.append(f'      <div id="t_{key}" class="hf-line {cls} clip" data-start="0" data-duration="{dur}" style="top:{y}px;font-size:{px}px">{html.escape(t[key])}</div>')
             ev.append({"sel": f"#t_{key}", "on": t["on"][k], "off": t["off"]})
     for i, lt in enumerate(p.get("lower_thirds", [])):
-        sub = f'<div class="lt-sub" style="font-size:{g["lt_sub_px"]}px">{html.escape(lt["sub"])}</div>' if lt["sub"] else ""
-        parts.append(f'      <div id="lt{i}" class="hf-lt clip" data-start="0" data-duration="{dur}" style="left:{g["lt_x"]}px;top:{g["lt_y"]}px;height:{g["lt_h"]}px">'
-                     f'<div class="lt-panel" style="height:{g["lt_h"]}px"><div class="lt-bar" style="width:{g["lt_bar"]}px"></div>'
+        box_h = lt.get("h", g["lt_h"])                                       # taller than the usual panel when the second line wraps
+        sub = (f'<div class="lt-sub" style="font-size:{g["lt_sub_px"]}px;white-space:normal;max-width:{lt_text_max(g)}px;line-height:{SUB_LINE_H}">{html.escape(lt["sub"])}</div>') if lt["sub"] else ""
+        parts.append(f'      <div id="lt{i}" class="hf-lt clip" data-start="0" data-duration="{dur}" style="left:{g["lt_x"]}px;top:{g["lt_y"]}px;height:{box_h}px">'
+                     f'<div class="lt-panel" style="height:{box_h}px"><div class="lt-bar" style="width:{g["lt_bar"]}px"></div>'
                      f'<div class="lt-text" style="padding-left:{g["lt_pad_l"]}px;padding-right:{g["lt_pad_r"]}px"><div class="lt-name" style="font-size:{g["lt_name_px"]}px">{html.escape(lt["name"])}</div>'
                      f'<div class="lt-rule"></div>{sub}</div></div></div>')
         ev.append({"sel": f"#lt{i}", "on": lt["on"], "off": lt["off"], "kind": "lt", "wipe_in": LT_WIPE_IN, "wipe_out": LT_WIPE_OUT})

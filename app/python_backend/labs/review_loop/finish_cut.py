@@ -160,6 +160,18 @@ def short_cta(text: str) -> str:
     return t if t and len(t.split()) <= CTA_MAX_WORDS else ""
 
 
+CTA_REASON_MAX_CHARS = 64        # the second line of the call to action's box
+
+
+def cta_reason(text: str) -> str:
+    """The reason the idea itself gives for its call to action, to go under the on-screen words: the "if ..." clause after the first one ("DM or comment 'septic' IF YOU'RE SELLING A HOUSE YOU THINK MIGHT
+    HAVE ONE, or follow for more..." -> "if you're selling a house you think might have one"). Nothing is reworded; empty when the idea gives none or it does not fit a line."""
+    t = str(text or "").strip()
+    m = re.search(r"\bif\b.*?(?=,?\s+or follow\b|[.;:!?](?=\s|$)|$)", t, re.I)
+    r = m.group(0).strip().rstrip(",.;:!?") if m else ""
+    return r if r and len(r) <= CTA_REASON_MAX_CHARS else ""
+
+
 GFX_LONGER_DEFAULT = 1.5      # seconds a note adds when it says "longer" without an amount
 
 

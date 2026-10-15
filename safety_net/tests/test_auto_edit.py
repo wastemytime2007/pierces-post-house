@@ -559,3 +559,17 @@ def test_each_note_is_given_the_caption_lines_around_its_moment(tmp_path):
     assert nfile.name == "notes_with_captions.json" and json.loads(nfile.read_text())["notes"][0]["caption_lines"]["next"] == "000 is the quote we"
     plain, same = ct._with_caption_context(tmp_path / "other" / "cut.xml", notes, tmp_path / "n.json", tmp_path / "out")
     assert plain == notes and same == tmp_path / "n.json"                                      # a cut with no captions layer: the notes are left alone
+
+
+def test_a_call_to_action_with_no_reason_gets_the_ideas_own_reason_on_a_second_line(tmp_path):
+    """Ryan, 2026-10-15: "This CTA doesnt make sense. It says 'DM Septic' but gives no reason". The idea says why ("if you're selling a house you think might have one"); the finish shows only its first clause."""
+    rec = _recorded_finish(tmp_path)
+    upd, res = ct._finish_edits([{"note": 1, "op": "cta_reason"}], [_note("This CTA doesnt make sense. It says \"DM Septic\" but gives no reason", 34.0)], rec, CTA_FULL)
+    assert upd["graphics_edits"] == [{"target": "cta", "do": "sub", "text": "if you're selling a house you think might have one"}]
+    assert res[1][0] is True and "if you're selling a house you think might have one" in res[1][1]
+
+
+def test_when_the_idea_gives_no_reason_the_editor_says_so_and_asks_for_the_words_instead_of_inventing_them(tmp_path):
+    rec = _recorded_finish(tmp_path)
+    upd, res = ct._finish_edits([{"note": 1, "op": "cta_reason"}], [_note("the CTA gives no reason", 34.0)], rec, "DM or comment 'septic'")
+    assert upd["graphics_edits"] == [] and res[1][0] is False and "tell me the words" in res[1][1]
