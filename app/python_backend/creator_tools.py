@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-15.1"
+EDITOR_REVISION = "2026-10-15.2"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -621,6 +621,23 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
         retry.write_text(json.dumps(sorted(kept, key=lambda o: o["note"]), indent=2))
         stage(f"{len(bad)} change{'s' if len(bad) != 1 else ''} did not hold up and {'were' if len(bad) != 1 else 'was'} set aside; making the rest")
         p = subprocess.run([*cmd[:cmd.index("--out") + 2], "--height", str(height), "--ops", str(retry)], capture_output=True, text=True)
+    if p.returncode != 0 and (folder / "ops.json").is_file():
+        # A check that belongs to the WHOLE revision (the lav sync, the pool, the length) names no note, and the loop used to give up with every change lost (Ryan, 2026-10-15: "the editor needs to be
+        # smarter ... use some sort of logic to get around revisions it doesn't understand"). The changes are tried in halves: those that hold up are kept, those that break a check are set aside, each
+        # with the check's own words, and the rest are made.
+        fail_text = p.stdout + "\n" + p.stderr
+        plan = json.loads((folder / ("ops_retry.json" if (folder / "ops_retry.json").is_file() else "ops.json")).read_text())
+        kept, dropped = _find_passing_changes(cmd, plan, folder, height, stage)
+        if dropped and len(kept) < len(plan):
+            first = next((l.strip() for l in fail_text.splitlines() if "[FAIL]" in l), "a check on the whole cut failed")
+            keep = [o for o in kept]
+            for o in dropped:
+                keep.append({"note": o["note"], "op": "unsupported", "reason": f"made, then it broke a check that guards the whole cut ({first[:150]}), so this change was left out and the rest were made", "why": ""})
+                set_aside.append(o["note"])
+            retry = folder / "ops_retry.json"
+            retry.write_text(json.dumps(sorted(keep, key=lambda o: o["note"]), indent=2))
+            stage(f"{len(dropped)} change{'s' if len(dropped) != 1 else ''} broke a check on the whole cut and {'were' if len(dropped) != 1 else 'was'} left out; making the other {len(kept)}")
+            p = subprocess.run([*cmd[:cmd.index("--out") + 2], "--height", str(height), "--ops", str(retry)], capture_output=True, text=True)
     if p.returncode != 0:
         raise ToolError("The revision did not pass its own checks, so no revised cut was kept.\n" + _tail(p.stdout + "\n" + p.stderr))
     items_file = folder / "changes.json"
@@ -686,6 +703,55 @@ def apply_notes(xml: str, notes: str, out: str | None = None, height: int = 540,
                     row["status"] = qa_pass.UNMEASURED
                     row["detail"] = ("made: " if done[entry["note"]][0] else "not made: ") + done[entry["note"]][1] + "; read back by the revision battery (safety_net/battery_revisions.py), not by this pass"
     return {**base, "xml": str(v2), "page": str(folder / "review.html"), "url": serve_review(folder), "qa": qa_out, "message": message, "layers": layers_made}
+
+
+MAX_BISECT_TRIES = 40
+
+
+def _find_passing_changes(cmd: list, plan: list, folder: Path, height: int, stage) -> tuple[list, list]:
+    """The changes of `plan` that can be made together without breaking a check on the revised XML, and those that cannot: (kept, dropped).
+
+    Only changes that touch the timeline can break such a check; the rest are always kept. Each trial is revise.py --checks-only (no render), so a trial costs seconds. The changes are tried whole, then in
+    halves (the first half, then the second half added to what held up), so a few bad changes among many cost a few trials; a change that fails alone is dropped."""
+    import json
+    import shutil
+    use_labs()
+    import ops as opsmod
+    cut_ops = set(opsmod.CUT_OPS)
+    fixed = [o for o in plan if o.get("op") not in cut_ops]
+    cands = [o for o in plan if o.get("op") in cut_ops]
+    trial = folder / "ops_try.json"
+    base = cmd[:cmd.index("--out") + 1]
+    tries = {"n": 0}
+
+    def holds(subset: list) -> bool:
+        if tries["n"] >= MAX_BISECT_TRIES:                                   # a bound on the time spent: past it nothing more is tried and what is left is set aside
+            return False
+        tries["n"] += 1
+        trial.write_text(json.dumps(sorted(fixed + subset, key=lambda o: o["note"]), indent=2))
+        out = folder / f"_try{tries['n']}"
+        r = subprocess.run([*base, str(out), "--height", str(height), "--ops", str(trial), "--checks-only"], capture_output=True, text=True)
+        shutil.rmtree(out, ignore_errors=True)
+        return r.returncode == 0
+
+    def grow(held: list, rest: list) -> tuple[list, list]:
+        if not rest:
+            return held, []
+        if holds(held + rest):
+            return held + rest, []
+        if len(rest) == 1:
+            return held, rest
+        mid = len(rest) // 2
+        h1, d1 = grow(held, rest[:mid])
+        h2, d2 = grow(h1, rest[mid:])
+        return h2, d1 + d2
+
+    if not cands:
+        return plan, []
+    stage(f"A check on the whole cut failed: trying the changes in groups to find which one breaks it")
+    held, dropped = grow([], cands)
+    trial.unlink(missing_ok=True)
+    return fixed + held, dropped
 
 
 def _finish_record(src: Path) -> dict | None:

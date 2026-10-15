@@ -107,16 +107,28 @@ def _rate_of(el: ET.Element | None) -> tuple[int, bool] | None:
     return int(round(float(tb))), (el.findtext("ntsc") or "FALSE").strip().upper() == "TRUE"
 
 
-def video_rate_order(file_rate: tuple[int, bool] | None, clip_rate: tuple[int, bool] | None) -> list[tuple[str, tuple[int, bool]]]:
+PRECUT_ID_PREFIX = "s1-"          # the id prefix PreCut's exporter (and so every cut this app makes) gives its clipitems: "s1-clipitem-1", "s1-sync-<recorder>-1"
+
+
+def written_by_precut(items) -> bool:
+    """True when the clipitems carry the ids PreCut's exporter writes. Such an XML puts a video clip's in/out as seconds x the SEQUENCE's rate (the clip's own <rate>), whatever the file's rate is."""
+    return any((c.get("id") or "").startswith(PRECUT_ID_PREFIX) for c in items)
+
+
+def video_rate_order(file_rate: tuple[int, bool] | None, clip_rate: tuple[int, bool] | None, precut: bool = False) -> list[tuple[str, tuple[int, bool]]]:
     """Which frame rate a video clip's in/out frame counts are read at, in order of preference.
 
     The file's own rate first (Premiere's own exports keep in/out in the source's native frames while writing the sequence's rate on the clip, footage-analysis skill), EXCEPT when the file and the
     clip declare the same timebase and differ only in the NTSC flag (file 30 NTSC, clip 30 plain): then the clip's own rate is read first. PreCut writes the cut at the preset's 30 and the
     video in-point as seconds x 30 on a 29.97 file; Ryan opened such an export in Premiere on 2026-10-07 and the picture and the separate voice recorder were in sync, which is the clip's-own-rate
     reading (read at the file's 29.97 the picture would be 0.1% of its position, 0.72 s at 12 minutes in, away from the voice). Different timebases (a 60 fps file in a 24 fps sequence) keep the
-    file's rate."""
+    file's rate, for an XML Premiere wrote.
+
+    An XML PreCut's exporter wrote (`precut`) is always read at the clip's own rate, even across timebases. Ryan's Runnells Wall Removal cut (59.94 fps Osmo footage in a 30 fps sequence, 2026-10-15):
+    the exporter wrote 4723 frames for the moment 157.4 s into the file (the words "That piece of trim is added" are there in the transcript) and put the voice recorder at 157.4 s + its offset; this
+    loader read the 4723 at the file's 59.94 as 78.8 s, a different part of the recording, so the review page showed the wrong footage, every sync check failed, and every revision was refused."""
     out = [c for c in (("file", file_rate), ("clipitem", clip_rate)) if c[1]]
-    if file_rate and clip_rate and file_rate[0] == clip_rate[0] and file_rate[1] != clip_rate[1]:
+    if file_rate and clip_rate and (precut or (file_rate[0] == clip_rate[0] and file_rate[1] != clip_rate[1])):
         out.sort(key=lambda c: c[0] != "clipitem")
     return out
 
@@ -200,11 +212,12 @@ def load_cut(xml_path: Path) -> Cut:
         zone_end=zone_end,
     )
 
+    is_precut = written_by_precut(items)
     for n, ci in enumerate(items[:stop], start=1):
         path = file_path(ci)
         if not Path(path).exists():
             raise TimelineError(f"source not found (drive mounted?): {path}")
-        cands = video_rate_order(file_rate(ci), _rate_of(ci.find("rate")))
+        cands = video_rate_order(file_rate(ci), _rate_of(ci.find("rate")), precut=is_precut)
         a, b = _resolve(int(ci.findtext("in")), int(ci.findtext("out")), cands,
                         probe_duration(path), f"video clip {n} {Path(path).name}")
         cut.video.append(VideoClip(n, spans[n - 1][0] / seq_fps, spans[n - 1][1] / seq_fps, path, a, b, motion_of(ci)))

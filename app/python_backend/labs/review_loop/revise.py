@@ -180,6 +180,7 @@ def main() -> int:
     ap.add_argument("--ops", type=Path, help="skip interpretation and use this operations file")
     ap.add_argument("--height", type=int, default=540)
     ap.add_argument("--open", action="store_true")
+    ap.add_argument("--checks-only", action="store_true", help="stop after the checks on the revised XML (no review page, no render): for trying a set of changes quickly")
     args = ap.parse_args()
 
     notes = json.loads(args.notes.read_text())["notes"]
@@ -236,6 +237,9 @@ def main() -> int:
     if bad:
         print(f"\n{bad} check(s) FAILED. {v2_xml.name} is NOT verified, do not use it.")
         return 1
+    if args.checks_only:
+        print("\nchecks passed (checks only: no page was built)")
+        return 0
 
     cut2 = load_cut(v2_xml)
     warnings = layer_warnings(find_layers(args.xml), find_layers(v2_xml))

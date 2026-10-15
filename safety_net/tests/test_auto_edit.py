@@ -573,3 +573,43 @@ def test_when_the_idea_gives_no_reason_the_editor_says_so_and_asks_for_the_words
     rec = _recorded_finish(tmp_path)
     upd, res = ct._finish_edits([{"note": 1, "op": "cta_reason"}], [_note("the CTA gives no reason", 34.0)], rec, "DM or comment 'septic'")
     assert upd["graphics_edits"] == [] and res[1][0] is False and "tell me the words" in res[1][1]
+
+
+def _fake_revise(bad_notes, calls):
+    """A stand-in for revise.py --checks-only: it fails (a check on the whole cut, naming no note) when any of `bad_notes` is in the plan it is given."""
+    import json
+    from types import SimpleNamespace
+
+    def run(cmd, **kw):
+        plan = json.loads(Path(cmd[cmd.index("--ops") + 1]).read_text())
+        calls.append(sorted(o["note"] for o in plan if o["op"] != "unsupported"))
+        bad = any(o["note"] in bad_notes and o["op"] != "unsupported" for o in plan)
+        return SimpleNamespace(returncode=1 if bad else 0, stdout="[FAIL] POOL-ONLY-LOST-WHAT-THE-CUT-GAINED  x" if bad else "checks passed", stderr="")
+    return run
+
+
+def test_changes_that_break_a_check_on_the_whole_cut_are_found_and_set_aside_and_the_rest_are_kept(tmp_path, monkeypatch):
+    """Ryan, 2026-10-15: 'The revision did not pass its own checks, so no revised cut was kept ... we need the editor to be smarter and use some sort of logic to get around revisions it doesnt understand.'
+    A check that names no note used to end the round with every change lost; the changes are now tried in halves and only the ones that break the check are left out."""
+    plan = [{"note": n, "op": "extend_end", "clip": n} for n in range(1, 7)] + [{"note": 7, "op": "edit_caption", "text": "x"}, {"note": 8, "op": "unsupported", "reason": "r"}]
+    calls = []
+    monkeypatch.setattr(ct.subprocess, "run", _fake_revise({3, 5}, calls))
+    stages = []
+    cmd = ["python", "revise.py", "in.xml", "notes.json", "--out", str(tmp_path / "rev")]
+    kept, dropped = ct._find_passing_changes(cmd, plan, tmp_path, 540, stages.append)
+    assert sorted(o["note"] for o in dropped) == [3, 5]
+    assert sorted(o["note"] for o in kept) == [1, 2, 4, 6, 7, 8]                              # the caption fix and the unsupported note were never at risk
+    assert len(calls) < 12                                                                     # two bad among six cost a handful of trials, not one per change
+    assert all(n not in (3, 5) for n in calls[-1])
+
+
+def test_when_every_change_is_fine_one_trial_is_enough_and_when_the_whole_cut_is_the_problem_nothing_is_dropped_wrongly(tmp_path, monkeypatch):
+    plan = [{"note": n, "op": "trim_end", "clip": n, "seconds": 1.0} for n in range(1, 5)]
+    cmd = ["python", "revise.py", "in.xml", "notes.json", "--out", str(tmp_path / "rev")]
+    calls = []
+    monkeypatch.setattr(ct.subprocess, "run", _fake_revise(set(), calls))
+    kept, dropped = ct._find_passing_changes(cmd, plan, tmp_path, 540, lambda s: None)
+    assert dropped == [] and len(kept) == 4 and len(calls) == 1
+    monkeypatch.setattr(ct.subprocess, "run", _fake_revise({1, 2, 3, 4}, []))                  # every one of them fails alone: all are set aside, none is kept by mistake
+    kept, dropped = ct._find_passing_changes(cmd, plan, tmp_path, 540, lambda s: None)
+    assert kept == [] and len(dropped) == 4

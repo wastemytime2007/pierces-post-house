@@ -202,3 +202,20 @@ def test_a_29_97_file_in_a_plain_30_clip_is_read_at_the_clips_own_rate_as_premie
     assert [n for n, _r in timeline.video_rate_order((60, False), (24, False))] == ["file", "clipitem"]
     assert [n for n, _r in timeline.video_rate_order((30, True), (30, True))] == ["file", "clipitem"]            # identical declarations: nothing to choose
     assert [n for n, _r in timeline.video_rate_order((30, True), None)] == ["file"] and timeline.video_rate_order(None, None) == []
+
+
+def test_an_xml_preconut_wrote_is_read_at_the_clips_own_rate_even_across_timebases():
+    """Ryan, 2026-10-15 (Runnells Wall Removal): 59.94 fps footage in a 30 fps sequence. The exporter wrote 4723 frames for 157.4 s into the file; read at the file's 59.94 that was 78.8 s, another part of
+    the recording: the review page showed the wrong footage, the lav-sync check failed (lag -1.78 s against -0.03 s once read right) and every revision was refused."""
+    assert [n for n, _r in timeline.video_rate_order((60, True), (30, False), precut=True)] == ["clipitem", "file"]
+    assert [n for n, _r in timeline.video_rate_order((60, True), (30, False))] == ["file", "clipitem"]                  # an XML Premiere wrote keeps the file's rate first
+    assert [n for n, _r in timeline.video_rate_order((60, True), None, precut=True)] == ["file"]                       # nothing to prefer when the clip declares no rate
+    a, b = timeline._resolve(4723, 4815, timeline.video_rate_order((60, True), (30, False), precut=True), 1400.0, "x")
+    assert (round(a, 1), round(b, 1)) == (157.4, 160.5)
+
+
+def test_clipitems_with_preconuts_ids_are_recognised_as_written_by_it():
+    import xml.etree.ElementTree as ET
+    mk = lambda i: ET.fromstring(f'<clipitem id="{i}"/>')
+    assert timeline.written_by_precut([mk("s1-clipitem-1")]) and timeline.written_by_precut([mk("x"), mk("s1-sync-DJI-1")])
+    assert not timeline.written_by_precut([mk("clipitem-1"), mk("v0")])
