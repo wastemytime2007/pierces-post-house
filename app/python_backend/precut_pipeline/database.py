@@ -1,6 +1,10 @@
 """Database layer: SQLite for clip metadata, LanceDB for vector embeddings."""
+import hashlib
+import os
+import shutil
 import sqlite3
 import json
+import tempfile
 from pathlib import Path
 from typing import Optional
 from contextlib import contextmanager
@@ -10,6 +14,49 @@ import numpy as np
 import pyarrow as pa
 
 from .config import DB_FILENAME, LANCE_DIR
+
+
+_COMMIT_OK: dict[str, bool] = {}
+
+
+def _lance_can_commit(directory: Path) -> bool:
+    """True when LanceDB can commit a table in this directory.
+
+    LanceDB commits a table with an atomic rename that some file systems do not have: on an exFAT drive it fails with "Unable to rename file: Operation not supported (os error 45)", leaving a table
+    folder with empty _versions/_transactions that every later open reports as "Table 'frame_vectors' was not found". Ryan's new project (Runnells Wall Removal, 2026-10-15) lives on such a drive:
+    all four clips failed B-roll tagging that way, and the drive's older projects have the same empty folders. Tested for real, in a scratch folder, because that is the operation that fails."""
+    key = str(directory)
+    if key not in _COMMIT_OK:
+        probe = None
+        try:
+            probe = Path(tempfile.mkdtemp(prefix=".lance_probe_", dir=directory))
+            lancedb.connect(str(probe)).create_table("probe", schema=pa.schema([pa.field("x", pa.int64())]), mode="create")
+            _COMMIT_OK[key] = True
+        except Exception:
+            _COMMIT_OK[key] = False
+        finally:
+            if probe is not None:
+                shutil.rmtree(probe, ignore_errors=True)
+    return _COMMIT_OK[key]
+
+
+def _vectors_root() -> Path:
+    return Path(os.environ.get("POSTHOUSE_VECTOR_ROOT") or Path.home() / "Library" / "Application Support" / "Post House" / "index_vectors")
+
+
+def choose_lance_path(project_dir: Path) -> Path:
+    """Where this project's vectors live: beside its database when LanceDB can commit there (or already has), else in a folder on the internal disk named after the project folder."""
+    here = Path(project_dir) / LANCE_DIR
+    has_table = any((here / "frame_vectors.lance" / "_versions").glob("*.manifest")) if (here / "frame_vectors.lance" / "_versions").is_dir() else False
+    if has_table or _lance_can_commit(Path(project_dir)):
+        return here
+    local = _vectors_root() / hashlib.sha1(str(Path(project_dir).resolve()).encode()).hexdigest()[:16] / LANCE_DIR
+    local.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        (Path(project_dir) / "vectors_location.txt").write_text(f"This drive cannot hold LanceDB tables (no atomic rename), so this project's vectors are kept at:\n{local}\n")
+    except OSError:
+        pass
+    return local
 
 
 SCHEMA = """
@@ -66,7 +113,7 @@ class Database:
         self.project_dir.mkdir(parents=True, exist_ok=True)
 
         self.sqlite_path = self.project_dir / DB_FILENAME
-        self.lance_path = self.project_dir / LANCE_DIR
+        self.lance_path = choose_lance_path(self.project_dir)
 
         self._init_sqlite()
         self._lance_db = lancedb.connect(str(self.lance_path))
