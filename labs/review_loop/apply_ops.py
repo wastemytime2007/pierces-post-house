@@ -17,7 +17,7 @@ from pathlib import Path
 import sys
 
 import capabilities
-from ops import KEEP_SEC_DEFAULT, detect_pause, locate_end, locate_start, measure_head, measure_join, measure_tail
+from ops import _audio_for, KEEP_SEC_DEFAULT, detect_pause, locate_end, locate_start, measure_head, measure_join, measure_tail
 from timeline import Cut, TimelineError, _seq_for_cut
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reframe"))
@@ -160,6 +160,22 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "drop_clip":
             c = cut.video[o["clip"] - 1]
             add(o, c.tl_start, c.tl_end, f"clip {c.idx} dropped as the note asked")
+        elif kind == "use_camera_audio":
+            from ops import level_db
+            c = cut.video[o["clip"] - 1]
+            path, a_in, _a_out = _audio_for(cut, c)
+            dur = max(min(c.tl_end - c.tl_start, 30.0), 0.2)
+            if path == c.src_path:
+                changes.append(Change(n, kind, False, f"clip {c.idx} already plays the camera's own sound", o.get("why", "")))
+            else:
+                rec_db, cam_db = level_db(path, a_in, dur), level_db(c.src_path, c.src_in, dur)
+                if cam_db < -50:
+                    changes.append(Change(n, kind, False, f"the camera's own sound is silent under clip {c.idx} too ({cam_db:.0f} dB), so there is nothing better to play", o.get("why", "")))
+                elif cam_db - rec_db < 10 and rec_db > -45:
+                    changes.append(Change(n, kind, False, f"the recorder ({rec_db:.0f} dB) is not clearly worse than the camera's own sound ({cam_db:.0f} dB) under clip {c.idx}, so it was left", o.get("why", "")))
+                else:
+                    changes.append(Change(n, kind, True, f"clip {c.idx} now plays the camera's own sound ({cam_db:.0f} dB) instead of the recorder ({rec_db:.0f} dB)", o.get("why", ""),
+                                          check={"kind": "camera_audio", "clip": c.idx, "src_path": c.src_path, "src_in": c.src_in, "src_out": c.src_out, "rec_db": rec_db, "cam_db": cam_db}))
         elif kind == "restore_footage":
             from ops import locate_restore
             m = locate_restore(cut, o["words"], o.get("before"))
@@ -598,6 +614,48 @@ def _defs_first(root: ET.Element) -> None:
                 h.remove(ch)
 
 
+def _use_camera_audio(seq: ET.Element, ch: Change, zone_now: int, fps: float, clip_file_id: dict, spf_of_file: dict, used_ids: set[str], cut: Cut) -> str | None:
+    """Play the camera's own sound under one clip: under the clip's stretch of the timeline the camera's audio clips are switched on and every separate recorder's is switched off. The clip is found as the
+    cut now is (by its footage, so earlier changes in the same pass do not matter) and the audio clips are cut at its ends first. Returns the reason it could not, else None."""
+    from follow_speaker import _split_at
+    k = ch.check
+    clip = cut.video[k["clip"] - 1]
+    fid = clip_file_id.get(clip.idx)
+    if fid is None:
+        return "the clip is not on the timeline any more"
+    spf = spf_of_file.get(fid) or 1.0 / fps
+    path_of = {clip_file_id[c.idx]: c.src_path for c in cut.video if c.idx in clip_file_id}
+    v1 = seq.find("media/video/track")
+    hits = []
+    for c in v1.findall("clipitem"):
+        f = c.find("file")
+        if c.findtext("in") is None or int(c.findtext("start")) >= zone_now or f is None or path_of.get(f.get("id")) != clip.src_path:
+            continue
+        mid = (int(c.findtext("in")) + int(c.findtext("out"))) / 2 * (spf_of_file.get(f.get("id")) or 1.0 / fps)
+        if clip.src_in - 0.6 <= mid <= clip.src_out + 0.6:
+            hits.append(c)
+    if not hits:
+        return "the clip is not in the cut any more after the other changes, so its sound was left"
+    a, b = min(int(c.findtext("start")) for c in hits), max(int(c.findtext("end")) for c in hits)
+    audio = seq.findall("media/audio/track")
+    for tr in audio:
+        for el in [c for c in tr.findall("clipitem") if c.findtext("in") is not None and int(c.findtext("start")) < zone_now]:
+            _split_at(el, tr, [a, b], used_ids)
+    on = off = 0
+    for tr in audio:
+        for el in tr.findall("clipitem"):
+            f, en = el.find("file"), el.find("enabled")
+            if en is None or f is None or int(el.findtext("start")) < a or int(el.findtext("end")) > b or (f.get("id") or "").startswith(("audio-file-", "overlay-")):
+                continue                                                          # outside this clip, or a layer (music, an effect): not touched
+            is_cam = f.get("id") == fid
+            en.text = "TRUE" if is_cam else "FALSE"
+            on, off = on + is_cam, off + (not is_cam)
+    if not on:
+        return "the camera's own sound is not on the timeline under that clip, so it could not be switched on"
+    ch.v2_time = a / fps
+    return None
+
+
 def _restore_footage(seq: ET.Element, root: ET.Element, ch: Change, zone_now: int, zone_f: int, fps: float, cut: Cut, clip_file_id: dict, spf_of_file: dict, pool_groups: dict, used_ids: set[str]) -> tuple[str | None, int]:
     """Put a stretch of the recording back on the timeline: one new piece on every track that has sound or picture under the clip it is taken after, cut from the same recorders, the lav lines
     carried to the same moment of the recording by the sync those clips already have. Everything after it moves right by its length. Returns (reason it could not, 0) or (None, frames added)."""
@@ -849,6 +907,11 @@ def apply_ops(xml_path: Path, out_xml: Path, cut: Cut, ops: list[dict], notes: l
                     other.v2_time = (f - (a - t0)) / fps
                 elif t0 <= f < a:
                     other.v2_time = (f + (b - a)) / fps
+
+    for ch in [c for c in changes if c.applied and c.check and c.check.get("kind") == "camera_audio"]:
+        why = _use_camera_audio(seq, ch, zone_f - sum(b - a for a, b in removed) + sum(ln for _p, ln in inserted), fps, clip_file_id, spf_of_file, used_ids, cut)
+        if why:
+            ch.applied, ch.summary, ch.check = False, why, None
 
     for (at, ln, idx, clip_idx, side) in insertions:
         if side == "front":                                                 # footage in front of the clip must not also be in the selects pool (it would play twice)

@@ -47,6 +47,9 @@ PROBE = 0.01               # how far inside a clip the voice piece is looked up,
 HF_HZ, HF_SHARE = 3500.0, 0.25
 SAME_SOURCE_GAP = 0.05     # clips that continue each other in the same file are not an edge
 SILENT_DB = -55.0
+QUIET_VS_CAMERA_DB = 15.0   # a recorder this much quieter than the camera's own sound under the same clip, and not loud itself, is the wrong thing to be playing (2026-10-15)
+QUIET_RECORDER_DB = -40.0
+CAMERA_SPEECH_DB = -48.0    # the camera's sound counts as speech above this
 MAX_STORY_NOTES = 6
 START_WORDS = 8            # how many words of a story fix's "start at these words" are kept
 EXTEND_LOOKAHEAD = 3.0     # how far the editor may look for the pause an edge fix runs on to (it measures; this only bounds the search)
@@ -313,10 +316,20 @@ def source_audio_findings(cut: Cut, pcm_fn=pcm, covered: list[tuple[float, float
     notes = [note_at(cut, g0 + 0.01, f"No voice under {g0:.1f} to {g1:.1f} s: the audio has a hole here.", kind="audio-hole") for g0, g1 in gaps[:4]]
     silent = []
     for a in cut.audio:
-        x = pcm_fn(a.src_path, a.src_in, min(a.tl_end - a.tl_start, 30.0))
-        if _db(x) < SILENT_DB:
+        span = min(a.tl_end - a.tl_start, 30.0)
+        a_db = _db(pcm_fn(a.src_path, a.src_in, span))
+        clip = clip_at(cut, a.tl_start + 0.01)
+        cam_db = _db(pcm_fn(clip.src_path, clip.src_in + (a.tl_start - clip.tl_start), span)) if clip is not None and clip.src_path != a.src_path else None
+        # the camera hears the speech the recorder does not: the editor can play the camera's own sound under that clip (use_camera_audio; it measures both again before it does)
+        fix = {"op": "use_camera_audio", "clip": clip.idx} if cam_db is not None and cam_db > CAMERA_SPEECH_DB and cam_db - a_db >= QUIET_VS_CAMERA_DB else None
+        if a_db < SILENT_DB:
             silent.append(a)
-            notes.append(note_at(cut, a.tl_start + 0.01, f"The voice track here ({a.name}) is silent. The wrong recorder may have been synced to this footage.", kind="audio-silent"))
+            notes.append(note_at(cut, a.tl_start + 0.01, f"The voice track here ({a.name}) is silent" + (f" while the camera's own sound has the speech ({cam_db:.0f} dB). Play the camera's sound under this clip." if fix else ". The wrong recorder may have been synced to this footage."),
+                                 kind="audio-silent", suggested_op=fix))
+        elif fix and a_db < QUIET_RECORDER_DB:
+            silent.append(a)
+            notes.append(note_at(cut, a.tl_start + 0.01, f"The voice track here ({a.name}) is {cam_db - a_db:.0f} dB quieter than the camera's own sound under the same clip ({a_db:.0f} dB against {cam_db:.0f} dB). Play the camera's sound under this clip.",
+                                 kind="audio-quiet", suggested_op=fix))
     cam_share = sum(v for k, v in share.items() if k in cam)
     parts = ", ".join(f"{Path(k).name} {v / dur:.0%}" for k, v in sorted(share.items(), key=lambda kv: -kv[1]))
     detail = f"voice from: {parts} (camera audio {cam_share / dur:.0%}, separate recorders {(sum(share.values()) - cam_share) / dur:.0%})"
@@ -403,9 +416,10 @@ Reply with one JSON object and nothing else:
  "ending": "clean" | "abrupt" | "missing",
  "problems": [{"quote": "<words copied EXACTLY from the transcript where the problem is>", "note": "<what is wrong and what to change, plain language, one or two sentences>",
                "fix": {"op": "end_at_words", "clip": <clip number>, "words": "<the LAST words to keep, copied EXACTLY from that clip>"} or {"op": "move_clip", "clip": <clip number>, "before": <clip number it should play before>} or {"op": "drop_clip", "clip": <clip number>} or {"op": "start_at_words", "clip": <clip number>, "words": "<words copied EXACTLY from that clip>"} or null}]}
-The editor can make four kinds of fix: "start_at_words" starts a clip at a later phrase (skip a false start, filler or an off-topic opening); "end_at_words" ends a clip after a phrase (drop a stray word or a sentence that trails off); "move_clip" plays a clip before another one (a line that sets up the point goes first); "drop_clip" removes a clip that is garbled, contradicts the rest, or has no point of its own.
+The editor can make five kinds of fix: "restore_footage" adds a line from the same recordings that says what the video never says (a missing fact, reason or name); "start_at_words" starts a clip at a later phrase (skip a false start, filler or an off-topic opening); "end_at_words" ends a clip after a phrase (drop a stray word or a sentence that trails off); "move_clip" plays a clip before another one (a line that sets up the point goes first); "drop_clip" removes a clip that is garbled, contradicts the rest, or has no point of its own.
 Whenever one of these would solve a problem, GIVE it: every problem you raise should come with the fix that solves it if the footage in the cut allows it.
-Use null when the problem needs new words or a decision. Never propose a fix that would leave the video without a hook or an ending.
+If the problem is that the video never SAYS something (a fact, a reason, a name, what was found) that its own recordings may well say somewhere else, the fix is a line from the same recordings: {"op": "restore_footage", "words": "<in a few plain words, what the added line must say>", "before": <number of the clip it should play before, or null to put it where it was said>}.
+Use null only when the problem needs words no recording could hold or a decision only the owner can make. Never propose a fix that would leave the video without a hook or an ending.
 Rules: list only real problems (at most 6), most important first. Every quote must be copied exactly from the transcript. A fragment that starts or ends mid-thought is a problem. A line that does not follow
 from the one before it is a problem. No praise. No hype words. If the video works, return an empty problems list."""
 
@@ -449,6 +463,7 @@ FIX_SYSTEM = """You are a video editor. For each problem below in a short video'
 {"op": "end_at_words", "clip": n, "words": "<last words to keep, copied EXACTLY from that clip>"}  end the clip earlier
 {"op": "move_clip", "clip": n, "before": m}  play clip n before clip m
 {"op": "drop_clip", "clip": n}  remove the clip
+{"op": "restore_footage", "words": "<in a few plain words, what the added line must say>", "before": <clip number it plays before, or null>}  add a line from the same recordings that says what the video never says (the editor searches the transcripts, confirms the line, and says so if none says it)
 Reply with ONLY a JSON object: {"fixes": [{"problem": <number>, "fix": <one of the above, or null only if no edit of the footage in the cut can solve it>}]}"""
 
 
@@ -468,6 +483,12 @@ def _ask_for_fixes(client, transcript: str, problems: list[dict], direction: str
 
 def _checked_fix(raw, cut: Cut, words: list) -> dict | None:
     """A fix the model proposed for a story problem, kept only if it is one the editor makes and it points at something real: an existing clip, and for start_at_words, words that are in that clip."""
+    if isinstance(raw, dict) and raw.get("op") == "restore_footage":
+        toks = words_mod.tokens(str(raw.get("words", "")))
+        if not 2 <= len(toks) <= 30:
+            return None
+        before = raw.get("before")
+        return {"op": "restore_footage", "words": " ".join(toks), "before": before if isinstance(before, int) and 1 <= before <= len(cut.video) else None}
     if not isinstance(raw, dict) or raw.get("op") not in ("drop_clip", "start_at_words", "end_at_words", "move_clip"):
         return None
     try:

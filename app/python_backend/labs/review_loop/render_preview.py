@@ -72,6 +72,9 @@ def _render_segment(clip, out: Path, height: int, camera_audio: bool, fps: float
     _run(cmd + [str(out)])
 
 
+VIDEO_SUFFIXES = {".mp4", ".mov", ".m4v", ".mxf", ".mkv", ".avi", ".mts"}
+
+
 def count_frames(path: Path) -> int:
     p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(path)], capture_output=True, text=True)
     return int(p.stdout.strip())
@@ -104,7 +107,14 @@ def render_preview(cut: Cut, out_mp4: Path, height: int = 540, workers: int = 3)
         inputs, graph = [], []
         for i, a in enumerate(cut.audio):
             dur = a.tl_end - a.tl_start
-            inputs += ["-ss", f"{a.src_in:.4f}", "-t", f"{dur:.4f}", "-i", a.src_path]
+            src, ss = a.src_path, a.src_in
+            if Path(a.src_path).suffix.lower() in VIDEO_SUFFIXES:
+                # a camera file's own sound (use_camera_audio, 2026-10-15) is cut into a plain WAV piece first, as a recorder's file already is: mixed straight from a camera file seeked deep into the recording,
+                # the delayed audio reached the muxer with timestamps that went backwards ("non monotonically increasing dts") and the whole preview, so the whole revision, was lost
+                piece = work / f"camaudio_{i}.wav"
+                _run(FFMPEG + ["-ss", f"{a.src_in:.4f}", "-t", f"{dur:.4f}", "-i", a.src_path, "-vn", "-ac", "2", "-ar", "48000", str(piece)])
+                src, ss = str(piece), 0.0
+            inputs += ["-ss", f"{ss:.4f}", "-t", f"{dur:.4f}", "-i", src]
             graph.append(f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,"
                          f"adelay={int(round(a.tl_start * 1000))}:all=1[a{i}]")
         mix = "".join(f"[a{i}]" for i in range(len(cut.audio)))

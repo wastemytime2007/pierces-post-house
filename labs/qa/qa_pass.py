@@ -383,6 +383,18 @@ def check_op(o: dict, item: dict | None, note: dict, old: timeline.Cut, new: tim
         c = now[0]
         grew = new.zone_end - old.zone_end
         return Row(n, kind, VERIFIED, f"clip {c.idx} of the new version shows the recording from {c.src_in:.1f} to {c.src_out:.1f}s at {c.tl_start:.1f}s, which holds the line ({r['t0']:.1f}-{r['t1']:.1f}s); the cut grew {grew:+.1f}s. Heard there: \"{r.get('heard', '')[:100]}\"")
+    if kind == "use_camera_audio":
+        idx = o["clip"]
+        if not 1 <= idx <= len(old.video):
+            return Row(n, kind, UNMEASURED, f"clip {idx} is not on the old cut")
+        c = old.video[idx - 1]
+        q = next((v for v in new.video if v.src_path == c.src_path and v.src_in - TOL <= (c.src_in + c.src_out) / 2 <= v.src_out + TOL), None)
+        if q is None:
+            return Row(n, kind, FAILED, "the clip is not on the new cut")
+        live = [a for a in new.audio if a.tl_start - TOL <= (q.tl_start + q.tl_end) / 2 < a.tl_end + TOL]
+        names = ", ".join(sorted({Path(a.src_path).name for a in live})) or "nothing"
+        ok = bool(live) and all(a.src_path == q.src_path for a in live)
+        return Row(n, kind, VERIFIED if ok else FAILED, f"under clip {idx} on the new version the sound is {names}" + ("" if ok else " (the camera's own sound is not the only one playing)"))
     if kind == "end_at_words":
         seam = item.get("v2_time")
         if seam is None:

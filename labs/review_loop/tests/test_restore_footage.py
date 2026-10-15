@@ -23,6 +23,12 @@ from test_revise import FPS, media, xml  # noqa: E402,F401  (fixtures)
 
 pytestmark = tr.pytestmark
 
+@pytest.fixture(autouse=True)
+def _model_confirms_by_default(monkeypatch):
+    """No test here reaches the real model: the confirmation of a chosen line says yes unless a test says otherwise."""
+    monkeypatch.setattr(opsmod, "_confirm_line", lambda wanted, line, client=None: True)
+
+
 NOTE = {"timeline_sec": 12.0, "clip": 2, "text": "the line 'the septic tank outlet sits behind the garage' should not have been cut. Put it back in."}
 WORDS = "the septic tank outlet sits behind the garage"
 
@@ -235,3 +241,58 @@ def test_qa_reads_the_line_back_from_the_new_version_and_fails_when_it_is_not_th
     assert bad.status == qa_pass.FAILED                                                # the old cut again: the line is not on it
     none = qa_pass.check_op(o, {"applied": False, "summary": "could not find that line"}, NOTE, cut, cut, {}, None, {})
     assert none.status in (qa_pass.NOT_DONE, qa_pass.FAILED) and "not applied" in none.detail
+
+
+def test_a_story_problem_the_footage_may_answer_becomes_a_line_to_add_not_a_note_that_nothing_can_be_done():
+    """Ryan, 2026-10-15: 'Nothing in it says a doorway was covered up' was left as 'needs different words, which no cut of this footage can give'. The recordings are 45 minutes long and transcribed: a line
+    that says it may be there. The reviewer now asks for it; the search finds it, a model confirms it (or says none), and the editor says so either way."""
+    import ai_review as air
+    cut = timeline.Cut("t", 30.0, 1080, 1920, 8.0, [timeline.VideoClip(1, 0.0, 4.0, "/x/a.mp4", 10.0, 14.0), timeline.VideoClip(2, 4.0, 8.0, "/x/a.mp4", 30.0, 34.0)], [])
+    got = air._checked_fix({"op": "restore_footage", "words": "that the old doorway was covered up and framed in", "before": 2}, cut, [])
+    assert got == {"op": "restore_footage", "words": "that the old doorway was covered up and framed in", "before": 2}
+    assert air._checked_fix({"op": "restore_footage", "words": "x"}, cut, []) is None                       # too little to search for
+    assert air._checked_fix({"op": "restore_footage", "words": "the doorway was covered", "before": 9}, cut, [])["before"] is None      # a clip that is not there
+    notes = [{"timeline_sec": 2.0, "clip": 1, "text": "AI: nothing says a doorway was covered up", "suggested_op": got}]
+    plan = opsmod.validate(opsmod.from_suggestions(notes, cut), notes, cut)
+    assert plan[0]["op"] == "restore_footage" and plan[0]["trusted"] is True and plan[0]["before"] == 2 and "doorway" in plan[0]["words"]
+    bad = [{"timeline_sec": 2.0, "clip": 1, "text": "AI: x", "suggested_op": {"op": "restore_footage", "words": "it"}}]
+    assert opsmod.validate(opsmod.from_suggestions(bad, cut), bad, cut)[0]["op"] == "unsupported"
+
+
+def test_a_projects_transcripts_are_found_wherever_the_project_lives(tmp_path, monkeypatch):
+    """Ryan's Runnells Wall Removal lives on an external drive, next to its footage: 'there is no transcript for DJI_20260522101009_0002_D.MP4' although the project's own transcripts folder holds it."""
+    import json
+    app = tmp_path / "app"
+    (app / "projects").mkdir(parents=True)
+    drive = tmp_path / "drive" / "Runnells Wall Removal" / "transcripts"
+    drive.mkdir(parents=True)
+    (drive / "DJI_0002_D.json").write_text(json.dumps({"source_path": "/Volumes/x/proxies/DJI_0002_D.mp4", "phrases": [{"start": 1.0, "end": 2.0, "text": "a doorway", "words": []}]}))
+    (app / "known_projects.json").write_text(json.dumps({"Runnells Wall Removal": str(tmp_path / "drive" / "Runnells Wall Removal"), "gone": str(tmp_path / "nowhere")}))
+    monkeypatch.setenv("POSTHOUSE_APP_DIR", str(app))
+    monkeypatch.delenv("POSTHOUSE_PROJECTS", raising=False)
+    got = opsmod._transcript_phrases("/Volumes/x/DJI_0002_D.MP4")                          # the original (.MP4) of the proxy (.mp4) the transcript was made from
+    assert got and got[0]["text"] == "a doorway"
+    assert opsmod._transcript_phrases("/Volumes/x/DJI_9999_D.MP4") is None
+
+
+def test_a_line_the_model_picked_is_kept_only_if_a_second_question_says_it_really_says_it(monkeypatch):
+    """2026-10-15: for 'a line saying the old door opening is being measured' the pick was "And doors not open." Best of several is not the same as right."""
+    ph = PH[:4] + [{"start": 4.0, "end": 4.9, "text": "you know, if you don't have curbs you're probably fine."}, {"start": 5.0, "end": 5.9, "text": "if there are curbs you're probably on city sewer."}]
+    cut = _septic_cut(monkeypatch, ph)                                                      # two lines as likely as each other: the model is asked to pick
+    monkeypatch.setattr(opsmod, "_pick_line", lambda note_words, options, client=None: next(i for i, o in enumerate(options) if "city sewer" in o))
+    asked = []
+    monkeypatch.setattr(opsmod, "_confirm_line", lambda wanted, line, client=None: asked.append(line) or False)
+    r = opsmod.locate_restore(cut, QUOTE)
+    assert "has no line that says it" in r["reason"] and "city sewer" in asked[0]
+    monkeypatch.setattr(opsmod, "_confirm_line", lambda wanted, line, client=None: True)
+    assert opsmod.locate_restore(cut, QUOTE)["heard"].endswith("city sewer.")
+
+
+def test_a_line_that_holds_only_some_of_the_described_words_is_confirmed_even_when_the_words_alone_pick_it(monkeypatch):
+    cut = _septic_cut(monkeypatch, PH)                                                      # the curbs line wins by its rare word alone and holds two of the four words searched for
+    asked = []
+    monkeypatch.setattr(opsmod, "_confirm_line", lambda wanted, line, client=None: asked.append(line) or False)
+    r = opsmod.locate_restore(cut, QUOTE)
+    assert "has no line that says it" in r["reason"] and asked and "curbs" in asked[0]
+    monkeypatch.setattr(opsmod, "_confirm_line", lambda wanted, line, client=None: True)
+    assert "reason" not in opsmod.locate_restore(cut, QUOTE)
