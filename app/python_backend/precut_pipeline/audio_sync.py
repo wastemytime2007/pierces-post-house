@@ -164,6 +164,28 @@ def clocks_rule_out_overlap(pair, margin_sec: float = CLOCK_MARGIN_SEC, camera_d
     return f"recorded {gap / 60:.0f} min apart by their clocks"
 
 
+def apply_clock_veto(pairs: list, margin_sec: float = CLOCK_MARGIN_SEC) -> list:
+    """Mark the pairs whose offset the file-name clocks rule out; returns them. In place, and rerun from scratch every time.
+
+    A pair's offset is where the audio file's t=0 lands in the clip's timeline. When both names carry a clock stamp the two recorders' clocks predict it (audio start minus camera start). On Ryan's
+    footage the true pairs sit within about a minute of that prediction (the recorder's clock is ~63 s from the camera's, the same for every true pair), and the false ones are hours away. Used only
+    when at least one pair that clears the score on its own AGREES with its clocks: a project whose clocks are wrong (a recorder never set) shows no such pair, and then nothing is vetoed."""
+    expected = {}
+    for p in pairs:
+        cam0, aud0 = _camera_clock_start(p.aroll_file), _audio_clock_start(p.audio_file)
+        if cam0 is not None and aud0 is not None:
+            expected[id(p)] = aud0 - cam0
+    for p in pairs:
+        p.clock_vetoed = False
+    trusted = any((p.score >= SCORE_USE or p.promoted_via_consistency) and abs(p.offset_sec - expected[id(p)]) <= margin_sec for p in pairs if id(p) in expected)
+    if not trusted:
+        return []
+    vetoed = [p for p in pairs if id(p) in expected and abs(p.offset_sec - expected[id(p)]) > margin_sec]
+    for p in vetoed:
+        p.clock_vetoed = True
+    return vetoed
+
+
 def offset_is_corroborated(pair, state) -> bool:
     """Whether a mid-scoring pair's offset is independently confirmed.
 
@@ -205,7 +227,7 @@ def offset_is_corroborated(pair, state) -> bool:
     # agrees with this one. Built once, then used two ways below.
     agreeing = []
     for other in state.pairs:
-        if other.audio_file != pair.audio_file:
+        if other.audio_file != pair.audio_file or other.clock_vetoed:
             continue
         other_cam = _camera_clock_start(other.aroll_file)
         if other_cam is None:
@@ -272,7 +294,7 @@ def offset_is_corroborated(pair, state) -> bool:
     if own_recorder is not None and own_audio_start is not None:
         own_delta = implied - own_audio_start
         for other in state.pairs:
-            if other is pair:
+            if other is pair or other.clock_vetoed:
                 continue
             if other.score < SCORE_TIMELINE_ATTACH:
                 continue
@@ -330,7 +352,7 @@ def offset_is_corroborated(pair, state) -> bool:
     if own_recorder is not None and own_audio_start is not None:
         agreeing_on_recorder = 0
         for other in state.pairs:
-            if other.score < MUTUAL_CORROBORATION_SCORE_FLOOR:
+            if other.clock_vetoed or other.score < MUTUAL_CORROBORATION_SCORE_FLOOR:
                 continue
             if _recorder_id(other.audio_file) != own_recorder:
                 continue
@@ -394,10 +416,13 @@ class SyncPair:
     # rescue; this tracks "already tried," including failed attempts,
     # so those don't get retried forever either.
     rescue_attempted: bool = False
+    # 2026-10-15: set by apply_clock_veto when the offset this pair found disagrees with the clocks in both file names by more than CLOCK_MARGIN_SEC. A recording made three hours before the
+    # clip cannot be of it, whatever the correlation says (Ryan's cut played two 7:10 am recorder files under 10:10 am footage: false matches scored 12.8, 17.8 and even 28.0, above the true ones).
+    clock_vetoed: bool = False
 
     @property
     def is_reliable(self) -> bool:
-        return self.score >= SCORE_USE or self.promoted_via_consistency
+        return (self.score >= SCORE_USE or self.promoted_via_consistency) and not self.clock_vetoed
 
 
 @dataclass
@@ -443,12 +468,14 @@ class AudioSyncState:
 
     @classmethod
     def from_dict(cls, d: dict) -> "AudioSyncState":
-        return cls(
+        state = cls(
             pairs=[SyncPair(**p) for p in d.get("pairs", [])],
             groups=[TrackGroup(**g) for g in d.get("groups", [])],
             source_hash=d.get("source_hash", ""),
             computed_at=d.get("computed_at", 0.0),
         )
+        apply_clock_veto(state.pairs)                                          # a state saved before the veto existed is judged by it too
+        return state
 
 
 # ---------------------------------------------------------------------------
@@ -820,6 +847,8 @@ def find_covering_audio_for_phrase(
     for p in state.pairs:
         if p.aroll_file != aroll_original_path:
             continue
+        if p.clock_vetoed:                                                        # recorded hours away from this clip by the file-name clocks: a false match, whatever it scored
+            continue
         # Confident on its own, or independently corroborated by the
         # recording-start invariant (see offset_is_corroborated).
         #
@@ -898,6 +927,11 @@ CONSISTENCY_TOL_SEC = 1.0
 
 
 def _promote_consistent_pairs(pairs: list["SyncPair"]) -> int:
+    """Promotion over the pairs the clocks have not ruled out (a vetoed pair is neither promoted nor taken as a strong match to promote others by); see _promote_consistent_pairs_all."""
+    return _promote_consistent_pairs_all([p for p in pairs if not p.clock_vetoed])
+
+
+def _promote_consistent_pairs_all(pairs: list["SyncPair"]) -> int:
     """In-place: flip promoted_via_consistency on weak pairs whose offsets
     are consistent with strong matches via the offset-difference invariant.
 
@@ -1105,6 +1139,10 @@ def sync_project(project, emit_progress=None) -> AudioSyncState:
                   "offset": round(result.offset_sec, 2),
                   "reliable": result.is_reliable})
 
+    vetoed = apply_clock_veto(pairs)
+    if vetoed:
+        emit({"type": "audio_sync_clock_veto", "count": len(vetoed),
+              "example": f"{Path(vetoed[0].aroll_file).name} / {Path(vetoed[0].audio_file).name}"})
     groups = group_audio_files(audio_files, pairs)
 
     # Drop 4.47.4: promote weak-score pairs whose offsets are consistent
@@ -1117,6 +1155,7 @@ def sync_project(project, emit_progress=None) -> AudioSyncState:
               "count": promoted_count,
               "via": "offset-difference consistency"})
 
+    apply_clock_veto(pairs)
     state = AudioSyncState(
         pairs=pairs,
         groups=groups,
