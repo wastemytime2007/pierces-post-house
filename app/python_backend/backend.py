@@ -1391,6 +1391,14 @@ HANDLERS = {
 
 
 def main() -> None:
+    # A stalled job could not be diagnosed from outside (2026-10-15: a new project ran 20 minutes at ~20 cores with nothing saved, and Cancel did nothing because the flag is only checked between
+    # files): `kill -USR1 <backend pid>` now writes the Python stack of every thread to stderr, which the app's log shows as "[backend stderr]".
+    try:
+        import faulthandler
+        import signal
+        faulthandler.register(signal.SIGUSR1, file=sys.stderr, all_threads=True)
+    except (ImportError, AttributeError, ValueError, OSError):
+        pass
     # Apply persisted settings to the current process env. Env vars still
     # take precedence — this only fills in what's missing.
     summary = apply_settings_to_env()
