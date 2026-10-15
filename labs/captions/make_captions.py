@@ -316,10 +316,10 @@ def main() -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     dur = round(a.end - a.start, 3)
     base = a.out / "cut_1080.mp4"
-    if not base.exists():
-        from render_preview import render_preview
+    import proxy as proxy_mod
+    if not proxy_mod.is_current(base, cut):                  # a proxy of ANOTHER cut left in this folder was transcribed as this one (2026-10-13): only the cut's own render is used
         print("rendering a 1080p proxy of the cut (used for the transcript and the preview)...")
-        render_preview(cut, base, height=H)
+        proxy_mod.ensure_proxy(cut, base, H)
 
     ws = transcribe_window(base, a.start, dur)
     if not ws:
@@ -380,7 +380,7 @@ def main() -> int:
     (a.out / "placement.json").write_text(json.dumps({
         "kind": "captions", "layout": {"name": layout_name, "w": W, "h": H}, "place_overlay_on_timeline_at_sec": a.start, "duration_sec": dur, "overlay": mov.name,
         "overlay_path": str(mov.resolve()), "render": {"width": spec["width"], "height": spec["height"], "fps": spec["fps"], "fps_arg": spec["fps_arg"]},
-        "hyperframes": mo.HF_VERSION, "avoid": [str(f) for f in a.avoid]}, indent=2))
+        "hyperframes": mo.HF_VERSION, "avoid": [str(f) for f in a.avoid], "cut_signature": proxy_mod.cut_signature(cut)}, indent=2))        # what the transcript was made from: the replay checks it against the finished cut
 
     v = subprocess.run([sys.executable, str(HERE / "verify_captions.py"), str(a.out)], capture_output=True, text=True)
     print(v.stdout.rstrip())

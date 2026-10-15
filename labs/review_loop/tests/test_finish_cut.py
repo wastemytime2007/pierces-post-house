@@ -505,3 +505,17 @@ def test_an_edit_that_matches_no_graphic_says_so():
     spec, times = _gfx_spec()
     _s, _t, notes = fc.apply_graphics_edits(spec, times, [{"target": "name:Nobody", "do": "remove"}], CTA)
     assert notes == ["there is no 'Nobody' graphic to change"]
+
+
+def test_a_music_track_shorter_than_a_lengthened_cut_is_extended_not_refused(tmp_path):
+    """The first finish's track is kept by every rebuild; a revision that puts a line back makes the cut longer than the track and the fit refused, losing every layer (V3's replay, 2026-10-13)."""
+    import shutil
+    import subprocess
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg not installed")
+    src = tmp_path / "m.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=220:duration=5", str(src)], check=True)
+    out = fc.extend_track(src, 14.0, tmp_path / "ext.wav")
+    import timeline
+    assert timeline.probe_duration(str(out)) >= 13.5
+    assert timeline.probe_duration(str(out)) < 20

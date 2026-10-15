@@ -42,16 +42,20 @@ def history(root_xml: Path) -> list[dict]:
     inside its parent's folder (creator_tools.next_version_folder / free_version_folder), so the tree is read from the disk."""
     out = []
 
-    def walk(parent_xml: Path, where: Path):
+    def walk(parent_key: str, where: Path):
         for d in sorted(p for p in where.iterdir() if p.is_dir() and p.name.endswith(" - revised")):
             xmls = [x for x in d.glob("*.xml") if "(before layers)" not in x.name and not x.name.startswith("_")]
             if len(xmls) != 1:
                 continue
-            kind = "notes" if (d / "ops.json").is_file() else "finish" if (d / "finish.json").is_file() else None
-            if kind:
-                out.append({"xml": xmls[0], "folder": d, "parent": parent_xml, "kind": kind})
-            walk(xmls[0], d)
-    walk(root_xml, root_xml.parent)
+            k, last = str(xmls[0]), parent_key
+            if (d / "ops.json").is_file():                                  # notes were made here ...
+                out.append({"xml": xmls[0], "folder": d, "parent": last, "kind": "notes", "key": k + "|notes"})
+                last = k + "|notes"
+            if (d / "finish.json").is_file():                               # ... and the version was then finished in the same folder (an AI-editor version, or a finish after notes): both are replayed, in that order
+                out.append({"xml": xmls[0], "folder": d, "parent": last, "kind": "finish", "key": k + "|finish"})
+                last = k + "|finish"
+            walk(last, d)
+    walk(str(root_xml), root_xml.parent)
     return out
 
 
@@ -64,11 +68,11 @@ def _recorded_made(folder: Path) -> dict[int, bool]:
 
 def replay_notes(v: dict, into: Path, src: Path) -> tuple[Path | None, list[tuple[str, bool | None, str]]]:
     """The revision made again from `src` (the replayed parent) with the notes and ops that made it."""
-    p = v["parent"]
+    p = Path(v["parent"].split("|")[0])                                       # the key is the parent's xml, and for a version made in two steps which step
     review = p.parent / f"{p.stem} - review"                                  # notes on V1 are saved in its review folder; on a later version, in that version's own folder
     notes = review / "review_notes.json" if (review / "review_notes.json").is_file() else p.parent / "review_notes.json"
     if not notes.is_file():
-        return None, [(f"{v['xml'].stem} NOTES-RECORDED", None, f"no notes file beside {v['parent'].name}: not replayed")]
+        return None, [(f"{v['xml'].stem} NOTES-RECORDED", None, f"no notes file beside {p.name}: not replayed")]
     ops = v["folder"] / "ops.json"
     rows = []
     try:
@@ -102,6 +106,13 @@ def replay_finish(v: dict, into: Path, src: Path) -> tuple[Path | None, list[tup
     return Path(r["xml"]), [(f"{v['xml'].stem} FINISH", True, steps + ("" if music else "; music not replayed: the recorded track is gone"))]
 
 
+def captions_match(final: Path, transcript, floor: float = 0.8) -> tuple[bool | None, str]:
+    """See captions/proxy.captions_match: the finished cut's captions held against its own audio."""
+    import proxy
+    cj = next((p for p in [final.parent / "captions" / "captions.json", final.parent / "layers" / "captions" / "captions.json"] if p.is_file()), None)
+    return (None, "no captions.json beside the finished cut") if cj is None else proxy.captions_match(cj, transcript, floor)
+
+
 def checks(final: Path) -> list[tuple[str, bool | None, str]]:
     """What Ryan has asked of every cut, measured on the replayed result."""
     rows = []
@@ -125,6 +136,7 @@ def checks(final: Path) -> list[tuple[str, bool | None, str]]:
     have = fc.layers_present(final)
     names = [l.name for l in layers_mod.find_layers(final)]
     rows.append(("CAPTIONS-ON", any("captions" in n for n in names), ", ".join(sorted(set(names)))[:200]))
+    rows.append(("CAPTIONS-SAY-WHAT-THE-CUT-SAYS",) + captions_match(final, words))
     rows.append(("TITLE-AND-NAME-TAGS-ON", any("title" in n for n in names), ""))
     rows.append(("MUSIC-ON", bool(have.get("music")), ""))
     pl = next((p for p in [final.parent / "graphics" / "placement.json", final.parent / "layers" / "graphics" / "placement.json"] if p.is_file()), None)
@@ -170,16 +182,16 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     start = out / root.name
     shutil.copy(root, start)
-    made: dict[Path, Path] = {root: start}
+    made: dict[str, Path] = {str(root): start}
     rows: list[tuple[str, bool | None, str]] = []
     final = start
     every = history(root)
     if not args.all and every:                                               # the chain that leads to the newest version: what Ryan last saw
-        by_xml = {v["xml"]: v for v in every}
-        chain, cur = [], max(every, key=lambda v: v["xml"].stat().st_mtime)
+        by_key = {v["key"]: v for v in every}
+        chain, cur = [], max(every, key=lambda v: (v["folder"].stat().st_mtime, v["kind"] == "finish"))
         while cur:
             chain.append(cur)
-            cur = by_xml.get(cur["parent"])
+            cur = by_key.get(cur["parent"])
         every = list(reversed(chain))
     print(f"{len(every)} version(s) to replay", flush=True)
     for v in every:
@@ -187,12 +199,17 @@ def main() -> int:
         if src is None:
             rows.append((f"{v['xml'].stem} PARENT", None, "its parent was not replayed, so neither was this"))
             continue
+        if v["kind"] == "finish" and v["parent"].endswith("|notes") and any(fc.layers_present(src).values()):
+            made[v["key"]] = src                                             # the revision already put the layers back (its finish.json is that rebuild's record): nothing more to finish
+            rows.append((f"{v['xml'].stem} FINISH", None, "already finished by the revision's own layer rebuild"))
+            final = src
+            continue
         print(f"replaying {v['kind']}: {v['xml'].name}", flush=True)
         into = ct.free_version_folder(src)[0] if v["kind"] == "finish" else ct.next_version_folder(src)
         got, r = (replay_finish if v["kind"] == "finish" else replay_notes)(v, into, src)
         rows += r
         if got:
-            made[v["xml"]] = got
+            made[v["key"]] = got
             final = got
     print(f"checking the last version: {final.name}", flush=True)
     rows += checks(final)

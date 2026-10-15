@@ -130,6 +130,25 @@ def lay_untimed(track: Path, zone: float, out: Path) -> None:
         raise FinishError(f"laying the music without fitting it failed, so nothing was kept: {p.stderr[-300:]}")
 
 
+def extend_track(track: Path, need: float, out: Path) -> Path:
+    """The track, its end repeated (a 1.5 s crossfade into its own start, as many times as it takes) until it lasts `need` seconds. A rebuild keeps the music the first finish made, and a revision that
+    lengthens the cut (a line put back) can outgrow it: the fit refused ("the track is too short") and the whole rebuild, every layer with it, was lost (the replay of V3, 2026-10-13)."""
+    have = timeline.probe_duration(str(track))
+    n = max(2, int(math.ceil((need - 1.5) / max(have - 1.5, 1.0))) + 1)
+    chain, last = [], "[0]"
+    for i in range(1, n):
+        chain.append(f"{last}[{i}]acrossfade=d=1.5:c1=tri:c2=tri[x{i}]")
+        last = f"[x{i}]"
+    cmd = ["ffmpeg", "-v", "error", "-y"]
+    for _ in range(n):
+        cmd += ["-i", str(track)]
+    cmd += ["-filter_complex", ";".join(chain), "-map", last, "-ar", "48000", str(out)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 or not out.is_file():
+        raise FinishError(f"the music track is shorter than the revised cut and could not be extended, so nothing was kept: {r.stderr[-300:]}")
+    return out
+
+
 CTA_SEC = 3.0             # the call to action is on screen over this much of the end of the cut
 CTA_MAX_WORDS = 7
 
@@ -366,6 +385,12 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             (out / "captions" / "fixes.json").write_text(json.dumps(caption_fixes, indent=2))
             cargs += ["--fixes", out / "captions" / "fixes.json"]
         tool("The captions", "captions/make_captions.py", *cargs)
+        import ai_review as _air
+        import proxy as _proxy
+        _cj = out / "captions" / "captions.json"
+        _ok, _detail = _proxy.captions_match(_cj, _air.transcript_of(timeline.load_cut(cur)), 0.7) if _cj.is_file() else (None, "")       # held against the cut's OWN audio, not the render the captions step used
+        if _ok is False:
+            raise FinishError("The captions are not what this cut says, so nothing was kept: " + _detail)
         nxt = out / "_step_captions.xml"
         tool("Placing the captions", "overlay/place_overlay.py", cur, out / "captions", "--out", nxt)
         cur = nxt
@@ -398,6 +423,15 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             score_args += ["--reference-features", out / "audio_in/reference_features.json"]
         conformed = out / "audio_in/music_conformed.wav"
         fit_note = ""
+        extend_note = ""
+        if music_file:
+            try:
+                have_s = timeline.probe_duration(str(Path(music_file).expanduser()))
+            except timeline.TimelineError:
+                have_s = float("inf")                                # a track that cannot be measured is left to the fit to refuse in its own words
+            if have_s < zone + 1.0:                                  # the cut grew past the track the first finish made
+                music_file = str(extend_track(Path(music_file).expanduser(), zone + 4.0, out / "audio_in/music_extended.wav"))
+                extend_note = f"; the music track ({have_s:.1f}s) was shorter than the revised cut ({zone:.1f}s), so its end was repeated to cover it"
         for take in range(1 if music_file else MUSIC_TAKES):
             if music_file:
                 track = Path(music_file).expanduser()
@@ -471,7 +505,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         cur = nxt
         steps.append({"name": "music", "done": True,
                       "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
-                      + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note})
+                      + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note + extend_note})
 
     if sfx and not music and graphics:
         steps.append({"name": "sfx", "done": False, "summary": "the sound effects are mixed and placed with the music step, and the music is off, so none were added"})

@@ -194,6 +194,8 @@ def reconform(revised: Path, overlays: list[Path], captions: Path | None, audio:
         else:
             adir = out / "audio"
             base = out / "captions" / "cut_1080.mp4"
+            import proxy as proxy_mod
+            proxy_mod.ensure_proxy(cut_clean, base, 1080)                    # the music is mixed against this render: it must be the revised cut's, not one left in the folder by an earlier try
             preview = out / "captions" / "captions_preview.mp4"
             audio_step(clean, adir, aj, base, preview, aj["window"]["start"], end, placed_dirs[0], audio)
             nxt = out / "_step_audio.xml"

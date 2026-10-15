@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-13.3"
+EDITOR_REVISION = "2026-10-14.1"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -701,7 +701,7 @@ def _finish_record(src: Path) -> dict | None:
 
 
 MUSIC_STEP_DB = 4.0
-REBUILD_OPS = ("edit_caption", "bleep_word", "edit_callout", "remove_graphic", "extend_graphic", "end_graphic", "music_volume", "remove_music", "remove_sfx", "replace_sfx")     # what the layer rebuild makes (labs/review_loop/capabilities.py)
+REBUILD_OPS = ("edit_caption", "redo_captions", "bleep_word", "edit_callout", "remove_graphic", "extend_graphic", "end_graphic", "music_volume", "remove_music", "remove_sfx", "replace_sfx")     # what the layer rebuild makes (labs/review_loop/capabilities.py)
 
 
 def _sfx_named_in(rec: dict) -> str:

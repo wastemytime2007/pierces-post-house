@@ -106,7 +106,9 @@ def main() -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     base = a.captions / "cut_1080.mp4"
     if base.exists():
-        shutil.copy2(base, a.out / "cut_1080.mp4")                  # the proxy the transcript came from; no need to render it again
+        shutil.copy2(base, a.out / "cut_1080.mp4")                  # the proxy the transcript came from; no need to render it again (make_captions uses it only if its stamp says it is this cut's render)
+        if (a.captions / "cut_1080.mp4.cut").exists():
+            shutil.copy2(a.captions / "cut_1080.mp4.cut", a.out / "cut_1080.mp4.cut")
     fx = a.out / "fixes.json"
     fx.write_text(json.dumps(fixes, indent=2))
     cmd = [sys.executable, str(HERE / "make_captions.py"), "--xml", str(a.xml), "--out", str(a.out), "--start", str(win["start"]), "--end", str(win["end"]),

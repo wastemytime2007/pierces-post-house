@@ -30,6 +30,8 @@ LLM) only chooses among them; it does not get to invent a time.
   edit_caption {text}            the note gives the words a caption line should have. `text` is copied from the note (quoted or plainly
                                  stated); the line at the note's moment is replaced, everything else is kept. Made by
                                  labs/captions/fix_caption.py, not on the timeline, so revise.py reports it as not applied here.
+  redo_captions {}               the note says the captions do not match what is said, are wrong or out of step, and gives no words ("the captions dont match whats being said. Fix the captions"). The
+                                 words are in the audio, so the captions are made again from the cut's own sound. Made by the layer rebuild, not on the timeline.
   remove_graphic {}              the note wants an on-screen graphic (a callout or an image card) taken out entirely. The graphic is
                                  found from the note's element or its moment. Made by labs/overlay/remove_graphic.py plus reconform
                                  --drop, not on the timeline, so revise.py reports it as not applied here.
@@ -74,6 +76,7 @@ SAYS_FOOTAGE = re.compile(r"\b(clip|shot|footage|scene|take|b-?roll)\b", re.I)
 SAYS_LONGER = re.compile(r"\b(longer|more time|more seconds?|extra (time|seconds?)|linger|stay(s)?|sit|hold|too (short|fast|quick|brief)|only (shows?|appears?|lasts?)|half a second|barely)\b|\bkeep\b[^.]{0,40}\b(up|on)\b", re.I)
 SAYS_END = re.compile(r"\b(fade(s|d)? out|fade(s|d)? away|end(s)? here|stop(s)? here|disappear|go(es)? away|come(s)? off|take (it|this|that) off|off the screen|off screen|shorter|less time)\b", re.I)
 SAYS_CAPTION = re.compile(r"\b(captions?|subtitles?)\b", re.I)
+SAYS_CAPTION_OFF = re.compile(r"\b(don'?t|do not|doesn'?t|does not|aren'?t|are not|isn'?t|is not|not|never|nothing|none|no)\b[^.]{0,40}\b(match(es|ing)?|line[sd]? up|sync(ed|ing)?|right|correct|accurate|what'?s (being )?said|what (he|she|they|bob|mitch|anyone) (say|said|says))\b|\b(wrong|incorrect|inaccurate|out of sync|out of step|mismatch(ed)?|misaligned|garbled|gibberish|off by|behind|ahead|late|early|different from)\b", re.I)
 SAYS_BLEEP = re.compile(r"\b(bleep|beep|censor|curse word|swear|profanity|cuss|expletive|f-?word|mute (that|the|this) word)", re.I)
 SAYS_NO = re.compile(r"^\s*(no|nope|nah|wrong|not (it|this|that|a curse word)|ignore|skip|false|that'?s not)\b|\b(not a curse word|isn'?t a curse word|is not a curse word|don'?t bleep|do not bleep|no bleep|leave (it|that|this) (alone|in))\b", re.I)
 SAYS_PUNCH = re.compile(r"\b(jump ?cuts?|crop|cropped|reframe[ds]?|punch(ed)? in|zoom(ed)? in|every other (cut|clip|shot))\b", re.I)
@@ -88,6 +91,7 @@ CUT_OPS = {"tighten_pause", "remove_range", "trim_start", "trim_end", "extend_en
 SAYS_MOVE = re.compile(r"\b(move|moved|moving|put|place|before|after|earlier|first|open(s|ing)? (with|on)|lead (with|in)|order|reorder|swap|switch (the )?order|sets? (it )?up)\b", re.I)
 SAYS_FOLLOW = re.compile(r"\b(follow(s|ing)?|track(s|ing)?|on|center(ed|ing)?|centre(d|ing)?)\b.{0,40}\b(speak(er|ers|ing)|talk(er|ing)|whoever|who(\'s| is) (talking|speaking)|person|both)\b|\b(speak(er|ers|ing)|talk(er|ing)|whoever)\b.{0,40}\b(frame|framed|framing|follow|center|centre|on screen)\b|\bframed on (either|both|neither)\b", re.I)
 SAYS_SWITCH = re.compile(r"\b(re-?frame|cut(ting)? back and forth|back and forth|switch(ing)? (to|between)|audio source|source audio|mic(rophone)? (source )?(to|for))\b.{0,120}\b(speak(er|ers|ing)|talk(er|ing)|person|people|him|her|them)\b|\b(speak(er|ers))\b.{0,120}\b(re-?frame|cut(ting)? back|switch|audio source|source audio)\b", re.I)
+SAYS_WRONG_SPEAKER = re.compile(r"\b(jump(ing|s|ed)?|cut(s|ting)?|switch(es|ing|ed)?|go(es|ing)?|skip(s|ping)?)\b[^.]{0,40}\bto\s+(mitch|bob|him|her|them|the other (guy|person|speaker|man|woman))\b|\b(source audio|his (mic|microphone|audio)|her (mic|microphone|audio)|their (mic|microphone|audio)|wrong (mic|microphone|speaker|person|audio))\b|\bnot when (he|she|they|mitch|bob|\w+)(\'?s| is| are)? (actually )?(talking|speaking|responding|answering)\b", re.I)
 SAYS_SHORT = re.compile(r"\b(yeah|yep|right|uh[- ]?huh|mm+[- ]?hm+|okay|ok|just says?|even if|brief|short|one word|interject\w*|quick)\b", re.I)
 # Operations a note may carry as its own measured fix ("suggested_op", written by the AI review): used as they are, the interpreter is not asked, and only structure is checked.
 # The amounts are measured later from the audio, never taken from the note; max_sec only bounds how far the measurement may look (4 s lets an end run on to the next pause).
@@ -95,7 +99,7 @@ SUGGESTIBLE_OPS = {"extend_start", "extend_end", "drop_clip", "start_at_words", 
 SUGGEST_MAX_SEC = 4.0
 # What a note left on a timeline element (a box on the review page's map) may turn into. A lane with no entry
 # has no note-driven tool yet, so such a note is reported rather than guessed at.
-LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
+LANE_OPS = {"Suspects": {"bleep_word"}, "Card": {"remove_graphic"}, "Captions": {"edit_caption", "redo_captions"}, "Clips": CUT_OPS | {"bleep_word"}, "Cuts": CUT_OPS, "Edits": CUT_OPS, "SFX": {"replace_sfx"}, "Callout": {"extend_graphic", "edit_callout", "end_graphic", "remove_graphic"}}
 LANE_WHY = {"Music": "no tool changes the music bed from a note yet"}
 
 
@@ -125,6 +129,7 @@ Operations (times are seconds on the timeline the notes were left on):
 - follow_speaker {"clip": n or "all", "short_turns": true or false}  The note says the picture should be framed on, centred on or follow the person who is TALKING in a shot that shows two people side by side (for example "the framing should follow the speaker", "it isn't framed on either of the speakers"). "clip" is the note's own clip, or "all" when the note is about the whole cut. Use it too when the note asks to cut or switch back and forth between the speakers, to reframe to whoever is talking, or to use the talking person's own microphone: the picture and the sound both follow the speaker. Set "short_turns" true when the note says even a short reply ("yeah", "right") should get the cut. Never give a position or a time: who talks when and where each person stands are measured.
 - replace_sfx {"sound": "..."}       The note says a sound EFFECT (a whoosh, pop, click, swoosh, "sound effect") should sound different, be swapped, or be something else. "sound" is copied from the note's own words if it describes the wanted sound, and "" if it only asks for a different one. The effect is swapped for another from the library; never give a time.
 - extend_graphic {"seconds": x or null}  The note says an on-screen GRAPHIC (a callout, text bubble, arrow, label) is on screen too briefly and should stay longer. Give "seconds" ONLY if the note states an amount (for example "two more seconds"); otherwise use null. Never guess an amount. The graphic and its time are found from the graphics project, so never give a time.
+- redo_captions {}  The note says the CAPTIONS (subtitles) do not match what is being said, are wrong, garbled or out of step with the speech, and does NOT give the right words ("the captions dont match whats being said. Fix the captions"). No parameters: the right words are in the cut's own audio, so the captions are made again from it. Use edit_caption only when the note gives the words.
 - edit_caption {"text": "...", "line": "this" or "next" or "previous"}  The note says what a CAPTION (subtitle) line should read ("fix the caption to say ...", "move the 23 to the next caption"). "text" is the whole new wording of ONE line: the words the note gives, plus the words of that line or its neighbour that stay (the note lists the captions around it; use only those words and the note's). "line" is which one changes: "this" (the one showing at the note's moment, the default), "next" or "previous". A note that moves words from one caption to its neighbour is TWO edit_caption ops, one for each line, each with that line's complete new wording. Never write words that are in neither the note nor those captions. The line and its time are found from the captions project, so never give a time. Not for callouts or other graphics (that is edit_callout).
 - remove_graphic {}  The note says an on-screen GRAPHIC (a callout, text bubble or image card) should be removed, deleted or taken out ("why is this here? remove it ... cards"). The graphic is found from the note's element or moment, so never give a time. NEVER use drop_clip for a graphic: drop_clip removes footage.
 - bleep_word {}  The note says to bleep, beep, censor or mute a curse word or swear word ("lets bleep the curse word here"). No parameters: the stretch is the note's clip or element, else its moment. Never give a time.
@@ -491,7 +496,7 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                     raise ValueError(f"the note does not say to {direction} it, refusing to move the shot a way the note did not ask")
                 out.append({"note": note, "op": op, "clip": clip, "direction": direction, "why": why})
             elif op == "follow_speaker":
-                if not (SAYS_FOLLOW.search(text) or SAYS_SWITCH.search(text)):
+                if not (SAYS_FOLLOW.search(text) or SAYS_SWITCH.search(text) or SAYS_WRONG_SPEAKER.search(text)):
                     raise ValueError("the note does not ask for the picture to follow or be framed on the person talking")
                 clip = raw.get("clip", "all")
                 if clip != "all":
@@ -543,6 +548,12 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if sum(w in nt for w in toks) < 0.9 * len(toks):
                     raise ValueError("that wording is not in the note or the captions around it, refusing to write words nobody gave")
                 out.append({"note": note, "op": op, "text": new, "line": which, "why": why})
+            elif op == "redo_captions":
+                if lane != "Captions" and not SAYS_CAPTION.search(text):
+                    raise ValueError("the note does not talk about the captions")
+                if not SAYS_CAPTION_OFF.search(text):
+                    raise ValueError("the note does not say the captions are wrong or do not match the speech")
+                out.append({"note": note, "op": op, "why": why})
             elif op == "remove_graphic":
                 if not says_graphic:
                     raise ValueError("the note does not talk about an on-screen graphic")
@@ -806,6 +817,38 @@ def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
 
 
 JOIN_MAX_SEC = 4.0
+SENTENCE_END = re.compile(r"[.?!][\"')\]]*$")
+SENTENCE_MAX_SEC = 8.0           # how far past a clip's end the rest of its sentence may be looked for, for a note that says the sentence is cut off
+
+
+def measure_sentence_end(cut: Cut, clip_idx: int, max_sec: float = SENTENCE_MAX_SEC) -> dict:
+    """The clip stops before its sentence is finished, though the sound is quiet at the cut (a breath or a pause inside the sentence, which measure_tail reads as "nothing is cut off"): where the
+    sentence ends, from the words. Returns {"ext", "path", "t_end", "thresh_db", "at_cut_db", "sentence": the words added} or {"reason": ...}. The end is placed at the quietest moment after the
+    last word, so it is checked the same way a decayed word is."""
+    clip = cut.video[clip_idx - 1]
+    path, src_in, src_out = _audio_for(cut, clip)
+    lo = max(src_in, src_out - 6.0)
+    ws = words_mod.words_in(path, lo, (src_out - lo) + max_sec + 0.5)
+    inside = [w for w in ws if w.start < src_out - 0.02]
+    if not inside:
+        return {"reason": "no words are heard at the end of the clip"}
+    last = inside[-1]
+    if SENTENCE_END.search(last.text.strip()):
+        return {"reason": f'the clip already ends on a finished sentence ("{last.text.strip()}")'}
+    after = [w for w in ws if w.start >= src_out - 0.02]
+    end_w = next((w for w in after if SENTENCE_END.search(w.text.strip())), None)
+    if end_w is None or end_w.end - src_out > max_sec:
+        return {"reason": f'the clip stops on "{words_mod.heard(inside[-6:]).strip()}" and no end of that sentence is heard within {max_sec:g}s after it'}
+    t = words_mod.valley(path, end_w.end, end_w.end + 0.25)
+    ext = t - src_out
+    if ext < 0.15:
+        return {"reason": "the sentence already ends at the cut"}
+    user = _footage_user(cut, clip_idx, clip.src_out, clip.src_out + ext)          # the camera's clock, as the other footage checks use it (the words are on the recorder's clock)
+    if user is not None:
+        return {"reason": "extending would run into the next clip's footage" if user.idx == clip_idx + 1 else f"extending would repeat footage clip {user.idx} already shows"}
+    rms = _rms10(_pcm(path, max(0.0, t - 2.0), 4.0))
+    thresh = _threshold(rms) if len(rms) >= 30 else 10 ** (-50 / 20)
+    return {"ext": ext, "path": path, "t_end": t, "thresh_db": 20 * float(np.log10(thresh)), "at_cut_db": level_db(path, src_out - 0.05), "sentence": words_mod.heard(after[:int(max(1, (end_w.end - src_out) * 4))]).strip()}
 
 
 def measure_join(cut: Cut, clip_idx: int, side: str, max_gap: float = JOIN_MAX_SEC) -> dict:

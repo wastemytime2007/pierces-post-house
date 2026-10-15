@@ -124,7 +124,7 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             changes.append(Change(n, kind, False, o["reason"], o.get("why", "")))
         elif kind == "extend_graphic":
             changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
-        elif kind in ("music_volume", "remove_music", "remove_sfx"):
+        elif kind in ("music_volume", "remove_music", "remove_sfx", "redo_captions"):
             changes.append(Change(n, kind, False, "made when the finishing layers are rebuilt on the revised cut, not on the timeline", o.get("why", "")))
         elif kind == "by_finish":
             changes.append(Change(n, kind, False, capabilities.result_text(kind, o), o.get("why", "")))
@@ -233,6 +233,11 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "extend_end":
             c = cut.video[o["clip"] - 1]
             m = measure_tail(cut, c.idx, o.get("max_sec", 1.0))
+            if "reason" in m and not o.get("trusted") and ("already quiet" in m["reason"] or "already decayed" in m["reason"]):
+                from ops import measure_sentence_end
+                s = measure_sentence_end(cut, c.idx)                    # a person who says "this sentence gets cut off" has heard it stop mid-sentence: the words say where it ends
+                if "reason" not in s:
+                    m = s
             if "reason" in m and o.get("trusted") and ("next clip's footage" in m["reason"] or "keeps going" in m["reason"]) and try_join(o, n, kind, c, "next"):
                 continue
             if "reason" in m:
@@ -240,8 +245,9 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
             else:
                 insertions.append((c.tl_end, m["ext"], len(changes), c.idx, "end"))
                 changes.append(Change(n, kind, True,
-                                      f"extended clip {c.idx} by {m['ext']:.2f}s: the sound was still at {m['at_cut_db']:.0f} dB at the cut "
-                                      f"and decays to room level {m['ext']:.2f}s later",
+                                      (f"extended clip {c.idx} by {m['ext']:.2f}s to finish its sentence (it stopped at a pause, so the sound alone did not show a cut): \"{m['sentence'][:100]}\""
+                                       if m.get("sentence") else
+                                       f"extended clip {c.idx} by {m['ext']:.2f}s: the sound was still at {m['at_cut_db']:.0f} dB at the cut and decays to room level {m['ext']:.2f}s later"),
                                       o.get("why", ""), check={"kind": "quiet_at", "path": m["path"], "t": m["t_end"],
                                                                "thresh_db": m["thresh_db"], "ext": m["ext"]}))
         elif kind == "extend_start":
