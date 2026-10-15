@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-15.3"
+EDITOR_REVISION = "2026-10-15.4"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -1042,7 +1042,7 @@ def ai_review(xml: str, folder: str | None = None, on_stage=None, story: bool = 
     return res
 
 
-AUTO_MAX_ROUNDS = 4
+AUTO_MAX_ROUNDS = 6            # 4 left two fixable notes "not tried" on Ryan's V5 (2026-10-15) while each round was still making changes; the loop still stops on a worse measured score, a cut too short, or nothing left to try
 AUTO_KEEP_FRACTION = 0.3           # the editor may not cut the video below this share of the length it started the loop with. 0.5 blocked every fix its reviewer asked for on the Septic cut (2026-10-08: V3 was 33.7 s against a 33 s floor); Ryan: "It should be able to do all of the requested changes"
 AUTO_MIN_CLIPS_PER_MIN = 6.3       # the export check (safety_net/verify_export CUT-GRANULARITY) wants at least 6 clips a minute; a little over, since extensions lengthen the cut
 

@@ -10,6 +10,7 @@ of source frames to sequence frames, k = (out-in)/(end-start): 1 for the lav
 from __future__ import annotations
 
 import copy
+import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,6 +78,19 @@ def _pieces(start: int, end: int, removed: list[tuple[int, int]]) -> list[tuple[
     if cur < end:
         out.append((cur, end))
     return [(a, b) for a, b in out if b - a >= 1]
+
+
+DROP_WORDS = re.compile(r"\b(garbled|gibberish|unusable|no point of its own|adds nothing|nothing to the point|does not belong|doesn'?t belong)\b", re.I)
+REMOVE_WORDS = re.compile(r"\b(remove|drop|delete|cut|take) (it|this|that|the clip)\b|\bremove it\b", re.I)
+
+
+def _drop_instead(o: dict, notes: list[dict], reason: str) -> bool:
+    """The reviewer's own start/end fix could not find its words (it quoted one transcript and the audio reads another: 2026-10-15, "should they just add a disc to the" against "I'm going to bet it, get
+    your cake"), on a clip the same note calls garbled or unusable and tells the editor to remove: the clip's removal is what the note asked, whichever way the words are read."""
+    if not o.get("trusted") or "could not find" not in reason:
+        return False
+    text = str(notes[o["note"] - 1].get("text", "")) if 1 <= o.get("note", 0) <= len(notes) else ""
+    return bool(DROP_WORDS.search(text) and REMOVE_WORDS.search(text))
 
 
 def plan(cut: Cut, ops: list[dict], notes: list[dict]):
@@ -283,7 +297,9 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "end_at_words":
             c = cut.video[o["clip"] - 1]
             m = locate_end(cut, c.idx, o["words"], o.get("reach", 8.0), o.get("max_trim", 6.0))
-            if "reason" in m:
+            if "reason" in m and _drop_instead(o, notes, m["reason"]):
+                add(o, c.tl_start, c.tl_end, f"clip {c.idx} dropped: the words could not be found in the audio, and the note calls the whole clip unusable and says to remove it")
+            elif "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:
                 s, e = c.tl_end - m["trim"], c.tl_end
@@ -301,7 +317,9 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
         elif kind == "start_at_words":
             c = cut.video[o["clip"] - 1]
             m = locate_start(cut, c.idx, o["words"], o.get("reach", 6.0), o.get("max_trim", 3.0))
-            if "reason" in m:
+            if "reason" in m and _drop_instead(o, notes, m["reason"]):
+                add(o, c.tl_start, c.tl_end, f"clip {c.idx} dropped: the words could not be found in the audio, and the note calls the whole clip unusable and says to remove it")
+            elif "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:
                 s, e = c.tl_start, c.tl_start + m["trim"]

@@ -227,7 +227,7 @@ def offset_is_corroborated(pair, state) -> bool:
     # agrees with this one. Built once, then used two ways below.
     agreeing = []
     for other in state.pairs:
-        if other.audio_file != pair.audio_file or other.clock_vetoed:
+        if other.audio_file != pair.audio_file or getattr(other, "clock_vetoed", False):
             continue
         other_cam = _camera_clock_start(other.aroll_file)
         if other_cam is None:
@@ -294,7 +294,7 @@ def offset_is_corroborated(pair, state) -> bool:
     if own_recorder is not None and own_audio_start is not None:
         own_delta = implied - own_audio_start
         for other in state.pairs:
-            if other is pair or other.clock_vetoed:
+            if other is pair or getattr(other, "clock_vetoed", False):
                 continue
             if other.score < SCORE_TIMELINE_ATTACH:
                 continue
@@ -352,7 +352,7 @@ def offset_is_corroborated(pair, state) -> bool:
     if own_recorder is not None and own_audio_start is not None:
         agreeing_on_recorder = 0
         for other in state.pairs:
-            if other.clock_vetoed or other.score < MUTUAL_CORROBORATION_SCORE_FLOOR:
+            if getattr(other, "clock_vetoed", False) or other.score < MUTUAL_CORROBORATION_SCORE_FLOOR:
                 continue
             if _recorder_id(other.audio_file) != own_recorder:
                 continue
@@ -847,7 +847,7 @@ def find_covering_audio_for_phrase(
     for p in state.pairs:
         if p.aroll_file != aroll_original_path:
             continue
-        if p.clock_vetoed:                                                        # recorded hours away from this clip by the file-name clocks: a false match, whatever it scored
+        if getattr(p, "clock_vetoed", False):                                                        # recorded hours away from this clip by the file-name clocks: a false match, whatever it scored
             continue
         # Confident on its own, or independently corroborated by the
         # recording-start invariant (see offset_is_corroborated).
@@ -928,7 +928,7 @@ CONSISTENCY_TOL_SEC = 1.0
 
 def _promote_consistent_pairs(pairs: list["SyncPair"]) -> int:
     """Promotion over the pairs the clocks have not ruled out (a vetoed pair is neither promoted nor taken as a strong match to promote others by); see _promote_consistent_pairs_all."""
-    return _promote_consistent_pairs_all([p for p in pairs if not p.clock_vetoed])
+    return _promote_consistent_pairs_all([p for p in pairs if not getattr(p, "clock_vetoed", False)])
 
 
 def _promote_consistent_pairs_all(pairs: list["SyncPair"]) -> int:

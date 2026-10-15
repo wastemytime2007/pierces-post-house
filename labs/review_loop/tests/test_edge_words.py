@@ -43,3 +43,20 @@ def test_a_short_phrase_has_no_shorter_variants():
     assert opsmod._edge_variants("right here too", end=True) == ["right here too"]
     assert opsmod._edge_variants("a b c d e f g", end=True) == ["a b c d e f g", "c d e f g", "d e f g", "e f g"]
     assert opsmod._edge_variants("a b c d e f g", end=False) == ["a b c d e f g", "a b c d e", "a b c d", "a b c"]
+
+
+def test_a_fix_whose_words_cannot_be_found_removes_the_clip_the_same_note_calls_garbled_and_says_to_remove(monkeypatch):
+    """2026-10-15: 'This line is garbled and trails off mid-thought ... Remove it' carried start_at_words "should they just add a disc to the"; the audio read "I'm going to bet it, get your cake", the words were
+    not found and the note was left. The note asked for the clip to go."""
+    import apply_ops
+    cut = timeline.Cut("t", 30.0, 1080, 1920, 10.0, [timeline.VideoClip(1, 0.0, 5.0, "/x/a.mp4", 100.0, 105.0), timeline.VideoClip(2, 5.0, 10.0, "/x/a.mp4", 200.0, 205.0)], [])
+    monkeypatch.setattr(apply_ops, "locate_start", lambda *a, **k: {"reason": 'could not find "should they just add a disc to the" near the start of clip 2; the audio there reads: "I\'m going to bet it"'})
+    notes = [{"timeline_sec": 6.0, "text": "AI: This line is garbled and trails off mid-thought. It does not follow from what comes before. Remove it so the clip before runs into the close."}]
+    changes, spans, _ins = apply_ops.plan(cut, [{"note": 1, "op": "start_at_words", "clip": 2, "words": "should they just add a disc to the", "trusted": True}], notes)
+    assert changes[0].applied and "dropped" in changes[0].summary and [(s, e) for s, e, _i in spans] == [(5.0, 10.0)]
+    notes[0]["text"] = "AI: The sentence starts late. Start the clip a little later."                    # a note that does not call the clip garbled keeps the refusal
+    changes, spans, _ins = apply_ops.plan(cut, [{"note": 1, "op": "start_at_words", "clip": 2, "words": "should they just add a disc to the", "trusted": True}], notes)
+    assert not changes[0].applied and not spans
+    notes[0]["text"] = "AI: This line is garbled. Remove it."                                              # a note a person typed (not trusted) is never turned into a removal
+    changes, spans, _ins = apply_ops.plan(cut, [{"note": 1, "op": "start_at_words", "clip": 2, "words": "should they just add a disc to the"}], notes)
+    assert not changes[0].applied and not spans

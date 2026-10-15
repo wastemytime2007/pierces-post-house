@@ -406,7 +406,14 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         nxt = out / "_step_captions.xml"
         tool("Placing the captions", "overlay/place_overlay.py", cur, out / "captions", "--out", nxt)
         cur = nxt
-        steps.append({"name": "captions", "done": True, "summary": "captions of what is said, placed above the picture"})
+        _warn = ""
+        try:
+            _rows = json.loads((out / "captions" / "verify.json").read_text())["rows"]
+            _w = next((r for r in _rows if r["name"] == "INDEPENDENT-TRANSCRIPT" and r["ok"] is None), None)
+            _warn = f"; WARNING: {_w['detail']}" if _w else ""
+        except (OSError, ValueError, KeyError):
+            pass
+        steps.append({"name": "captions", "done": True, "summary": "captions of what is said, placed above the picture" + _warn})
 
     # 2. music (and an effect when asked): generated, modelled on the reference, a beat on frame 0 and on every cut, a bed under the voice
     if music and have["music"]:

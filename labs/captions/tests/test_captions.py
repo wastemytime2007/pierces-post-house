@@ -191,3 +191,12 @@ def test_captions_keep_clear_of_a_title_cards_words_and_a_name_tag(monkeypatch):
         pos, collided = mc.pick_position(g, blocked, 0.0)
         assert not collided
     assert all(r[3] > 0 and r[2] > 0 for b in blocked for r in b["rects"])
+
+
+def test_two_readings_that_agree_partly_are_a_warning_and_two_that_hardly_agree_are_a_failure():
+    """Ryan, 2026-10-15: 65% agreement on crew talk threw away the whole finish; it is a warning now, and only near-invention (under 50%) is a failure."""
+    import verify_captions as vc
+    assert vc.independent_verdict(0.92, 0.04) is True
+    assert vc.independent_verdict(0.65, 0.04) is None                      # the screenshot's case: 65%, median 40 ms
+    assert vc.independent_verdict(0.40, 0.04) is False
+    assert vc.independent_verdict(0.90, 0.80) is False                     # agreeing words that start far apart in time are not the same captions

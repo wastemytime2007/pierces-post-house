@@ -47,6 +47,18 @@ def hms(t: float) -> str:
     return srt_time(t).split(",")[0]
 
 
+HALLUCINATION_RATIO = 0.5      # two readings that agree on less than this: the captions are not the speech
+
+
+def independent_verdict(ratio: float, med: float) -> bool | None:
+    """True: the two readings agree. None: they agree only partly (a warning, the captions go through). False: they hardly agree, or the words start far apart in time (the captions are not trusted).
+    Between "agrees" and "invented" the check says so and lets the captions through (2026-10-15: crew talk on a job site, two readings by the same model agreed on 65% of the words, and the whole finish,
+    captions, music and graphics with it, was thrown away)."""
+    if ratio >= 0.85 and med <= 0.15:
+        return True
+    return None if ratio >= HALLUCINATION_RATIO and med <= 0.5 else False
+
+
 def second_opinion(media: Path, start: float, dur: float):
     """The same window transcribed by a different Whisper model (base), as phrases and words in the cut's clock."""
     from precut_pipeline.transcriber import Transcriber
@@ -190,8 +202,11 @@ def main() -> int:
         phrases, other = second_opinion(base, win0, dur)
         cap_words = [w for g in groups for w in g["words"]]
         ratio, med, p90, matched = agreement(cap_words, other)
-        rows.append(("INDEPENDENT-TRANSCRIPT", ratio >= 0.85 and med <= 0.15,
-                     f"base-model transcript agrees on {ratio:.0%} of words; matched words start a median {med * 1000:.0f}ms apart (90th percentile {p90 * 1000:.0f}ms), {matched} matched"))
+        sure = ratio >= 0.85 and med <= 0.15
+        verdict = independent_verdict(ratio, med)
+        rows.append(("INDEPENDENT-TRANSCRIPT", verdict,
+                     f"base-model transcript agrees on {ratio:.0%} of words; matched words start a median {med * 1000:.0f}ms apart (90th percentile {p90 * 1000:.0f}ms), {matched} matched"
+                     + ("" if sure else "; BELOW 85%: the speech is hard to transcribe, so the captions may hold wrong words: read them before using them")))
 
         (Path(td) / "independent.srt").write_text("".join(
             f"{i}\n{srt_time(p.start + win0)} --> {srt_time(p.end + win0)}\n{p.text}\n\n" for i, p in enumerate(phrases, start=1)))
@@ -206,6 +221,10 @@ def main() -> int:
         rows.append(("QUOTES-VERIFIED", None, f"{n_ok} of {n_all} caption lines found verbatim in the independent transcript at their timecode; "
                                               f"the other {n_all - n_ok} differ in wording between the two models" + ("\n      " + "\n      ".join(misses[:6]) if misses else "")))
 
+    try:                                                                  # what the finish tells the person: the warnings, in the folder beside the captions
+        (d / "verify.json").write_text(json.dumps({"rows": [{"name": n, "ok": ok, "detail": det} for n, ok, det in rows]}, indent=1))
+    except OSError:
+        pass
     gating = {"MOV-ALPHA", "TRANSPARENT-BETWEEN", "EVERY-LINE-VISIBLE", "PLACEMENT", "WORD-BY-WORD", "NO-COLLISION", "VERBATIM-TEXT", "NO-LOOPS", "INDEPENDENT-TRANSCRIPT"}
     wd = max(len(n) for n, _, _ in rows)
     bad = 0
