@@ -60,3 +60,13 @@ def test_a_fix_whose_words_cannot_be_found_removes_the_clip_the_same_note_calls_
     notes[0]["text"] = "AI: This line is garbled. Remove it."                                              # a note a person typed (not trusted) is never turned into a removal
     changes, spans, _ins = apply_ops.plan(cut, [{"note": 1, "op": "start_at_words", "clip": 2, "words": "should they just add a disc to the"}], notes)
     assert not changes[0].applied and not spans
+
+
+def test_a_cut_inside_a_word_is_found_from_the_word_timing_when_the_loudness_sees_no_onset(monkeypatch):
+    """2026-10-15, wall project: "the start lands inside the word 'particularly'" was refused with "the sound has not begun before the start" (the soft first sound is under the loudness threshold)."""
+    import ops
+    from types import SimpleNamespace as W
+    monkeypatch.setattr(ops.words_mod, "words_in", lambda path, start, dur: [W(text="so", start=99.0, end=99.3), W(text="particularly", start=99.8, end=100.6)])
+    assert ops._word_across("/x/a.wav", 100.0, 3.0).text == "particularly"
+    assert ops._word_across("/x/a.wav", 99.5, 3.0) is None                              # between words: nothing is cut off
+    assert ops._word_across("/x/a.wav", 100.58, 3.0) is None                            # within 30 ms of the word's end: not inside it

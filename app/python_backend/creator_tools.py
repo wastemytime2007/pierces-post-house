@@ -202,7 +202,7 @@ def remember_export(project_dir: str | Path, xml_path: str) -> None:
 SESSION_EVENTS = {"review_built", "notes_applied", "ai_review_done", "auto_edit_done"}
 # Which behaviour of the AI editor made a session. A saved session is shown as it was left, so one made before a fix looks exactly like one made after it: the tab compares this and says so.
 # Change it whenever the editor's behaviour changes in a way that makes an earlier result out of date.
-EDITOR_REVISION = "2026-10-15.4"
+EDITOR_REVISION = "2026-10-15.5"
 
 
 def session_path(root_xml: str | Path) -> Path:
@@ -1097,10 +1097,18 @@ def _op_sig(n: dict):
     return (op.get("op"), op.get("words")) if op.get("op") in ("start_at_words", "end_at_words") and op.get("words") else None
 
 
-def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> list[dict]:
+PIN_TOL = 0.25
+
+
+def _pinned(c, pins: set, kind: str) -> bool:
+    """A clip edge a story fix placed by its words (kind "start" or "end"): (kind, file, source second) within PIN_TOL."""
+    return any(k == kind and path == c.src_path and abs(sec - (c.src_in if kind == "start" else c.src_out)) <= PIN_TOL for k, path, sec in pins)
+
+
+def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict, pins: set | None = None) -> list[dict]:
     """The fixes that can be made together. A clip that is being dropped needs no edge fix; a clip whose start is being moved later by a story fix must not also start earlier; and story fixes
     that drop clips may not take the video below the length floor or leave fewer than two clips (those are parked with the reason). Order is kept."""
-    drops, later = set(), set()
+    drops, later, earlier = set(), set(), set()
     remaining, count = cut.zone_end, len(cut.video)
     refused = set()
     for n in fixable:
@@ -1121,6 +1129,8 @@ def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> lis
             remaining -= dur
         elif op["op"] == "start_at_words":
             later.add(op["clip"])
+        elif op["op"] == "end_at_words":
+            earlier.add(op["clip"])
     keep = []
     for n in fixable:
         op = n["suggested_op"]
@@ -1132,6 +1142,13 @@ def _compatible(fixable: list[dict], cut, floor_sec: float, parked: dict) -> lis
             continue                                                  # the clip is going: nothing to extend
         if op["op"] == "extend_start" and op["clip"] in later:
             continue                                                  # a story fix starts this clip later; it cannot also start earlier
+        if op["op"] == "extend_end" and op["clip"] in earlier:
+            continue                                                  # the same, at the end
+        if pins and 1 <= op.get("clip", 0) <= len(cut.video):
+            c = cut.video[op["clip"] - 1]
+            if (op["op"] == "extend_end" and _pinned(c, pins, "end")) or (op["op"] == "extend_start" and _pinned(c, pins, "start")):
+                parked[n["key"]] = "this edge was placed on purpose by an earlier story fix (it chose the words), so it is not moved back"       # 2026-10-15: end_at_words, extend_end, end_at_words used rounds 5 to 7 undoing each other
+                continue
         keep.append(n)
     return keep
 
@@ -1158,7 +1175,8 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
 
     out: dict = {"status": "", "best": label, "versions": [], "left": [], "rounds": [], "message": ""}
     parked: dict[str, str] = {}
-    parked_sigs: set = set()                                          # fixes that failed, named by what they ask for: the same fix re-worded by the next review is not tried again
+    pins: set = set()                                                 # clip edges a story fix placed by words: ("start"|"end", file, source second); the edge fixes do not move them back
+    parked_sigs: set = set()                                       # fixes that failed, named by what they ask for: the same fix re-worded by the next review is not tried again
     cur_xml, cur_folder, cur_label = xml, folder, label
     try:
         floor = timeline.load_cut(Path(xml)).zone_end * AUTO_KEEP_FRACTION
@@ -1180,7 +1198,7 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                 out["status"] = "limit"
                 break
             cut_now = timeline.load_cut(Path(cur_xml))
-            fixable = _compatible(fixable, cut_now, floor, parked)
+            fixable = _compatible(fixable, cut_now, floor, parked, pins)
             if not fixable:
                 out["status"] = "left"
                 break
@@ -1226,6 +1244,8 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
                     if _op_sig(n):
                         parked_sigs.add(_op_sig(n))
             out["rounds"].append({"round": rounds, "from": cur_label, "submitted": len(fixable), "applied": done})
+            placed = [(n["suggested_op"]["op"], cut_now.video[n["suggested_op"]["clip"] - 1]) for i, n in enumerate(fixable, start=1)
+                      if items.get(i, {}).get("applied") and n["suggested_op"]["op"] in ("start_at_words", "end_at_words") and 1 <= n["suggested_op"].get("clip", 0) <= len(cut_now.video)]
             if not r.get("xml"):
                 emit({"type": "notes_applied", "auto": True, **r})
                 out["status"] = "left"
@@ -1238,6 +1258,15 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
             sc, ms = review_score(res), measured_score(res)
             out["versions"].append({"label": new_label, "xml": r["xml"], "score": sc})
             cur_xml, cur_folder, cur_label = r["xml"], r["folder"], new_label
+            if placed:
+                try:
+                    cut_new = timeline.load_cut(Path(cur_xml))
+                    for kind_, old_c in placed:                       # the clip now holding that footage: its edge is where the story fix put it
+                        nc = next((c for c in cut_new.video if c.src_path == old_c.src_path and c.src_in - 0.6 <= old_c.src_in <= c.src_out), None)
+                        if nc is not None:
+                            pins.add(("end", nc.src_path, nc.src_out) if kind_ == "end_at_words" else ("start", nc.src_path, nc.src_in))
+                except Exception:
+                    pass
             if timeline.load_cut(Path(cur_xml)).zone_end < floor:
                 out["status"] = "short"
                 break

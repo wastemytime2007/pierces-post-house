@@ -613,3 +613,15 @@ def test_when_every_change_is_fine_one_trial_is_enough_and_when_the_whole_cut_is
     monkeypatch.setattr(ct.subprocess, "run", _fake_revise({1, 2, 3, 4}, []))                  # every one of them fails alone: all are set aside, none is kept by mistake
     kept, dropped = ct._find_passing_changes(cmd, plan, tmp_path, 540, lambda s: None)
     assert kept == [] and len(dropped) == 4
+
+
+def test_an_edge_fix_does_not_undo_the_edge_a_story_fix_placed_by_its_words():
+    """2026-10-15, wall project: end_at_words cut clip 5 after "above", extend_end put "at her 10..." back, end_at_words cut it again: rounds 5 to 7 spent undoing each other."""
+    cut = cut_of_clips(5, 5, 5)
+    same_pass = ct._compatible([fixnote("w", "end_at_words", 2, words="x"), fixnote("e", "extend_end", 2), fixnote("e3", "extend_end", 3)], cut, floor_sec=0.0, parked={})
+    assert [n["key"] for n in same_pass] == ["w", "e3"]
+    for c in cut.video:
+        c.src_path, c.src_in, c.src_out = "/x/a.mp4", 100.0 * c.idx, 100.0 * c.idx + 5
+    pins, parked = {("end", "/x/a.mp4", 205.0 + 0.1)}, {}
+    got = ct._compatible([fixnote("e2", "extend_end", 2), fixnote("s2", "extend_start", 2), fixnote("e3", "extend_end", 3)], cut, floor_sec=0.0, parked=parked, pins=pins)
+    assert [n["key"] for n in got] == ["s2", "e3"] and "on purpose" in parked["e2"]

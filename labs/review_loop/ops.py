@@ -795,7 +795,12 @@ def measure_tail(cut: Cut, clip_idx: int, max_sec: float) -> dict:
         return {"reason": f"the sound keeps going for more than {max_sec:g}s after the cut, so it is not a single word finishing; give an explicit amount instead"}
     ext = (j - cut_i) * 0.01 + 0.04
     if ext < 0.05:
-        return {"reason": "the sound has already decayed at the cut"}
+        w = _word_across(path, src_out, max_sec)
+        if w is None:
+            return {"reason": "the sound has already decayed at the cut"}
+        ext = words_mod.valley(path, w.end, w.end + 0.25) - src_out                      # the loudness says the sound is over; the word's own timing says the cut is still inside it (a soft ending)
+        if ext < 0.05:
+            return {"reason": "the sound has already decayed at the cut"}
     user = _footage_user(cut, clip_idx, clip.src_out, clip.src_out + ext)
     if user is not None:
         if user.idx == clip_idx + 1:
@@ -803,6 +808,16 @@ def measure_tail(cut: Cut, clip_idx: int, max_sec: float) -> dict:
         return {"reason": f"extending would repeat footage clip {user.idx} already shows"}
     return {"ext": ext, "path": path, "t_end": src_out + ext, "thresh_db": 20 * float(np.log10(thresh)),
             "at_cut_db": 20 * float(np.log10(max(at_cut, 1e-6)))}
+
+
+def _word_across(path: str, t: float, max_sec: float):
+    """The word whose own start and end enclose source second `t` (the cut lands inside it), or None. The loudness measure misses a soft first or last sound; the word timing does not
+    (2026-10-15, wall project: "the start lands inside the word 'particularly'" was refused 4 times with "the sound has not begun before the start")."""
+    ws = words_mod.words_in(path, max(0.0, t - 1.5), 3.0)
+    for w in ws:
+        if w.start < t - 0.03 and w.end > t + 0.03 and t - w.start <= max_sec and w.end - t <= max_sec:
+            return w
+    return None
 
 
 def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
@@ -831,7 +846,12 @@ def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
         return {"reason": f"the sound keeps going for more than {max_sec:g}s before the start, so it is not a single word beginning; give an explicit amount instead"}
     ext = (cut_i - j) * 0.01 + 0.04
     if ext < 0.05:
-        return {"reason": "the sound has not begun before the start"}
+        w = _word_across(path, src_in, max_sec)
+        if w is None:
+            return {"reason": "the sound has not begun before the start"}
+        ext = src_in - words_mod.valley(path, w.start - 0.25, w.start)                   # the loudness says the sound begins at the cut; the word's own timing says it began before it (a soft first sound: "th", "p")
+        if ext < 0.05:
+            return {"reason": "the sound has not begun before the start"}
     if src_in - ext < 0:
         ext = src_in
         if ext < 0.05:
