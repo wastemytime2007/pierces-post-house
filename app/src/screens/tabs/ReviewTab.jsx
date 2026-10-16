@@ -192,6 +192,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
         flushRef.current?.();
       } else if (ev.type === "ai_review_failed") {
         setAi((a) => ({ ...a, [ev.tag]: { status: "failed", message: ev.message } }));
+      } else if (ev.type === "agent_edit_started") {
+        setAuto({ status: "running", round: 1, of: 1, label: ev.tag, fixing: ev.notes, agent: true });
       } else if (ev.type === "auto_edit_started") {
         setAuto({ status: "running", round: 0, of: ev.max_rounds, label: ev.tag });
       } else if (ev.type === "auto_edit_round") {
@@ -258,6 +260,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
       if (ev.type === "review_built") {
         setActivity([]);
         say(`The cut is open as V1 (${ev.clips} clips, ${ev.duration} s).`);
+      } else if (ev.type === "agent_edit_started") {
+        say(`A Claude agent started on the ${ev.notes} note${ev.notes === 1 ? "" : "s"} the editor could not make (${ev.tag}). It reads the cut, tries changes through the same checks and reads what is refused; this takes several minutes.`, "ai");
       } else if (ev.type === "auto_edit_started") {
         say(`The AI editor started on ${ev.tag}.`, "ai");
       } else if (ev.type === "ai_review_started") {
@@ -712,6 +716,16 @@ export default function ReviewTab({ subscribe, onStatus }) {
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
             <div className="run-pipeline-section-label" style={{ margin: 0 }}>{auto.left?.length ? `What the AI editor could not fix by itself (${auto.left.length})` : "Nothing left for the AI editor"}</div>
             <span style={{ flex: 1 }} />
+            {auto.left?.length > 0 && auto.status === "done" && (
+              <button className="btn btn-primary" title="A Claude agent reads the cut and these notes, chooses other changes where the editor's rules refused, and applies them through the same checks"
+                onClick={() => {
+                  const v = versionsRef.current.find((x) => x.label === auto.best) || versionsRef.current[versionsRef.current.length - 1];
+                  if (!v) return;
+                  setAuto({ status: "running", round: 1, of: 1, label: v.label, fixing: auto.left.length, agent: true });
+                  sendCommand({ type: "agent_edit", xml: v.xml, folder: v.folder, tag: v.label, root: versionsRef.current[0]?.xml || v.xml, left: auto.left, direction: directionRef.current })
+                    .catch((e) => setAuto({ status: "done", summary: `The agent could not start: ${e}`, left: auto.left, versions: [], rounds: [] }));
+                }}>Have a Claude agent try these</button>
+            )}
             {auto.left?.length > 0 && <button className="btn btn-ghost" onClick={() => setShowLeft((x) => !x)}>{showLeft ? "Hide" : "Show"}</button>}
           </div>
           {auto.left?.length > 0 && showLeft && (

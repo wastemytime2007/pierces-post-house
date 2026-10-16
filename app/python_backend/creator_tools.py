@@ -1303,6 +1303,202 @@ def auto_edit(xml: str, folder: str, label: str = "V1", max_rounds: int = AUTO_M
     return out
 
 
+AGENT_WORK_ROOT = Path.home() / "Library" / "Application Support" / "Post House" / "agent_work"      # a plain path: a project folder on an external drive can have a name the Write tool refuses (2026-10-16: "back wall./" read as a suspicious Windows path)
+AGENT_TURNS = 80
+AGENT_MINUTES = 45
+
+
+def agent_tools_allowed(work: Path) -> list[str]:
+    """What the agent may run, and nothing else (the CLI refuses the rest, since nobody is there to approve it): its own toolbox script (inspect, search, apply), ffmpeg and ffprobe to listen, Read,
+    and Write into its own working folder. Not arbitrary python, not the shell: the agent decides what to do, the toolbox is the only thing that changes a cut."""
+    tools = Path(__file__).resolve().parent / "agent_tools.py"
+    return [f"Bash(python3 {tools} *)", "Bash(ffmpeg *)", "Bash(ffprobe *)", "Read", f"Write(/{work}/**)", f"Edit(/{work}/**)"]      # a rule's path starting with ONE slash is relative to the project; two slashes make it absolute (the first run, 2026-10-16, was refused its own folder)
+
+AGENT_BRIEF = """You are the problem solver inside Ryan Pierce's video editing app (Post House). Its rule-based AI editor reviewed a cut, made the changes it could, and left the notes below because its fixed rules
+refused them. Ryan's complaint: it keeps leaving notes unmade that a human editor would simply reason around. You are that human editor. Make these changes, or find the closest honest thing that makes
+the video better, and say plainly when something truly cannot be done.
+
+THE CUT: {xml}
+Its folder: {folder}     Your working folder: {work}     The notes, as a notes file: {notes}   (note numbers below are 1..N in that file)
+
+NOTES THE EDITOR COULD NOT MAKE (with the reason it gave):
+{left}
+
+{direction}YOUR TOOLS (run them with Bash; the app's own code runs underneath, so every change goes through the same checks Ryan's Submit button does):
+  python3 {tools} ops-help                         the operations you can ask for, with their fields
+  python3 {tools} inspect "<cut.xml>"              every clip: where it plays, which recording it is from, and the words heard in it with their times (word@seconds in that recording)
+  python3 {tools} search "<cut.xml>" "some words"  lines of the recordings that hold those words, including lines the cut does not use
+  python3 {tools} apply "<cut.xml>" "{notes}" "<ops.json>"   makes your operations as a NEW version (the checks run; a refusal or failed check makes nothing and is explained)
+You may also listen with ffmpeg/ffprobe (levels, silence) and read files. Write your ops.json files into {work}. Do not edit, move or delete anything else; do not touch other projects.
+
+HOW TO WORK
+1. Run inspect on the cut. Read each note against the actual words and times. Decide what the note is really asking for.
+2. For each note choose the operation that does it. Notes that quote words: use start_at_words / end_at_words with the words as the recording has them, not the note's spelling. A refusal tells you why: use
+   that. Examples: a start that 'runs straight on from the word before it' means start at the beginning of the SENTENCE (start_at_words with the first words of that sentence); a check that reads a near
+   word (seam / same) means the words you gave are right and the transcript is hearing them differently: give 3-5 words that are heard clearly; a line 'already in the cut' means the note is already met,
+   say so; a missing fact the cut never states may exist elsewhere in the recordings: search for it, and restore_footage it if a line really says it (read it, do not trust a match score).
+3. Apply. If it is refused or a check fails, read the words, change your plan, apply again. Combine notes in one apply when they do not touch the same clip edge; if one change breaks a check, apply the rest.
+   Each success is a new version Ryan can open, and the next apply starts from the newest one (use the path `apply` printed after NEW VERSION). Use at most 6 applies.
+   The shell here refuses variables, heredocs, `&&` chains and `python -c`: give every command in full, with literal paths, one command per call, and write each ops.json with the Write tool into {work}.
+   AFTER an apply that adds or moves a line (restore_footage, start_at_words, end_at_words), run inspect on the NEW version and read the words under the clip you changed: they must be the words you meant.
+   The check that runs inside apply only asks that SOME speech is heard. A recorder that was not near the speaker reads other words (2026-10-16: the restored "That piece of trim is added" played a
+   recorder that heard "attractive circuit of the west finished"). The camera's own sound under the same picture often carries the line: search shows the words in the picture file, and use_camera_audio {{"clip": n}}
+   plays the camera's sound under that clip. If the words under a clip you added are not the words you restored, fix it that way and say so; never report a line as made when it plays the wrong words.
+4. Do not re-record anything (what is not in the footage cannot be made). Do not change the length of the video beyond what the notes need. Never invent a quote: every word you put on the timeline
+   comes from a recording you read with the tools. Do not claim a note is made unless `apply` printed MADE for it.
+5. Stop when everything doable is done. Your LAST message must be one JSON object and nothing after it:
+   {{"made": [{{"note": 1, "what": "<one plain sentence>"}}], "not_made": [{{"note": 2, "why": "<the real reason, in plain words for Ryan>"}}], "final_xml": "<the newest version's xml path, or null>", "needs": "<a capability the app lacks that would have let you finish, or empty>"}}
+"""
+
+
+def _agent_left_text(left: list[dict]) -> str:
+    return "\n".join(f'  {i}. {n.get("text", "")}\n     (the editor left it because: {n.get("reason", "")})' for i, n in enumerate(left, start=1))
+
+
+def _last_json(text: str) -> dict:
+    """The last JSON object in the agent's final message ({} when there is none)."""
+    import json
+    end = text.rfind("}")
+    while end != -1:
+        depth = 0
+        for i in range(end, -1, -1):
+            depth += (text[i] == "}") - (text[i] == "{")
+            if depth == 0:
+                try:
+                    obj = json.loads(text[i:end + 1])
+                    return obj if isinstance(obj, dict) else {}
+                except ValueError:
+                    break
+        end = text.rfind("}", 0, end)
+    return {}
+
+
+def agent_edit(xml: str, folder: str, label: str, left: list[dict], emit=None, cancelled=None, root: str | None = None, direction: str = "", runner=None) -> dict:
+    """A Claude agent (the local `claude` CLI, the plan and not the API key) takes the notes the rule-based editor left and works on them with the editor's own tools until they are made or it can say
+    why they cannot be: it reads the cut's words, chooses the operations, applies them through every check, reads the refusals and tries again. Each version it makes is reported as an editor round is.
+    `runner(prompt, workdir, env, on_line, cancelled)` is injectable (tests); it returns the agent's final text. Returns {"versions", "made", "not_made", "left", "best", "summary", "needs", "status"}."""
+    import json
+    import os
+    import shutil
+    import subprocess
+    import time
+    raw_emit = emit or (lambda ev: None)
+    emit = lambda ev: raw_emit({**ev, "root": root or xml})                # noqa: E731
+    cancelled = cancelled or (lambda: False)
+    out: dict = {"versions": [], "made": [], "not_made": [], "left": [], "best": label, "needs": "", "status": "left"}
+    if not left:
+        out.update(status="clean", summary="No notes were left for the agent.")
+        return out
+    import hashlib
+    work = AGENT_WORK_ROOT / f"{label}-{hashlib.sha1(str(xml).encode()).hexdigest()[:8]}-{time.strftime('%Y%m%d-%H%M%S')}"
+    work.mkdir(parents=True, exist_ok=True)
+    state = work / "agent_state.json"
+    state.unlink(missing_ok=True)
+    review_file = Path(folder) / "ai_review.json"
+    times = {}
+    try:
+        for n in json.loads(review_file.read_text()).get("notes", []):
+            times[str(n.get("text", "")).strip()] = n
+    except (OSError, ValueError):
+        pass
+    notes = [{"timeline_sec": (times.get(str(n.get("text", "")).strip()) or {}).get("timeline_sec", 0.0), "text": n.get("text", ""), "kind": n.get("kind", ""), "shapes": []} for n in left]
+    nfile = work / "review_notes.json"
+    nfile.write_text(json.dumps({"schema": "review_notes.v0-draft", "sequence": "", "notes": notes}, indent=1))
+    dir_text = f"WHAT THE VIDEO IS FOR (the owner's direction):\n{direction}\n\n" if direction.strip() else ""
+    prompt = AGENT_BRIEF.format(xml=xml, folder=folder, work=work, notes=nfile, left=_agent_left_text(left), direction=dir_text, tools=Path(__file__).resolve().parent / "agent_tools.py")
+    env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_WORKSPACE_ID")}      # the Claude Code plan, never the API key
+    env["AGENT_STATE_FILE"] = str(state)
+    emit({"type": "agent_edit_started", "tag": label, "notes": len(left)})
+    seen = {"n": 0}
+
+    def on_line(text: str) -> None:
+        emit({"type": "notes_stage", "stage": text, "auto": True})
+
+    def default_runner(pr: str, wd: Path, en: dict, on: object, cancel) -> str:
+        exe = shutil.which("claude")
+        if not exe:
+            raise ToolError("the `claude` CLI is not on PATH, so the agent cannot start")
+        cmd = [exe, "-p", "--output-format", "stream-json", "--verbose", "--max-turns", str(AGENT_TURNS), "--allowedTools", ",".join(agent_tools_allowed(wd)), "--add-dir", str(Path(xml).parent)]
+        if en.get("AGENT_EDIT_MODEL"):
+            cmd += ["--model", en["AGENT_EDIT_MODEL"]]
+        proc = subprocess.Popen(cmd, cwd=wd, env=en, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        proc.stdin.write(pr)
+        proc.stdin.close()
+        final, deadline = "", time.time() + AGENT_MINUTES * 60
+        log = (wd / "agent_log.txt").open("a")                                      # everything the agent printed, so a run that made nothing can be read afterwards
+        log.write(f"$ {' '.join(cmd)}\n")
+        for line in proc.stdout:
+            log.write(line)
+            log.flush()
+            if cancel() or time.time() > deadline:
+                proc.terminate()
+                break
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "assistant":
+                for part in (ev.get("message") or {}).get("content", []):
+                    if part.get("type") == "tool_use" and part.get("name") == "Bash":
+                        c = str((part.get("input") or {}).get("command", ""))
+                        m = re.search(r"agent_tools\.py (ops-help|inspect|search|apply)", c)
+                        on(f"The agent is {'reading the cut' if m and m.group(1) in ('inspect', 'ops-help') else 'searching the recordings' if m and m.group(1) == 'search' else 'making changes' if m else 'checking the audio'}")
+            elif ev.get("type") == "result":
+                final = str(ev.get("result") or "")
+        proc.wait(timeout=30)
+        log.write(f"\n[exit code {proc.returncode}]\n")
+        log.close()
+        if not final and proc.returncode not in (0, None):
+            raise ToolError(f"the claude CLI exited with code {proc.returncode}; see {wd / 'agent_log.txt'}")
+        return final
+
+    try:
+        final = (runner or default_runner)(prompt, work, env, on_line, cancelled)
+    except ToolError as exc:
+        out.update(status="failed", message=str(exc), summary=f"The agent could not run: {exc}")
+        emit({"type": "auto_edit_done", **out})
+        return out
+    except Exception as exc:
+        out.update(status="failed", message=f"{type(exc).__name__}: {exc}", summary=f"The agent stopped: {type(exc).__name__}: {exc}")
+        emit({"type": "auto_edit_done", **out})
+        return out
+    rows = json.loads(state.read_text()) if state.is_file() else []
+    cur = int(label[1:])
+    for r in rows:
+        cur += 1
+        v = {"label": f"V{cur}", "xml": r["xml"], "score": 0}
+        out["versions"].append(v)
+        emit({"type": "notes_applied", "auto": True, "label": v["label"], **{k: x for k, x in r.items() if k != "from"}})
+    verdict = _last_json(final or "")
+    made, not_made = verdict.get("made") or [], verdict.get("not_made") or []
+    out["made"], out["needs"] = made, str(verdict.get("needs") or "")
+    if rows:
+        out["best"] = out["versions"][-1]["label"]
+    said = {int(x.get("note", 0)): str(x.get("why", "")) for x in not_made if isinstance(x, dict)}
+    made_ids = {int(x.get("note", 0)) for x in made if isinstance(x, dict)}
+    out["left"] = [{"text": n.get("text", ""), "kind": n.get("kind", ""), "reason": said.get(i) or n.get("reason", "") or "the agent did not make it"} for i, n in enumerate(left, start=1) if i not in made_ids]
+    out["not_made"] = out["left"]
+    if not final:
+        out["summary"] = "The agent was stopped before it finished." + (f" {len(rows)} version{'s' if len(rows) != 1 else ''} made so far." if rows else "")
+        out["status"] = "stopped"
+    elif not rows:
+        out["summary"] = "The agent made no new version. " + (f"It says: {out['left'][0]['reason']}" if out["left"] else "")
+        out["status"] = "left"
+    else:
+        out["summary"] = f"The agent made {len(made)} of {len(left)} change{'s' if len(left) != 1 else ''} in {len(rows)} version{'s' if len(rows) != 1 else ''}. {out['best']} is the one to review." + (f" {len(out['left'])} left (each says why)." if out["left"] else "")
+        out["status"] = "left" if out["left"] else "clean"
+    if rows:                                                                # the newest version gets its own review, as every editor round does, so its page and notes are there
+        try:
+            x, f = out["versions"][-1]["xml"], rows[-1].get("folder")
+            emit({"type": "ai_review_started", "xml": x, "tag": out["best"], "auto": True})
+            res = ai_review(x, f, lambda st: emit({"type": "ai_review_stage", "xml": x, "tag": out["best"], "stage": st, "auto": True}), True, direction)
+            emit({"type": "ai_review_done", "xml": x, "tag": out["best"], "auto": True, **res})
+        except Exception as exc:
+            emit({"type": "ai_review_failed", "xml": xml, "tag": out["best"], "message": f"{type(exc).__name__}: {exc}"})
+    emit({"type": "auto_edit_done", **out})
+    return out
+
+
 def _auto_summary(o: dict) -> str:
     """How the run ended, in words. A finished run names the finished version and what was added; a failed finish is said, not hidden."""
     if o.get("finished"):

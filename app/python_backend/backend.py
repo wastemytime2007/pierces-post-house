@@ -1250,6 +1250,36 @@ def handle_auto_edit(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_agent_edit(cmd: dict) -> None:
+    """A Claude agent takes the notes the AI editor could not make (creator_tools.agent_edit): it reads the cut, chooses the changes, applies them through the same checks, reads the refusals and
+    tries again. Background job on the same lock and the same Stop as the editor loop; its events are the editor's own."""
+    xml, folder, left = cmd.get("xml"), cmd.get("folder"), cmd.get("left")
+    if not xml or not folder or not isinstance(left, list) or not left:
+        err("agent_edit needs an 'xml', the version's review 'folder' and the 'left' notes")
+        return
+    if not _auto_running.acquire(blocking=False):
+        emit({"type": "auto_edit_done", "status": "failed", "message": "the AI editor is already working on a cut", "best": cmd.get("tag") or "V1", "versions": [], "left": left, "rounds": [],
+              "summary": "The AI editor is already working. Press Stop on it first."})
+        return
+    _auto_stop.clear()
+    _auto_info.clear()
+    _auto_info.update({"root": cmd.get("root") or xml, "tag": cmd.get("tag") or "V1"})
+
+    def worker():
+        import creator_tools
+        try:
+            creator_tools.capture(creator_tools.agent_edit, xml, folder, cmd.get("tag") or "V1", left, emit, _auto_stop.is_set, cmd.get("root"), str(cmd.get("direction") or ""))
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "auto_edit_done", "status": "failed", "message": f"{type(exc).__name__}: {exc}", "best": cmd.get("tag") or "V1", "versions": [], "left": left, "rounds": [],
+                  "summary": f"The agent could not continue: {exc}", "root": cmd.get("root") or xml})
+        finally:
+            _auto_info.clear()
+            _auto_running.release()
+
+    _executor.submit(worker)
+
+
 def handle_auto_edit_stop(cmd: dict) -> None:
     """Stop the AI editor after the step it is on (a revision in progress is finished, nothing new is started)."""
     _auto_stop.set()
@@ -1383,6 +1413,7 @@ HANDLERS = {
     "ai_review": handle_ai_review,
     "auto_edit": handle_auto_edit,
     "auto_edit_stop": handle_auto_edit_stop,
+    "agent_edit": handle_agent_edit,
     "list_exports": handle_list_exports,
     "premiere_apps": handle_premiere_apps,
     "open_path": handle_open_path,
