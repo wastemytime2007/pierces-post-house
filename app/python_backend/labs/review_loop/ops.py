@@ -16,6 +16,9 @@ LLM) only chooses among them; it does not get to invent a time.
                                  sound is played under the clip instead of the separate recorder (both levels are measured first, and it is refused when the recorder is not clearly worse).
   restore_footage {words}        the note asks to put BACK a line of the recording the cut no longer has ("put the part where Bob says ... back in"). The line is found in the transcript of
                                  the footage the cut is made from by the note's own words, then put on the timeline, with its picture and every recorder, where it was said in the story.
+                                 AGENT ONLY (trusted): the stretch may be named by its seconds in the recording instead of searched: {"op": "restore_footage", "words": "<what is said>", "start": 157.4, "end": 160.55,
+                                 "file": "<raw camera file path>", "before": 1, "camera_audio": true}. Use it when you LISTENED (or Ryan did) and the transcript hears the line wrongly. camera_audio plays the camera's own
+                                 sound under it and switches every separate recorder off there: for a line the recorders do not hear (a silent or distant recorder) but the camera does.
   reframe_vertical {clip, direction}   a punched-in shot sits too high or too low in the vertical frame (Reel 3: "lower it so Mitch's head isn't cropped off at
                                  the top"). direction is "lower" or "raise" and must be the note's own. The amount is one step (12% of the shot's height)
                                  unless a later version learns to read one; it changes the clip's Basic Motion in the XML, not its timing, so nothing ripples.
@@ -363,7 +366,17 @@ def validate(ops: list, notes: list[dict], cut: Cut) -> list[dict]:
                 if not _distinctive(phrase) or len(words_mod.tokens(phrase)) > 40:
                     raise ValueError("the line to add is not described in enough words to search for")      # the reviewer's own words (not the note's): the search confirms the line before anything is added
                 before = raw.get("before")
-                out.append({"note": note, "op": op, "words": phrase, "before": before if isinstance(before, int) and 1 <= before <= n_clips else None, "why": why, "trusted": True})
+                item = {"note": note, "op": op, "words": phrase, "before": before if isinstance(before, int) and 1 <= before <= n_clips else None, "why": why, "trusted": True}
+                if raw.get("start") is not None and raw.get("end") is not None:      # the stretch by its seconds in the recording, said by a person who listened (the agent, told by Ryan): the search is skipped
+                    s_, e_ = float(raw["start"]), float(raw["end"])
+                    if not 0 <= s_ < e_ <= s_ + 30:
+                        raise ValueError("a restored stretch must be 0 to 30 seconds long")
+                    item.update({"start": s_, "end": e_, "file": str(raw["file"]) if raw.get("file") else None})
+                if raw.get("camera_audio"):
+                    item["camera_audio"] = True
+                if raw.get("audio_file") and raw.get("audio_offset") is not None:     # the recorder that heard it, and where it is: recorder second = camera second + audio_offset (found by listening, 2026-10-16)
+                    item.update({"audio_file": str(raw["audio_file"]), "audio_offset": float(raw["audio_offset"])})
+                out.append(item)
             elif raw.get("trusted") and op == "remove_range":
                 s, e = float(raw["start"]), float(raw["end"])               # the whole-cut filler pass measured these (fillers.py); no explicit time needs to be in the note's text
                 if not 0 <= s < e <= zone:
@@ -1118,7 +1131,7 @@ def _confirm_line(wanted: str, line: str, client=None) -> bool:
         return False
 
 
-def locate_restore(cut: Cut, phrase: str, before: int | None = None) -> dict:
+def locate_restore(cut: Cut, phrase: str, before: int | None = None, window: tuple[str, float, float] | None = None, recorder: tuple[str, float] | None = None) -> dict:
     """Where in the recording the line the note names is, and where in the cut it goes. Returns {"path", "t0", "t1" (source seconds of the camera file), "heard", "held", "after"/"before" (the clip it
     goes next to), "lav", "lav_offset"} or {"reason": ...}.
 
@@ -1126,6 +1139,8 @@ def locate_restore(cut: Cut, phrase: str, before: int | None = None) -> dict:
     shows of it is not put back twice. Its ends are placed at the quietest moment next to the first and last word, the way every other cut here is. It goes where it was said: after the clip of the same
     recording that ends nearest before it, else before the one that starts nearest after it, unless the note names the clip it must come before."""
     want = _distinctive(phrase)
+    if window is not None:                                          # the stretch is named by its seconds: no search, only the same placement (what is already in the cut, the edges, where it goes)
+        return _place_line(cut, window[0], float(window[1]), float(window[2]), phrase, want or words_mod.tokens(phrase), want or words_mod.tokens(phrase), before, recorder)
     if not want:
         return {"reason": "the note does not name the line in enough distinctive words to find it"}
     pool, missing = [], []
@@ -1159,6 +1174,11 @@ def locate_restore(cut: Cut, phrase: str, before: int | None = None) -> dict:
     w0, w1 = ph[i], ph[j]
     t0, t1 = float(w0["start"]), float(w1["end"])
     heard = " ".join(p["text"] for p in ph[i:j + 1]).strip()
+    return _place_line(cut, path, t0, t1, heard, held, want, before)
+
+
+def _place_line(cut: Cut, path: str, t0: float, t1: float, heard: str, held: list, want: list, before: int | None, recorder: tuple[str, float] | None = None) -> dict:
+    """Where the line at source seconds t0..t1 of `path` goes in the cut, minus what the cut already shows of it (the second half of locate_restore)."""
     used = sorted((c.src_in, c.src_out) for c in cut.video if c.src_path == path)          # what the cut already shows of it: not put back twice
     free, cur = [], t0
     for a, b in used:
@@ -1184,6 +1204,8 @@ def locate_restore(cut: Cut, phrase: str, before: int | None = None) -> dict:
         return {"reason": "no clip of that recording is in the cut to take the sound and framing from"}
     lav, a_in, _ = _audio_for(cut, tmpl)
     off = a_in - tmpl.src_in                                                               # the recorder's time minus the camera's at that clip
+    if recorder is not None:
+        lav, off = recorder                                                                # the recorder that heard the line (named by whoever listened): its quiet moments place the ends
     if f0 > t0 + 0.05:
         t0 = f0                                                                            # a neighbour already holds the start of the line: the free edge stays as it is
     else:

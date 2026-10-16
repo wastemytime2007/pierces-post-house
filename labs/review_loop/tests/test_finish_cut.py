@@ -367,11 +367,11 @@ def test_a_revision_keeps_the_effect_the_cut_already_has_unless_it_was_asked_to_
 def test_the_effect_is_levelled_by_how_loud_it_plays_not_by_its_first_instant_click(tmp_path):
     import make_audio as ma
     speech = tmp_path / "speech.wav"
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=3:r=48000:a=0.1", "-ac", "1", str(speech)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=3:r=48000:a=0.1:seed=1", "-ac", "1", str(speech)], check=True)
     click = tmp_path / "click.wav"                                  # a 20 ms burst at full scale, then silence
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.02:r=48000:a=1.0", "-af", "apad=whole_dur=1.2", "-ac", "1", str(click)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.02:r=48000:a=1.0:seed=2", "-af", "apad=whole_dur=1.2", "-ac", "1", str(click)], check=True)
     whoosh_f = tmp_path / "whoosh.wav"                              # half a second of sustained noise
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.8:r=48000:a=0.3", "-ac", "1", str(whoosh_f)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anoisesrc=d=0.8:r=48000:a=0.3:seed=3", "-ac", "1", str(whoosh_f)], check=True)
     assert ma.volume(click)["peak"] > ma.volume(whoosh_f)["peak"] + 5                    # by PEAK the click is far louder...
     assert ma.loud_part_db(whoosh_f) > ma.loud_part_db(click) + 3                        # ...but the whoosh is what plays louder, and that is what sets the level
     out = tmp_path / "o.wav"

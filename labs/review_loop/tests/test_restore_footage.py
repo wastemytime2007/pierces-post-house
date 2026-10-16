@@ -296,3 +296,27 @@ def test_a_line_that_holds_only_some_of_the_described_words_is_confirmed_even_wh
     assert "has no line that says it" in r["reason"] and asked and "curbs" in asked[0]
     monkeypatch.setattr(opsmod, "_confirm_line", lambda wanted, line, client=None: True)
     assert "reason" not in opsmod.locate_restore(cut, QUOTE)
+
+
+def test_a_stretch_named_by_its_seconds_is_put_back_without_a_search_and_can_play_the_cameras_own_sound(tmp_path, xml, monkeypatch):
+    """2026-10-16, wall project: Bob says "the door stops right where that piece of trim was added", the transcript hears a quiet line as "And doors not open", so no search by words finds it, and
+    the recorders do not hear it at all (-58 dB), the camera does (-31 dB). A trusted op may name the stretch by its seconds in the recording and ask for the camera's sound."""
+    import xml.etree.ElementTree as ET
+    monkeypatch.setattr(opsmod, "_transcript_phrases", lambda path: pytest.fail("a stretch named by its seconds must not be searched for"))
+    cut = timeline.load_cut(xml)
+    cam = cut.video[0].src_path
+    raw = {"note": 1, "op": "restore_footage", "words": "the septic tank outlet sits behind the garage", "start": 12.4, "end": 15.0, "file": cam, "camera_audio": True, "trusted": True}
+    ops = opsmod.validate([raw], [NOTE], cut)
+    assert ops[0]["start"] == 12.4 and ops[0]["camera_audio"] is True
+    out = tmp_path / "v2.xml"
+    changes, delta = apply_ops.apply_ops(xml, out, cut, ops, [NOTE])
+    assert changes[0].applied, changes[0].summary
+    k = changes[0].check
+    assert 2.4 < k["t1"] - k["t0"] < 3.0 and "camera's own sound plays under it" in changes[0].summary
+    audio = [c for tr_ in ET.parse(out).getroot().findall(".//sequence/media/audio/track") for c in tr_.findall("clipitem") if "-restore" in (c.get("id") or "")]
+    assert audio
+    on = [c for c in audio if c.findtext("enabled") == "TRUE"]
+    off = [c for c in audio if c.findtext("enabled") == "FALSE"]
+    assert on and off and all("sync" not in (c.get("id") or "") for c in on) and all("sync" in (c.get("id") or "") for c in off)      # the camera's clip is on, the separate recorder's is off
+    bad = dict(raw, start=12.4, end=50.0)
+    assert opsmod.validate([bad], [NOTE], cut) == [] or opsmod.validate([bad], [NOTE], cut)[0]["op"] == "unsupported"                      # over 30 s is refused

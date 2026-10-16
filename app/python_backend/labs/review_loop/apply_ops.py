@@ -192,14 +192,18 @@ def plan(cut: Cut, ops: list[dict], notes: list[dict]):
                                           check={"kind": "camera_audio", "clip": c.idx, "src_path": c.src_path, "src_in": c.src_in, "src_out": c.src_out, "rec_db": rec_db, "cam_db": cam_db}))
         elif kind == "restore_footage":
             from ops import locate_restore
-            m = locate_restore(cut, o["words"], o.get("before"))
+            win = None
+            if o.get("start") is not None and o.get("end") is not None:
+                win_path = o.get("file") or (cut.video[o["before"] - 1].src_path if o.get("before") else cut.video[0].src_path)
+                win = (win_path, o["start"], o["end"])
+            m = locate_restore(cut, o["words"], o.get("before"), window=win, recorder=(o["audio_file"], o["audio_offset"]) if o.get("audio_file") else None)
             if "reason" in m:
                 changes.append(Change(n, kind, False, m["reason"], o.get("why", "")))
             else:
                 where = (f"after clip {m['after']}" if m["after"] else f"before clip {m['before']}" if m["before"] else "at the end of the cut")
                 changes.append(Change(n, kind, True,
                                       f'put back "{m["heard"][:120]}" ({m["t1"] - m["t0"]:.1f}s of the recording, {_fmt(m["t0"])}-{_fmt(m["t1"])} in the file), {where}',
-                                      o.get("why", ""), check={"kind": "restore", **m}))
+                                      o.get("why", ""), check={"kind": "restore", **m, **({"camera_audio": True} if o.get("camera_audio") else {}), **({"audio_file": o["audio_file"], "audio_offset": o["audio_offset"]} if o.get("audio_file") else {})}))
         elif kind == "reframe_vertical":
             from render_preview import source_dims
             import reframe_xml as rx
@@ -674,6 +678,59 @@ def _use_camera_audio(seq: ET.Element, ch: Change, zone_now: int, fps: float, cl
     return None
 
 
+def _put_recorder_under(root: ET.Element, seq: ET.Element, made: list, k: dict, spf_of_fid: dict, cam_fid: str, fps: float, L: int):
+    """The recorder file the check names is made the sound under a restored stretch: the first recorder piece of the stretch is re-pointed at that file (its definition copied from the one it had, with the
+    new name, path and length), at the recorder second the camera's second maps to; every other recorder and the camera's own sound are switched off there. Returns (level in dB,) or the reason it could not."""
+    import subprocess
+    from urllib.parse import quote
+    rec = Path(k["audio_file"])
+    if not rec.is_file():
+        return f"that recorder file is not there: {rec}"
+    audio_tracks = seq.findall("media/audio/track")
+    pieces = [(tr, el) for tr, el in made if tr in audio_tracks and el.find("file") is not None and not (el.find("file").get("id") or "").startswith(("audio-file-", "overlay-"))]
+    carriers = [(tr, el) for tr, el in pieces if el.find("file").get("id") != cam_fid]
+    if not carriers:
+        return "no recorder track runs under the clip it goes next to, so there is nowhere to put the recorder's sound"
+    _tr, el = carriers[0]
+    old_id = el.find("file").get("id")
+    body = next((f for f in root.iter("file") if f.get("id") == old_id and len(list(f)) > 0), None)
+    if body is None:
+        return "the recorder's file definition could not be found in the XML"
+    spf = spf_of_fid.get(old_id) or 1.0 / fps
+    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(rec)], capture_output=True, text=True).stdout.strip() or 0)
+    if dur <= 0:
+        return "the recorder file could not be read"
+    new_id = "restore-rec-" + "".join(ch if ch.isalnum() else "-" for ch in rec.stem)
+    if not any(f.get("id") == new_id for f in root.iter("file")):
+        nb = copy.deepcopy(body)
+        nb.set("id", new_id)
+        for tag, val in (("name", rec.name), ("duration", str(round(dur / spf)))):
+            if nb.find(tag) is not None:
+                nb.find(tag).text = val
+        pu = nb.find("pathurl")
+        if pu is not None and pu.text:
+            pu.text = pu.text.rsplit("/", 1)[0] + "/" + quote(rec.name)
+        holder = ET.Element("file", {"id": new_id})
+        for ch in list(nb):
+            holder.append(ch)
+        el.find("file").clear()
+        el.find("file").set("id", new_id)
+        for ch in list(holder):
+            el.find("file").append(ch)
+    else:
+        el.find("file").clear()
+        el.find("file").set("id", new_id)
+    n_in = round((k["t0"] + k["audio_offset"]) / spf)
+    span = int(el.findtext("out")) - int(el.findtext("in"))
+    el.find("in").text, el.find("out").text = str(n_in), str(n_in + span)
+    el.find("enabled").text = "TRUE"
+    for _tr, other in pieces:
+        if other is not el and other.find("enabled") is not None:
+            other.find("enabled").text = "FALSE"
+    from ops import level_db
+    return (level_db(str(rec), k["t0"] + k["audio_offset"] + 0.3, 1.0),)
+
+
 def _restore_footage(seq: ET.Element, root: ET.Element, ch: Change, zone_now: int, zone_f: int, fps: float, cut: Cut, clip_file_id: dict, spf_of_file: dict, pool_groups: dict, used_ids: set[str]) -> tuple[str | None, int]:
     """Put a stretch of the recording back on the timeline: one new piece on every track that has sound or picture under the clip it is taken after, cut from the same recorders, the lav lines
     carried to the same moment of the recording by the sync those clips already have. Everything after it moves right by its length. Returns (reason it could not, 0) or (None, frames added)."""
@@ -803,6 +860,18 @@ def _restore_footage(seq: ET.Element, root: ET.Element, ch: Change, zone_now: in
             for _db, el, _path in lv[1:]:
                 el.find("enabled").text = "FALSE"
             voice = f"; only {Path(lv[0][2]).name} is live under it (it hears the line {lv[0][0] - lv[1][0]:.0f} dB louder than the other recorder)"
+    if k.get("audio_file"):
+        why = _put_recorder_under(root, seq, made, k, spf_of_fid, fid, fps, L)
+        if isinstance(why, str):
+            return why, 0
+        voice = f"; {Path(k['audio_file']).name} (the recorder that heard it, {why[0]:.0f} dB there) plays under it and every other recorder and the camera's own sound are switched off"
+    elif k.get("camera_audio"):                                                                   # asked for: the recorders do not hear this line, the camera does (2026-10-16: "the door stops right where that piece of trim was added", -58 dB on the recorder, -31 dB on the camera)
+        audio_tracks = seq.findall("media/audio/track")
+        for tr, el in made:
+            f, en = el.find("file"), el.find("enabled")
+            if tr in audio_tracks and en is not None and f is not None and not (f.get("id") or "").startswith(("audio-file-", "overlay-")):
+                en.text = "TRUE" if f.get("id") == fid else "FALSE"
+        voice = "; the camera's own sound plays under it and every separate recorder is switched off there"
     for tr in tracks:
         for el in zone_items(tr):
             if int(el.findtext("start")) >= P:

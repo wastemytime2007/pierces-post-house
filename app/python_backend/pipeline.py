@@ -421,15 +421,18 @@ def _run_audio_sync(
     to_reuse = []
     to_scan = []
     ruled_out = []
-    from precut_pipeline.audio_sync import clocks_rule_out_overlap
+    from precut_pipeline.audio_sync import CLOCK_MARGIN_SEC, clocks_rule_out_overlap, learned_clock_offsets, _recorder_id
+    learned = learned_clock_offsets(state.pairs)                              # each recorder's own clock offset: Bob's DJI_01 is 3 h 3 min from the camera's, and its weak pairs are still the right place to look
     for pair in unreliable:
         prev = previous_rescues.get((pair.aroll_file, pair.audio_file))
+        shift = learned.get(_recorder_id(pair.audio_file), 0.0)
+        if prev is not None and abs(shift) > CLOCK_MARGIN_SEC and not prev.get("promoted_via_consistency"):
+            prev = None                                                      # a recorder whose clock is hours off was skipped by the clocks alone before its own offset was known (2026-10-16): that was never a scan, so it is looked at again
         if prev is not None:
             to_reuse.append((pair, prev))
             continue
-        why = clocks_rule_out_overlap(pair)
-        if why:                                                              # no stretch of this audio can be in this clip: nothing to rescue (and nothing to try again next time)
-            pair.rescue_attempted = True
+        why = clocks_rule_out_overlap(pair, clock_offset_sec=shift)
+        if why:                                                              # no stretch of this audio can be in this clip: nothing to rescue. NOT marked as attempted: the clocks may be read differently next time
             ruled_out.append((pair, why))
         else:
             to_scan.append(pair)

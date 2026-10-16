@@ -49,3 +49,18 @@ def test_a_recorder_clock_a_few_minutes_off_is_still_tried():
     assert clocks_rule_out_overlap(p, camera_duration_sec=CLIP_SEC) is None
     p = _pair("DJI_20260522094342_0001_D.MP4", "DJI_02_20260522_080000.WAV", 20)             # ends 8:20: 83 minutes apart
     assert "min apart" in clocks_rule_out_overlap(p, camera_duration_sec=CLIP_SEC)
+
+
+def test_a_recorder_whose_clock_is_hours_off_is_tried_where_it_really_is_once_its_own_offset_is_known():
+    """2026-10-16: DJI_01 (Bob's recorder) sits 3 h 3 min 7 s from the camera's clock on every strong pair. By the file names alone its 6:39 file is hours from the 9:43 clip and is skipped; placed by its
+    own learned offset it starts at 9:42 and overlaps it."""
+    p = _pair(CLIPS[0], "DJI_01_20260522_063939.WAV", 30.8)
+    assert clocks_rule_out_overlap(p, camera_duration_sec=CLIP_SEC)                           # by the names alone: ruled out
+    assert clocks_rule_out_overlap(p, camera_duration_sec=CLIP_SEC, clock_offset_sec=10987.5) is None
+
+
+def test_the_learned_offset_of_each_recorder_comes_from_its_strong_pairs_only():
+    from precut_pipeline.audio_sync import learned_clock_offsets
+    from test_sync_clock_veto import _pairs
+    got = learned_clock_offsets(_pairs())
+    assert abs(got["DJI_01_"] - 10987.5) < 3 and abs(got["DJI_02_"] - 63.5) < 3

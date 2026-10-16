@@ -143,7 +143,7 @@ def _camera_clock_start(path: str) -> Optional[float]:
 CLOCK_MARGIN_SEC = 1800.0     # recorders' clocks are not the camera's (each has its own offset, see _recorder_id), so a pair is ruled out only when the recordings are more than this far apart in time
 
 
-def clocks_rule_out_overlap(pair, margin_sec: float = CLOCK_MARGIN_SEC, camera_duration_sec: Optional[float] = None) -> Optional[str]:
+def clocks_rule_out_overlap(pair, margin_sec: float = CLOCK_MARGIN_SEC, camera_duration_sec: Optional[float] = None, clock_offset_sec: float = 0.0) -> Optional[str]:
     """Why a pair cannot overlap in time, from the clock stamps in both file names, or None when it might (or when either has no stamp, or a duration cannot be read: then nothing is skipped).
 
     Ryan, 2026-10-15: a new project (4 clips shot 9:43-10:55, 9 recorder files, six of them recorded 6:39-8:11) sat in the windowed "rescue" pass for over twenty minutes with the progress stuck at
@@ -152,6 +152,7 @@ def clocks_rule_out_overlap(pair, margin_sec: float = CLOCK_MARGIN_SEC, camera_d
     cam0, aud0 = _camera_clock_start(pair.aroll_file), _audio_clock_start(pair.audio_file)
     if cam0 is None or aud0 is None:
         return None
+    aud0 += clock_offset_sec                                                  # a recorder whose clock is hours from the camera's (learned from its own strong pairs) is placed where it really is
     cam_dur = camera_duration_sec
     if cam_dur is None:
         cam_dur = _probe_audio_duration(Path(pair.aroll_proxy))               # ffprobe's container duration; the proxy keeps the camera's sound
@@ -164,12 +165,51 @@ def clocks_rule_out_overlap(pair, margin_sec: float = CLOCK_MARGIN_SEC, camera_d
     return f"recorded {gap / 60:.0f} min apart by their clocks"
 
 
+LEARN_MIN_SCORE = 7.0            # a pair this strong may help say what a recorder's own clock offset is
+LEARN_TOL_SEC = 10.0             # pairs of one recorder that agree on its clock offset to within this many seconds are the same clock
+LEARN_VETO_SEC = 300.0           # a pair of a recorder whose offset is learned is ruled out when it sits this far from it
+
+
+def _learned_clock_offsets(pairs: list, expected: dict) -> dict:
+    """Each recorder's own clock offset from the camera's, learned from its strong pairs: when at least two pairs, against two different camera files, agree on how far the recorder's clock is
+    from what the camera's file-name clock predicts (to within LEARN_TOL_SEC), that shared deviation IS the recorder's clock offset. {recorder id: seconds}. A recorder whose clock was set hours
+    wrong (a transmitter set to another time zone: 2026-10-16, DJI_01 sat 3 h 3 min 7 s off on every one of its seven strong pairs, to within 2 s) has one; a false pair has no partner that agrees."""
+    rows: dict = {}
+    for p in pairs:
+        rid = _recorder_id(p.audio_file)
+        if id(p) in expected and rid is not None and (p.score >= LEARN_MIN_SCORE or p.promoted_via_consistency):
+            rows.setdefault(rid, []).append((p.offset_sec - expected[id(p)], Path(p.aroll_file).name))
+    out = {}
+    for rid, rs in rows.items():
+        best: list = []
+        for dev, _cam in rs:
+            near = [r for r in rs if abs(r[0] - dev) <= LEARN_TOL_SEC]
+            if len(near) > len(best):
+                best = near
+        if len(best) >= 2 and len({c for _d, c in best}) >= 2:
+            devs = sorted(d for d, _c in best)
+            out[rid] = devs[len(devs) // 2]
+    return out
+
+
+def learned_clock_offsets(pairs: list) -> dict:
+    """{recorder id: seconds its clock is from the camera's file-name clock}, for the recorders whose strong pairs agree on one (see _learned_clock_offsets). The rescue and the veto use it."""
+    expected = {}
+    for p in pairs:
+        cam0, aud0 = _camera_clock_start(p.aroll_file), _audio_clock_start(p.audio_file)
+        if cam0 is not None and aud0 is not None:
+            expected[id(p)] = aud0 - cam0
+    return _learned_clock_offsets(pairs, expected)
+
+
 def apply_clock_veto(pairs: list, margin_sec: float = CLOCK_MARGIN_SEC) -> list:
     """Mark the pairs whose offset the file-name clocks rule out; returns them. In place, and rerun from scratch every time.
 
-    A pair's offset is where the audio file's t=0 lands in the clip's timeline. When both names carry a clock stamp the two recorders' clocks predict it (audio start minus camera start). On Ryan's
-    footage the true pairs sit within about a minute of that prediction (the recorder's clock is ~63 s from the camera's, the same for every true pair), and the false ones are hours away. Used only
-    when at least one pair that clears the score on its own AGREES with its clocks: a project whose clocks are wrong (a recorder never set) shows no such pair, and then nothing is vetoed."""
+    A pair's offset is where the audio file's t=0 lands in the clip's timeline. When both names carry a clock stamp the two recorders' clocks predict it (audio start minus camera start). Each recorder
+    has its own clock, so a pair is judged against ITS recorder: when the recorder's strong pairs agree on a deviation from the camera's clock (see _learned_clock_offsets), a pair is ruled out only when
+    it is far from THAT (Ryan, 2026-10-16: the 3-hour deviation of Bob's DJI_01 recorder was taken for "false pairs" by the first version of this, which compared every recorder with the camera's clock,
+    and his own voice was left unpaired). A recorder with no learned offset is judged as before, by the camera's clock, used only when at least one pair that clears the score on its own AGREES with
+    its clocks (the DJI_02 recorder's true pairs sit about 63 s from it): a project whose clocks are wrong shows no such pair, and then nothing is vetoed."""
     expected = {}
     for p in pairs:
         cam0, aud0 = _camera_clock_start(p.aroll_file), _audio_clock_start(p.audio_file)
@@ -177,10 +217,19 @@ def apply_clock_veto(pairs: list, margin_sec: float = CLOCK_MARGIN_SEC) -> list:
             expected[id(p)] = aud0 - cam0
     for p in pairs:
         p.clock_vetoed = False
+    learned = _learned_clock_offsets(pairs, expected)
     trusted = any((p.score >= SCORE_USE or p.promoted_via_consistency) and abs(p.offset_sec - expected[id(p)]) <= margin_sec for p in pairs if id(p) in expected)
-    if not trusted:
-        return []
-    vetoed = [p for p in pairs if id(p) in expected and abs(p.offset_sec - expected[id(p)]) > margin_sec]
+    vetoed = []
+    for p in pairs:
+        if id(p) not in expected:
+            continue
+        dev = p.offset_sec - expected[id(p)]
+        rid = _recorder_id(p.audio_file)
+        if rid in learned:
+            if abs(dev - learned[rid]) > LEARN_VETO_SEC:
+                vetoed.append(p)
+        elif trusted and abs(dev) > margin_sec:
+            vetoed.append(p)
     for p in vetoed:
         p.clock_vetoed = True
     return vetoed

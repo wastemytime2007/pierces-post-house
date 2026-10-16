@@ -28,13 +28,27 @@ def _pairs(shift=0.0):
                      promoted_via_consistency=pr) for c, a, s, o, pr in REAL]
 
 
-def test_the_false_pairs_that_outscored_the_true_ones_are_vetoed_and_the_true_ones_stay():
+DJI_01_STRONG = {("101009", "DJI_01_20260522_071030"), ("101009", "DJI_01_20260522_071042"), ("103343", "DJI_01_20260522_071030"), ("104358", "DJI_01_20260522_074119"),
+                 ("104358", "DJI_01_20260522_074131"), ("104358", "DJI_01_20260522_071042")}
+
+
+def test_a_recorder_whose_strong_pairs_share_one_clock_offset_keeps_them_even_when_it_is_hours_from_the_camera_clock():
+    """2026-10-16: the pairs this test used to call false (12.8, 17.8, 28.0 at 7:10 am under 10:10 am footage) are Bob's own recorder, DJI_01, whose clock sits 3 h 3 min 7 s from the camera's on EVERY
+    strong pair, to within 2 s. Its line "That door stops right where that piece of trim was added" is on it and the app had paired the clip with the other person's recorder only."""
     pairs = _pairs()
-    vetoed = apply_clock_veto(pairs)
+    assert apply_clock_veto(pairs) == []
     kept = {(Path(p.aroll_file).name[12:18], Path(p.audio_file).stem) for p in pairs if p.is_reliable}
-    assert kept == TRUE
-    assert {(Path(p.aroll_file).name[12:18], Path(p.audio_file).stem) for p in vetoed} >= {("104358", "DJI_01_20260522_074119"), ("103343", "DJI_01_20260522_071030")}     # 28.0 and 17.8
+    assert kept == TRUE | DJI_01_STRONG
     assert all(p.score >= 0 for p in pairs)                                                  # scores are never changed: the UI still shows what the matcher said
+
+
+def test_a_pair_of_the_same_recorder_that_does_not_share_its_clock_offset_is_still_ruled_out():
+    pairs = _pairs()
+    odd = SyncPair(aroll_file="/v/" + CLIP["094342"], aroll_proxy="/v/proxies/x.mp4", audio_file="/v/Source Audio/DJI_01_20260522_071030.WAV", offset_sec=-784.3, score=12.0,
+                   audio_duration_sec=1850.0, computed_at=0.0)
+    pairs.append(odd)
+    vetoed = apply_clock_veto(pairs)
+    assert vetoed == [odd] and odd.clock_vetoed and not odd.is_reliable
 
 
 def test_a_project_whose_clocks_agree_with_none_of_its_matches_is_left_alone():
@@ -43,15 +57,16 @@ def test_a_project_whose_clocks_agree_with_none_of_its_matches_is_left_alone():
     assert apply_clock_veto(pairs) == [] and all(not p.clock_vetoed for p in pairs)
 
 
-def test_a_saved_state_from_before_the_veto_is_judged_by_it_when_loaded_and_the_cut_gets_only_the_right_recorder():
+def test_a_saved_state_from_before_the_veto_is_judged_by_it_when_loaded_and_the_cut_gets_each_persons_own_recorder():
     from dataclasses import asdict
     state = AudioSyncState(pairs=_pairs())
     saved = state.to_dict()
     for p in saved["pairs"]:
         p.pop("clock_vetoed", None)                                                          # a state written by the app before this change
     loaded = AudioSyncState.from_dict(saved)
-    assert sum(p.clock_vetoed for p in loaded.pairs) == 7
-    for c, want in (("101009", {"DJI_02_20260522_101626"}), ("104358", {"DJI_02_20260522_104715", "DJI_02_20260522_101626"}), ("094342", {"DJI_02_20260522_094536"})):
+    assert sum(p.clock_vetoed for p in loaded.pairs) == 0                                     # every pair agrees with its own recorder's clock offset
+    for c, want in (("101009", {"DJI_02_20260522_101626", "DJI_01_20260522_071030", "DJI_01_20260522_071042"}), ("104358", {"DJI_02_20260522_104715", "DJI_02_20260522_101626", "DJI_01_20260522_074119", "DJI_01_20260522_074131", "DJI_01_20260522_071042"}),
+                    ("094342", {"DJI_02_20260522_094536", "DJI_01_20260522_063939"})):
         got = find_covering_audio_for_phrase("/v/" + CLIP[c], 700.0 if c == "101009" else 300.0, 710.0 if c == "101009" else 310.0, loaded)
         assert {Path(x.audio_file).stem for x in got} <= want, (c, [Path(x.audio_file).stem for x in got])
 
