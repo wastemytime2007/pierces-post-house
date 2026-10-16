@@ -4,6 +4,8 @@
     python3 agent_tools.py ops-help
     python3 agent_tools.py inspect <cut.xml>                      the cut clip by clip: where each plays, where it comes from, the words heard in it with their times
     python3 agent_tools.py search <cut.xml> "some words"          lines of the recordings that hold those words (also lines the cut does not use)
+    python3 agent_tools.py listen <file> <start> <seconds>        the words heard in ANY window of ANY raw file (a recorder's wav or a camera's mp4), and its loudness there
+    python3 agent_tools.py frames <file> <start> <seconds>        five still pictures from a raw video file in that window, written as jpg files for you to Read (look at)
     python3 agent_tools.py apply <cut.xml> <notes.json> <ops.json>   make the operations as a new version, through every check the app's own revision has
 
 An `apply` is the same step the app's Submit button runs (creator_tools.apply_notes): the measured edits, the checks on the result, the captions, music and graphics put back on a
@@ -52,7 +54,7 @@ def cmd_inspect(xml: str) -> int:
             print(f"clip {c.idx}  timeline {c.tl_start:.2f}-{c.tl_end:.2f}  (words could not be read: {type(exc).__name__})")
             continue
         inside = " ".join(f"{w.text.strip()}@{w.start:.2f}" for w in ws if w.end > a - 0.05 and w.start < b + 0.05)
-        print(f"clip {c.idx}  timeline {c.tl_start:.2f}-{c.tl_end:.2f}  picture {Path(c.src_path).name} {c.src_in:.2f}-{c.src_out:.2f}  sound {Path(path).name} {a:.2f}-{b:.2f}")
+        print(f"clip {c.idx}  timeline {c.tl_start:.2f}-{c.tl_end:.2f}  picture {c.src_path} {c.src_in:.2f}-{c.src_out:.2f}  sound {path} {a:.2f}-{b:.2f}")
         print(f"    words (word@seconds in that recording): {inside or '(none heard)'}")
     return 0
 
@@ -77,6 +79,40 @@ def cmd_search(xml: str, text: str) -> int:
     if not rows:
         print("no line of the cut's recordings holds those words")
     return 0
+
+
+def cmd_listen(path: str, start: float, dur: float) -> int:
+    """What one raw file says in one window (not the cut's selection): word@seconds in that file, and the level. Compare a camera file with a recorder's file to see which carries the line."""
+    if not Path(path).is_file():
+        print(f"no such file: {path}")
+        return 1
+    dur = min(max(dur, 0.5), 60.0)
+    ws = words_mod.words_in(path, max(0.0, start), dur)
+    print(f"{Path(path).name} {start:.2f}-{start + dur:.2f}  level {ops_mod.level_db(path, start, min(dur, 3.0)):.0f} dB")
+    print("words: " + (" ".join(f"{w.text.strip()}@{w.start:.2f}" for w in ws) or "(none heard)"))
+    return 0
+
+
+def cmd_frames(path: str, start: float, dur: float) -> int:
+    """Five stills from a raw video file, written next to the agent's own files so it can Read them (the agent can look at pictures)."""
+    import subprocess
+    if not Path(path).is_file():
+        print(f"no such file: {path}")
+        return 1
+    state = os.environ.get("AGENT_STATE_FILE")
+    out = (Path(state).parent if state else Path.cwd()) / "frames"
+    out.mkdir(parents=True, exist_ok=True)
+    dur = min(max(dur, 0.5), 30.0)
+    stem = re.sub(r"[^A-Za-z0-9]+", "_", Path(path).stem)[-24:]
+    made = []
+    for k in range(5):
+        t = start + dur * k / 4
+        f = out / f"{stem}_{t:.2f}.jpg"
+        r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{t:.3f}", "-i", path, "-frames:v", "1", "-vf", "scale=640:-2", str(f)], capture_output=True)
+        if r.returncode == 0 and f.is_file():
+            made.append(f)
+    print("\n".join(f"{f}  (at {f.stem.rsplit('_', 1)[-1]} s)" for f in made) or "no frame could be made (is that a video file?)")
+    return 0 if made else 1
 
 
 def cmd_apply(xml: str, notes: str, plan: str) -> int:
@@ -112,6 +148,12 @@ def main(argv: list[str]) -> int:
         return cmd_inspect(argv[2])
     if len(argv) == 4 and argv[1] == "search":
         return cmd_search(argv[2], argv[3])
+    if len(argv) == 5 and argv[1] in ("listen", "frames"):
+        try:
+            return (cmd_listen if argv[1] == "listen" else cmd_frames)(argv[2], float(argv[3]), float(argv[4]))
+        except ValueError:
+            print("start and seconds must be numbers")
+            return 1
     if len(argv) == 5 and argv[1] == "apply":
         return cmd_apply(argv[2], argv[3], argv[4])
     print(__doc__)

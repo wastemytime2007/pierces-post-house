@@ -1328,6 +1328,9 @@ NOTES THE EDITOR COULD NOT MAKE (with the reason it gave):
   python3 {tools} ops-help                         the operations you can ask for, with their fields
   python3 {tools} inspect "<cut.xml>"              every clip: where it plays, which recording it is from, and the words heard in it with their times (word@seconds in that recording)
   python3 {tools} search "<cut.xml>" "some words"  lines of the recordings that hold those words, including lines the cut does not use
+  python3 {tools} listen "<raw file>" <start> <seconds>   the words in any window of any RAW file (a recorder's wav, a camera's mp4: use the paths inspect prints), with its loudness. The cut's selection is not all there is: look
+                                                   at what the recording says before and after it, and compare the camera's own sound with each recorder.
+  python3 {tools} frames "<raw video>" <start> <seconds>  five stills from a raw video file; Read the jpg files it prints to LOOK at the picture (who is on screen, what the shot shows)
   python3 {tools} apply "<cut.xml>" "{notes}" "<ops.json>"   makes your operations as a NEW version (the checks run; a refusal or failed check makes nothing and is explained)
 You may also listen with ffmpeg/ffprobe (levels, silence) and read files. Write your ops.json files into {work}. Do not edit, move or delete anything else; do not touch other projects.
 
