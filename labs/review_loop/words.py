@@ -84,7 +84,7 @@ def _sim(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def find_phrase(words: list[W], phrase: str, min_score: float = 0.8) -> tuple[int, float] | None:
+def find_phrase(words: list[W], phrase: str, min_score: float = 0.8, word_sim: float = 0.8) -> tuple[int, float] | None:
     """Index of the word where `phrase` begins.
 
     The first word must match closely; the rest of the first few words only have to turn up
@@ -100,7 +100,7 @@ def find_phrase(words: list[W], phrase: str, min_score: float = 0.8) -> tuple[in
         if first < 0.75:
             continue
         rest, window = want[1:], heard[i + 1:i + 1 + len(want) + 2]
-        found = (sum(1 for r in rest if any(_sim(r, h) >= 0.8 for h in window)) / len(rest)) if rest else 1.0
+        found = (sum(1 for r in rest if any(_sim(r, h) >= word_sim for h in window)) / len(rest)) if rest else 1.0
         score = 0.5 * first + 0.5 * found
         if best is None or score > best[1]:
             best = (i, score)

@@ -70,3 +70,13 @@ def test_a_cut_inside_a_word_is_found_from_the_word_timing_when_the_loudness_see
     assert ops._word_across("/x/a.wav", 100.0, 3.0).text == "particularly"
     assert ops._word_across("/x/a.wav", 99.5, 3.0) is None                              # between words: nothing is cut off
     assert ops._word_across("/x/a.wav", 100.58, 3.0) is None                            # within 30 ms of the word's end: not inside it
+
+
+def test_a_near_word_heard_at_a_seam_passes_the_looser_word_match_and_a_different_word_does_not():
+    """2026-10-15, wall project: the seam read "that's the same" for "Okay. That's the seam." and the whole fix was thrown away."""
+    import words as words_mod
+    from types import SimpleNamespace as W
+    ws = [W(text="that's", start=1.0, end=1.2), W(text="the", start=1.2, end=1.3), W(text="same.", start=1.3, end=1.6)]
+    assert words_mod.find_phrase(ws, "that's the seam") is None                           # the default match is unchanged
+    assert words_mod.find_phrase(ws, "that's the seam", word_sim=0.7)[0] == 0
+    assert words_mod.find_phrase(ws, "that's the sink", word_sim=0.7) is None

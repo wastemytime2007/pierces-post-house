@@ -167,6 +167,8 @@ def verify_render(changes, preview: Path) -> list[tuple[str, bool | None, str]]:
             want = words_mod.tokens(k["phrase"])
             if hit is None and len(want) >= 3 and len(want[0]) <= 3:     # Whisper drops a short first word right at a seam ("So" in "So with the septic systems", 2026-10-08): the rest heard first is the phrase
                 hit = words_mod.find_phrase(after, " ".join(want[1:]))
+            if hit is None and len(want) >= 3:                           # Whisper hears a near word for a clipped one ("seam" as "same", 2026-10-15): every word still has to be close (0.7), the first as before
+                hit = words_mod.find_phrase(after, k["phrase"], word_sim=0.7) or (words_mod.find_phrase(after, " ".join(want[1:]), word_sim=0.7) if len(want[0]) <= 3 else None)
             rows.append((f"note {c.note} SEAM-TEXT", hit is not None and hit[0] <= 1,
                          f'V2 audio from the seam reads: "{words_mod.heard(after[:9])}"'))
     return rows

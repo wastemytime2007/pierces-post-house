@@ -848,10 +848,13 @@ def measure_head(cut: Cut, clip_idx: int, max_sec: float) -> dict:
     if ext < 0.05:
         w = _word_across(path, src_in, max_sec)
         if w is None:
-            return {"reason": "the sound has not begun before the start"}
-        ext = src_in - words_mod.valley(path, w.start - 0.25, w.start)                   # the loudness says the sound begins at the cut; the word's own timing says it began before it (a soft first sound: "th", "p")
+            return {"reason": "the clip already starts where the sound begins (silence just before it), so there is nothing earlier to add"}
+        t_new = words_mod.valley(path, w.start - 0.8, w.start)                            # the loudness says the sound begins at the cut; the word's own timing says it began before it (a soft first sound: "th", "p")
+        if level_db(path, t_new, 0.03) > 20 * float(np.log10(thresh)) + 1.0:
+            return {"reason": f'"{w.text.strip()}" runs straight on from the word before it (no pause within {0.8:g}s that is as quiet as the room), so there is no clean place to start earlier; start the clip at the beginning of that sentence instead'}
+        ext = src_in - t_new
         if ext < 0.05:
-            return {"reason": "the sound has not begun before the start"}
+            return {"reason": "the clip already starts where the sound begins (silence just before it), so there is nothing earlier to add"}
     if src_in - ext < 0:
         ext = src_in
         if ext < 0.05:
