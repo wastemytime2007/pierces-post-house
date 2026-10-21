@@ -291,7 +291,27 @@ $("describe").addEventListener("click", () => guard("describe transitions", desc
 $("list").addEventListener("click", () => guard("list transitions", listTransitions));
 $("first").addEventListener("click", () => guard("add at first cut", () => apply(true)));
 $("all").addEventListener("click", () => guard("add at every cut", () => apply(false)));
-log("Transition Lab v0.5: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
+log("Transition Lab v0.6: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
 noteStartup();
 startAuto();
-setTimeout(() => guard("describe transitions (on load)", describeTransitions), 4000);
+// the probe runs whenever a sequence is activated or a project opens (at load there is usually no project yet); quietly, only when there are transitions to describe
+let describedFor = "";
+async function describeQuietly(reason) {
+  try {
+    const project = await ppro.Project.getActiveProject();
+    if (!project) return;
+    const seq = await project.getActiveSequence();
+    if (!seq) return;
+    let n = 0;
+    const nTracks = await seq.getVideoTrackCount();
+    for (let t = 0; t < nTracks; t++) n += ((await (await seq.getVideoTrack(t)).getTrackItems(ppro.Constants.TrackItemType.TRANSITION, false)) || []).length;
+    const key = `${seq.guid}:${n}`;
+    if (!n || key === describedFor) return;
+    describedFor = key;
+    await guard(`describe transitions (${reason})`, describeTransitions);
+  } catch (e) { /* the probe is a diagnostic; it never interrupts anything */ }
+}
+for (const [group, name] of [["SequenceEvent", "ACTIVATED"], ["ProjectEvent", "OPENED"], ["ProjectEvent", "ACTIVATED"]]) {
+  try { ppro.EventManager.addGlobalEventListener(ppro.Constants[group][name], () => setTimeout(() => describeQuietly(`${group}.${name}`), 1500), false); } catch (e) { /* logged by startAuto already */ }
+}
+setInterval(() => describeQuietly("timer"), 10000);

@@ -35,6 +35,7 @@ const project = {
   getSequences: async () => [seq],
 };
 const hooks = {};
+const fire = (name) => (hooks[name] || []).forEach((fn) => fn());
 class AddTransitionOptions {
   constructor() { this.p = {}; }
   setDuration(t) { this.p.duration = t; return this; }
@@ -44,7 +45,7 @@ class AddTransitionOptions {
 }
 const ppro = {
   Constants: { TrackItemType: { CLIP: "CLIP", TRANSITION: "TRANSITION" }, ProjectEvent: { OPENED: "p.opened", ACTIVATED: "p.activated", DIRTY: "p.dirty" }, SequenceEvent: { ACTIVATED: "s.activated" }, OperationCompleteEvent: { IMPORT_MEDIA_COMPLETE: "o.import" } },
-  EventManager: { addGlobalEventListener: (name, fn) => { hooks[name] = fn; } },
+  EventManager: { addGlobalEventListener: (name, fn) => { (hooks[name] = hooks[name] || []).push(fn); } },
   Markers: { getMarkers: async () => ({ getMarkers: async () => markerList }) },
   Project: { getActiveProject: async () => project },
   TickTime: { createWithTicks: (s) => ({ ticks: s }) },
@@ -127,7 +128,7 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   markerList = [good, noClip, badName, other];
   calls.created.length = 0; calls.added.length = 0; els.log.value = "";
   assert(hooks["p.opened"] && hooks["s.activated"] && hooks["o.import"], "listens for project open, sequence activated and import");
-  hooks["s.activated"]();                                                                 // Premiere says a sequence was activated: the panel looks at every sequence after a short wait
+  fire("s.activated");                                                                 // Premiere says a sequence was activated: the panel looks at every sequence after a short wait
   await new Promise((r) => setTimeout(r, 1300));
   assert.deepStrictEqual(calls.created, ["AE.Impact Push"], "one transition: only the good marker is acted on: " + els.log.value);
   assert.strictEqual(calls.added[0].on, "B", "added on the clip that starts at the marker (frame 100)");
@@ -138,13 +139,13 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(other.name, "Comment", "an unrelated marker is left alone");
   assert(els.log.value.includes("Premiere has no transition named \"AE.Not Real\"") && els.log.value.includes("no clip on V1 starts at frame 50"), "the reasons are logged");
   const n = calls.added.length;
-  hooks["p.opened"](); hooks["s.activated"]();
+  fire("p.opened"); fire("s.activated");
   await new Promise((r) => setTimeout(r, 1300));
   assert.strictEqual(calls.added.length, n, "nothing is applied twice");
   const again = mark(100, "PH transition", "AE.Impact Push|6|0.5");
   markerList = [again];
   global.document.getElementById("auto").checked = false;                                // the box off: nothing happens
-  hooks["p.opened"]();
+  fire("p.opened");
   await new Promise((r) => setTimeout(r, 1300));
   assert.strictEqual(again.name, "PH transition", "automatic mode off leaves the markers alone");
   console.log("panel logic: all checks passed");
