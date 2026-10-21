@@ -8,7 +8,11 @@ Standalone Premiere Pro UXP panel, not wired into `app/`. Built 2026-10-21 after
 
 Research (2026-10-21): Premiere's UXP API (25.6 and newer) can list video transition match names (`TransitionFactory.getVideoTransitionMatchNames`) and add one at a clip edge with a length and alignment (`VideoClipTrackItem.createAddVideoTransitionAction`, `AddTransitionOptions`). Adobe's docs do not say whether third-party match names are accepted. Film Impact is now part of Premiere (25.5, Adobe acquired it), so its transitions may be on the list. This panel is the test.
 
-## What it does
+## The XML half: your whoosh under every cut (`place_sfx.py`)
+
+`python3 labs/uxp_transitions/place_sfx.py in.xml out.xml` takes a Premiere-exported sequence, finds the cuts on V1 (a clip starting exactly where the previous one ends) and writes Ryan's whoosh at each one, copied from his own test export (`templates/film_impact_push_whoosh_template.xml`): `Whooshes.wav`, the same excerpt, -5 dB, 120% speed, as a stereo pair on two new audio tracks after the existing ones, from 4 frames before the cut to 7 after (his: cut 116, whoosh 112 to 123). It inserts one block of text and changes nothing else (checked). The Transition Lab panel then adds `AE.AE_Impact_Push`, 6 frames, centred, at the same cuts ("Add at EVERY cut"). Tested (`test_place_sfx.py`): on his own one-cut sequence, with his whoosh and transition taken out, the tool recreates his hand-made whoosh exactly; on a three-cut sequence it places three linked pairs with unique ids. Not yet imported into Premiere. Limits: it reads cuts where both clips have real start and end frames (a sequence that already has transitions writes -1 at those clips); a cut closer than 4 frames to the start or 7 to the end is skipped.
+
+## The panel: what it does
 
 1. **List transitions**: every video transition match name Premiere offers, filtered by a text box (default "impact"), also saved to `transition_match_names.txt` in the plugin's data folder (the panel prints the path).
 2. **Add at the first cut / every cut**: adds the transition whose match name you paste, on the clip after each cut of the chosen video track of the active sequence, in one undoable step (Cmd+Z). Length in frames and alignment (0.5 = centred) are fields.
