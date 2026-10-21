@@ -61,6 +61,21 @@
   .blk:hover, .tk:hover { opacity: 1; outline: 1px dashed #fff; }
   .blk.picked, .tk.picked { opacity: 1; outline: 2px solid #fff; outline-offset: 1px; z-index: 2; }
   .note .tgt { color: var(--pin); font-size: 12px; font-weight: 600; }
+  .lane.Clips .cutpt { position: absolute; top: 0; bottom: 0; width: 11px; margin-left: -5px; cursor: pointer; z-index: 2; }
+  .lane.Clips .cutpt::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 3px; background: transparent; }
+  .lane.Clips .cutpt:hover::after { background: #fff; }
+  .lane.Clips .cutpt.on::after { background: #00ade1; width: 5px; left: 3px; }
+  .lane.Clips .cutpt.manual::after { background: #f4690b; width: 5px; left: 3px; }
+  .cutbadge { position: absolute; z-index: 4; transform: translateX(-50%); font-size: 10px; line-height: 14px; padding: 0 5px; border-radius: 7px; background: #00ade1; color: #02131f; font-weight: 700; pointer-events: none; white-space: nowrap; }
+  .cutbadge.manual { background: #f4690b; color: #1a0a00; }
+  #cutmenu { position: fixed; z-index: 50; min-width: 190px; background: #14213a; border: 1px solid #3b5a85; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 4px; font-size: 13px; color: #e6edf7; }
+  #cutmenu .mi { padding: 6px 10px; border-radius: 5px; cursor: pointer; display: flex; justify-content: space-between; gap: 14px; white-space: nowrap; }
+  #cutmenu .mi:hover { background: #24406b; }
+  #cutmenu .sub { display: none; position: absolute; left: 100%; top: -4px; min-width: 170px; background: #14213a; border: 1px solid #3b5a85; border-radius: 8px; padding: 4px; }
+  #cutmenu .sub.flip { left: auto; right: 100%; }
+  #cutmenu .has:hover > .sub, #cutmenu .has.open > .sub { display: block; }
+  #cutmenu .has { position: relative; }
+  #cutmenu .hd { padding: 4px 10px; font-size: 11px; color: #8da2c0; }
   #beatmap .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; z-index: 3; }
   .now { min-height: 22px; color: var(--dim); font-size: 13px; margin-bottom: 8px; }
   .now b { color: var(--text); font-weight: 600; }
@@ -108,6 +123,7 @@
   <div id="changes"></div>
   <div class="bar" id="bar"><div class="head" id="head"></div></div>
   <div id="beatmap"></div>
+  <div id="transcount" style="font-size:12px;color:#8da2c0;min-height:16px;margin:2px 0"></div>
   <div class="now" id="now"></div>
   <div class="row">
     <button id="play" class="primary">Play</button>
@@ -230,6 +246,84 @@ const BEATS = [];
   ph.id = 'ph';
   bm.appendChild(ph);
 })();
+
+/* Click a cut: the boundaries between clips on the Clips lane open a menu at the mouse (Add transition > Film Impact Push > Left / Up / Down / Right).
+   The choices are kept with this version like notes are, and the app reads them with the notes and puts Ryan's whoosh under each chosen cut.
+   Left is applied by the installed Premiere plugin by itself; Up, Down and Right get a marker for his own preset (a plugin cannot set a push's direction). */
+const TRKEY = KEY + ':transitions';
+let TRANS = [];                                                  /* [{ timeline_sec, direction }] */
+try { TRANS = JSON.parse(localStorage.getItem(TRKEY) || '[]'); } catch (e) { TRANS = []; }
+const DIRS = { left: '←', up: '↑', down: '↓', right: '→' };
+function saveTrans() { try { localStorage.setItem(TRKEY, JSON.stringify(TRANS)); } catch (e) {} tellHost({ type: 'review:transitions', n: TRANS.length }); }
+function transAt(sec) { return TRANS.find(x => Math.abs(x.timeline_sec - sec) < 0.02); }
+const CUTS = [];
+(function () {
+  const lane = document.querySelector('#beatmap .lane.Clips');
+  if (!lane || !DATA.duration) return;
+  const clips = BEATS.filter(b => b.lane === 'Clips').map(b => b.it).sort((a, b) => a.start - b.start);
+  clips.slice(1).forEach((it, i) => {
+    const prev = clips[i];
+    if (Math.abs(prev.end - it.start) > 0.1) return;            /* a gap is not a cut */
+    const el = document.createElement('div');
+    el.className = 'cutpt';
+    el.style.left = (it.start / DATA.duration * 100) + '%';
+    el.title = 'Cut at ' + fmt(it.start) + '. Click to add a transition.';
+    el.onclick = e => { e.stopPropagation(); openCutMenu(it.start, e); };
+    lane.appendChild(el);
+    CUTS.push({ sec: it.start, el });
+  });
+  drawTrans();
+})();
+function drawTrans() {
+  document.querySelectorAll('#beatmap .cutbadge').forEach(b => b.remove());
+  const bm = document.getElementById('beatmap');
+  CUTS.forEach(c => {
+    const x = transAt(c.sec);
+    c.el.classList.toggle('on', !!x && x.direction === 'left');
+    c.el.classList.toggle('manual', !!x && x.direction !== 'left');
+    if (!x) return;
+    const b = document.createElement('div');
+    b.className = 'cutbadge' + (x.direction === 'left' ? '' : ' manual');
+    b.textContent = 'Push ' + DIRS[x.direction];
+    b.style.left = (c.sec / DATA.duration * 100) + '%';
+    b.style.top = '-8px';
+    bm.appendChild(b);
+  });
+  const n = TRANS.length, left = TRANS.filter(x => x.direction === 'left').length;
+  const s = document.getElementById('transcount');
+  if (s) s.textContent = n ? n + ' transition' + (n === 1 ? '' : 's') + ' chosen (' + left + ' automatic, ' + (n - left) + ' marked for your preset)' : '';
+}
+function closeCutMenu() { const m = document.getElementById('cutmenu'); if (m) m.remove(); }
+function openCutMenu(sec, e) {
+  closeCutMenu();
+  const m = document.createElement('div');
+  m.id = 'cutmenu';
+  const cur = transAt(sec);
+  m.innerHTML = '<div class="hd">Cut at ' + fmt(sec) + '</div>'
+    + '<div class="mi has"><span>Add transition</span><span>▸</span><div class="sub">'
+    + '<div class="mi has"><span>Film Impact Push</span><span>▸</span><div class="sub">'
+    + ['left', 'up', 'down', 'right'].map(d => '<div class="mi" data-set="' + d + '"><span>' + d[0].toUpperCase() + d.slice(1) + '</span><span>' + DIRS[d] + (cur && cur.direction === d ? ' ✓' : '') + '</span></div>').join('')
+    + '</div></div></div></div>'
+    + (cur ? '<div class="mi" data-clear="1"><span>Remove transition here</span></div>' : '');
+  document.body.appendChild(m);
+  m.style.left = (e.clientX + 6) + 'px';
+  m.style.top = (e.clientY + 6) + 'px';
+  const r = m.getBoundingClientRect();
+  if (r.right > window.innerWidth - 4) m.style.left = Math.max(4, window.innerWidth - r.width - 4) + 'px';
+  if (r.bottom > window.innerHeight - 4) m.style.top = Math.max(4, e.clientY - r.height - 6) + 'px';
+  if (m.getBoundingClientRect().right + 360 > window.innerWidth) m.querySelectorAll('.sub').forEach(s => s.classList.add('flip'));
+  m.querySelectorAll('.has').forEach(h => h.addEventListener('click', ev => { if (ev.target.closest('[data-set]')) return; ev.stopPropagation(); h.classList.toggle('open'); }));
+  m.querySelectorAll('[data-set]').forEach(it => it.addEventListener('click', ev => {
+    ev.stopPropagation();
+    TRANS = TRANS.filter(x => Math.abs(x.timeline_sec - sec) >= 0.02).concat([{ timeline_sec: sec, direction: it.dataset.set }]).sort((a, b) => a.timeline_sec - b.timeline_sec);
+    saveTrans(); drawTrans(); closeCutMenu();
+  }));
+  const clr = m.querySelector('[data-clear]');
+  if (clr) clr.addEventListener('click', ev => { ev.stopPropagation(); TRANS = TRANS.filter(x => Math.abs(x.timeline_sec - sec) >= 0.02); saveTrans(); drawTrans(); closeCutMenu(); });
+  m.addEventListener('click', ev => ev.stopPropagation());
+}
+document.addEventListener('click', closeCutMenu);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCutMenu(); });
 
 /* ---------- editable bleeps: drag to move, pull an edge to resize, hear it as you play ---------- */
 const BL = { spans: [], auto: [], sel: -1, gate: false, stopAt: null, lead: 0.05, zw: 4, zc: null };
@@ -723,6 +817,7 @@ document.addEventListener('keydown', e => {
 function payload() {
   return { schema: 'review_notes.v0-draft', sequence: DATA.sequence, preview_duration_sec: DATA.duration,
     shape_coords: 'fractions of the video frame, 0..1, origin top-left',
+    transitions: TRANS.map(x => ({ timeline_sec: x.timeline_sec, direction: x.direction })),
     notes: notes.map(n => Object.assign({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text }, n.target ? { target: n.target } : {},
       n.ai ? { ai: true, kind: n.kind, key: n.key } : {}, n.suggested_op ? { suggested_op: n.suggested_op } : {}, {      // the AI review's notes keep their measured fix when they come back
       shapes: (n.shapes || []).map(exportShape) })) };

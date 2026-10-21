@@ -394,7 +394,38 @@ def root_xml_of(xml: Path) -> Path | None:
     return None
 
 
-def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, root: str | None = None) -> dict:
+def add_transitions(src: Path, transitions: list[dict]) -> tuple[Path, dict]:
+    """The click-a-cut choices written into a copy of a version's XML: "<name> - with transitions.xml" next to it (never over it). `transitions` is the review page's list of
+    {"timeline_sec", "direction"}; each is matched to the cut it was clicked on (V1, within 0.3 s). Ryan's whoosh goes under each, plus a marker (Left is applied by the installed
+    Premiere plugin by itself, the other directions get an orange marker for his own preset)."""
+    use_labs()
+    import place_sfx
+    import cut_menu
+    raw = src.read_bytes().decode("utf-8")
+    info = cut_menu.read_sequence(str(src), None)
+    fps = info["fps"]
+    usable = [c["frame"] for c in info["cuts"] if c["usable"]]
+    plan, skipped = [], []
+    for item in transitions:
+        sec = float(item["timeline_sec"])
+        near = min(usable, key=lambda f: abs(f / fps - sec), default=None)
+        if near is None or abs(near / fps - sec) > 0.3:
+            skipped.append(round(sec, 2))                  # a cut too close to the start or end for the whoosh, or one the cut no longer has
+            continue
+        plan.append({"frame": near, "direction": item["direction"]})
+    if not plan:
+        raise ToolError("none of the chosen cuts can take a transition sound in this version" + (f" (looked at {skipped})" if skipped else ""))
+    text, rep = place_sfx.apply_plan(raw, plan)
+    dst = src.with_name(f"{src.stem} - with transitions.xml")
+    n = 2
+    while dst.exists() and dst.read_bytes().decode("utf-8") != text:
+        dst = src.with_name(f"{src.stem} - with transitions {n}.xml")
+        n += 1
+    dst.write_bytes(text.encode("utf-8"))
+    return dst, {"cuts": len(plan), "left": sum(1 for x in plan if x["direction"] == "left"), "skipped": skipped, "out": str(dst)}
+
+
+def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, root: str | None = None, transitions: list | None = None) -> dict:
     """The XML a version of the cut is, checked by the export check and (only if it passes) opened in Premiere. Never hands over an export it has not verified.
 
     A check that already failed on the FIRST version of the cut is a defect the export came in with, not one the editing made (2026-10-13: the original export's leftover bin had two clips over the same
@@ -403,6 +434,9 @@ def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, 
     src = Path(xml).expanduser()
     if not src.is_file():
         raise ToolError(f"that XML is not there: {src}")
+    trans_info = None
+    if transitions:
+        src, trans_info = add_transitions(src, transitions)
     use_labs()
     import export_gate
     import verify_export
@@ -421,6 +455,8 @@ def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, 
         inherited = [n for n in failed if n in before]
         failed = [n for n in failed if n not in before]
     out = {"xml": str(src), "verified": not failed, "failed": failed, "inherited": inherited, "rows": rows, "opened": False, "app": None}
+    if trans_info:
+        out["transitions"] = trans_info
     if failed or not open_in_premiere:
         return out
     chosen = premiere_app(app)

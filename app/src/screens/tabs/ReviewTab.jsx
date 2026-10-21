@@ -425,8 +425,11 @@ export default function ReviewTab({ subscribe, onStatus }) {
     setError("");
     setExportResult(null);
     setChoosing(false);
-    await sendCommand({ type: "export_xml", xml: version.xml, open: true, ...(appPath ? { app: appPath } : {}) });
-  }, [version]);
+    // The cuts clicked on the page (Add transition > Film Impact Push > a direction) go with the export. If the page cannot answer, the export still goes, without them.
+    let transitions = [];
+    try { transitions = (await askNotes())?.transitions || []; } catch (e) { /* export without transitions */ }
+    await sendCommand({ type: "export_xml", xml: version.xml, open: true, ...(transitions.length ? { transitions } : {}), ...(appPath ? { app: appPath } : {}) });
+  }, [version, askNotes]);
 
   const chosenApp = premiereApps.find((a) => a.path === premiereChoice);
   const shortName = (a) => a.name.replace(/^Adobe /, "");
@@ -675,7 +678,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className={exportResult.verified ? "sync-section-hint" : "pm-tab-warnings"} role="status">
           {exportResult.verified
             ? exportResult.opened
-              ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}` + (exportResult.inherited?.length ? `. Already in the original export, not made by the editing: ${exportResult.inherited.join(", ")} (footage in the leftover bin overlaps; your cut is not affected).` : "")
+              ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}` + (exportResult.transitions ? `. Transitions: ${exportResult.transitions.cuts} cut${exportResult.transitions.cuts === 1 ? "" : "s"} with your whoosh (${exportResult.transitions.left} push left applied by the plugin, ${exportResult.transitions.cuts - exportResult.transitions.left} marked for your own preset)` + (exportResult.transitions.skipped?.length ? `; no sound possible at ${exportResult.transitions.skipped.join(", ")} s (too near the start or end)` : "") : "") + (exportResult.inherited?.length ? `. Already in the original export, not made by the editing: ${exportResult.inherited.join(", ")} (footage in the leftover bin overlaps; your cut is not affected).` : "")
               : `Checked: ${fileName(exportResult.xml)} (not opened${exportResult.app ? "" : "; Premiere was not found"}).`
             : `Not opened: the export check failed (${exportResult.failed.join(", ")}). ${failedChecks.map((r) => r.detail).join(" ")}`}
         </div>

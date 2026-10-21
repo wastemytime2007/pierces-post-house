@@ -1295,7 +1295,7 @@ def handle_export_xml(cmd: dict) -> None:
     def worker():
         import creator_tools
         try:
-            result, _printed = creator_tools.capture(creator_tools.export_xml, xml, bool(cmd.get("open", True)), cmd.get("app"), cmd.get("root"))
+            result, _printed = creator_tools.capture(creator_tools.export_xml, xml, bool(cmd.get("open", True)), cmd.get("app"), cmd.get("root"), cmd.get("transitions"))
             emit({"type": "xml_exported", **result})
         except creator_tools.ToolError as exc:
             emit({"type": "xml_export_failed", "xml": xml, "message": str(exc)})

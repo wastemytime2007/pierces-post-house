@@ -1,7 +1,7 @@
 """The two `labs/` copies must not drift (same reason as test_posthouse_sync.py).
 
 `labs/` at the repo root is where the creator-workflow tools are edited and tested; `app/python_backend/labs/` is the copy the running app imports and
-Tauri bundles. Tests, docs, the reel-specific `recruit/` folder and the skill stay out of the app copy (see safety_net/sync_labs.sh).
+Tauri bundles. Tests (a tests/ folder or a test_* file), build output (dist/), docs, the reel-specific `recruit/` folder and the skill stay out of the app copy (see safety_net/sync_labs.sh).
 
 To fix a failure here, run: ./safety_net/sync_labs.sh
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SOURCE = REPO_ROOT / "labs"
 APP_COPY = REPO_ROOT / "app" / "python_backend" / "labs"
-LEFT_OUT_DIRS = {"__pycache__", "tests", "recruit", "skill", ".pytest_cache"}
+LEFT_OUT_DIRS = {"__pycache__", "tests", "recruit", "skill", ".pytest_cache", "dist"}
 FIX_HINT = "run ./safety_net/sync_labs.sh to bring the app copy up to date"
 
 
@@ -21,7 +21,7 @@ def _files(root: Path) -> dict:
     out = {}
     for p in root.rglob("*"):
         rel = p.relative_to(root)
-        if p.is_dir() or LEFT_OUT_DIRS & set(rel.parts) or p.suffix == ".md":
+        if p.is_dir() or LEFT_OUT_DIRS & set(rel.parts) or p.suffix == ".md" or p.name.startswith("test_"):
             continue
         out[str(rel)] = hashlib.sha256(p.read_bytes()).hexdigest()
     return out

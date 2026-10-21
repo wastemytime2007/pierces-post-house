@@ -22,9 +22,9 @@ fi
 
 mkdir -p "$DEST"
 
-EXCLUDES=(--exclude='__pycache__' --exclude='tests/' --exclude='*.md' --exclude='recruit/' --exclude='skill/' --exclude='.pytest_cache')
+EXCLUDES=(--exclude='__pycache__' --exclude='tests/' --exclude='*.md' --exclude='recruit/' --exclude='skill/' --exclude='.pytest_cache' --exclude='dist/' --exclude='test_*')
 
-DIFFX=(-x __pycache__ -x tests -x '*.md' -x recruit -x skill -x .pytest_cache)   # diff takes bare names, rsync takes patterns
+DIFFX=(-x __pycache__ -x tests -x '*.md' -x recruit -x skill -x .pytest_cache -x dist -x 'test_*')   # diff takes bare names, rsync takes patterns
 
 rsync -a --delete "${EXCLUDES[@]}" "$SRC" "$DEST"
 echo "synced labs/ -> app/python_backend/labs/"
