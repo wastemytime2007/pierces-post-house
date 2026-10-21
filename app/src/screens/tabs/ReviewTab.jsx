@@ -18,6 +18,8 @@ const STATUS_CLASS = { "VERIFIED": "ok", "APPLIED-UNMEASURED": "warn", "NOT DONE
 // Creative stage (Ryan, 2026-10-21): the XML that comes in is already the cut he trimmed in Premiere. This tab adds to it (graphics, captions, music, bleep, transitions and sound) and sends it back
 // to Premiere. It never reviews the story, never fixes or rebuilds the cut, never starts the AI editor. The editing machinery below stays in the file, switched off by this one flag.
 const CREATIVE_STAGE = true;
+const fmtDur = (s) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min` : `${m} min`; };
+const isAutoSave = (bin) => /auto-?save/i.test(bin || "");
 const fileName = (p) => (p || "").split("/").pop();
 const dirName = (p) => (p || "").split("/").slice(0, -1).join("/");
 
@@ -29,6 +31,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const openReviewRef = useRef(null);
   const makingRef = useRef("");
   const [making, setMaking] = useState(""); // the cut is being made from the ideas picked on the Ideas tab ("Review this cut"): what it is doing now
+  // One XML that holds many sequences (a Premiere SEQS bin exported in one go): listed here, each one opened is cut out into its own XML and reviewed like any single cut.
+  const [reading, setReading] = useState("");                      // the XML being read for its sequences
+  const [picker, setPicker] = useState(null);                      // { xml, rows, selected: [ids], filter, hideAuto }
+  const [seqSet, setSeqSet] = useState(null);                      // { source, items: [{ id, name, xml }] }: the sequences opened from one XML, to switch between
   const [incoming, setIncoming] = useState(""); // an export made while a review is open: offered, never swapped in under the notes being written
   const [exportsList, setExportsList] = useState([]);
   const [versions, setVersions] = useState([]); // [{label, xml, folder, url, qa}]
@@ -252,6 +258,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setExportResult(ev);
       } else if (ev.type === "xml_export_failed") {
         setError(ev.message || "The export failed.");
+      } else if (ev.type === "sequences_listed") {
+        setReading("");
+        if (ev.sequences.length <= 1) {                                      // one cut (or none the reader recognises): opens exactly as it always did
+          buildRef.current?.(ev.xml);
+        } else {
+          setPicker({ xml: ev.xml, rows: ev.sequences, selected: [], filter: "", hideAuto: true });
+        }
+      } else if (ev.type === "sequences_extracted") {
+        setPicker(null);
+        setSeqSet({ source: ev.xml, items: ev.sequences.map((s) => ({ id: s.id, name: s.name, xml: s.xml })) });
+        if (ev.sequences[0]) openReviewRef.current?.(ev.sequences[0].xml);
+      } else if (ev.type === "sequences_failed") {
+        setReading("");
+        setError(ev.message || "The sequences could not be read.");
       }
     });
   }, [subscribe]);
@@ -379,8 +399,82 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   const browse = useCallback(async () => {
     const p = await openDialog({ multiple: false, filters: [{ name: "Premiere XML", extensions: ["xml"] }] });
-    if (typeof p === "string") build(p);
-  }, [build]);
+    if (typeof p !== "string") return;
+    setError("");
+    setReading(p);
+    try {
+      await sendCommand({ type: "list_sequences", xml: p });                 // one cut opens at once; many open the picker
+    } catch (e) {
+      setReading("");
+      setError(String(e.message || e));
+    }
+  }, []);
+
+  const openPicked = async () => {
+    if (!picker || picker.selected.length === 0) return;
+    setError("");
+    try {
+      await sendCommand({ type: "extract_sequences", xml: picker.xml, ids: picker.selected });
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  };
+
+  function SequencePicker() {
+    if (reading) return <div className="sync-section-hint" role="status">Reading the sequences in {fileName(reading)}… (a large project takes a few seconds)</div>;
+    if (!picker) return null;
+    const q = picker.filter.trim().toLowerCase();
+    const shown = picker.rows.filter((r) => (!picker.hideAuto || !isAutoSave(r.bin)) && (!q || r.name.toLowerCase().includes(q) || r.bin.toLowerCase().includes(q)));
+    const set = (patch) => setPicker((x) => ({ ...x, ...patch }));
+    const toggle = (id) => set({ selected: picker.selected.includes(id) ? picker.selected.filter((x) => x !== id) : [...picker.selected, id] });
+    return (
+      <div className="run-pipeline-section" role="dialog" aria-label="Choose sequences">
+        <div className="run-pipeline-section-label">{picker.rows.length} sequences in {fileName(picker.xml)}</div>
+        <div className="sync-section-hint">Each one you open is cut out into its own XML in a folder named "{fileName(picker.xml).replace(/\.xml$/i, "")} - seqs" next to this file. The original is not changed. Open as many as you like and switch between them.</div>
+        <div className="pm-tab-row" style={{ alignItems: "center", flexWrap: "wrap" }}>
+          <input value={picker.filter} placeholder="Filter by name or bin" onChange={(e) => set({ filter: e.target.value })}
+            style={{ font: "inherit", background: "transparent", color: "inherit", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 6, padding: "4px 8px", minWidth: 220 }} />
+          <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={picker.hideAuto} onChange={(e) => set({ hideAuto: e.target.checked })} />
+            Hide Premiere auto-saves
+          </label>
+          <button className="btn btn-ghost" onClick={() => set({ selected: [...new Set([...picker.selected, ...shown.map((r) => r.id)])] })}>Select all shown ({shown.length})</button>
+          <button className="btn btn-ghost" onClick={() => set({ selected: [] })}>Clear</button>
+        </div>
+        <div className="transcripts-list" style={{ maxHeight: 340, overflowY: "auto" }}>
+          {shown.map((r) => (
+            <label className="transcript-row" key={r.id} style={{ cursor: "pointer" }}>
+              <input type="checkbox" checked={picker.selected.includes(r.id)} onChange={() => toggle(r.id)} style={{ marginRight: 10 }} />
+              <div className="transcript-row-main">
+                <div className="transcript-row-name">{r.name}</div>
+                <div className="transcript-row-folder">{r.bin || "(no bin)"} · {r.clips} clip{r.clips === 1 ? "" : "s"} · {fmtDur(r.seconds)}</div>
+              </div>
+            </label>
+          ))}
+          {shown.length === 0 && <div className="sync-section-hint">Nothing matches.</div>}
+        </div>
+        <div className="pm-tab-row">
+          <button className="btn btn-primary" disabled={picker.selected.length === 0} onClick={openPicked}>
+            {picker.selected.length === 0 ? "Choose sequences to open" : `Open ${picker.selected.length} sequence${picker.selected.length === 1 ? "" : "s"}`}
+          </button>
+          <button className="btn btn-ghost" onClick={() => setPicker(null)}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
+
+  function SeqSwitcher() {
+    if (!seqSet || seqSet.items.length < 2) return null;
+    return (
+      <div className="pm-tab-row" style={{ flexWrap: "wrap", alignItems: "center" }} aria-label="Sequences opened from one XML">
+        <span className="sync-section-hint">From {fileName(seqSet.source)}:</span>
+        {seqSet.items.map((s) => (
+          <button key={s.xml} className={`btn ${versionsRef.current[0]?.xml === s.xml ? "btn-primary" : "btn-ghost"}`} disabled={!!busy || auto.status === "running"}
+            title={s.xml} onClick={() => openReview(s.xml)}>{s.name.length > 38 ? `${s.name.slice(0, 36)}…` : s.name}</button>
+        ))}
+      </div>
+    );
+  }
 
   const askNotes = useCallback(
     () =>
@@ -531,6 +625,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
               : "Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere."}
           </p>
           {StatusStrip()}
+      {SequencePicker()}
           {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">{CREATIVE_STAGE ? "No XML yet. Press Browse and choose the XML you exported from Premiere." : "No cut from this project yet. Pick ideas on the Ideas tab and press Review."}</div>}
           {exportsList.length > 0 && (
             <div className="transcripts-list">
@@ -631,7 +726,9 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </button>
       </div>
 
-      {versions.length > 0 && (
+      {SeqSwitcher()}
+
+      {!CREATIVE_STAGE && versions.length > 0 && (
         <label className="sync-section-hint" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           Your own direction, after the AI editor has done its pass (optional; it already follows the idea you chose, and this is added on top of that)
           <textarea rows={2} value={direction} placeholder="For example: open on Bob's quick check, then Mitch's plan. Then press Start over to run the editor again with this added."
@@ -698,6 +795,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
       )}
 
       {StatusStrip()}
+      {SequencePicker()}
 
       {mineLeft.length > 0 && (
         <div className="pm-tab-warnings" role="alert">

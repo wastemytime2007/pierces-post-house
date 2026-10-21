@@ -43,3 +43,29 @@ def test_no_choices_exports_the_version_as_before(demo, monkeypatch):
     import creator_tools as ct
     res = ct.export_xml(str(demo), True, None, None, None)
     assert Path(res["xml"]) == demo and "transitions" not in res
+
+
+def test_a_defect_a_piece_came_in_with_is_reported_but_does_not_block_while_a_new_one_still_does(demo, monkeypatch):
+    """A sequence cut out of a many-sequence XML records what the export check already found wrong in it (the original export's leftover-bin overlap, say). That is not the editing's doing."""
+    import json
+
+    import creator_tools as ct
+    ct.use_labs()
+    import verify_export
+    real = verify_export.check_xml
+
+    def with_defects(path, rep):
+        real(path, rep)
+        rep.rows.append(("CAME-IN-WITH-IT", False, "an old defect"))
+        rep.rows.append(("NEW-DEFECT", False, "made later"))
+
+    monkeypatch.setattr(verify_export, "check_xml", with_defects)
+    monkeypatch.setenv("POSTHOUSE_NO_OPEN", "1")
+    blocked = ct.export_xml(str(demo), True)
+    assert not blocked["verified"] and set(blocked["failed"]) == {"CAME-IN-WITH-IT", "NEW-DEFECT"}, "no record: both block, as before"
+    side = demo.with_name(demo.name + ".inherited.json")
+    side.write_text(json.dumps({"source": "many.xml", "failed": ["CAME-IN-WITH-IT"]}))
+    res = ct.export_xml(str(demo), True)
+    assert res["failed"] == ["NEW-DEFECT"] and res["inherited"] == ["CAME-IN-WITH-IT"] and not res["verified"], "only the new one blocks; the old one is reported"
+    side.write_text(json.dumps({"source": "many.xml", "failed": ["CAME-IN-WITH-IT", "NEW-DEFECT"]}))
+    assert ct.export_xml(str(demo), True)["verified"], "when everything wrong was already there, it opens, with the list"

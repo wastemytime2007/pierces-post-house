@@ -7,9 +7,11 @@ Nothing here reimplements a tool. Each function is the tool's own entry point pl
 """
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -454,6 +456,11 @@ def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, 
         before = {n for n, ok, _d in rep0.rows if ok is False and n not in skip0}
         inherited = [n for n in failed if n in before]
         failed = [n for n in failed if n not in before]
+    side = src.with_name(src.name + ".inherited.json")                      # a piece cut out of a many-sequence XML: what it already failed when it was cut out came in with the export
+    if failed and (not base or base.resolve() == src.resolve()) and side.is_file():
+        came_in = set(json.loads(side.read_text()).get("failed", []))
+        inherited = inherited + [n for n in failed if n in came_in]
+        failed = [n for n in failed if n not in came_in]
     out = {"xml": str(src), "verified": not failed, "failed": failed, "inherited": inherited, "rows": rows, "opened": False, "app": None}
     if trans_info:
         out["transitions"] = trans_info
@@ -467,6 +474,44 @@ def export_xml(xml: str, open_in_premiere: bool = True, app: str | None = None, 
     subprocess.run(["open", "-a", chosen, str(src)] if chosen else ["open", str(src)], check=False)
     out["opened"] = True
     return out
+
+
+def list_sequences(xml: str) -> dict:
+    """The sequences an XML holds, for the Review tab's picker: [{"id", "name", "bin", "clips", "seconds"}]. One entry means the XML is a single cut and opens as it always did."""
+    src = Path(xml).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    use_labs()
+    import split_sequences as ss
+    try:
+        rows = ss.list_sequences(ss._load(src))
+    except (ss.SplitError, ET.ParseError) as exc:
+        raise ToolError(f"could not read the sequences in {src.name}: {exc}") from exc
+    return {"xml": str(src), "sequences": rows}
+
+
+def extract_sequences(xml: str, ids: list[str]) -> dict:
+    """The chosen sequences of a many-sequence XML, each written as its own self-contained XML in `<name> - seqs/` beside it (the file definitions each one needs are copied in). Never touches the source."""
+    src = Path(xml).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    use_labs()
+    import split_sequences as ss
+    try:
+        done = ss.split_all(src, src.parent / f"{src.stem} - seqs", only=list(ids))
+    except (ss.SplitError, ET.ParseError) as exc:
+        raise ToolError(str(exc)) from exc
+    if not done:
+        raise ToolError("none of the chosen sequences were found in the XML")
+    import export_gate
+    import verify_export
+    for d in done:                                      # what the export check already finds wrong in the piece, as it came: a defect the export brought in, which the check reports but does not block (see export_xml)
+        rep = verify_export.Report()
+        px = Path(d["xml"])
+        verify_export.check_xml(px, rep)
+        skip = {"CUT-GRANULARITY"} if export_gate.is_whole_file(px) else set()
+        px.with_name(px.name + ".inherited.json").write_text(json.dumps({"source": str(src), "failed": [n for n, ok, _d in rep.rows if ok is False and n not in skip]}))
+    return {"xml": str(src), "folder": str(src.parent / f"{src.stem} - seqs"), "sequences": done}
 
 
 def build_review(xml: str, out: str | None = None, height: int = 540) -> dict:

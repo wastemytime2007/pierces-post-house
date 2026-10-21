@@ -1088,6 +1088,48 @@ def handle_export_timelines(cmd: dict) -> None:
 # Creator-workflow tools (labs/, bundled): review page first
 # ---------------------------------------------------------------------------
 
+def handle_list_sequences(cmd: dict) -> None:
+    """The sequences in an XML (for the picker when it holds more than one cut). Reading a 46 MB project takes a few seconds, so it runs in the background."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("list_sequences needs an 'xml' path")
+        return
+
+    def worker():
+        import creator_tools
+        try:
+            result, _printed = creator_tools.capture(creator_tools.list_sequences, xml)
+            emit({"type": "sequences_listed", **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "sequences_failed", "xml": xml, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "sequences_failed", "xml": xml, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
+def handle_extract_sequences(cmd: dict) -> None:
+    """Chosen sequences of a many-sequence XML, each as its own XML, ready to open in the review."""
+    xml, ids = cmd.get("xml"), cmd.get("ids") or []
+    if not xml or not ids:
+        err("extract_sequences needs an 'xml' path and the 'ids' of the sequences")
+        return
+
+    def worker():
+        import creator_tools
+        try:
+            result, _printed = creator_tools.capture(creator_tools.extract_sequences, xml, ids)
+            emit({"type": "sequences_extracted", **result, "open": bool(cmd.get("open", True))})
+        except creator_tools.ToolError as exc:
+            emit({"type": "sequences_failed", "xml": xml, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "sequences_failed", "xml": xml, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
 def handle_build_review(cmd: dict) -> None:
     """An export XML in; a review page (preview.mp4 + review.html) out. Runs in the background; the event says where it is."""
     xml = cmd.get("xml")
@@ -1405,6 +1447,8 @@ HANDLERS = {
     "export_timelines": handle_export_timelines,
     "review_cut": handle_review_cut,
     # Creator-workflow tools (labs/)
+    "list_sequences": handle_list_sequences,
+    "extract_sequences": handle_extract_sequences,
     "build_review": handle_build_review,
     "open_review": handle_open_review,
     "apply_notes": handle_apply_notes,
