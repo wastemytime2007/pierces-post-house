@@ -286,14 +286,14 @@ function drawTrans() {
     if (!x) return;
     const b = document.createElement('div');
     b.className = 'cutbadge' + (x.direction === 'left' ? '' : ' manual');
-    b.textContent = 'Push ' + DIRS[x.direction];
+    b.textContent = 'Push';
     b.style.left = (c.sec / DATA.duration * 100) + '%';
     b.style.top = '-8px';
     bm.appendChild(b);
   });
-  const n = TRANS.length, left = TRANS.filter(x => x.direction === 'left').length;
+  const n = TRANS.length;
   const s = document.getElementById('transcount');
-  if (s) s.textContent = n ? n + ' transition' + (n === 1 ? '' : 's') + ' chosen (' + left + ' automatic, ' + (n - left) + ' marked for your preset)' : '';
+  if (s) s.textContent = n ? n + ' Film Impact Push' + (n === 1 ? '' : 'es') + ' chosen' : '';
 }
 function closeCutMenu() { const m = document.getElementById('cutmenu'); if (m) m.remove(); }
 function openCutMenu(sec, e) {
@@ -302,10 +302,9 @@ function openCutMenu(sec, e) {
   m.id = 'cutmenu';
   const cur = transAt(sec);
   m.innerHTML = '<div class="hd">Cut at ' + fmt(sec) + '</div>'
-    + '<div class="mi has"><span>Add transition</span><span>▸</span><div class="sub">'
-    + '<div class="mi has"><span>Film Impact Push</span><span>▸</span><div class="sub">'
-    + ['left', 'up', 'down', 'right'].map(d => '<div class="mi" data-set="' + d + '"><span>' + d[0].toUpperCase() + d.slice(1) + '</span><span>' + DIRS[d] + (cur && cur.direction === d ? ' ✓' : '') + '</span></div>').join('')
-    + '</div></div></div></div>'
+    + '<div class="mi has"><span>Add transition</span><span>\u25B8</span><div class="sub">'
+    + '<div class="mi" data-set="left"><span>Film Impact Push</span><span>' + (cur ? '\u2713' : '') + '</span></div>'
+    + '</div></div>'
     + (cur ? '<div class="mi" data-clear="1"><span>Remove transition here</span></div>' : '');
   document.body.appendChild(m);
   m.style.left = (e.clientX + 6) + 'px';
@@ -313,7 +312,7 @@ function openCutMenu(sec, e) {
   const r = m.getBoundingClientRect();
   if (r.right > window.innerWidth - 4) m.style.left = Math.max(4, window.innerWidth - r.width - 4) + 'px';
   if (r.bottom > window.innerHeight - 4) m.style.top = Math.max(4, e.clientY - r.height - 6) + 'px';
-  if (m.getBoundingClientRect().right + 360 > window.innerWidth) m.querySelectorAll('.sub').forEach(s => s.classList.add('flip'));
+  if (m.getBoundingClientRect().right + 200 > window.innerWidth) m.querySelectorAll('.sub').forEach(s => s.classList.add('flip'));
   m.querySelectorAll('.has').forEach(h => h.addEventListener('click', ev => { if (ev.target.closest('[data-set]')) return; ev.stopPropagation(); h.classList.toggle('open'); }));
   m.querySelectorAll('[data-set]').forEach(it => it.addEventListener('click', ev => {
     ev.stopPropagation();

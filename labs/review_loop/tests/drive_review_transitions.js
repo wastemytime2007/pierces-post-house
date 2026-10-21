@@ -1,5 +1,5 @@
 // Drives the REVIEW PAGE (review_template.html) in a simulated browser (jsdom), the way Ryan uses the Review tab's frame: click a cut on the timeline map, walk the menu
-// (Add transition > Film Impact Push > a direction), see the badge, change it, remove it, and read the choices back the way the tab does (postMessage review:get-notes).
+// (Add transition > Film Impact Push), see the badge, change it, remove it, and read the choices back the way the tab does (postMessage review:get-notes).
 //   npm i jsdom (once, in any folder; set NODE_PATH to its node_modules)   NODE_PATH=... node labs/review_loop/tests/drive_review_transitions.js
 const assert = require("assert");
 const { JSDOM } = require("jsdom");
@@ -47,30 +47,27 @@ const asked = () => new Promise((resolve) => {
   assert(menu, "menu opens");
   assert.strictEqual(menu.style.left, "306px", "next to the mouse");
   assert(menu.textContent.includes("Add transition") && menu.textContent.includes("Film Impact Push"));
-  assert.deepStrictEqual([...menu.querySelectorAll("[data-set]")].map((e) => e.dataset.set), ["left", "up", "down", "right"]);
+  assert.deepStrictEqual([...menu.querySelectorAll("[data-set]")].map((e) => e.dataset.set), ["left"], "one entry, Film Impact Push, no direction to choose");
   assert(!menu.textContent.includes("Remove transition here"));
   fire(menu.querySelector('[data-set="left"]'), "click");
   assert(!doc.getElementById("cutmenu"), "menu closes after a choice");
-  assert(cuts[0].classList.contains("on"), "left shows as automatic");
-  assert(doc.querySelector("#beatmap .cutbadge").textContent.includes("Push"));
+  assert(cuts[0].classList.contains("on"));
+  assert(doc.querySelector("#beatmap .cutbadge").textContent === "Push");
 
   fire(cuts[1], "click", 500, 220);
-  fire(doc.querySelector('#cutmenu [data-set="up"]'), "click");
-  assert(cuts[1].classList.contains("manual"), "up shows as marked for his preset");
-  assert(doc.getElementById("transcount").textContent.includes("2 transitions chosen (1 automatic, 1 marked"), doc.getElementById("transcount").textContent);
+  fire(doc.querySelector('#cutmenu [data-set="left"]'), "click");
+  assert(doc.getElementById("transcount").textContent === "2 Film Impact Pushes chosen", doc.getElementById("transcount").textContent);
 
   let p = await asked();
-  assert.strictEqual(JSON.stringify(p.transitions), JSON.stringify([{ timeline_sec: 10, direction: "left" }, { timeline_sec: 22, direction: "up" }]), "the tab reads the choices with the notes");
+  assert.strictEqual(JSON.stringify(p.transitions), JSON.stringify([{ timeline_sec: 10, direction: "left" }, { timeline_sec: 22, direction: "left" }]), "the tab reads the choices with the notes");
 
-  fire(cuts[0], "click", 300, 200);
-  fire(doc.querySelector('#cutmenu [data-set="right"]'), "click");
   fire(cuts[1], "click", 500, 220);
   fire(doc.querySelector("#cutmenu [data-clear]"), "click");
   p = await asked();
-  assert.strictEqual(JSON.stringify(p.transitions), JSON.stringify([{ timeline_sec: 10, direction: "right" }]), "changed one, removed the other");
+  assert.strictEqual(JSON.stringify(p.transitions), JSON.stringify([{ timeline_sec: 10, direction: "left" }]), "removed one");
 
   const stored = JSON.parse(w.localStorage.getItem([...Array(w.localStorage.length).keys()].map((i) => w.localStorage.key(i)).find((k) => k.endsWith(":transitions"))));
-  assert.deepStrictEqual(stored, [{ timeline_sec: 10, direction: "right" }], "kept with the version, like notes");
+  assert.strictEqual(JSON.stringify(stored), JSON.stringify([{ timeline_sec: 10, direction: "left" }]), "kept with the version, like notes");
   assert.deepStrictEqual(errors, [], errors.join("; "));
   console.log("review page: cut handles between clips only, menu at the mouse, badges, change, remove, choices returned with the notes and kept in the page's storage");
   console.log("ALL CHECKS PASSED");
