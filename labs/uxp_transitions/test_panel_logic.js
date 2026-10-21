@@ -17,7 +17,26 @@ const clip = (name, startF, endF) => ({
   getStartTime: async () => tt(startF * TPF),
   getEndTime: async () => tt(endF * TPF),
   createAddVideoTransitionAction: (transition, opts) => ({ kind: "add", on: name, transition, opts }),
+  getComponentChain: async () => chainOf(name),
 });
+// a clip's effects: Opacity and Motion, plus whatever the probe appends
+const chains = {};
+const fakeComponent = (label) => ({
+  getDisplayName: async () => label, getMatchName: async () => `AE.${label}`, getParamCount: () => 1,
+  getParam: () => ({ displayName: label === "Impact Move FX" ? "Direction" : "Amount", getStartValue: async () => ({ value: 2 }), areKeyframesSupported: async () => true }),
+});
+function chainOf(name) {
+  if (!chains[name]) {
+    const list = [fakeComponent("Opacity"), fakeComponent("Motion")];
+    chains[name] = {
+      list,
+      getComponentCount: () => list.length,
+      getComponentAtIndex: (i) => list[i],
+      createAppendComponentAction: (c) => ({ kind: "append", on: name, apply: () => list.push(fakeComponent(c.label)) }),
+    };
+  }
+  return chains[name];
+}
 // V1: A [0,100) B [100,200) C [250,300): A|B touch, B|C have a gap and must not count as a cut
 const items = [clip("B", 100, 200), clip("A", 0, 100), clip("C", 250, 300)];
 const track = { getTrackItems: async (type) => (type === "TRANSITION" ? calls.added : items) };
@@ -27,7 +46,7 @@ seq.guid = "seq-1";
 const project = {
   lockedAccess: (cb) => cb(),
   executeTransaction: (cb, undo) => {
-    cb({ addAction: (a) => { if (a.kind === "rename") a.target.name = a.name; else calls.added.push(a); } });
+    cb({ addAction: (a) => { if (a.kind === "rename") a.target.name = a.name; else { if (a.apply) a.apply(); calls.added.push(a); } } });
     calls.undo = undo;
     return true;
   },
@@ -47,6 +66,11 @@ const ppro = {
   Constants: { TrackItemType: { CLIP: "CLIP", TRANSITION: "TRANSITION" }, ProjectEvent: { OPENED: "p.opened", ACTIVATED: "p.activated", DIRTY: "p.dirty" }, SequenceEvent: { ACTIVATED: "s.activated" }, OperationCompleteEvent: { IMPORT_MEDIA_COMPLETE: "o.import" } },
   EventManager: { addGlobalEventListener: (name, fn) => { (hooks[name] = hooks[name] || []).push(fn); } },
   Markers: { getMarkers: async () => ({ getMarkers: async () => markerList }) },
+  VideoFilterFactory: {
+    getMatchNames: async () => ["AE.Impact Move FX", "AE.ADBE Mosaic"],
+    getDisplayNames: async () => ["Impact Move FX", "Mosaic"],
+    createComponent: async (n) => { calls.components = (calls.components || []).concat(n); return { label: n.replace("AE.", "") }; },
+  },
   Project: { getActiveProject: async () => project },
   TickTime: { createWithTicks: (s) => ({ ticks: s }) },
   TransitionFactory: {
@@ -148,6 +172,24 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   fire("p.opened");
   await new Promise((r) => setTimeout(r, 1300));
   assert.strictEqual(again.name, "PH transition", "automatic mode off leaves the markers alone");
+
+  // ---- effect probe: Impact Move FX added to both clips at a cut, its settings written out ----
+  global.document.getElementById("auto").checked = true;
+  calls.added.length = 0; calls.saved.length = 0; els.log.value = "";
+  const probe = mark(100, "PH effect probe", "Impact Move");
+  markerList = [probe];
+  fire("p.opened");
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.deepStrictEqual(calls.components, ["AE.Impact Move FX", "AE.Impact Move FX"], "the matching effect is created for each clip: " + els.log.value);
+  assert.deepStrictEqual(calls.added.filter((a) => a.kind === "append").map((a) => a.on).sort(), ["A", "B"], "appended to the clip ending at the cut (A) and the one starting there (B)");
+  assert.strictEqual(probe.name, "PH effect probe done", "the probe marker is renamed so it runs once");
+  const params = calls.saved.find((x) => x[0] === "effect_params.txt");
+  assert(params && params[1].includes("\"Direction\" = 2 (number), keyframes true"), "the added effect's settings are written out: " + (params && params[1]));
+  assert(calls.saved.some((x) => x[0] === "effect_match_names.txt" && x[1].includes("AE.Impact Move FX\tImpact Move FX")), "all effect names are saved");
+  const nAdded = calls.added.length;
+  fire("p.opened");
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.strictEqual(calls.added.length, nAdded, "the probe does not run twice");
   console.log("panel logic: all checks passed");
   process.exit(0);
 })().catch((e) => { console.error("FAILED:", e.message, "\nlog:\n" + els.log.value); process.exit(1); });

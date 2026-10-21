@@ -207,6 +207,74 @@ async function runPlan(project, seq, pending, reason) {
   try { await saveText("last_run_log.txt", $("log").value, true); } catch (e) { /* convenience */ }
 }
 
+// ---- effect probe: can a script add a Film Impact effect to the clips at a cut and read (later: set) its settings? -----------------------------------
+// A marker named "PH effect probe" at a cut, comment = part of the effect's name (e.g. "Impact Move"). The plugin finds the effect among Premiere's video effects,
+// appends it to the clip that ends at the cut and the clip that starts there, renames the marker "PH effect probe done", and writes every setting of the added effect to effect_params.txt.
+const PROBE = "PH effect probe";
+
+async function dumpComponent(comp) {
+  const lines = [];
+  const pc = await comp.getParamCount();
+  lines.push(`  "${await comp.getDisplayName()}" (${await comp.getMatchName()}), ${pc} settings`);
+  for (let p = 0; p < pc; p++) {
+    const prm = await comp.getParam(p);
+    let val = "?";
+    let kfs = "?";
+    try { const kf = await prm.getStartValue(); const v = kf && kf.value !== undefined ? kf.value : kf; val = `${JSON.stringify(v)} (${typeof v})`; } catch (e) { val = `(value: ${e.message})`; }
+    try { kfs = String(await prm.areKeyframesSupported()); } catch (e) { kfs = "?"; }
+    lines.push(`    ${p}: "${prm.displayName}" = ${val}, keyframes ${kfs}`);
+  }
+  return lines;
+}
+
+async function runProbe(project, seq, m) {
+  const want = (cleanName(await m.getComments()) || "Impact Move").toLowerCase();
+  log(`--- effect probe in "${seq.name}": looking for an effect named like "${want}"`);
+  const match = await ppro.VideoFilterFactory.getMatchNames();
+  const disp = await ppro.VideoFilterFactory.getDisplayNames();
+  await saveText("effect_match_names.txt", match.map((n, i) => `${n}\t${disp[i] || ""}`).join("\n"), true);
+  const hits = match.map((n, i) => ({ n, d: disp[i] || "" })).filter((x) => x.n.toLowerCase().includes(want) || x.d.toLowerCase().includes(want));
+  log(`  ${match.length} video effects; ${hits.length} match: ${hits.map((h) => `${h.d} (${h.n})`).join(", ") || "none"}`);
+  const lines = [`sequence: ${seq.name}`, `looking for: ${want}`, `matches: ${hits.map((h) => `${h.d} (${h.n})`).join(", ") || "none"}`];
+  const tpf = await ticksPerFrame(seq);
+  const start = (await m.getStart()).ticksNumber;
+  const track = await seq.getVideoTrack(0);
+  let before = null, after = null;
+  for (const it of await track.getTrackItems(ppro.Constants.TrackItemType.CLIP, false)) {
+    const s = (await it.getStartTime()).ticksNumber, e = (await it.getEndTime()).ticksNumber;
+    if (Math.abs(s - start) < tpf / 2) after = it;
+    if (Math.abs(e - start) < tpf / 2) before = it;
+  }
+  try {
+    if (!hits.length) throw new Error(`no video effect is named like "${want}"`);
+    if (!before || !after) throw new Error(`no cut on V1 at frame ${Math.round(start / tpf)}`);
+    const chosen = hits[0].n;
+    const comps = [await ppro.VideoFilterFactory.createComponent(chosen), await ppro.VideoFilterFactory.createComponent(chosen)];
+    const chains = [await before.getComponentChain(), await after.getComponentChain()];
+    let accepted;
+    project.lockedAccess(() => {
+      accepted = project.executeTransaction((compound) => {
+        compound.addAction(chains[0].createAppendComponentAction(comps[0]));
+        compound.addAction(chains[1].createAppendComponentAction(comps[1]));
+        compound.addAction(m.createSetNameAction(`${PROBE} done`));
+      }, `Post House: add ${hits[0].d} to the clips at a cut (probe)`);
+    });
+    lines.push(`added "${chosen}" to both clips: Premiere ${accepted ? "accepted" : "did NOT accept"}`);
+    for (const [label, clip] of [["clip ending at the cut", before], ["clip starting at the cut", after]]) {
+      const chain = await clip.getComponentChain();
+      const n = await chain.getComponentCount();
+      lines.push(`${label}: ${n} components`);
+      for (let c = 0; c < n; c++) lines.push(...(await dumpComponent(await chain.getComponentAtIndex(c))));
+    }
+  } catch (e) {
+    lines.push(`FAILED: ${(e && (e.stack || e.message)) || String(e)}`);
+    await markFailed(project, m);
+  }
+  log(lines.join("\n"));
+  await saveText("effect_params.txt", lines.join("\n"), true);
+  await saveText("last_run_log.txt", $("log").value, true);
+}
+
 async function scanProject(reason) {
   if (scanning || !$("auto").checked) return;
   scanning = true;
@@ -216,10 +284,19 @@ async function scanProject(reason) {
     for (const seq of await project.getSequences()) {
       const owner = await ppro.Markers.getMarkers(seq);
       const pending = [];
+      const probes = [];
       for (const m of (await owner.getMarkers()) || []) {
-        if ((await m.getName()) === PENDING) pending.push(m);
+        const nm = await m.getName();
+        if (nm === PENDING) pending.push(m);
+        if (nm === PROBE) probes.push(m);
       }
       if (pending.length) await runPlan(project, seq, pending, reason);
+      for (const m of probes) {
+        const key = `${seq.guid}:probe:${(await m.getStart()).ticksNumber}`;
+        if (handled.has(key)) continue;
+        handled.add(key);
+        await runProbe(project, seq, m);
+      }
     }
   } catch (e) {
     log("automatic mode ERROR:", (e && (e.stack || e.message)) || String(e));
@@ -291,7 +368,7 @@ $("describe").addEventListener("click", () => guard("describe transitions", desc
 $("list").addEventListener("click", () => guard("list transitions", listTransitions));
 $("first").addEventListener("click", () => guard("add at first cut", () => apply(true)));
 $("all").addEventListener("click", () => guard("add at every cut", () => apply(false)));
-log("Transition Lab v0.6: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
+log("Transition Lab v0.7: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
 noteStartup();
 startAuto();
 // the probe runs whenever a sequence is activated or a project opens (at load there is usually no project yet); quietly, only when there are transitions to describe
