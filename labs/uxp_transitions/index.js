@@ -90,8 +90,16 @@ function addAt(project, clip, matchName, durationTicks, alignment) {
 }
 
 async function apply(onlyFirst) {
-  const matchName = $("name").value.trim();
-  if (!matchName) throw new Error("type or paste a transition match name first (list them with button 1)");
+  let matchName = $("name").value.trim();
+  if (!matchName) {                                   // a name pasted into the filter box by mistake: use it if it is exactly one of Premiere's names
+    const typed = $("filter").value.trim();
+    const names = await ppro.TransitionFactory.getVideoTransitionMatchNames();
+    if (typed && names.includes(typed)) {
+      matchName = typed;
+      log(`the name box was empty; using "${typed}" from the filter box`);
+    }
+  }
+  if (!matchName) throw new Error("type or paste a transition match name into the SECOND box (\"Transition match name\"); list them with button 1");
   const trackNumber = parseInt($("track").value, 10) || 1;
   const frames = parseFloat($("frames").value) || 6;
   const alignment = parseFloat($("align").value);

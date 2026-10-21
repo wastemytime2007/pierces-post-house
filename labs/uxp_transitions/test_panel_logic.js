@@ -80,7 +80,14 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   await handlers.all(); await tick();
   assert.strictEqual(calls.added.length, 1, "every-cut button: one per touching cut");
 
-  set("name", ""); els.log.value = "";
+  // a name pasted into the filter box instead of the name box is used when it is exactly one of the listed names
+  calls.created.length = 0; calls.added.length = 0;
+  set("name", ""); set("filter", "AE.Impact Push"); els.log.value = "";
+  await handlers.first(); await tick();
+  assert.strictEqual(calls.created[0], "AE.Impact Push", "uses the exact name found in the filter box");
+  assert(log().includes("using \"AE.Impact Push\" from the filter box"));
+
+  set("filter", "impact"); set("name", ""); els.log.value = "";                    // a partial word in the filter is not a name
   await handlers.first(); await tick();
   assert(log().includes("ERROR") && log().includes("match name"), "an empty name is reported, not thrown");
   console.log("panel logic: all checks passed");
