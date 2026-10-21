@@ -129,4 +129,4 @@ async function apply(onlyFirst) {
 $("list").addEventListener("click", () => guard("list transitions", listTransitions));
 $("first").addEventListener("click", () => guard("add at first cut", () => apply(true)));
 $("all").addEventListener("click", () => guard("add at every cut", () => apply(false)));
-log("Transition Lab ready. Start with: List transitions.");
+log("Transition Lab v0.2 (saves last_run_log.txt after every click). Start with: List transitions.");
