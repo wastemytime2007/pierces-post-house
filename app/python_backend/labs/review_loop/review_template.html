@@ -61,11 +61,11 @@
   .blk:hover, .tk:hover { opacity: 1; outline: 1px dashed #fff; }
   .blk.picked, .tk.picked { opacity: 1; outline: 2px solid #fff; outline-offset: 1px; z-index: 2; }
   .note .tgt { color: var(--pin); font-size: 12px; font-weight: 600; }
-  .lane.Clips .cutpt { position: absolute; top: 0; bottom: 0; width: 11px; margin-left: -5px; cursor: pointer; z-index: 2; }
-  .lane.Clips .cutpt::after { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; width: 3px; background: transparent; }
-  .lane.Clips .cutpt:hover::after { background: #fff; }
-  .lane.Clips .cutpt.on::after { background: #00ade1; width: 5px; left: 3px; }
-  .lane.Clips .cutpt.manual::after { background: #f4690b; width: 5px; left: 3px; }
+  .lane.Clips .cutpt { position: absolute; top: 0; bottom: 0; width: 25px; margin-left: -12px; cursor: pointer; z-index: 2; }
+  .lane.Clips .cutpt::after { content: ""; position: absolute; left: 10px; top: 0; bottom: 0; width: 4px; background: rgba(255, 255, 255, .55); border-radius: 2px; }
+  .lane.Clips .cutpt:hover::after { background: #fff; left: 9px; width: 6px; }
+  .lane.Clips .cutpt.on::after { background: #00ade1; width: 6px; left: 9px; }
+  .lane.Clips .cutpt.manual::after { background: #f4690b; width: 6px; left: 9px; }
   .cutbadge { position: absolute; z-index: 4; transform: translateX(-50%); font-size: 10px; line-height: 14px; padding: 0 5px; border-radius: 7px; background: #00ade1; color: #02131f; font-weight: 700; pointer-events: none; white-space: nowrap; }
   .cutbadge.manual { background: #f4690b; color: #1a0a00; }
   #cutmenu { position: fixed; z-index: 50; min-width: 190px; background: #14213a; border: 1px solid #3b5a85; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.5); padding: 4px; font-size: 13px; color: #e6edf7; }
@@ -234,6 +234,8 @@ const BEATS = [];
       el.title = L.name + ' · ' + fmt(it.start) + (tick ? '' : '-' + fmt(it.end)) + ' · ' + it.label;
       el.onclick = e => {
         if (e.shiftKey) { v.currentTime = Math.max(0, it.start - (tick ? 1 : 0.3)); return; }
+        const onCut = (tick && (L.name === 'Cuts' || L.name === 'Edits') && typeof CUTS !== 'undefined') ? CUTS.find(c => Math.abs(c.sec - it.start) < 0.15) : null;
+        if (onCut) { e.stopPropagation(); openCutMenu(onCut.sec, e); return; }          /* a cut: the menu (Add transition...), not a note */
         openElementNote(L.name, tick, it, el, e);
       };
       lane.appendChild(el);

@@ -11,7 +11,8 @@ const data = {
   sequence: "Demo cut", duration: 40, preview: "preview.mp4", clips: [[1, 0, 10], [2, 10, 22], [3, 22, 31], [4, 31.5, 40]].map(([idx, start, end]) => ({ idx, start, end, source: "a.mov", src_in: 0, src_out: end - start })), beatmap: [
     { name: "Clips", kind: "blocks", items: [
       { start: 0, end: 10, label: "clip 1 (a)", clip: 1 }, { start: 10, end: 22, label: "clip 2 (b)", clip: 2 },
-      { start: 22, end: 31, label: "clip 3 (c)", clip: 3 }, { start: 31.5, end: 40, label: "clip 4 (d)", clip: 4 } ] } ],
+      { start: 22, end: 31, label: "clip 3 (c)", clip: 3 }, { start: 31.5, end: 40, label: "clip 4 (d)", clip: 4 } ] },
+    { name: "Cuts", kind: "ticks", items: [{ start: 10, end: 10, label: "cut to clip 2 (b)" }, { start: 22, end: 22, label: "cut to clip 3 (c)" }] } ],
 };
 const html = template.replace("/*__DATA__*/null", JSON.stringify(data).replace(/<\//g, "<\\/"));
 const dom = new JSDOM(html, { url: "http://127.0.0.1:47821/review.html", runScripts: "dangerously", pretendToBeVisual: true,
@@ -35,6 +36,12 @@ const asked = () => new Promise((resolve) => {
   assert.strictEqual(cuts.length, 2, "two cuts between touching clips; the 0.5 s gap between clips 3 and 4 is not a cut");
   assert(Math.abs(parseFloat(cuts[0].style.left) - 25) < 0.01 && Math.abs(parseFloat(cuts[1].style.left) - 55) < 0.01, cuts.map((c) => c.style.left).join());
 
+  // the green tick on the Cuts lane sits on a cut: it opens the same menu, not a note
+  fire(doc.querySelector("#beatmap .lane.Cuts .tk"), "click", 300, 200);
+  assert(doc.getElementById("cutmenu"), "a click on the Cuts lane tick opens the transition menu");
+  assert(!doc.getElementById("editor") || doc.getElementById("editor").classList.contains("hidden") || w.getComputedStyle(doc.getElementById("editor")).display === "none", "and no note editor opened");
+  fire(doc.body, "click");
+  assert(!doc.getElementById("cutmenu"), "clicking elsewhere closes it");
   fire(cuts[0], "click", 300, 200);
   const menu = doc.getElementById("cutmenu");
   assert(menu, "menu opens");
