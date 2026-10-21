@@ -65,6 +65,16 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-21: two-stage workflow chosen by Ryan; transitions through XML tested; Transition Lab plugin built, awaiting Ryan's run in Premiere
+
+Ryan's plan (also in memory `project_two_stage_workflow`): stage 1 finds the pieces that tell a story and exports ONE PreCut-structured XML, a sequence per idea, synced to its audio sources; Ryan trims each sequence in Premiere and exports the XML back; stage 2 (creative) cuts ums and uhs, scales every other shot by speaker, adds graphics, lower thirds, transitions, music, SFX (his own library), captions and CTAs. The Post House app build stays stopped (2026-10-17); nothing was built in `app/`.
+
+What exists, none of it signed off by Ryan: `~/soldfast-shorts/export_all_shorts.py` writes `~/Documents/SoldFast ALL SHORTS.xml` (71 sequences through PreCut's own `export_multi_timeline`, read only: Seq/Footage/Audio/Files bins, each recorder synced per sequence at its measured offset, the long-form interviews pointing at the RED originals with all four audio channels linked). Structure-checked by script, not yet opened in Premiere.
+
+Findings from Ryan's two Premiere test exports (read on 2026-10-21): a Film Impact transition is written as a plain Cross Dissolve (the plugin is not in the XML); a Mister Horse transition is written as graphic layers on V2/V3 that show the plugin's fallback text when imported from XML (`~/Desktop/MH test variants/`, the control, variant 1, is still to be imported); his own SFX file, in/out, level and speed round trip. Research: Premiere's UXP API (25.6+) can list and add video transitions by match name; Film Impact is now part of Premiere (25.5).
+
+Built: `labs/uxp_transitions/`, a UXP panel that lists the transition match names and adds one at the first or every cut. Panel logic tested against a stand-in Premiere (`test_panel_logic.js`); not run inside Premiere. Evidence needed from Ryan: whether Film Impact names appear in the list, and whether the added transition plays.
+
 ### 2026-10-13: put a cut line back; the editor stays out after your notes; captions, export and reopen fixes (Septic cut), awaiting Ryan's run
 
 Ryan: "The editor removed the part of the video where bob mentions 'if there arent any curbs youre probably on a septic system' which was really valuable to a viewer. I asked the editor to put that back in and it couldnt." Not signed off.
