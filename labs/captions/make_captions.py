@@ -133,16 +133,22 @@ def apply_fixes(groups: list[dict], fixes: list[dict], start: float, dropped: li
 
 
 FRAGMENT_SEC = 0.35        # a one-word line on screen for less than this cannot be read
+TINY_SEC = 0.20            # shorter than this is not a caption at all (a "of it." the transcript timed at 0.06 s): joined to a neighbour whatever the width, so no line is shorter than the fades that show and hide it
 
 
 def _fold_fragments(groups: list[list[Word]], max_words: int, max_chars: int, gap: float) -> list[list[Word]]:
     """A caption line that is one word spoken in under FRAGMENT_SEC (a trailing "it." after a sentence break) is joined to the line before it, or failing that the line after, when they are close
-    in time and the joined line still fits. A line nobody can read is worse than a slightly longer one."""
+    in time and the joined line still fits. A line nobody can read is worse than a slightly longer one.
+
+    A fragment is a one-word line under FRAGMENT_SEC, or a line of up to two words under TINY_SEC (on 2026-10-21 "of it." timed at 0.06 s was two words and slipped through; its fade-out began before its
+    fade-in, so it stayed on screen through the rest of the cut and the render check failed 49 times). A fast two-word line like "piece off" (0.3 s) is real speech and stays. One under TINY_SEC that no
+    neighbour takes by the rules above is joined to the nearer neighbour anyway."""
     out = [list(g) for g in groups]
     i = 0
     while i < len(out):
         g = out[i]
-        if len(g) == 1 and g[0].end - g[0].start < FRAGMENT_SEC and len(out) > 1:
+        span = g[-1].end - g[0].start
+        if ((len(g) == 1 and span < FRAGMENT_SEC) or (len(g) <= 2 and span < TINY_SEC)) and len(out) > 1:
             prev_ok = i > 0 and g[0].start - out[i - 1][-1].end <= gap and len(out[i - 1]) < max_words + 2 and len(" ".join(x.text for x in out[i - 1] + g)) <= max_chars + 6
             next_ok = i + 1 < len(out) and out[i + 1][0].start - g[0].end <= gap and len(out[i + 1]) < max_words + 2 and len(" ".join(x.text for x in g + out[i + 1])) <= max_chars + 6
             if prev_ok:
@@ -151,6 +157,15 @@ def _fold_fragments(groups: list[list[Word]], max_words: int, max_chars: int, ga
                 continue
             if next_ok:
                 out[i + 1] = g + out[i + 1]
+                del out[i]
+                continue
+            if span < TINY_SEC:                                              # nobody fits by the rules: the nearer neighbour takes it anyway
+                gap_prev = g[0].start - out[i - 1][-1].end if i > 0 else float("inf")
+                gap_next = out[i + 1][0].start - g[-1].end if i + 1 < len(out) else float("inf")
+                if gap_prev <= gap_next and i > 0:
+                    out[i - 1] += g
+                else:
+                    out[i + 1] = g + out[i + 1]
                 del out[i]
                 continue
         i += 1

@@ -86,3 +86,20 @@ def test_the_run_tail_starts_with_the_reel_plays_to_the_end_and_fades_only_over_
     assert rms(0.0, 0.5) > 0.05                                                              # the music is already playing in the first half second
     assert rms(6.0, 7.0) > 0.05 and rms(7.0, 7.4) > 0.5 * rms(6.0, 7.0)                       # it plays on well past the last event and up to the fade
     assert rms(8.6, 9.0) < 0.35 * rms(6.0, 7.0)                                              # and fades out at the very end
+
+
+def test_fewer_than_two_events_still_conform_the_music_starts_on_the_first_moment_and_runs_to_the_end(tmp_path):
+    """A short cut in one take has one event (its title card) or none: it used to crash the fit."""
+    assert cm.at_least_two_events([], 20.0, "run") == [0.0, 18.5]
+    assert cm.at_least_two_events([0.5], 20.0, "run") == [0.5, 18.5]
+    assert cm.at_least_two_events([0.5], 20.0, "stop") == [0.5, 19.0]
+    assert cm.at_least_two_events([0.5, 0.52], 20.0, "run") == [0.5, 18.5], "two events inside the merge distance are one: still needs an end"
+    assert cm.at_least_two_events([0.5, 9.0], 20.0, "run") == [0.5, 9.0], "two real events are left alone"
+    assert cm.at_least_two_events([0.5], 1.0, "run") == [0.5, 2.5] and cm.at_least_two_events([], 1.0, "stop")[0] == 0.0
+    track = kick_track(tmp_path / "t.wav", seconds=40.0)
+    for ev in ([], [0.5]):
+        out = tmp_path / f"c{len(ev)}.wav"
+        rep = cm.conform(track, ev, 15.0, out, tail="run")
+        y, sr = sf.read(str(out))
+        assert abs(len(y) / sr - 15.0) < 0.2 and float(np.abs(y).max()) > 0.1, f"{len(ev)} event(s): music of the reel's length that is not silent"
+        assert len(rep["plan"]["segments"]) == 1

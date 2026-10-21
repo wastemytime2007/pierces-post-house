@@ -33,7 +33,8 @@ __GROUPS__
           tl.set(hi, { opacity: 1 }, w.start);
           tl.set(hi, { opacity: 0 }, w.end);
         });
-        tl.to(id, { opacity: 0, duration: 0.12, ease: "power1.in" }, g.show_end - 0.12);
+        tl.to(id, { opacity: 0, duration: 0.12, ease: "power1.in" }, Math.max(g.show_end - 0.12, g.show_start + 0.14));      // never begin to fade out before the fade-in is done (a line shorter than both stayed on screen for good)
+        tl.set(id, { opacity: 0 }, Math.max(g.show_end, g.show_start + 0.26));                                                  // and be hidden for certain once it is over
       });
       window.__timelines["main"] = tl;
       tl.seek(0);

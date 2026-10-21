@@ -519,3 +519,59 @@ def test_a_music_track_shorter_than_a_lengthened_cut_is_extended_not_refused(tmp
     import timeline
     assert timeline.probe_duration(str(out)) >= 13.5
     assert timeline.probe_duration(str(out)) < 20
+
+
+
+def test_keep_going_leaves_a_failed_layer_off_and_keeps_the_ones_that_worked(xml, tmp_path):
+    """2026-10-21: the music service ran out of credits and no sequence of a batch of eleven kept anything. With keep_going the captions and the bleep stay, the music says why it is missing."""
+    out = tmp_path / "out"
+    f = Fake(fail_on="score_music.py")
+    r = fc.run(xml, out, runner=f, bleep_fn=f.bleep, keep_going=True)
+    by = {s["name"]: s for s in r["steps"]}
+    assert by["captions"]["done"] and by["bleep"]["done"], "what worked is kept"
+    assert by["music"]["done"] is False and by["music"]["failed"] is True and by["music"]["summary"].startswith("not added: ")
+    assert Path(r["xml"]).is_file(), "a finished version is written"
+    assert all(ok for _n, ok, _d in r["checks"] if ok is not None), r["checks"]
+
+
+def test_without_keep_going_one_failure_still_keeps_nothing_as_before(xml, tmp_path):
+    f = Fake(fail_on="score_music.py")
+    with pytest.raises(fc.FinishError):
+        fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep)
+
+
+def test_keep_going_with_every_layer_failing_says_so_rather_than_writing_an_empty_version(xml, tmp_path):
+    f = Fake(fail_on="make_captions.py")
+    with pytest.raises(fc.FinishError, match="nothing could be added: captions not added"):
+        fc.run(xml, tmp_path / "out", music=False, bleep=False, runner=f, bleep_fn=f.bleep, keep_going=True)
+
+
+def test_a_failed_graphics_step_does_not_stop_the_captions_which_then_have_nothing_to_avoid(xml, tmp_path):
+    class NoTitle(FakeG):
+        def __call__(self, cmd, **kw):
+            if Path(cmd[1]).name == "make_title.py":
+                return subprocess.CompletedProcess(cmd, 1, "", "HyperFrames check FAILED:\n  1 error(s), 1 warning(s), 0 info(s)")
+            return super().__call__(cmd, **kw)
+    f = NoTitle()
+    r = fc.run(xml, tmp_path / "out", music=False, bleep=False, graphics=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub(), keep_going=True)
+    by = {s["name"]: s for s in r["steps"]}
+    assert by["graphics"]["failed"] and "render check" in by["graphics"]["summary"]
+    assert by["captions"]["done"] and "--avoid" not in f.caption_args, "no title was placed, so the captions keep clear of nothing"
+
+
+def test_the_reasons_are_in_plain_words():
+    q = fc.FinishError('The music failed, so nothing was kept. The tool said:\nmake_audio.AudioError: ElevenLabs music refused (401): {"detail":{"code":"quota_exceeded","message":"This request exceeds your quota of 47052. You have 191 credits remaining, while 450 credits are required for this request."}}')
+    assert fc.why(q) == "the music service is out of credits (191 left, this cut needs 450): top up the ElevenLabs account and run it again"
+    h = fc.FinishError("The captions failed, so nothing was kept. The tool said:\nHyperFrames check FAILED:\n  49 error(s), 0 warning(s), 6 info(s)")
+    assert "render check refused it (49 error(s)" in fc.why(h)
+
+
+def test_a_file_slug_becomes_a_readable_topic_and_a_real_title_is_left_alone():
+    """WK_08_mitch_if_it_is_someone_s_home_never_cut_corners was one 2,474 px word in a 1,080 px frame."""
+    assert fc.topic_of("WK_08_mitch_if_it_is_someone_s_home_never_cut_corners") == "If it is someone's home never cut corners"
+    assert fc.topic_of("WK_07_mitch_why_you_can_t_just_hire_out_the_quality") == "Why you can't just hire out the quality"
+    assert fc.topic_of("WK_04_bob_fixing_a_water_heater_the_inspector_missed") == "Fixing a water heater the inspector missed"
+    assert fc.topic_of("LF_01_bob_what_running_a_crew_really_takes") == "What running a crew really takes"
+    assert fc.topic_of("Keeping the Rustic Without Going Cheap") == "Keeping the Rustic Without Going Cheap"
+    assert fc.topic_of("A gruff contractor snaps at the camera crew, apologizes") == "A gruff contractor snaps at the camera crew, apologizes"
+    assert " " in fc.topic_of("WK_06_mitch_why_country_insurance_cost_20_more")

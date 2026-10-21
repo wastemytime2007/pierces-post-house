@@ -77,13 +77,27 @@ SFX_AT_START = 0.05
 TAG_Y = 0.55               # a lower third's top sits this far down the frame (fraction of the height): above the band the captions use, so the captions never have to jump to the top across the speaker's face
 
 
+def topic_of(name: str) -> str:
+    """The title card's topic line from the sequence's name. Names that are file slugs ("WK_08_mitch_if_it_is_someone_s_home_never_cut_corners") are one 2,500 px word that cannot wrap and failed the render
+    check: the prefix and the speaker (who has a name tag) are dropped, underscores become spaces and the apostrophes the slug lost are put back. A name that is already a sentence is left as it is."""
+    s = name.strip()
+    if "_" not in s:
+        return s
+    s = re.sub(r"^[A-Za-z]{1,4}[_-]\d{1,3}[_-]", "", s)
+    s = re.sub(r"^(bob|mitch)[_ -]+", "", s, flags=re.I)
+    s = s.replace("_", " ")
+    s = re.sub(r"\b(\w+) (t|s|ll|re|ve|d|m)\b", r"\1'\2", s)
+    s = re.sub(r"\s+", " ", s).strip(" .-")
+    return (s[:1].upper() + s[1:]) if s else name.strip()
+
+
 def graphics_plan(cut, mic_dir: str | None, cache: Path | None, analyse=None) -> tuple[dict, list[float], list[str]]:
     """What on-screen graphics this cut gets, from the cut itself: a title card with the topic (the sequence's own name) in the first seconds, and a name tag the first time each person talks for a
     second or more (who talks when comes from each person's own recorder). Nothing is invented: the words are the sequence's name and the speakers' names. Returns (the make_title spec, the timeline
     seconds each graphic comes on, notes in words about anything left out)."""
     notes: list[str] = []
     first = cut.video[0]
-    spec: dict = {"title": {"anchor": {"source": Path(first.src_path).name, "source_sec": round(first.src_in, 3)}, "small": cut.sequence_name.strip(), "big": "", "builds": TITLE_BUILDS, "hold": TITLE_HOLD}}
+    spec: dict = {"title": {"anchor": {"source": Path(first.src_path).name, "source_sec": round(first.src_in, 3)}, "small": topic_of(cut.sequence_name), "big": "", "builds": TITLE_BUILDS, "hold": TITLE_HOLD}}
     times = [round(first.tl_start + SFX_AT_START, 3)]
     thirds: list[dict] = []
     if not mic_dir:
@@ -304,12 +318,28 @@ def version_name(src: Path) -> str:
     return f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1}.xml"
 
 
+def why(exc: Exception) -> str:
+    """A failed layer's reason in one plain sentence, for the person (the tool's own long output stays in the logs): the cases seen on real cuts get their own words."""
+    text = str(exc)
+    m = re.search(r"You have (\d+) credits remaining, while (\d+) credits are required", text)
+    if "quota_exceeded" in text or m:
+        return "the music service is out of credits" + (f" ({m.group(1)} left, this cut needs {m.group(2)})" if m else "") + ": top up the ElevenLabs account and run it again"
+    if "HyperFrames check FAILED" in text:
+        return "the render check refused it (" + " ".join(x.strip() for x in text.splitlines() if "error(s)" in x)[:120] + ")"
+    first = next((x.strip() for x in text.splitlines() if x.strip() and not x.startswith("The tool said")), text.strip())
+    return first[:220]
+
+
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
         caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
         graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None, cta: str = "",
-        graphics_edits: list[dict] | None = None, music_db: float | None = None, sfx_exclude: list[str] | None = None, sfx_keep: str = "") -> dict:
+        graphics_edits: list[dict] | None = None, music_db: float | None = None, sfx_exclude: list[str] | None = None, sfx_keep: str = "", keep_going: bool = False) -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
+
+    `keep_going` (the Get Creative batch): a layer that fails (graphics, captions, music or bleep) is left off, recorded in `steps` as {"done": False, "failed": True, "summary": "not added: <why>"}, and the
+    layers that worked are kept. Without it, as before, one failure discards everything ("nothing was kept"). On 2026-10-21 the music service ran out of credits and, because of that, no sequence of a
+    batch of eleven kept the ums cut, the captions or the graphics that had worked.
 
     `rebuild`: the cut already carries layers and its picture has just been revised under them. The earlier bleep is undone and every layer taken off (what is left is the cut itself, checked to be the
     same cut), then the steps run again on the revised picture. `music_file` is the track the first finish made (before it was fitted to the cuts), so a rebuild never changes the music;
@@ -362,196 +392,228 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
     sfx_times: list[float] = []
     graphics_folder: Path | None = None
     sfx_name = ""
-    if graphics and have["on_screen"]:
-        steps.append({"name": "graphics", "done": False, "summary": "the cut already has on-screen layers, so no title card or name tags were added"})
-    elif graphics:
-        progress("Graphics: a title card and lower thirds")
-        import follow_speaker as fs
-        spec, sfx_times, gnotes = (graphics_fn or graphics_plan)(cut0, fs.mic_dir_of(cut0), Path.home() / "Library" / "Application Support" / "Post House" / "framing_cache.json")
-        cta_note = add_cta(spec, cut0, cta)
-        if cta_note:
-            gnotes = list(gnotes) + [cta_note]
-        if graphics_edits:
-            spec, sfx_times, enotes = apply_graphics_edits(spec, sfx_times, graphics_edits, cta)       # the person's changes to what the finish made, kept on every later rebuild
-            gnotes = list(gnotes) + enotes
-        if not spec.get("title") and not spec.get("lower_thirds"):
-            steps.append({"name": "graphics", "done": True, "summary": "no graphics: every one was taken out by your notes" + ("; " + "; ".join(gnotes) if gnotes else "")})
-        else:
-            (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
-            tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
-            nxt = out / "_step_graphics.xml"
-            tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
-            cur, graphics_folder = nxt, out / "graphics"
-            tags = [l["name"] for l in spec.get("lower_thirds", [])]
-            ctas = [l["name"] for l in spec.get("lower_thirds", []) if l.get("key") == "cta"]
-            tags = [t for t in tags if t not in ctas]
-            steps.append({"name": "graphics", "done": True, "summary": ("a title card with the topic" if spec.get("title") else "no title card") + (f" and lower thirds for {' and '.join(tags)}" if tags else "")
-                          + (f", and the call to action \"{ctas[-1]}\" over the end" if ctas else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
+    cur_before = cur
+    try:
+        if graphics and have["on_screen"]:
+            steps.append({"name": "graphics", "done": False, "summary": "the cut already has on-screen layers, so no title card or name tags were added"})
+        elif graphics:
+            progress("Graphics: a title card and lower thirds")
+            import follow_speaker as fs
+            spec, sfx_times, gnotes = (graphics_fn or graphics_plan)(cut0, fs.mic_dir_of(cut0), Path.home() / "Library" / "Application Support" / "Post House" / "framing_cache.json")
+            cta_note = add_cta(spec, cut0, cta)
+            if cta_note:
+                gnotes = list(gnotes) + [cta_note]
+            if graphics_edits:
+                spec, sfx_times, enotes = apply_graphics_edits(spec, sfx_times, graphics_edits, cta)       # the person's changes to what the finish made, kept on every later rebuild
+                gnotes = list(gnotes) + enotes
+            if not spec.get("title") and not spec.get("lower_thirds"):
+                steps.append({"name": "graphics", "done": True, "summary": "no graphics: every one was taken out by your notes" + ("; " + "; ".join(gnotes) if gnotes else "")})
+            else:
+                (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
+                tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
+                nxt = out / "_step_graphics.xml"
+                tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
+                cur, graphics_folder = nxt, out / "graphics"
+                tags = [l["name"] for l in spec.get("lower_thirds", [])]
+                ctas = [l["name"] for l in spec.get("lower_thirds", []) if l.get("key") == "cta"]
+                tags = [t for t in tags if t not in ctas]
+                steps.append({"name": "graphics", "done": True, "summary": ("a title card with the topic" if spec.get("title") else "no title card") + (f" and lower thirds for {' and '.join(tags)}" if tags else "")
+                              + (f", and the call to action \"{ctas[-1]}\" over the end" if ctas else "") + ("; " + "; ".join(gnotes) if gnotes else "")})
+    except Exception as exc:
+        if not keep_going:
+            raise
+        cur = cur_before
+        sfx_times, graphics_folder, sfx_name = [], None, ""
+        steps.append({"name": "graphics", "done": False, "failed": True, "summary": "not added: " + why(exc)})
 
     # 1. captions: what is said, on screen
-    if captions and have["on_screen"]:
-        steps.append({"name": "captions", "done": False, "summary": "the cut already has on-screen layers, so it was not captioned again"})
-    elif captions:
-        progress("Captions: listening to the cut and making what is said into on-screen text")
-        cargs = ["--xml", cur, "--out", out / "captions", "--start", "0", "--end", f"{zone - 0.001:.3f}"]
-        if graphics_folder:
-            cargs += ["--avoid", graphics_folder]                          # the captions move clear of the title card and name tags
-        if caption_fixes:
-            (out / "captions").mkdir(parents=True, exist_ok=True)
-            (out / "captions" / "fixes.json").write_text(json.dumps(caption_fixes, indent=2))
-            cargs += ["--fixes", out / "captions" / "fixes.json"]
-        tool("The captions", "captions/make_captions.py", *cargs)
-        import ai_review as _air
-        import proxy as _proxy
-        _cj = out / "captions" / "captions.json"
-        _ok, _detail = _proxy.captions_match(_cj, _air.transcript_of(timeline.load_cut(cur)), 0.7) if _cj.is_file() else (None, "")       # held against the cut's OWN audio, not the render the captions step used
-        if _ok is False:
-            raise FinishError("The captions are not what this cut says, so nothing was kept: " + _detail)
-        nxt = out / "_step_captions.xml"
-        tool("Placing the captions", "overlay/place_overlay.py", cur, out / "captions", "--out", nxt)
-        cur = nxt
-        _warn = ""
-        try:
-            _rows = json.loads((out / "captions" / "verify.json").read_text())["rows"]
-            _w = next((r for r in _rows if r["name"] == "INDEPENDENT-TRANSCRIPT" and r["ok"] is None), None)
-            _warn = f"; WARNING: {_w['detail']}" if _w else ""
-        except (OSError, ValueError, KeyError):
-            pass
-        steps.append({"name": "captions", "done": True, "summary": "captions of what is said, placed above the picture" + _warn})
+    cur_before = cur
+    try:
+        if captions and have["on_screen"]:
+            steps.append({"name": "captions", "done": False, "summary": "the cut already has on-screen layers, so it was not captioned again"})
+        elif captions:
+            progress("Captions: listening to the cut and making what is said into on-screen text")
+            cargs = ["--xml", cur, "--out", out / "captions", "--start", "0", "--end", f"{zone - 0.001:.3f}"]
+            if graphics_folder:
+                cargs += ["--avoid", graphics_folder]                          # the captions move clear of the title card and name tags
+            if caption_fixes:
+                (out / "captions").mkdir(parents=True, exist_ok=True)
+                (out / "captions" / "fixes.json").write_text(json.dumps(caption_fixes, indent=2))
+                cargs += ["--fixes", out / "captions" / "fixes.json"]
+            tool("The captions", "captions/make_captions.py", *cargs)
+            import ai_review as _air
+            import proxy as _proxy
+            _cj = out / "captions" / "captions.json"
+            _ok, _detail = _proxy.captions_match(_cj, _air.transcript_of(timeline.load_cut(cur)), 0.7) if _cj.is_file() else (None, "")       # held against the cut's OWN audio, not the render the captions step used
+            if _ok is False:
+                raise FinishError("The captions are not what this cut says, so nothing was kept: " + _detail)
+            nxt = out / "_step_captions.xml"
+            tool("Placing the captions", "overlay/place_overlay.py", cur, out / "captions", "--out", nxt)
+            cur = nxt
+            _warn = ""
+            try:
+                _rows = json.loads((out / "captions" / "verify.json").read_text())["rows"]
+                _w = next((r for r in _rows if r["name"] == "INDEPENDENT-TRANSCRIPT" and r["ok"] is None), None)
+                _warn = f"; WARNING: {_w['detail']}" if _w else ""
+            except (OSError, ValueError, KeyError):
+                pass
+            steps.append({"name": "captions", "done": True, "summary": "captions of what is said, placed above the picture" + _warn})
+    except Exception as exc:
+        if not keep_going:
+            raise
+        cur = cur_before
+        steps.append({"name": "captions", "done": False, "failed": True, "summary": "not added: " + why(exc)})
 
     # 2. music (and an effect when asked): generated, modelled on the reference, a beat on frame 0 and on every cut, a bed under the voice
-    if music and have["music"]:
-        steps.append({"name": "music", "done": False, "summary": "the cut already has generated audio, so no second music bed was added"})
-    elif music:
-        progress("Music: describing the feel, generating it, fitting it to every cut (a few minutes, uses the music service)")
-        import build_review
-        try:
-            build_review.build(cur, out / "review_for_audio", height=960)
-        except Exception as e:
-            raise FinishError(f"Rendering the cut to fit the music to failed, so nothing was kept: {type(e).__name__}: {e}") from e
-        ref = Path(music_reference).expanduser() if music_reference else reference_track()
-        if music_file:
-            ref = None                                               # a rebuild keeps the track it has: nothing is measured or generated again
-        events = [0.0] + sorted({round(v.tl_start, 4) for v in timeline.load_cut(cur).video if v.tl_start > 0})
-        (out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
-        (out / "audio_in").mkdir(exist_ok=True)
-        plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, math.ceil(zone) + 4))), "style": MUSIC_STYLE}]}      # a little more than the cut: fitting it to the cuts takes the tail off, and a track a hair short refuses
-        (out / "score.json").write_text(json.dumps(plan, indent=1))
-        score_args = ["--plan", out / "score.json", "--out", out / "audio_in/music.wav"]
-        feats = None
-        if ref and not music_file:
-            import reference_music
-            feats = reference_music.analyze(ref)
-            (out / "audio_in/reference_features.json").write_text(json.dumps(feats, indent=1, default=float))
-            score_args += ["--reference-features", out / "audio_in/reference_features.json"]
-        conformed = out / "audio_in/music_conformed.wav"
-        fit_note = ""
-        extend_note = ""
-        if music_file:
+    cur_before = cur
+    try:
+        if music and have["music"]:
+            steps.append({"name": "music", "done": False, "summary": "the cut already has generated audio, so no second music bed was added"})
+        elif music:
+            progress("Music: describing the feel, generating it, fitting it to every cut (a few minutes, uses the music service)")
+            import build_review
             try:
-                have_s = timeline.probe_duration(str(Path(music_file).expanduser()))
-            except timeline.TimelineError:
-                have_s = float("inf")                                # a track that cannot be measured is left to the fit to refuse in its own words
-            if have_s < zone + 1.0:                                  # the cut grew past the track the first finish made
-                music_file = str(extend_track(Path(music_file).expanduser(), zone + 4.0, out / "audio_in/music_extended.wav"))
-                extend_note = f"; the music track ({have_s:.1f}s) was shorter than the revised cut ({zone:.1f}s), so its end was repeated to cover it"
-        for take in range(1 if music_file else MUSIC_TAKES):
+                build_review.build(cur, out / "review_for_audio", height=960)
+            except Exception as e:
+                raise FinishError(f"Rendering the cut to fit the music to failed, so nothing was kept: {type(e).__name__}: {e}") from e
+            ref = Path(music_reference).expanduser() if music_reference else reference_track()
             if music_file:
-                track = Path(music_file).expanduser()
-            else:
-                tool("The music", "audio/score_music.py", *score_args)
-                track = out / "audio_in/music.wav"
-            tone_note = ""
-            if feats:
-                import tone_match
-                matched = out / "audio_in/music_matched.wav"
+                ref = None                                               # a rebuild keeps the track it has: nothing is measured or generated again
+            events = [0.0] + sorted({round(v.tl_start, 4) for v in timeline.load_cut(cur).video if v.tl_start > 0})
+            (out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
+            (out / "audio_in").mkdir(exist_ok=True)
+            plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, math.ceil(zone) + 4))), "style": MUSIC_STYLE}]}      # a little more than the cut: fitting it to the cuts takes the tail off, and a track a hair short refuses
+            (out / "score.json").write_text(json.dumps(plan, indent=1))
+            score_args = ["--plan", out / "score.json", "--out", out / "audio_in/music.wav"]
+            feats = None
+            if ref and not music_file:
+                import reference_music
+                feats = reference_music.analyze(ref)
+                (out / "audio_in/reference_features.json").write_text(json.dumps(feats, indent=1, default=float))
+                score_args += ["--reference-features", out / "audio_in/reference_features.json"]
+            conformed = out / "audio_in/music_conformed.wav"
+            fit_note = ""
+            extend_note = ""
+            if music_file:
                 try:
-                    tm = tone_match.match_tone(track, feats, matched)
-                    (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
-                    track = matched
-                except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
-                    tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
-            music_raw = str(track)
-            try:
-                tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
-                fit_note = "" if take == 0 else f"; take {take + 1} (the first take's beats were not steady enough to cut to)"
-                break
-            except FinishError as e:
-                if "steady grid" not in str(e):
-                    raise
-                # a generated take whose beats drift cannot be cut to the beat (2026-10-09: this failed the whole finish, captions and graphics with it). Try another take; after the last,
-                # lay the take as it is, trimmed to the cut and faded, and say so
-                if take == (0 if music_file else MUSIC_TAKES - 1):
-                    lay_untimed(track, zone, conformed)
-                    fit_note = "; NOT cut to the beat: no take had beats steady enough to fit to the cuts, so the last one plays as it is, trimmed and faded at the end"
+                    have_s = timeline.probe_duration(str(Path(music_file).expanduser()))
+                except timeline.TimelineError:
+                    have_s = float("inf")                                # a track that cannot be measured is left to the fit to refuse in its own words
+                if have_s < zone + 1.0:                                  # the cut grew past the track the first finish made
+                    music_file = str(extend_track(Path(music_file).expanduser(), zone + 4.0, out / "audio_in/music_extended.wav"))
+                    extend_note = f"; the music track ({have_s:.1f}s) was shorter than the revised cut ({zone:.1f}s), so its end was repeated to cover it"
+            for take in range(1 if music_file else MUSIC_TAKES):
+                if music_file:
+                    track = Path(music_file).expanduser()
+                else:
+                    tool("The music", "audio/score_music.py", *score_args)
+                    track = out / "audio_in/music.wav"
+                tone_note = ""
+                if feats:
+                    import tone_match
+                    matched = out / "audio_in/music_matched.wav"
+                    try:
+                        tm = tone_match.match_tone(track, feats, matched)
+                        (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
+                        track = matched
+                    except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
+                        tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
+                music_raw = str(track)
+                try:
+                    tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
+                    fit_note = "" if take == 0 else f"; take {take + 1} (the first take's beats were not steady enough to cut to)"
                     break
-                progress("Music: that take's beats were not steady enough to cut to; generating another")
-        margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
-                 "--mix-style", "bed", "--music-db", f"{(MUSIC_DB if music_db is None else music_db):g}", "--music-file", conformed]
-        times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
-        sfx_note = ""
-        sfx_name = ""
-        if times:
-            choice = choose_fn() if choose_fn else choose_graphic_sfx(exclude=tuple(sfx_exclude or ()), prefer=sfx_keep)
-            sfx_name = choice["name"] if choice else ""
-            if choice:
-                lead = min(max(choice["peak_at"] - SFX_HIT_AT, 0.0), 0.8)                  # start early so the effect's peak lands as the graphic wipes in
-                times = sorted({round(max(0.0, x - lead), 3) for x in times})
-                times = [x for i, x in enumerate(times) if i == 0 or x - times[i - 1] >= SFX_MAX_SEC]      # never two on top of each other
-                margs += ["--sfx-file", prepare_effect(choice, out / "audio_in"), "--sfx-below-mean-db", "3"]
-                sfx_note = f" ({choice['name'].rsplit('.', 1)[0]})"
-            else:
-                sfx_note = " (no real whoosh was found in the library, so make_audio's own library lookup chose it)"
-        margs += ["--sfx-at", f"{times[0]:g}"] if times else ["--no-sfx"]
-        if ref and not tone_note:
-            margs += ["--music-reference", ref]
-        try:
-            tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
-        except FinishError as e:
-            if "REFERENCE-MATCH" not in str(e) or "--music-reference" not in margs:
-                raise
-            # the take does not match the reference on the measures make_audio holds it to: mix it anyway, and say so with the numbers instead of hiding it or failing the whole finish
-            miss = next((l.strip() for l in str(e).splitlines() if "REFERENCE-MATCH" in l), "")
-            margs = [a for i, a in enumerate(margs) if a != "--music-reference" and (i == 0 or margs[i - 1] != "--music-reference")]
-            tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
-            tone_note += "; it does NOT match the reference's feel (" + re.sub(r"^\[FAIL\]\s*REFERENCE-MATCH\s*", "", miss)[:160] + "), so judge it by ear"
-        for name in ("placement.json", "audio.json"):                       # the same library effect on each remaining graphic: more entries of the one effect file, which place_audio puts on one pair of tracks
-            f = out / "audio" / name
-            if len(times) > 1 and f.is_file():
-                meta = json.loads(f.read_text())
-                tmpl = next((c for c in meta["clips"] if c["kind"] == "sfx"), None)
-                if tmpl:
-                    meta["clips"] += [{**tmpl, "start_sec": float(x)} for x in times[1:]]
-                    f.write_text(json.dumps(meta, indent=1))
-        nxt = out / "_step_music.xml"
-        tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
-        cur = nxt
-        steps.append({"name": "music", "done": True,
-                      "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
-                      + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note + extend_note})
+                except FinishError as e:
+                    if "steady grid" not in str(e):
+                        raise
+                    # a generated take whose beats drift cannot be cut to the beat (2026-10-09: this failed the whole finish, captions and graphics with it). Try another take; after the last,
+                    # lay the take as it is, trimmed to the cut and faded, and say so
+                    if take == (0 if music_file else MUSIC_TAKES - 1):
+                        lay_untimed(track, zone, conformed)
+                        fit_note = "; NOT cut to the beat: no take had beats steady enough to fit to the cuts, so the last one plays as it is, trimmed and faded at the end"
+                        break
+                    progress("Music: that take's beats were not steady enough to cut to; generating another")
+            margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
+                     "--mix-style", "bed", "--music-db", f"{(MUSIC_DB if music_db is None else music_db):g}", "--music-file", conformed]
+            times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
+            sfx_note = ""
+            sfx_name = ""
+            if times:
+                choice = choose_fn() if choose_fn else choose_graphic_sfx(exclude=tuple(sfx_exclude or ()), prefer=sfx_keep)
+                sfx_name = choice["name"] if choice else ""
+                if choice:
+                    lead = min(max(choice["peak_at"] - SFX_HIT_AT, 0.0), 0.8)                  # start early so the effect's peak lands as the graphic wipes in
+                    times = sorted({round(max(0.0, x - lead), 3) for x in times})
+                    times = [x for i, x in enumerate(times) if i == 0 or x - times[i - 1] >= SFX_MAX_SEC]      # never two on top of each other
+                    margs += ["--sfx-file", prepare_effect(choice, out / "audio_in"), "--sfx-below-mean-db", "3"]
+                    sfx_note = f" ({choice['name'].rsplit('.', 1)[0]})"
+                else:
+                    sfx_note = " (no real whoosh was found in the library, so make_audio's own library lookup chose it)"
+            margs += ["--sfx-at", f"{times[0]:g}"] if times else ["--no-sfx"]
+            if ref and not tone_note:
+                margs += ["--music-reference", ref]
+            try:
+                tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
+            except FinishError as e:
+                if "REFERENCE-MATCH" not in str(e) or "--music-reference" not in margs:
+                    raise
+                # the take does not match the reference on the measures make_audio holds it to: mix it anyway, and say so with the numbers instead of hiding it or failing the whole finish
+                miss = next((l.strip() for l in str(e).splitlines() if "REFERENCE-MATCH" in l), "")
+                margs = [a for i, a in enumerate(margs) if a != "--music-reference" and (i == 0 or margs[i - 1] != "--music-reference")]
+                tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
+                tone_note += "; it does NOT match the reference's feel (" + re.sub(r"^\[FAIL\]\s*REFERENCE-MATCH\s*", "", miss)[:160] + "), so judge it by ear"
+            for name in ("placement.json", "audio.json"):                       # the same library effect on each remaining graphic: more entries of the one effect file, which place_audio puts on one pair of tracks
+                f = out / "audio" / name
+                if len(times) > 1 and f.is_file():
+                    meta = json.loads(f.read_text())
+                    tmpl = next((c for c in meta["clips"] if c["kind"] == "sfx"), None)
+                    if tmpl:
+                        meta["clips"] += [{**tmpl, "start_sec": float(x)} for x in times[1:]]
+                        f.write_text(json.dumps(meta, indent=1))
+            nxt = out / "_step_music.xml"
+            tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
+            cur = nxt
+            steps.append({"name": "music", "done": True,
+                          "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
+                          + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note + extend_note})
+    except Exception as exc:
+        if not keep_going:
+            raise
+        cur = cur_before
+        steps.append({"name": "music", "done": False, "failed": True, "summary": "not added: " + why(exc)})
 
     if sfx and not music and graphics:
         steps.append({"name": "sfx", "done": False, "summary": "the sound effects are mixed and placed with the music step, and the music is off, so none were added"})
 
     # 3. the bleep, last: every listed word is silenced and a bleep laid on it
-    if bleep:
-        progress("Bleep: listening for listed words (takes a few minutes)")
-        try:
-            res = (bleep_fn or default_bleep)(cur, out / "bleep", bleep_requests)
-        except Exception as e:
-            raise FinishError(f"The bleep failed, so nothing was kept: {type(e).__name__}: {e}") from e
-        bad = [n for n, ok, _d in res.get("rows", []) if ok is False]
-        if bad:
-            raise FinishError(f"The bleep failed its own checks ({', '.join(bad)}), so nothing was kept; see {out / 'bleep'}")
-        if res.get("xml"):
-            cur = Path(res["xml"])
-            hits = ", ".join(f"{h['word']} at {h['start']:.1f}s" for h in res.get("hits", []))
-            steps.append({"name": "bleep", "done": True, "summary": f"{len(res.get('spans', []))} stretch(es) silenced and bleeped" + (f": {hits}" if hits else "")})
-        else:
-            steps.append({"name": "bleep", "done": True, "summary": "listened, and no listed word was heard, so nothing was bleeped"})
+    cur_before = cur
+    try:
+        if bleep:
+            progress("Bleep: listening for listed words (takes a few minutes)")
+            try:
+                res = (bleep_fn or default_bleep)(cur, out / "bleep", bleep_requests)
+            except Exception as e:
+                raise FinishError(f"The bleep failed, so nothing was kept: {type(e).__name__}: {e}") from e
+            bad = [n for n, ok, _d in res.get("rows", []) if ok is False]
+            if bad:
+                raise FinishError(f"The bleep failed its own checks ({', '.join(bad)}), so nothing was kept; see {out / 'bleep'}")
+            if res.get("xml"):
+                cur = Path(res["xml"])
+                hits = ", ".join(f"{h['word']} at {h['start']:.1f}s" for h in res.get("hits", []))
+                steps.append({"name": "bleep", "done": True, "summary": f"{len(res.get('spans', []))} stretch(es) silenced and bleeped" + (f": {hits}" if hits else "")})
+            else:
+                steps.append({"name": "bleep", "done": True, "summary": "listened, and no listed word was heard, so nothing was bleeped"})
+    except Exception as exc:
+        if not keep_going:
+            raise
+        cur = cur_before
+        steps.append({"name": "bleep", "done": False, "failed": True, "summary": "not added: " + why(exc)})
 
     final = out / (final_name or version_name(src))
     if cur == src and not rebuild:
+        failed_steps = [s for s in steps if s.get("failed")]
+        if failed_steps:
+            raise FinishError("nothing could be added: " + "; ".join(f"{s['name']} {s['summary']}" for s in failed_steps))
         raise FinishError("nothing was asked for, or everything asked for was already on the cut, so there is nothing to write")
     shutil.copy(cur, final)
     checks = check(picture, final, zone)

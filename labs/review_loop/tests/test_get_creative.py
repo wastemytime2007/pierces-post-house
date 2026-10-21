@@ -25,7 +25,7 @@ class Fake:
     """Stands in for the slow tools and keeps a log of what the batch asked of them."""
 
     def __init__(self, monkeypatch, fail_on=None, fillers=True, layers=()):
-        self.calls, self.events, self.sessions = [], [], {}
+        self.calls, self.events, self.sessions, self.items = [], [], {}, []
         self.fail_on, self.fillers, self.layers = fail_on, fillers, set(layers)
         ct.use_labs()
         import finish_cut as fc
@@ -54,11 +54,12 @@ class Fake:
         self.calls.append(("fillers", Path(xml).stem, auto))
         return {"xml": str(Path(xml).with_name(Path(xml).stem + "_ums.xml")), "folder": "f"}
 
-    def finish_cut(self, xml, out, captions, music, bleep, sfx_at, height, stage, graphics, sfx):
+    def finish_cut(self, xml, out, captions, music, bleep, sfx_at, height, stage, graphics, sfx, keep_going=False):
+        self.keep_going = keep_going
         self.calls.append(("finish", Path(xml).stem, captions, music, bleep, graphics))
         if self.fail_on and Path(xml).stem.startswith(self.fail_on):
             raise ct.ToolError("The music failed its own check")
-        return {"xml": str(Path(xml).with_name(Path(xml).stem + "_creative.xml")), "folder": "f"}
+        return {"xml": str(Path(xml).with_name(Path(xml).stem + "_creative.xml")), "folder": "f", "items": self.items}
 
 
 def test_every_sequence_in_turn_review_then_ums_then_the_layers_each_a_version_of_its_own(monkeypatch, seqs):
@@ -161,3 +162,13 @@ def test_the_batchs_review_and_version_events_are_tagged_so_the_tab_leaves_the_r
     assert session_events and all(e.get("batch") is True for e in session_events)
     tab = (REPO / "app" / "src" / "screens" / "tabs" / "ReviewTab.jsx").read_text()
     assert tab.count("if (ev.batch) return;") == 2, "both of the tab's event handlers ignore the batch's events"
+
+
+def test_a_layer_that_could_not_be_made_is_named_with_its_reason_and_the_sequence_still_counts_as_done(monkeypatch, seqs):
+    f = Fake(monkeypatch)
+    f.items = [{"op": "captions", "applied": True, "failed": False, "summary": "captions placed"},
+               {"op": "music", "applied": False, "failed": True, "summary": "not added: the music service is out of credits (191 left, this cut needs 450): top up the ElevenLabs account and run it again"}]
+    res = ct.get_creative(seqs[:1], None, f.emit)
+    it = res["items"][0]
+    assert it["status"] == "done" and "added captions" in it["message"] and "music not added: the music service is out of credits" in it["message"]
+    assert f.keep_going is True, "the batch always asks the finish to keep going"

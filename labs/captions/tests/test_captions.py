@@ -200,3 +200,28 @@ def test_two_readings_that_agree_partly_are_a_warning_and_two_that_hardly_agree_
     assert vc.independent_verdict(0.65, 0.04) is None                      # the screenshot's case: 65%, median 40 ms
     assert vc.independent_verdict(0.40, 0.04) is False
     assert vc.independent_verdict(0.90, 0.80) is False                     # agreeing words that start far apart in time are not the same captions
+
+
+def test_a_two_word_line_spoken_in_a_blink_is_joined_to_a_neighbour_not_left_as_a_caption():
+    """WK_04, 2026-10-21: "of it." timed at 0.06 s was a line of its own; its fade-out began before its fade-in, it stayed on screen to the end and the render check failed 49 times."""
+    ws = speech(("I", 0, .1), ("did", .1, .25), ("not", .25, .4), ("think", .4, .6), ("so.", .6, .9),
+                ("of", .92, .98), ("it.", .98, .98),
+                ("Then", 1.0, 1.2), ("we", 1.2, 1.3), ("left.", 1.3, 1.6))
+    g = mc.group_words(ws)
+    assert [w.text for x in g for w in x["words"]] == [w.text for w in ws], "no word lost, none reordered"
+    assert all(x["words"][-1].end - x["words"][0].start >= mc.FRAGMENT_SEC for x in g), [x["text"] for x in g]
+    assert all(x["show_end"] - x["show_start"] >= 0.26 for x in g), "every line is on screen at least as long as the fades that show and hide it"
+
+
+def test_a_tiny_line_no_neighbour_takes_by_width_is_joined_to_the_nearer_one_anyway():
+    a = speech(("extraordinarily", 0, .8), ("comprehensive", .8, 1.5))
+    tiny = speech(("of", 1.52, 1.56), ("it.", 1.56, 1.57))
+    b = speech(("documentation", 1.9, 2.6), ("everywhere.", 2.6, 3.2))
+    out = mc._fold_fragments([a, tiny, b], max_words=6, max_chars=10, gap=0.4)
+    assert len(out) == 2 and [w.text for w in out[0]][-2:] == ["of", "it."], "the nearer (previous) line took it"
+
+
+def test_the_template_never_fades_a_line_out_before_it_has_faded_in_and_hides_it_for_certain():
+    t = (Path(__file__).resolve().parents[1] / "caption_template.html").read_text()
+    assert "Math.max(g.show_end - 0.12, g.show_start + 0.14)" in t
+    assert "tl.set(id, { opacity: 0 }, Math.max(g.show_end, g.show_start + 0.26))" in t

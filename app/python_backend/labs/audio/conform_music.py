@@ -227,7 +227,20 @@ def measure_hits(wav: Path, events: list[float], window: float = 0.08) -> list[d
     return out
 
 
+def at_least_two_events(events: list[float], total: float, tail: str = "stop") -> list[float]:
+    """The plan needs a gap to fit, so at least two events. A short cut in one take has only its first moment (the title card, or none): the music then starts on that moment (or the first frame) and
+    plays to a last event placed so the tail still has room (END_FADE seconds before the end for the "run" tail, one beat's worth for "stop"). Found 2026-10-21: a single-clip short crashed the fit
+    ("zero-size array to reduction operation maximum") and, with it, took the captions and graphics that had worked down with it."""
+    ev, _ = merge_close(events)
+    if len(ev) >= 2:
+        return events
+    start = ev[0] if ev else 0.0
+    end = max(start + 2.0, total - (END_FADE if tail == "run" else 1.0))
+    return ([start] if ev else [0.0]) + [end]
+
+
 def conform(music: Path, events: list[float], total: float, out: Path, tail: str = "stop") -> dict:
+    events = at_least_two_events(events, total, tail)
     grid = fit_grid(music)
     drop = find_drop(grid["strength"])
     pl = plan(events, grid["ibi"])

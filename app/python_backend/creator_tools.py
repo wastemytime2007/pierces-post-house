@@ -1029,7 +1029,7 @@ def _put_layers_back(src: Path, v2: Path, folder: Path, note_list: list[dict], s
 
 
 def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
-               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False, music_file: str | None = None, cta: str | None = None) -> dict:
+               height: int = 540, on_stage=None, graphics: bool = False, sfx: bool = False, music_file: str | None = None, cta: str | None = None, keep_going: bool = False) -> dict:
     """A cut in; the next version out with the finishing layers on it (captions, a music bed, the bleep), each made by the tool that already does it (labs/review_loop/finish_cut.py). The result has the
     shape of apply_notes' so the Review tab opens it as the next version. Nothing is kept if a step or a check fails."""
     src = Path(xml).expanduser()
@@ -1042,7 +1042,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     from timeline import TimelineError
     try:
         r = fc.run(src, folder, captions, music, bleep, sfx_at, progress=stage, graphics=graphics, sfx=sfx, final_name=name, cta=cta if cta is not None else str(idea_brief(src).get("call_to_action") or ""),
-                   music_file=music_file)                                     # a recorded track (the replay harness): nothing is generated
+                   music_file=music_file, keep_going=keep_going)                                     # a recorded track (the replay harness): nothing is generated
     except (fc.FinishError, TimelineError) as exc:
         raise ToolError(str(exc)) from exc
     failed = [f"{n}: {d}" for n, ok, d in r["checks"] if ok is False]
@@ -1051,7 +1051,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
     stage("Building the review page")
     from build_review import build
     build(Path(r["xml"]), folder, height=height)
-    items = [{"note": i, "note_time": 0, "note_text": "Finish the cut: " + s["name"], "op": s["name"], "applied": s["done"], "summary": s["summary"], "why": ""} for i, s in enumerate(r["steps"], start=1)]
+    items = [{"note": i, "note_time": 0, "note_text": "Finish the cut: " + s["name"], "op": s["name"], "applied": s["done"], "failed": bool(s.get("failed")), "summary": s["summary"], "why": ""} for i, s in enumerate(r["steps"], start=1)]
     return {"folder": str(folder), "items": items, "applied": sum(1 for i in items if i["applied"]), "notes": len(items), "xml": r["xml"], "page": str(folder / "review.html"),
             "url": serve_review(folder), "qa": None, "message": "",
             "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in r["checks"]]}
@@ -1178,10 +1178,15 @@ def _creative_one(xml: str, o: dict, emit, say, it: dict) -> str:
     steps = [k for k in ("captions", "graphics", "music", "bleep") if o.get(k)]
     if steps:
         say("adding " + ", ".join(steps))
-        res, _p = capture(finish_cut, str(cur), None, bool(o.get("captions")), bool(o.get("music")), bool(o.get("bleep")), None, 540, lambda s: say(s), bool(o.get("graphics")), bool(o.get("sfx")))
+        res, _p = capture(finish_cut, str(cur), None, bool(o.get("captions")), bool(o.get("music")), bool(o.get("bleep")), None, 540, lambda s: say(s), bool(o.get("graphics")), bool(o.get("sfx")), keep_going=True)
         emit({"type": "notes_applied", "batch": True, "root": xml, "label": f"V{n}", "auto": True, "finish": True, **res})
         cur = Path(res["xml"])
-        did.append("added " + ", ".join(steps))
+        failed = [i for i in res.get("items", []) if i.get("failed")]
+        added = [s for s in steps if not any(i["op"] == s for i in failed)]
+        if added:
+            did.append("added " + ", ".join(added))
+        for i in failed:                                       # a layer that could not be made is named with its reason; the ones that worked are kept
+            did.append(f"{i['op']} {i['summary']}")
     it["final_xml"] = str(cur)
     return "; ".join(did) if did else "nothing was chosen to do"
 
