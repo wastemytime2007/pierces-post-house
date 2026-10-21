@@ -1057,6 +1057,135 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
             "checks": [{"name": n, "ok": ok, "detail": d} for n, ok, d in r["checks"]]}
 
 
+CREATIVE_FILE = "get_creative.json"
+DEFAULT_CREATIVE = {"fillers": True, "captions": True, "graphics": True, "music": True, "bleep": True, "sfx": True}
+
+
+def creative_file(xml: str | Path) -> Path:
+    """Where a Get Creative batch keeps its progress: beside the first sequence, so the Review tab finds it again after it was closed, switched away from, or the app restarted."""
+    return Path(xml).expanduser().parent / CREATIVE_FILE
+
+
+def read_creative(xml: str | Path) -> dict | None:
+    import json
+    f = creative_file(xml)
+    try:
+        return json.loads(f.read_text()) if f.is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
+def _write_creative(xml: str | Path, state: dict) -> None:
+    import json
+    import time
+    f = creative_file(xml)
+    state["updated"] = time.time()
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=1))
+    tmp.replace(f)
+
+
+def get_creative(xmls: list[str], opts: dict | None = None, emit=None, stop=None) -> dict:
+    """Get Creative on each cut in turn: ums and uhs cut out, then captions, a title card and name tag, a music bed and the bleep (the finish), each result a new version in that cut's own review session.
+
+    One cut after another, in the background, so Ryan can leave and come back to all of them done. Progress is kept in `get_creative.json` beside the first cut (state of each: waiting, running, done,
+    failed, skipped) and every version is recorded in its cut's session AS IT IS MADE, so a stop, a failure or a closed app loses only the step in progress. One cut failing does not stop the others.
+    A cut that already carries captions, graphics or music (the finish is not idempotent) is skipped and says so. `emit(event)` receives creative_progress / creative_item / creative_batch_done
+    and the review_built / notes_applied events the sessions are built from; `stop()` ends the batch after the cut being worked on. Nothing is decided about the picture here."""
+    import time
+    use_labs()
+    emit = emit or (lambda _e: None)
+    stop = stop or (lambda: False)
+    o = {**DEFAULT_CREATIVE, **(opts or {})}
+    xmls = [str(Path(x).expanduser()) for x in xmls]
+    if not xmls:
+        raise ToolError("no sequences to work on")
+    for x in xmls:
+        if not Path(x).is_file():
+            raise ToolError(f"that XML is not there: {x}")
+    state = {"state": "running", "started": time.time(), "opts": o,
+             "items": [{"xml": x, "name": Path(x).stem, "status": "waiting", "step": "", "message": "", "final_xml": ""} for x in xmls]}
+    _write_creative(xmls[0], state)
+    emit({"type": "creative_started", "xml": xmls[0], "total": len(xmls), "items": state["items"]})
+
+    def save():
+        _write_creative(xmls[0], state)
+
+    for i, it in enumerate(state["items"]):
+        if stop():
+            state["state"] = "stopped"
+            break
+        it["status"] = "running"
+
+        def say(step, it=it, i=i):
+            it["step"] = str(step)[:200]
+            save()
+            emit({"type": "creative_progress", "xml": it["xml"], "index": i + 1, "total": len(xmls), "name": it["name"], "step": it["step"]})
+        say("starting")
+        try:
+            msg = _creative_one(it["xml"], o, emit, say, it)
+            it["status"] = "skipped" if msg.startswith("skipped") else "done"
+            it["message"] = msg
+        except ToolError as exc:
+            it["status"], it["message"] = "failed", str(exc)[:900]
+        except Exception as exc:                                   # one sequence failing must never end the batch
+            it["status"], it["message"] = "failed", f"{type(exc).__name__}: {exc}"[:900]
+        it["step"] = ""
+        save()
+        emit({"type": "creative_item", "xml": it["xml"], "index": i + 1, "total": len(xmls), "name": it["name"], "status": it["status"], "message": it["message"], "final_xml": it["final_xml"]})
+    else:
+        state["state"] = "done"
+    if state["state"] == "stopped":
+        for it in state["items"]:
+            if it["status"] == "running":
+                it["status"] = "waiting"
+    save()
+    counts = {k: sum(1 for it in state["items"] if it["status"] == k) for k in ("done", "skipped", "failed", "waiting")}
+    emit({"type": "creative_batch_done", "xml": xmls[0], "state": state["state"], "counts": counts, "items": state["items"]})
+    return {"state": state["state"], "counts": counts, "items": state["items"]}
+
+
+def _creative_one(xml: str, o: dict, emit, say, it: dict) -> str:
+    """One cut: its review (if it has none), then the steps. Returns what happened in a sentence (it starts with "skipped" when the cut was left alone)."""
+    import timeline
+    use_labs()
+    import finish_cut as fc
+    sess = load_session(xml)
+    if sess is None:
+        say("building the review")
+        res, _p = capture(build_review, xml)
+        emit({"type": "review_built", "batch": True, **res})          # "batch": the Review tab must not treat these as the review on screen; the session on disk is what it reads
+        sess = load_session(xml)
+    versions = (sess or {}).get("versions") or [{"label": "V1", "xml": xml}]
+    cur = Path(versions[-1]["xml"])
+    have = fc.layers_present(cur)
+    if have["on_screen"] or have["music"]:
+        return "skipped: it already has " + " and ".join(k for k, v in (("on-screen graphics or captions", have["on_screen"]), ("music", have["music"])) if v) + " (open it to look, or start it over to do it again)"
+    n = len(versions) + 1
+    did = []
+    if o.get("fillers"):
+        say("listening for ums and uhs")
+        import fillers
+        found = fillers.find(timeline.load_cut(cur))
+        if found:
+            nfile = _notes_path(cur.parent, [], "notes_empty.json")
+            res, _p = capture(apply_notes, str(cur), str(nfile), None, 540, lambda s: say(f"ums and uhs: {s}"), None, True)
+            emit({"type": "notes_applied", "batch": True, "root": xml, "label": f"V{n}", "auto": True, **res})
+            cur, n = Path(res["xml"]), n + 1
+            did.append(f"{len(found)} um/uh cut out")
+        else:
+            did.append("no ums or uhs heard")
+    steps = [k for k in ("captions", "graphics", "music", "bleep") if o.get(k)]
+    if steps:
+        say("adding " + ", ".join(steps))
+        res, _p = capture(finish_cut, str(cur), None, bool(o.get("captions")), bool(o.get("music")), bool(o.get("bleep")), None, 540, lambda s: say(s), bool(o.get("graphics")), bool(o.get("sfx")))
+        emit({"type": "notes_applied", "batch": True, "root": xml, "label": f"V{n}", "auto": True, "finish": True, **res})
+        cur = Path(res["xml"])
+        did.append("added " + ", ".join(steps))
+    it["final_xml"] = str(cur)
+    return "; ".join(did) if did else "nothing was chosen to do"
+
+
 def idea_direction(xml: str | Path) -> str:
     """What the chosen idea says the cut is for, as the direction the AI reviewer judges the story by. A cut made from a generated idea carries the idea's id in its name (`<project> <last 8 of the id> <time>`);
     the idea (plans/idea_*<id>.json: title, thesis, hook, tone, call to action, and the story order with a label on each range) is read from the project folder. The person does not retype it. Empty when the cut

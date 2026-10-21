@@ -8,7 +8,7 @@ In Ryan's real export (`runnells_days.xml`, 185 sequences) there are 14,491 <fil
 defined once and referenced after. So a sequence cut out on its own must have every file and every nested sequence it uses written out in full inside it, or the importer finds a reference to nothing.
 That is what `extract` does. The other sequences, the footage bins and every clip the chosen sequence does not use are left behind, so each piece is small (one cut, not a 46 MB project).
 
-A sequence is listed when it is a top-level sequence (not one used inside a clip), has at least one video clip, and is not one of the helper timelines ("All Synced ..."). The listing says which bin it sat in
+A sequence is listed when it is a top-level sequence (not one used inside a clip), has at least one video clip, and is not one of the helper timelines ("All Synced ...", PreCut's "Nested Sequence NN" in a "Nested Seqs" bin). The listing says which bin it sat in
 (Ryan's `SEQS/Shoot Days`), how many clips and how long. Nothing is judged or changed in the picture.
 """
 from __future__ import annotations
@@ -62,11 +62,14 @@ def _clip_count(seq: ET.Element) -> int:
     return sum(len(t.findall("clipitem")) for t in seq.findall("media/video/track"))
 
 
-def is_helper(name: str) -> bool:
-    return name.strip().lower().startswith("all synced")
+def is_helper(name: str, bin_path: str = "") -> bool:
+    """The timelines that are tools, not cuts: PreCut's "All Synced ..." and its "Nested Sequence NN" pieces (which sit in a "Nested Seqs" bin and run under a second)."""
+    n = name.strip().lower()
+    return n.startswith("all synced") or n.startswith("nested sequence") or "nested seqs" in bin_path.lower()
 
 
-def list_sequences(root: ET.Element) -> list[dict]:
+def list_sequences(root: ET.Element, check: bool = True) -> list[dict]:
+    """The real cuts. With `check`, each row also says whether it can be cut out (`problem` is None, or a sentence: it uses a file the XML never defines, which is offline media in Premiere)."""
     parents = _parents(root)
     nested = _nested_ids(root)
     rows = []
@@ -75,11 +78,19 @@ def list_sequences(root: ET.Element) -> list[dict]:
             continue
         name = (s.findtext("name") or "").strip()
         n = _clip_count(s)
-        if not name or n == 0 or is_helper(name):
+        binp = _bin_path(s, parents)
+        if not name or n == 0 or is_helper(name, binp):
             continue
         fps = _fps(s)
         dur = int(s.findtext("duration") or 0)
-        rows.append({"id": s.get("id"), "name": name, "bin": _bin_path(s, parents), "clips": n, "seconds": round(dur / fps, 1), "fps": round(fps, 3)})
+        rows.append({"id": s.get("id"), "name": name, "bin": binp, "clips": n, "seconds": round(dur / fps, 1), "fps": round(fps, 3), "problem": None})
+    if check and rows:
+        defs = _defs(root)
+        for r in rows:
+            try:
+                extract(root, r["id"], defs=defs)
+            except SplitError as exc:
+                r["problem"] = str(exc)
     return rows
 
 
@@ -146,9 +157,9 @@ def _inline_files(seq: ET.Element, file_defs: dict) -> list[str]:
     return missing
 
 
-def extract(root: ET.Element, seq_id: str, project_name: str | None = None) -> ET.Element:
+def extract(root: ET.Element, seq_id: str, project_name: str | None = None, defs: tuple | None = None) -> ET.Element:
     """A new <xmeml> that holds only sequence `seq_id`, with every file and nested sequence it uses defined inside it."""
-    file_defs, seq_defs = _defs(root)
+    file_defs, seq_defs = defs or _defs(root)
     src = seq_defs.get(seq_id)
     if src is None:
         raise SplitError(f"no sequence with id {seq_id!r} in this XML")

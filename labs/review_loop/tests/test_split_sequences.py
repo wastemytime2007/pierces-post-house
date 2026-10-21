@@ -102,3 +102,23 @@ def test_the_apps_two_commands_list_then_extract_beside_the_source(many, monkeyp
         ct.extract_sequences(str(many), ["nope"])
     with pytest.raises(ct.ToolError):
         ct.list_sequences(str(many.parent / "missing.xml"))
+
+
+def test_a_sequence_that_uses_a_file_the_xml_never_defines_is_flagged_in_the_listing_not_only_when_opened(tmp_path):
+    good = _seq("seq-g", "Good", [_clip("g1", "f1", 0, 100, True)])
+    bad = _seq("seq-x", "Offline", [_clip("x1", "f404", 0, 100, False)])
+    p = tmp_path / "mixed.xml"
+    p.write_text(_doc(_bin("Seqs", good, bad)))
+    rows = {r["name"]: r for r in ss.list_sequences(ss._load(p))}
+    assert rows["Good"]["problem"] is None
+    assert "never defined" in rows["Offline"]["problem"]
+    assert all(r["problem"] is None for r in ss.list_sequences(ss._load(p), check=False)), "the check can be skipped"
+
+
+def test_precuts_helper_timelines_are_not_listed_as_cuts(tmp_path):
+    cut = _seq("seq-c", "A real cut", [_clip("c1", "f1", 0, 100, True)])
+    nested = _seq("seq-n1", "Nested Sequence 04", [_clip("n1", "f1", 0, 10, False)])
+    p = tmp_path / "proj.xml"
+    p.write_text(_doc(_bin("Seqs", cut, _bin("Files", _bin("Nested Seqs", nested)))))
+    assert [r["name"] for r in ss.list_sequences(ss._load(p))] == ["A real cut"]
+    assert ss.is_helper("Nested Sequence 01") and ss.is_helper("x", "FOOTAGE/Files 18/Nested Seqs") and not ss.is_helper("Day 1", "SEQS/Shoot Days")

@@ -33,8 +33,13 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [making, setMaking] = useState(""); // the cut is being made from the ideas picked on the Ideas tab ("Review this cut"): what it is doing now
   // One XML that holds many sequences (a Premiere SEQS bin exported in one go): listed here, each one opened is cut out into its own XML and reviewed like any single cut.
   const [reading, setReading] = useState("");                      // the XML being read for its sequences
+  const [creative, setCreative] = useState(null);                // Get Creative's batch: { running, state: { state, started, items: [{ xml, name, status, step, message, final_xml }] } }; the truth is on disk (get_creative.json), this is what the tab last heard
+  const [creativeHidden, setCreativeHidden] = useState("");         // the started-stamp of a finished batch the person hid
   const [picker, setPicker] = useState(null);                      // { xml, rows, selected: [ids], filter, hideAuto }
-  const [seqSet, setSeqSet] = useState(null);                      // { source, items: [{ id, name, xml }] }: the sequences opened from one XML, to switch between
+  const [seqSet, setSeqSet] = useState(() => {                   // the sequences opened from one XML survive leaving the tab and coming back
+    try { return JSON.parse(localStorage.getItem("review.seqSet") || "null"); } catch (e) { return null; }
+  });
+                     // { source, items: [{ id, name, xml }] }: the sequences opened from one XML, to switch between
   const [incoming, setIncoming] = useState(""); // an export made while a review is open: offered, never swapped in under the notes being written
   const [exportsList, setExportsList] = useState([]);
   const [versions, setVersions] = useState([]); // [{label, xml, folder, url, qa}]
@@ -79,7 +84,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [choosing, setChoosing] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishOpts, setFinishOpts] = useState(() => {
-    try { return { captions: true, music: true, bleep: true, graphics: true, sfx: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true, graphics: true, sfx: true }; }
+    try { return { fillers: true, captions: true, music: true, bleep: true, graphics: true, sfx: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true, graphics: true, sfx: true }; }
   });
   const [autoFinish, setAutoFinish] = useState(() => {
     try { return localStorage.getItem("review.autoFinish") !== "off"; } catch (e) { return true; }
@@ -124,6 +129,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   useEffect(() => {
     return subscribe((ev) => {
+      if (ev.batch) return;                                                  // Get Creative's own events (another sequence's review and versions): not the review on screen; its sessions are on disk
       if (ev.type === "premiere_apps") {
         setPremiereApps(ev.apps || []);
       } else if (ev.type === "exports_listed") {
@@ -269,6 +275,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setPicker(null);
         setSeqSet({ source: ev.xml, items: ev.sequences.map((s) => ({ id: s.id, name: s.name, xml: s.xml })) });
         if (ev.sequences[0]) openReviewRef.current?.(ev.sequences[0].xml);
+      } else if (ev.type === "creative_started") {
+        setCreative({ running: true, state: { state: "running", items: ev.items } });
+      } else if (ev.type === "creative_progress") {
+        setCreative((c) => c && { ...c, running: true, state: { ...c.state, items: c.state.items.map((i) => (i.xml === ev.xml ? { ...i, status: "running", step: ev.step } : i)) } });
+      } else if (ev.type === "creative_item") {
+        setCreative((c) => c && { ...c, state: { ...c.state, items: c.state.items.map((i) => (i.xml === ev.xml ? { ...i, status: ev.status, step: "", message: ev.message, final_xml: ev.final_xml } : i)) } });
+        if (ev.status === "done" && versionsRef.current[0]?.xml === ev.xml) openReviewRef.current?.(ev.xml);          // the sequence on screen has new versions: show them
+      } else if (ev.type === "creative_batch_done") {
+        setCreative({ running: false, state: { state: ev.state, items: ev.items } });
+      } else if (ev.type === "creative_failed") {
+        setCreative((c) => c && { ...c, running: false });
+        setError(ev.message || "Get Creative could not start.");
+      } else if (ev.type === "creative_status") {
+        setCreative(ev.state ? { running: !!ev.running, state: ev.state } : null);
       } else if (ev.type === "sequences_failed") {
         setReading("");
         setError(ev.message || "The sequences could not be read.");
@@ -281,6 +301,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
     const say = (text, kind = "info") => setActivity((a) => [...a.slice(-39), { t: Date.now(), text, kind }]);
     const go = (i) => { setStep(i); setStepSince(Date.now()); };
     return subscribe((ev) => {
+      if (ev.batch) return;                                                  // Get Creative's own events (another sequence's review and versions): not the review on screen; its sessions are on disk
       if (ev.type === "review_built") {
         setActivity([]);
         say(`The cut is open as V1 (${ev.clips} clips, ${ev.duration} s).`);
@@ -410,6 +431,67 @@ export default function ReviewTab({ subscribe, onStatus }) {
     }
   }, []);
 
+  useEffect(() => {
+    try { if (seqSet) localStorage.setItem("review.seqSet", JSON.stringify(seqSet)); } catch (e) { /* private window */ }
+  }, [seqSet]);
+  const creativeKey = seqSet?.items?.[0]?.xml || versions[0]?.xml || "";
+  useEffect(() => {
+    if (creativeKey) sendCommand({ type: "creative_status", xml: creativeKey }).catch(() => {});      // a batch left running, or finished while the tab was away
+  }, [creativeKey]);
+
+  const startCreative = async (xmls) => {
+    if (!xmls.length) return;
+    try { localStorage.setItem("review.finish", JSON.stringify(finishOpts)); } catch (e) { /* private window */ }
+    setFinishing(false);
+    setError("");
+    setInfo("");
+    try {
+      await sendCommand({ type: "get_creative", xmls, opts: finishOpts });
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  };
+
+  function CreativePanel() {
+    const st = creative?.state;
+    if (!st || !st.items?.length || (!creative.running && creativeHidden === String(st.started))) return null;
+    const items = st.items;
+    const n = (k) => items.filter((i) => i.status === k).length;
+    const current = items.find((i) => i.status === "running");
+    const left = items.filter((i) => i.status === "waiting" || i.status === "running" || i.status === "failed");
+    const title = creative.running ? `Get Creative: ${n("done") + n("skipped") + n("failed") + (current ? 1 : 0)} of ${items.length}${current ? `, ${current.name}` : ""}`
+      : st.state === "done" ? `Get Creative finished: ${n("done")} done${n("skipped") ? `, ${n("skipped")} left alone` : ""}${n("failed") ? `, ${n("failed")} failed` : ""}`
+      : `Get Creative ${st.state === "stopped" ? "stopped" : "was interrupted"}: ${n("done")} of ${items.length} done`;
+    const mark = { done: "✓", skipped: "–", failed: "✗", running: "…", waiting: "·" };
+    return (
+      <div className={n("failed") && !creative.running ? "pm-tab-warnings" : "run-pipeline-section"} role="status" aria-live="polite">
+        <div className="pm-tab-row" style={{ alignItems: "center" }}>
+          <div className="run-pipeline-section-label" style={{ margin: 0 }}>{title}</div>
+          <span style={{ flex: 1 }} />
+          {creative.running
+            ? <button className="btn btn-ghost" onClick={() => sendCommand({ type: "creative_stop" })} title="Stops after the sequence being worked on. What is finished stays finished.">Stop after this one</button>
+            : (
+              <>
+                {left.length > 0 && <button className="btn btn-primary" onClick={() => startCreative(left.map((i) => i.xml))}>Continue with the {left.length} left</button>}
+                <button className="btn btn-ghost" onClick={() => setCreativeHidden(String(st.started))}>Hide</button>
+              </>
+            )}
+        </div>
+        {creative.running && <div className="sync-section-hint">You can leave this tab or the app in the background. Each sequence's new versions are saved as they are made, so you can come back to all of them. {current?.step ? `Now: ${current.step}.` : ""}</div>}
+        <div className="transcripts-list">
+          {items.map((i) => (
+            <div className="transcript-row" key={i.xml}>
+              <div className="transcript-row-main">
+                <div className="transcript-row-name">{mark[i.status] || "·"} {i.name}</div>
+                <div className="transcript-row-folder">{i.status === "running" ? (i.step || "starting") : i.message || (i.status === "waiting" ? "waiting" : "")}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   const openPicked = async () => {
     if (!picker || picker.selected.length === 0) return;
     setError("");
@@ -438,16 +520,16 @@ export default function ReviewTab({ subscribe, onStatus }) {
             <input type="checkbox" checked={picker.hideAuto} onChange={(e) => set({ hideAuto: e.target.checked })} />
             Hide Premiere auto-saves
           </label>
-          <button className="btn btn-ghost" onClick={() => set({ selected: [...new Set([...picker.selected, ...shown.map((r) => r.id)])] })}>Select all shown ({shown.length})</button>
+          <button className="btn btn-ghost" onClick={() => set({ selected: [...new Set([...picker.selected, ...shown.filter((r) => !r.problem).map((r) => r.id)])] })}>Select all shown ({shown.filter((r) => !r.problem).length})</button>
           <button className="btn btn-ghost" onClick={() => set({ selected: [] })}>Clear</button>
         </div>
         <div className="transcripts-list" style={{ maxHeight: 340, overflowY: "auto" }}>
           {shown.map((r) => (
-            <label className="transcript-row" key={r.id} style={{ cursor: "pointer" }}>
-              <input type="checkbox" checked={picker.selected.includes(r.id)} onChange={() => toggle(r.id)} style={{ marginRight: 10 }} />
+            <label className="transcript-row" key={r.id} style={{ cursor: r.problem ? "not-allowed" : "pointer", opacity: r.problem ? 0.55 : 1 }} title={r.problem || ""}>
+              <input type="checkbox" disabled={!!r.problem} checked={picker.selected.includes(r.id)} onChange={() => toggle(r.id)} style={{ marginRight: 10 }} />
               <div className="transcript-row-main">
                 <div className="transcript-row-name">{r.name}</div>
-                <div className="transcript-row-folder">{r.bin || "(no bin)"} · {r.clips} clip{r.clips === 1 ? "" : "s"} · {fmtDur(r.seconds)}</div>
+                <div className="transcript-row-folder">{r.bin || "(no bin)"} · {r.clips} clip{r.clips === 1 ? "" : "s"} · {fmtDur(r.seconds)}{r.problem ? " · cannot be opened: it uses media the XML does not define (offline in Premiere)" : ""}</div>
               </div>
             </label>
           ))}
@@ -470,7 +552,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <span className="sync-section-hint">From {fileName(seqSet.source)}:</span>
         {seqSet.items.map((s) => (
           <button key={s.xml} className={`btn ${versionsRef.current[0]?.xml === s.xml ? "btn-primary" : "btn-ghost"}`} disabled={!!busy || auto.status === "running"}
-            title={s.xml} onClick={() => openReview(s.xml)}>{s.name.length > 38 ? `${s.name.slice(0, 36)}…` : s.name}</button>
+            title={s.xml} onClick={() => openReview(s.xml)}>{{ done: "✓ ", skipped: "– ", failed: "✗ ", running: "… " }[creative?.state?.items?.find((i) => i.xml === s.xml)?.status] || ""}{s.name.length > 38 ? `${s.name.slice(0, 36)}…` : s.name}</button>
         ))}
       </div>
     );
@@ -587,7 +669,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className="ai-strip working" role="status" aria-live="polite">
           <span className="ai-dot" />
           <div className="ai-strip-main">
-            <div className="ai-strip-title">{CREATIVE_STAGE ? (busy === "applying" ? "Finishing the cut" : "Working") : auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
+            <div className="ai-strip-title">{CREATIVE_STAGE ? (busy === "applying" ? "Getting creative" : "Working") : auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
             <div className="ai-strip-sub">{what}</div>
             {!CREATIVE_STAGE && (auto.status === "running" || busy === "applying") && (
               <div className="ai-steps">
@@ -601,7 +683,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       );
     }
-    const yours = CREATIVE_STAGE ? "Your cut is open exactly as you trimmed it. Nothing here edits it. Add graphics, captions, music, transitions and sound, then Open in Premiere." : auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
+    const yours = CREATIVE_STAGE ? "Your cut is open exactly as you trimmed it. Nothing here edits it. Get Creative adds ums-and-uhs cuts, graphics, captions and music; click a cut to add a transition; then Open in Premiere." : auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
     return (
       <div className={`ai-strip yours ${outcomeBad ? "bad" : ""}`} role="status" aria-live="polite">
         <span className="ai-dot" />
@@ -621,11 +703,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
           <div className="run-pipeline-section-label">Choose the cut to review</div>
           <p className="pm-tab-sub">
             {CREATIVE_STAGE
-              ? "Open the XML you trimmed in Premiere. It shows here exactly as you cut it: the video and every clip on a timeline. Nothing in this stage edits the cut. Add graphics, captions, music and the bleep with Finish the cut, click any cut to add a transition and its sound, then Open in Premiere."
+              ? "Open the XML you trimmed in Premiere. It shows here exactly as you cut it: the video and every clip on a timeline. Nothing in this stage edits the cut. Add the ums-and-uhs cut, graphics, captions, music and the bleep with Get Creative, click any cut to add a transition and its sound, then Open in Premiere."
               : "Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere."}
           </p>
           {StatusStrip()}
       {SequencePicker()}
+      {CreativePanel()}
           {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">{CREATIVE_STAGE ? "No XML yet. Press Browse and choose the XML you exported from Premiere." : "No cut from this project yet. Pick ideas on the Ideas tab and press Review."}</div>}
           {exportsList.length > 0 && (
             <div className="transcripts-list">
@@ -702,9 +785,9 @@ export default function ReviewTab({ subscribe, onStatus }) {
               : `Submit changes → V${versions.length + 1}`}
         </button>
         </>)}
-        <button className="btn btn-ghost" onClick={() => setFinishing((x) => !x)} disabled={!!busy || auto.status === "running"}
-          title="Add the finishing layers to this version: captions, a music bed, the bleep. Makes the next version; the picture is not touched.">
-          Finish the cut…
+        <button className="btn btn-ghost" onClick={() => setFinishing((x) => !x)}
+          title="Cut the ums and uhs, then add captions, a title card and name tag, music and the bleep, as new versions. Can run on every sequence you opened, in the background." disabled={!!busy || auto.status === "running" || !!creative?.running}>
+          Get Creative…
         </button>
         <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere. Nothing to download.">
           {(premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere") + (version ? `: ${version.label}` : "")}
@@ -738,17 +821,26 @@ export default function ReviewTab({ subscribe, onStatus }) {
       )}
 
       {finishing && (
-        <div className="run-pipeline-section" role="dialog" aria-label="Finish the cut">
-          <div className="run-pipeline-section-label">Finish the cut</div>
-          <div className="sync-section-hint">Adds the layers below to this version and opens the result as V{versions.length + 1}. The picture and the length stay exactly as they are. This takes several minutes.</div>
-          {[["captions", "Captions: what is said, as text on screen"], ["graphics", "Graphics: a title card with the topic, and a name tag the first time each person talks"], ["music", "Music: generated, an upbeat bed under the voice, a beat on every cut"], ["sfx", "Sound effects: a library effect as each graphic comes on (placed with the music)"], ["bleep", "Bleep: every listed word"]].map(([k, label]) => (
+        <div className="run-pipeline-section" role="dialog" aria-label="Get Creative">
+          <div className="run-pipeline-section-label">Get Creative</div>
+          <div className="sync-section-hint">Runs in the background, one sequence after another, so you can leave and come back. Each sequence gets new versions: the ums and uhs cut out first, then the layers below on top. Several minutes per sequence.</div>
+          {[["fillers", "Ums and uhs: cut out of the sound and the picture (the cut gets shorter)"], ["captions", "Captions: what is said, as text on screen"], ["graphics", "Graphics: a title card with the topic, and a name tag the first time each person talks"], ["music", "Music: generated, an upbeat bed under the voice, a beat on every cut"], ["sfx", "Sound effects: a library effect as each graphic comes on (placed with the music)"], ["bleep", "Bleep: every listed word"]].map(([k, label]) => (
             <label key={k} className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <input type="checkbox" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
               {label}
             </label>
           ))}
           <div className="pm-tab-row">
-            <button className="btn btn-primary" onClick={finishCut} disabled={!finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics}>Make V{versions.length + 1}</button>
+            {(() => {
+              const nothing = !finishOpts.fillers && !finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics;
+              const all = seqSet && seqSet.items.length > 1 ? seqSet.items.map((s) => s.xml) : null;
+              return (
+                <>
+                  {all && <button className="btn btn-primary" onClick={() => startCreative(all)} disabled={nothing}>Get Creative on all {all.length} sequences</button>}
+                  <button className={`btn ${all ? "btn-ghost" : "btn-primary"}`} onClick={() => startCreative([versionsRef.current[0].xml])} disabled={nothing}>{all ? "Just this sequence" : "Get Creative"}</button>
+                </>
+              );
+            })()}
             <button className="btn btn-ghost" onClick={() => setFinishing(false)}>Cancel</button>
           </div>
         </div>
@@ -796,6 +888,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
       {StatusStrip()}
       {SequencePicker()}
+      {CreativePanel()}
 
       {mineLeft.length > 0 && (
         <div className="pm-tab-warnings" role="alert">
@@ -813,7 +906,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
       <div style={{ position: "relative", flex: 1, display: "flex", minHeight: 640 }}>
         {working && (auto.status === "running" || busy === "applying") && (
-          <div className="ai-badge"><span className="ai-dot" /> {CREATIVE_STAGE ? "Finishing the cut" : `AI editor working: ${STEPS[step].toLowerCase()}`}</div>
+          <div className="ai-badge"><span className="ai-dot" /> {CREATIVE_STAGE ? "Getting creative" : `AI editor working: ${STEPS[step].toLowerCase()}`}</div>
         )}
         <iframe
           key={version.url}

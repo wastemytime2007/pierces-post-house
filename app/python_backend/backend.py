@@ -1088,6 +1088,56 @@ def handle_export_timelines(cmd: dict) -> None:
 # Creator-workflow tools (labs/, bundled): review page first
 # ---------------------------------------------------------------------------
 
+_creative_lock = threading.Lock()
+_creative_stop = threading.Event()
+_creative_info: dict = {"running": False, "xml": None}
+
+
+def handle_get_creative(cmd: dict) -> None:
+    """Get Creative on one or many cuts, one after another, in a thread of its own so the batch never holds up anything else. Progress is on disk (get_creative.json); see creator_tools.get_creative."""
+    xmls = cmd.get("xmls") or []
+    if not xmls:
+        err("get_creative needs 'xmls'")
+        return
+    with _creative_lock:
+        if _creative_info["running"]:
+            emit({"type": "creative_failed", "xml": xmls[0], "message": "Get Creative is already running. Wait for it to finish or stop it."})
+            return
+        _creative_info.update(running=True, xml=xmls[0])
+        _creative_stop.clear()
+
+    def worker():
+        import creator_tools
+        try:
+            creator_tools.get_creative(xmls, cmd.get("opts"), emit, _creative_stop.is_set)         # each step captures its own printing; wrapping the whole batch would redirect stdout for hours
+        except creator_tools.ToolError as exc:
+            emit({"type": "creative_failed", "xml": xmls[0], "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "creative_failed", "xml": xmls[0], "message": f"{type(exc).__name__}: {exc}"})
+        finally:
+            _creative_info.update(running=False)
+
+    threading.Thread(target=worker, name="get-creative", daemon=True).start()
+
+
+def handle_creative_status(cmd: dict) -> None:
+    """Where a Get Creative batch stands, read from disk (so it is right after the tab was closed or the app restarted)."""
+    xml = cmd.get("xml")
+    if not xml:
+        err("creative_status needs an 'xml'")
+        return
+    import creator_tools
+    state = creator_tools.read_creative(xml)
+    running = bool(_creative_info["running"]) and Path(str(_creative_info.get("xml") or "")).parent == Path(xml).expanduser().parent
+    emit({"type": "creative_status", "xml": xml, "running": running, "state": state})
+
+
+def handle_creative_stop(cmd: dict) -> None:
+    """Stop after the cut being worked on; what is finished stays finished."""
+    _creative_stop.set()
+
+
 def handle_list_sequences(cmd: dict) -> None:
     """The sequences in an XML (for the picker when it holds more than one cut). Reading a 46 MB project takes a few seconds, so it runs in the background."""
     xml = cmd.get("xml")
@@ -1447,6 +1497,9 @@ HANDLERS = {
     "export_timelines": handle_export_timelines,
     "review_cut": handle_review_cut,
     # Creator-workflow tools (labs/)
+    "get_creative": handle_get_creative,
+    "creative_status": handle_creative_status,
+    "creative_stop": handle_creative_stop,
     "list_sequences": handle_list_sequences,
     "extract_sequences": handle_extract_sequences,
     "build_review": handle_build_review,
