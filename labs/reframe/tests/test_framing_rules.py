@@ -31,7 +31,7 @@ def test_the_window_fraction_and_the_fill_scales_are_the_arithmetic_the_doc_quot
     assert fill == {"mitch_red": 44, "bob_red": 59, "uhd": 89, "proxy": 178}
     for pct, free in ((44, "2.25x"), (59, "1.69x"), (89, "1.12x")):
         assert f"{pct}%" in DOC and free in DOC, f"the doc's table carries {pct}% and {free}"
-    assert fill["proxy"] > RULES["resolution"]["scale_warn_pct"]["value"], "a proxy is flagged on its own: already enlarged"
+    assert fill["proxy"] > RULES["resolution"]["scale_soft_max_pct"]["value"], "a proxy is already past the softness limit: no punch-in"
 
 
 def test_the_numbers_already_in_the_app_are_the_ones_the_rules_say():
@@ -41,6 +41,8 @@ def test_the_numbers_already_in_the_app_are_the_ones_the_rules_say():
     finish = (root / "review_loop" / "finish_cut.py").read_text()
     assert f"FRAME_MIN_SEC = {RULES['motion']['min_speaker_change_sec_to_move_frame']['value']}" in follow
     assert f"PUNCH = {RULES['punch_in']['factor']['value']}" in punch
+    assert f"SOFT_MAX_SCALE = {RULES['resolution']['scale_soft_max_pct']['value']:.1f}" in punch
+    assert f"MIN_PUNCH = {RULES['punch_in']['min_punch_factor']['value'] if 'min_punch_factor' in RULES['punch_in'] else RULES['resolution']['min_punch_factor']['value']:.2f}" in punch
     assert f"TAG_Y = {RULES['portrait']['lower_third_top_fraction']['value']}" in finish
     lo, hi = RULES["punch_in"]["sourced_range"]["min"], RULES["punch_in"]["sourced_range"]["max"]
     assert lo <= RULES["punch_in"]["factor"]["value"] <= hi

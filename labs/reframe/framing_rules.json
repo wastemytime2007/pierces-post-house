@@ -26,19 +26,22 @@
   "punch_in": {
     "factor": {"value": 1.20, "basis": "ryan (2026-10-21: 20% is good; punch_in.py)"},
     "sourced_range": {"min": 1.10, "max": 1.30, "common": [1.15, 1.20], "basis": "sourced"},
-    "keep_top_of_picture": {"value": true, "basis": "ryan"}
+    "keep_top_of_picture": {"value": true, "basis": "ryan"},
+    "judged_on_source_resolution": {"value": true, "basis": "ryan (2026-10-21)"}
   },
   "broll": {
     "frame_on": {"value": "the subject of the clip: a person, action with hands, or an object", "basis": "ryan (2026-10-21)"},
-    "subjects": ["person", "hands_action", "object"]
+    "subjects": ["person", "hands_action", "object"],
+    "subject_wider_than_portrait_window": {"value": "crop to the subject or the most important part", "basis": "ryan (2026-10-21)"}
   },
   "outputs": {
     "portrait": {"output": [1080, 1920], "serves": "Reels (one portrait crop for the vertical platforms)", "basis": "ryan (2026-10-21)"},
     "landscape": {"output": [1920, 1080], "serves": "YouTube and longer-form media", "basis": "ryan (2026-10-21)"}
   },
   "resolution": {
-    "scale_warn_pct": {"value": 100, "basis": "derived (1 source pixel per output pixel)"},
-    "scale_refuse_pct": {"value": 120, "basis": "mine"},
+    "scale_native_pct": {"value": 100, "basis": "derived (1 source pixel per output pixel)"},
+    "scale_soft_max_pct": {"value": 115, "basis": "ryan (2026-10-21: accept minimal softness for a crop that looks different, refuse real degradation); the 15% figure is mine"},
+    "min_punch_factor": {"value": 1.10, "basis": "sourced (10 to 30% is the working range); below it the shot looks too like its neighbour"},
     "sources": {
       "mitch_red": [7680, 4320],
       "bob_red": [5760, 3240],

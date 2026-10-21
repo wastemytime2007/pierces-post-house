@@ -45,7 +45,7 @@ The 9:16 window at full height shows only **31.6% of the width** of a 16:9 frame
 2. **Closer by 20%.** Sources range from 10 to 30%, 15 to 20% most common. Ryan chose 20% (2026-10-21: "20% punch in is good"); the app was at 15%. [Ryan; sourced range]
 3. **The same person stays in mid-frame and the top of the picture stays on the same source row**, so the closer shot grows from the top down and never cuts off a head. [Ryan/app]
 4. **A real second angle or a cutaway hides a jump better than a punch-in.** Punch-ins fake it and cannot hide a cut that changes the story. [sourced]
-5. **The picture must stay sharp** (section 5). Scale changes only work if the image does not go soft. [sourced]
+5. **The size of the punch is judged on the source's resolution** (section 5): the full 20% where the source has room, less where it does not, and no punch where even a modest one would degrade the footage. [Ryan, 2026-10-21]
 
 ## 5. Resolution limit (how far the crop can go before it softens)
 
@@ -59,8 +59,9 @@ Premiere's Scale is 100% at one source pixel per output pixel. Above 100% the pi
 | 4K 3840x2160 | 1920x1080 | 50% | 2.0x |
 | Proxy 1920x1080 | 1080x1920 | 178% | none (already soft) |
 
-1. **Warn when a clip's Scale passes 100%, refuse above 120%.** A clip whose fill scale is already above 100% (a proxy) is flagged on its own: the source is too small for the output. [100% is derived; the 120% refusal is mine]
-2. **A 4K clip in a portrait reel has only about 12% of free punch-in**, so the 20% punch-in softens it a little; on the RED originals it does not (1.69x and 2.25x free). Use the RED originals, never proxies, for any reel with punch-ins. [derived]
+1. **Judge the punch on the source.** The target is 20% closer. The new Scale is held to **115%**: up to 15% of enlargement is minimal softness and is accepted, because Ryan would rather have a crop that looks noticeably different than one so close to its neighbour that it still feels like a jump cut. [Ryan, 2026-10-21; the 115% figure is mine]
+2. **If the limit leaves less than a 10% punch, skip it and say why**, rather than fake a shot too like the clip before it. A source already enlarged to fill the frame (a proxy at 178%) is skipped for this reason, and the finish reports it. [Ryan's rule; the 10% floor is the bottom of the sourced 10 to 30% range]
+3. **What that means for his cameras:** RED originals get the full 20% (1.69x and 2.25x free). A 4K clip in a portrait reel fills at 89%, so 20% lands at 107%, 7% enlarged, and is accepted. A clip already at native size (100%) is held to 115%, a 15% punch. Never use proxies for a reel with punch-ins. [derived]
 
 ## 6. On-screen layers: safe zones (portrait 1080x1920)
 
@@ -86,9 +87,9 @@ Sources disagree on platform pixels and none is an official platform page:
 1. **Find the subject first, per clip**: a face for a person, the hands and the thing they work on for action, the object itself for a view. Detect it the way AutoFlip does (faces, then objects, then motion), per scene. [sourced method]
 2. **Portrait output from 16:9 B-roll: centre the window on that subject.** The window shows 31.6% of the width, so the subject is what decides the crop, not the middle of the frame. Keep a person's eyes in the section 2 band; for hands, keep the hands and the work in the middle third of the frame height, clear of the section 6 zones; for an object, the object's centre in the middle of the safe area. [subject rule Ryan; the placements are mine]
 3. **Landscape output: keep the clip as shot**, scaling only to put the subject where the thirds rule wants it or to fill the frame. [mine]
-4. **If the subject is wider than the portrait window** (a whole room, a long wall), use two held positions across a cut, or crop to the most important part. Never stretch. Which of the two is not decided; until it is, crop to the most important part. [sourced options; default mine]
+4. **If the subject is wider than the portrait window** (a whole room, a long wall), crop to the subject or the most important part. Never stretch. [Ryan, 2026-10-21]
 5. **A B-roll scene stays still inside itself** unless the camera moved. [sourced: AutoFlip static mode]
-6. **No scale above the section 5 limits**; B-roll from a phone or a proxy has less headroom than the RED originals. [derived]
+6. **Scale is held by the section 5 rule**; B-roll from a phone or a proxy has less headroom than the RED originals. [derived]
 
 ## 8. What the app does today against these rules
 
@@ -97,7 +98,7 @@ Sources disagree on platform pixels and none is an official platform page:
 | 2.1, 3.2, 3.4 centre on the speaker, hold short turns, no guesses | done (`framing.py`, `follow_speaker.py`), horizontal only |
 | 2.2, 2.3, 2.5 eyes and headroom bands, vertical placement | **not done**: the window never moves vertically except inside punch-ins, and the vertical unit is not confirmed by a Premiere export |
 | 4.1 to 4.3 alternate punch-ins, top kept | done (`punch_in.py`, now 120%) |
-| 5 resolution limits | **not done**: nothing refuses a scale that upsamples a 4K clip |
+| 5 resolution limits for punch-ins | done 2026-10-21 (`punch_in.py`: held to 115%, skipped under 10%, reason reported by the finish); not yet applied to B-roll framing or any other scale the app sets |
 | 6 safe zones, caption vs face | **not checked** (captions and lower thirds exist; nothing measures them against the zones or the face box) |
 | 7 B-roll portrait reframe | **not inspected for this write-up**; unknown whether B-roll is centred, tracked or letterboxed |
 
@@ -109,11 +110,9 @@ Measured on the finished XML against `find_faces.swift` face boxes (a face box g
 
 ## 10. Questions for Ryan
 
-Answered by Ryan on 2026-10-21: B-roll is framed on its subject; punch-in is 20%; portrait is the Reels format and landscape is YouTube and long form; the eye line is the upper third.
+All answered by Ryan on 2026-10-21: B-roll is framed on its subject (wider than the portrait window: crop to the subject or most important part); punch-in is 20%, judged on the source's resolution; portrait is the Reels format and landscape is YouTube and long form; the eye line is the upper third.
 
-Still open:
-
-1. **A B-roll subject wider than the portrait window**: two held positions across a cut, or crop to the most important part (the default until you say)?
+None open.
 
 ## Sources
 

@@ -61,3 +61,29 @@ def test_a_split_punched_clip_is_never_punched_closer():
     s = 44.44 * pi.PUNCH
     cut = _cut([(5, "/c.mp4", 0.3, 44.44), (3, "/c.mp4", 0.3, s), (3, "/c.mp4", 0.3, s)])
     assert pi.plan(cut, DIMS) == []
+
+
+def test_the_factor_is_judged_on_the_source_a_red_original_gets_all_of_it_a_4k_clip_gets_what_it_can_spare():
+    """Ryan, 2026-10-21: avoid overscaling when the footage would degrade, accept minimal softness for a crop that looks different."""
+    red = pi.plan(_cut([(5, "/c.mp4", 0.3, 44.44), (5, "/c.mp4", 0.3, 44.44)]), lambda _p: (7680, 4320))
+    assert abs(red[0]["scale"] - 44.44 * pi.PUNCH) < 0.01, "plenty of resolution: the full 20%"
+    uhd = pi.plan(_cut([(5, "/c.mp4", 0.3, 88.9), (5, "/c.mp4", 0.3, 88.9)]), lambda _p: (3840, 2160))
+    assert abs(uhd[0]["scale"] - 88.9 * pi.PUNCH) < 0.01, "a 4K clip fills the portrait frame at 89%: 20% closer is 107%, 7% enlarged, minimal, so it gets the full punch"
+    skipped: list = []
+    held = pi.plan(_cut([(5, "/c.mp4", 0.3, 100.0), (5, "/c.mp4", 0.3, 100.0)]), lambda _p: (3840, 2160), skipped=skipped)
+    assert held[0]["scale"] == pi.SOFT_MAX_SCALE and not skipped, "a clip already at native size is held to the softness limit: 115%, not 120%"
+    assert held[0]["scale"] / 100.0 >= pi.MIN_PUNCH, "and it is still a visibly different shot"
+
+
+def test_a_source_already_enlarged_is_not_punched_closer_and_the_reason_is_given():
+    """A 1080p proxy filling a portrait frame is at 178%: already degraded, so no closer shot, and the person is told why."""
+    skipped: list = []
+    rows = pi.plan(_cut([(5, "/c.mp4", 0.3, 177.8), (5, "/c.mp4", 0.3, 177.8)]), lambda _p: (1920, 1080), skipped=skipped)
+    assert rows == [] and [s["idx"] for s in skipped] == [2]
+    assert "1920x1080" in skipped[0]["why"] and "115%" in skipped[0]["why"]
+
+
+def test_a_punch_the_limit_would_shrink_under_ten_percent_is_skipped_not_faked():
+    skipped: list = []
+    rows = pi.plan(_cut([(5, "/c.mp4", 0.3, 106.0), (5, "/c.mp4", 0.3, 106.0)]), lambda _p: (3840, 2160), skipped=skipped)       # 115 / 106 = 1.085: too little change to hide a cut
+    assert rows == [] and len(skipped) == 1

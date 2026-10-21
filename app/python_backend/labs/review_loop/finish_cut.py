@@ -332,14 +332,18 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         # 0. a closer shot on every other clip of a jump cut (Ryan, 2026-10-08), before anything is laid over the picture; the finished picture is then held to this punched one
         import punch_in as pi
         punched = out / "_punched.xml"
-        rows = pi.punch_in(base, punched, dims_fn=dims_fn)
+        skipped_punch: list = []
+        rows = pi.punch_in(base, punched, dims_fn=dims_fn, skipped=skipped_punch)
         if rows:
             bad = [d for _n, ok, d in pi.check(base, punched, rows) if not ok]
             if bad:
                 raise FinishError("The punch-in failed its own check, so nothing was kept: " + "; ".join(bad))
             base = picture = punched
             steps.append({"name": "punch-in", "done": True, "summary": f"a closer shot on every other clip where one person talks across a cut ({len(rows)} clip{'s' if len(rows) != 1 else ''}: "
-                          + ", ".join(str(r["idx"]) for r in rows) + ")"})
+                          + ", ".join(str(r["idx"]) for r in rows) + ")"
+                          + (f"; clip {', '.join(str(s['idx']) for s in skipped_punch)} not punched: the source is too small to go closer without degrading it" if skipped_punch else "")})
+        elif skipped_punch:
+            steps.append({"name": "punch-in", "done": False, "summary": "no clip was punched in: " + skipped_punch[0]["why"]})
         else:
             steps.append({"name": "punch-in", "done": False, "summary": "no two clips in a row show the same person framed the same, so there was no jump cut to punch in on"})
     cut0 = timeline.load_cut(base)

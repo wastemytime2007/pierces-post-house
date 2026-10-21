@@ -25,6 +25,8 @@ import follow_speaker as fs  # noqa: E402
 import timeline  # noqa: E402
 
 PUNCH = 1.20                 # how much closer the punched-in clip is (Ryan, 2026-10-21: "20% punch in is good"; it was 1.15)
+SOFT_MAX_SCALE = 115.0       # percent. Premiere's Scale 100 is one source pixel per output pixel; above it the picture is enlarged. Up to 115 is minimal softness: accepted, because a crop that looks noticeably different beats one so close to its neighbour that it still feels like a jump cut (Ryan, 2026-10-21). Above it the footage is degraded: refused.
+MIN_PUNCH = 1.10             # a punch smaller than this (a resolution limit squeezed it) looks too much like the clip next to it, so it is skipped and reported instead of faked (sources: 10 to 30% is the working range)
 SAME_X = 0.08                # two clips whose mid-frame points are this close (fraction of the source width) show the same person: each clip is centred on that moment's face, so one person drifts up to 4% from clip to clip (Septic cut), and two people stand about 40% apart
 SAME_SCALE = 0.1             # percentage points
 
@@ -40,8 +42,11 @@ def _set_motion(el: ET.Element, scale: float, horiz: float, vert: float) -> None
                     prm.find("value/vert").text = "0" if abs(vert) < 1e-9 else f"{vert:.6f}"
 
 
-def plan(cut, dims_fn, factor: float = PUNCH) -> list[dict]:
-    """Which V1 clips to punch in on, and how: [{"idx", "scale", "horiz", "vert", "was_scale", "x"}] (idx is the clip's 1-based place on V1)."""
+def plan(cut, dims_fn, factor: float = PUNCH, skipped: list | None = None) -> list[dict]:
+    """Which V1 clips to punch in on, and how: [{"idx", "scale", "horiz", "vert", "was_scale", "x"}] (idx is the clip's 1-based place on V1).
+
+    The factor is judged against the source's resolution: the new scale is held to SOFT_MAX_SCALE, so a source with room (a RED original) gets the full factor and a 4K clip in a portrait cut gets less. A clip whose
+    allowed factor falls under MIN_PUNCH is not punched; it is added to `skipped` ([{"idx", "why"}]) when a list is given."""
     out_w, out_h = cut.width or 1080, getattr(cut, "height", 0) or 1920
     clips = [c for c in cut.video if c.motion]
     widest: dict[str, float] = {}
@@ -56,7 +61,12 @@ def plan(cut, dims_fn, factor: float = PUNCH) -> list[dict]:
                 and abs(prev[1] - x) < SAME_X and abs(prev[0].motion[0] - scale) < SAME_SCALE)
         run_pos = run_pos + 1 if jump else 0
         if run_pos % 2 == 1 and scale <= widest[c.src_path] * 1.01:          # only a clip still at the widest framing: a revised cut that splits a punched clip is never punched closer again
-            rows.append({"idx": c.idx, **zoom_row(c, scale * factor, dims_fn, out_w, out_h)})
+            new_scale = min(scale * factor, SOFT_MAX_SCALE)
+            if new_scale / scale < MIN_PUNCH:
+                if skipped is not None:
+                    skipped.append({"idx": c.idx, "why": f"the source is {int(sw)}x{int(sh)}: a closer shot would enlarge it to {scale * factor:.0f}% (the most allowed is {SOFT_MAX_SCALE:.0f}%), and what is left would look too much like the clip before it"})
+            else:
+                rows.append({"idx": c.idx, **zoom_row(c, new_scale, dims_fn, out_w, out_h)})
         prev = (c, x)
     return rows
 
@@ -78,13 +88,13 @@ def widest_scale(cut_w: int, cut_h: int, src_w: float, src_h: float) -> float:
     return max(cut_w / src_w, cut_h / src_h) * 100.0
 
 
-def punch_in(xml_in: Path, xml_out: Path, dims_fn=None, factor: float = PUNCH) -> list[dict]:
+def punch_in(xml_in: Path, xml_out: Path, dims_fn=None, factor: float = PUNCH, skipped: list | None = None) -> list[dict]:
     """Writes xml_out with the punch-ins; returns what was punched (empty: nothing was a jump cut, and xml_out is a copy)."""
     if dims_fn is None:
         import render_preview
         dims_fn = render_preview.source_dims
     cut = timeline.load_cut(Path(xml_in))
-    rows = plan(cut, dims_fn, factor)
+    rows = plan(cut, dims_fn, factor, skipped)
     tree = ET.parse(xml_in)
     seq = tree.getroot().find(".//sequence")
     zone_f = round(cut.zone_end * cut.fps)
@@ -120,7 +130,10 @@ def main() -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--factor", type=float, default=PUNCH)
     args = ap.parse_args()
-    rows = punch_in(args.xml, args.out, factor=args.factor)
+    skipped: list = []
+    rows = punch_in(args.xml, args.out, factor=args.factor, skipped=skipped)
+    for s in skipped:
+        print(f"clip {s['idx']}: not punched in, {s['why']}")
     for r in rows:
         print(f"clip {r['idx']}: {r['was_scale']:g}% -> {r['scale']:g}%")
     rows_ok = check(args.xml, args.out, rows)
