@@ -5,9 +5,9 @@
 
 What it does (the XML half of "Film Impact Push + whoosh"; the transition itself is added by the Transition Lab panel, which XML cannot carry):
   - finds the cuts on one video track: a cut is where one clip starts exactly as the previous one ends
-  - for each cut, writes two audio clips (the stereo whoosh split across two tracks, like Premiere does) copied from Ryan's template
-    export: the same excerpt of `Whooshes.wav`, -5 dB, 120% speed, starting 4 frames before the cut and ending 7 frames after it
-    (his template: cut at frame 116, whoosh at 112 to 123)
+  - for each cut, writes two audio clips (the stereo whoosh split across two tracks, like Premiere does), built on Ryan's template export, starting 4 frames before the cut and ending 7 frames after it
+    (his template: cut at frame 116, whoosh at 112 to 123). The sound is `Whoosh Push.wav`, his selection from `Whooshes.wav` cut into its own file with the 120% speed and -5 dB baked in (make_whoosh.py):
+    Premiere read the Time Remap version's in/out as plain source frames on import and played the wrong, nearly silent part, so nothing here relies on a speed setting
   - adds the two tracks AFTER the sequence's existing audio tracks and touches nothing else: the output is the input with one block of text inserted (checked)
   - writes cuts.json next to the output: the cut frames, for the panel and for anyone checking
 Handles Premiere-exported XML (plain <xmeml><sequence> with files defined inline).
@@ -16,14 +16,42 @@ import argparse
 import json
 import re
 import sys
+import math
+import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from urllib.parse import quote
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_TEMPLATE = HERE / "templates" / "film_impact_push_whoosh_template.xml"
 TEMPLATE_CUT = 116                      # in the template: V1 clip 1 ends and clip 2 starts here
 BEFORE, AFTER = 4, 7                    # whoosh starts BEFORE frames ahead of the cut and ends AFTER frames past it (112 and 123 in the template)
 TRANSITION = {"match_name": "AE.AE_Impact_Push", "frames": 6, "alignment": 0.5}
+SFX_JSON = Path("/Users/pierce/Documents/Transition Lab/sfx/Whoosh Push.json")
+TICKS_PER_FRAME = 8475667200            # at 29.97
+FRAMES_ON_TIMELINE = BEFORE + AFTER     # the whoosh clip is 11 frames long on the timeline
+
+
+def sfx_info() -> dict:
+    """The baked whoosh file: its path as a URL, its name and its length in frames (made by make_whoosh.py if it is not there yet)."""
+    if not SFX_JSON.exists():
+        subprocess.run([sys.executable, str(HERE / "make_whoosh.py")], check=True, capture_output=True)
+    j = json.loads(SFX_JSON.read_text())
+    return {"name": Path(j["out"]).name, "url": "file://localhost" + quote(j["out"], safe="/"), "frames": math.ceil(j["seconds"] * 30000 / 1001)}
+
+
+def bake(c: str, sfx: dict) -> str:
+    """Turn a copy of the template's whoosh clip into a clip of the plain baked file: no Gain, no Time Remap, in 0 to 11 frames."""
+    c = re.sub(r"<filter>.*?</filter>\s*", "", c, flags=re.S)
+    c = c.replace("Whooshes.wav", sfx["name"])
+    c = re.sub(r"<pathurl>[^<]*</pathurl>", f"<pathurl>{sfx['url']}</pathurl>", c)
+    c = re.sub(r"<duration>\d+</duration>", f"<duration>{sfx['frames']}</duration>", c)          # the clip's and the file's own length
+    c = re.sub(r"<in>\d+</in>", "<in>0</in>", c, count=1)
+    c = re.sub(r"<out>\d+</out>", f"<out>{FRAMES_ON_TIMELINE}</out>", c, count=1)
+    c = re.sub(r"<pproTicksIn>\d+</pproTicksIn>", "<pproTicksIn>0</pproTicksIn>", c, count=1)
+    c = re.sub(r"<pproTicksOut>\d+</pproTicksOut>", f"<pproTicksOut>{FRAMES_ON_TIMELINE * TICKS_PER_FRAME}</pproTicksOut>", c, count=1)
+    c = re.sub(r"<string>[^<]*</string>(\s*)<frame>\d+</frame>", r"<string>00;00;00;00</string>\1<frame>0</frame>", c, count=1)
+    return c
 
 
 def sequence_span(raw: str, name: str | None) -> tuple[int, int, str]:
@@ -52,7 +80,7 @@ def template_tracks(template: Path) -> tuple[str, str]:
     return whoosh[0], whoosh[1]
 
 
-def build_block(left_t: str, right_t: str, cuts: list[int], first_track_number: int, group_base: int) -> str:
+def build_block(left_t: str, right_t: str, cuts: list[int], first_track_number: int, group_base: int, sfx: dict) -> str:
     """The two new <track> elements, with one pair of clips per cut."""
     def clip_of(track_text: str) -> str:
         return re.search(r"<clipitem .*?</clipitem>", track_text, re.S).group(0)
@@ -78,6 +106,7 @@ def build_block(left_t: str, right_t: str, cuts: list[int], first_track_number: 
                 c = c.replace('<file id="file-10" />', '<file id="file-whoosh-1" />')
             c = re.sub(r"<start>\d+</start>", f"<start>{112 + shift}</start>", c, count=1)
             c = re.sub(r"<end>\d+</end>", f"<end>{123 + shift}</end>", c, count=1)
+            c = bake(c, sfx)
             # links: the pair, on the two new tracks, this clip's position on its track, a group number of its own
             links = "".join(
                 f"<link><linkclipref>{ids[i]}</linkclipref><mediatype>audio</mediatype><trackindex>{(t_l, t_r)[i]}</trackindex><clipindex>{k}</clipindex><groupindex>{group_base + k}</groupindex></link>"
@@ -110,7 +139,7 @@ def main() -> int:
     left_t, right_t = template_tracks(Path(a.template))
     n_audio = len(ET.fromstring(seq_xml).findall("media/audio/track"))
     groups = [int(g) for g in re.findall(r"<groupindex>(\d+)</groupindex>", seq_xml)]
-    block = build_block(left_t, right_t, kept, n_audio + 1, max(groups or [0]))
+    block = build_block(left_t, right_t, kept, n_audio + 1, max(groups or [0]), sfx_info())
     m = list(re.finditer(r"</track>(\s*)</audio>", seq_xml))
     assert m, "could not find the end of the sequence's audio tracks"
     ins = m[-1].start() + len("</track>")

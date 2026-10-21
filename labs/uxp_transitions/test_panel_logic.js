@@ -63,7 +63,9 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   await handlers.list(); await tick();
   assert(log().includes("4 video transition match names"), "counts all names");
   assert(log().includes("2 contain \"impact\""), "filters by text");
-  assert(calls.saved.length === 1 && calls.saved[0][1].split("\n").length === 4, "saves the full list to a file");
+  const names = calls.saved.filter((s) => s[0] === "transition_match_names.txt");
+  assert(names.length === 1 && names[0][1].split("\n").length === 4, "saves the full list to a file");
+  assert(calls.saved.some((s) => s[0] === "last_run_log.txt" && s[1].includes("4 video transition match names")), "saves the whole panel log after each click");
 
   await handlers.first(); await tick();
   assert(log().includes("1 cuts between touching clips"), "only the touching pair is a cut: " + log());

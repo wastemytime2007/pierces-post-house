@@ -22,13 +22,16 @@ async function guard(label, fn) {
   } catch (e) {
     log("ERROR:", (e && (e.stack || e.message)) || String(e));
   }
+  try {
+    await saveText("last_run_log.txt", $("log").value, true); // the whole panel log, so it can be read without a screenshot
+  } catch (e) { /* the log file is a convenience */ }
 }
 
-async function saveText(fileName, text) {
+async function saveText(fileName, text, quiet) {
   const folder = await uxp.storage.localFileSystem.getDataFolder();
   const file = await folder.createFile(fileName, { overwrite: true });
   await file.write(text);
-  log("saved:", file.nativePath);
+  if (!quiet) log("saved:", file.nativePath);
 }
 
 async function listTransitions() {
@@ -67,6 +70,8 @@ async function cutsOnTrack(seq, trackNumber) {
   }
   rows.sort((a, b) => a.start - b.start);
   log(`V${trackNumber}: ${rows.length} clips`);
+  const tpf = await ticksPerFrame(seq);
+  rows.forEach((r, i) => log(`  clip ${i + 1}: "${r.name}" frames ${Math.round(r.start / tpf)} to ${Math.round(r.end / tpf)}`));
   const cuts = [];
   for (let i = 0; i + 1 < rows.length; i++) {
     if (Math.abs(rows[i].end - rows[i + 1].start) < 1000) cuts.push({ before: rows[i], after: rows[i + 1] });
@@ -76,8 +81,9 @@ async function cutsOnTrack(seq, trackNumber) {
 }
 
 function addAt(project, clip, matchName, durationTicks, alignment) {
+  let accepted;
   project.lockedAccess(() => {
-    project.executeTransaction((compound) => {
+    accepted = project.executeTransaction((compound) => {
       const transition = ppro.TransitionFactory.createVideoTransition(matchName);
       let opts = new ppro.AddTransitionOptions();
       opts = opts.setDuration(ppro.TickTime.createWithTicks(String(Math.round(durationTicks)))) || opts;
@@ -87,6 +93,7 @@ function addAt(project, clip, matchName, durationTicks, alignment) {
       compound.addAction(clip.createAddVideoTransitionAction(transition, opts));
     }, `Add transition ${matchName}`);
   });
+  return accepted;
 }
 
 async function apply(onlyFirst) {
@@ -111,7 +118,8 @@ async function apply(onlyFirst) {
   const todo = onlyFirst ? cuts.slice(0, 1) : cuts;
   for (const c of todo) {
     log(`adding "${matchName}" at the cut into "${c.after.name}", ${frames} frames, alignment ${alignment}`);
-    addAt(project, c.after.it, matchName, tpf * frames, Number.isNaN(alignment) ? 0.5 : alignment);
+    const accepted = addAt(project, c.after.it, matchName, tpf * frames, Number.isNaN(alignment) ? 0.5 : alignment);
+    log(`  Premiere ${accepted ? "accepted" : "did NOT accept"} the transaction`);
   }
   const track = await seq.getVideoTrack(trackNumber - 1);
   const trans = await track.getTrackItems(ppro.Constants.TrackItemType.TRANSITION, false);
