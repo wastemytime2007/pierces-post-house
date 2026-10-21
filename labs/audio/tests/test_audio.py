@@ -286,3 +286,19 @@ def test_several_effects_share_one_pair_of_tracks_and_one_file(tmp_path, cut_med
     assert len({c.find("file").get("id") for c in new[2].findall("clipitem")}) == 1            # one file, referred to three times
     assert [tr.findall("clipitem")[0].find("file").findtext("pathurl") is not None for tr in new[2:3]] == [True]
     assert all(tr[-1].tag == "locked" and tr[-2].tag == "enabled" for tr in new)               # enabled/locked still close each track
+
+
+def test_a_track_laid_out_the_way_precut_writes_it_is_not_reordered_but_a_track_with_clips_added_after_enabled_is(stems):
+    def track(xml):
+        return ET.fromstring(xml)
+
+    precut = "<track><clipitem id='a'/><enabled>TRUE</enabled><locked>FALSE</locked><outputchannelindex>1</outputchannelindex></track>"
+    tr = track(precut)
+    pa.settle_track_tail(tr)
+    assert [c.tag for c in tr] == ["clipitem", "enabled", "locked", "outputchannelindex"], "already in place: untouched"
+    added = track("<track><enabled>TRUE</enabled><locked>FALSE</locked><clipitem id='a'/><clipitem id='b'/></track>")        # clips appended after the flags (a reused track)
+    pa.settle_track_tail(added)
+    assert [c.tag for c in added] == ["clipitem", "clipitem", "enabled", "locked"], "the flags go after the clips"
+    empty = track("<track><enabled>TRUE</enabled><locked>FALSE</locked></track>")
+    pa.settle_track_tail(empty)
+    assert [c.tag for c in empty] == ["enabled", "locked"]

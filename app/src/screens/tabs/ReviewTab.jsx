@@ -486,16 +486,16 @@ export default function ReviewTab({ subscribe, onStatus }) {
     const what = making ? making
       : busy === "building" ? "Building the review page from the cut."
       : auto.status === "running" ? (auto.round ? `Round ${auto.round} of ${auto.of} on ${auto.label}: ${STEPS[step].toLowerCase()}.` : `Reviewing ${auto.label}.`)
-      : busy === "applying" ? (stage || "The editor is making the changes you submitted.")
+      : busy === "applying" ? (CREATIVE_STAGE ? (stage || "Adding the layers you chose: title card and name tags, captions, music, the bleep. Several minutes; the next version opens here when it is done.") : (stage || "The editor is making the changes you submitted."))
       : "";
     if (working) {
       return (
         <div className="ai-strip working" role="status" aria-live="polite">
           <span className="ai-dot" />
           <div className="ai-strip-main">
-            <div className="ai-strip-title">{auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
+            <div className="ai-strip-title">{CREATIVE_STAGE ? (busy === "applying" ? "Finishing the cut" : "Working") : auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
             <div className="ai-strip-sub">{what}</div>
-            {(auto.status === "running" || busy === "applying") && (
+            {!CREATIVE_STAGE && (auto.status === "running" || busy === "applying") && (
               <div className="ai-steps">
                 {STEPS.map((n, i) => <span key={n} className={`ai-step ${i === step ? "on" : i < step ? "done" : ""}`}>{i < step ? "✓ " : ""}{n}</span>)}
                 <span className="ai-time">Nothing is needed from you.</span>
@@ -715,7 +715,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
       <div style={{ position: "relative", flex: 1, display: "flex", minHeight: 640 }}>
         {working && (auto.status === "running" || busy === "applying") && (
-          <div className="ai-badge"><span className="ai-dot" /> AI editor working: {STEPS[step].toLowerCase()}</div>
+          <div className="ai-badge"><span className="ai-dot" /> {CREATIVE_STAGE ? "Finishing the cut" : `AI editor working: ${STEPS[step].toLowerCase()}`}</div>
         )}
         <iframe
           key={version.url}

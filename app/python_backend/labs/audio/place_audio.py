@@ -111,14 +111,22 @@ def place(xml_in: Path, xml_out: Path, folder: Path) -> dict:
             clips.append({"name": c["name"], "kind": c["kind"], "start": start, "frames": n, "path": path, "start_sec": c["start_sec"], "pair": reuse["pair"]})
         k += 1
 
-    for tr in audio.findall("track"):                              # a track's <enabled>/<locked> come after its clips
-        tail = [ch for ch in tr if ch.tag in ("enabled", "locked")]
-        for ch in tail:
-            tr.remove(ch)
-            tr.append(ch)
+    for tr in audio.findall("track"):
+        settle_track_tail(tr)
     ET.indent(root, space="\t")
     xml_out.write_text(po.HEADER + ET.tostring(root, encoding="unicode") + "\n")
     return {"fps": sp["fps"], "clips": clips, "pairs": n_pairs}
+
+
+def settle_track_tail(tr) -> None:
+    """A track's <enabled>/<locked> come after its clips, and nothing else moves: a track that already had them in place (before <outputchannelindex>, as PreCut writes them) stays exactly as it was,
+    which the REST-UNCHANGED check needs (it compares element order; on 2026-10-21 moving them to the very end made the music step refuse a real cut)."""
+    tail = [ch for ch in tr if ch.tag in ("enabled", "locked")]
+    for ch in tail:
+        tr.remove(ch)
+    last = max((i for i, ch in enumerate(tr) if ch.tag == "clipitem"), default=-1)
+    for n, ch in enumerate(tail):
+        tr.insert(last + 1 + n, ch)
 
 
 def verify_placed(xml_in: Path, xml_out: Path, info: dict) -> list[tuple[str, bool | None, str]]:
