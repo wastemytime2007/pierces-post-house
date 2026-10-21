@@ -243,8 +243,55 @@ function startAuto() {
   setTimeout(() => scanProject("panel loaded"), 1500);
 }
 
+// ---- probe: what settings does an added transition expose (e.g. the Push's direction)? ---------------------------------------------------------
+// For every transition on the video tracks of the open sequence: its name, then each component and parameter with its current value. Written to transition_params.txt.
+async function describeTransitions() {
+  const { seq } = await activeSequence();
+  const lines = [`sequence: ${seq.name}`];
+  const nTracks = await seq.getVideoTrackCount();
+  for (let t = 0; t < nTracks; t++) {
+    const track = await seq.getVideoTrack(t);
+    const items = await track.getTrackItems(ppro.Constants.TrackItemType.TRANSITION, false);
+    for (const it of items) {
+      let head = `V${t + 1} transition`;
+      try { head += ` "${await it.getName()}" match ${await it.getMatchName()} at ${(await it.getStartTime()).seconds.toFixed(3)}s`; } catch (e) { head += ` (name: ${e.message})`; }
+      lines.push(head);
+      try {
+        const chain = await it.getComponentChain();
+        const n = await chain.getComponentCount();
+        for (let c = 0; c < n; c++) {
+          const comp = await chain.getComponentAtIndex(c);
+          const pc = await comp.getParamCount();
+          lines.push(`  component ${c}: "${await comp.getDisplayName()}" (${await comp.getMatchName()}), ${pc} params`);
+          for (let p = 0; p < pc; p++) {
+            const prm = await comp.getParam(p);
+            let val;
+            try { const kf = await prm.getStartValue(); val = JSON.stringify(kf && (kf.value !== undefined ? kf.value : kf)); } catch (e) { val = `(value: ${e.message})`; }
+            lines.push(`    param ${p}: "${prm.displayName}" = ${val}`);
+          }
+        }
+      } catch (e) {
+        lines.push(`  could not read its settings: ${(e && e.message) || String(e)}`);
+      }
+    }
+  }
+  if (lines.length === 1) lines.push("(no transitions on the video tracks)");
+  log(lines.join("\n"));
+  await saveText("transition_params.txt", lines.join("\n"), true);
+}
+
+async function noteStartup() {
+  try {
+    const h = uxp.host || {};
+    await saveText("started.txt", `${new Date().toISOString()} loaded in ${h.name || "?"} ${h.version || "?"}\n`, true);
+  } catch (e) { /* convenience */ }
+}
+
+$("describe").addEventListener("click", () => guard("describe transitions", describeTransitions));
 $("list").addEventListener("click", () => guard("list transitions", listTransitions));
 $("first").addEventListener("click", () => guard("add at first cut", () => apply(true)));
 $("all").addEventListener("click", () => guard("add at every cut", () => apply(false)));
-log("Transition Lab v0.4: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
+log("Transition Lab v0.5: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
+noteStartup();
 startAuto();
+setTimeout(() => guard("describe transitions (on load)", describeTransitions), 4000);
