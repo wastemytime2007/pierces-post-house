@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Click a cut</title>
+<style>
+  :root { --navy:#033459; --blue:#0391d8; --light:#00ade1; --orange:#f4690b; --bg:#0c1b29; --panel:#10283d; --line:#1f4766; --text:#e8eef4; --muted:#8fa6ba; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  header { padding:16px 24px; background:var(--navy); border-bottom:3px solid var(--blue); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:19px; }
+  header .hint { color:#b9d3e6; font-size:13px; }
+  main { padding:20px 24px 40px; max-width:1500px; margin:0 auto; }
+  h2 { font-size:15px; margin:22px 0 8px; color:var(--light); text-transform:uppercase; letter-spacing:.04em; }
+  .files { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:8px; }
+  .file { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 12px; cursor:pointer; }
+  .file:hover { border-color:var(--blue); }
+  .file b { display:block; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file small { color:var(--muted); }
+  select { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 8px; font-size:14px; }
+  .strip-wrap { overflow-x:auto; padding:10px 0 16px; }
+  .strip { display:flex; align-items:stretch; min-height:150px; }
+  .clip { flex:1 1 var(--w); min-width:130px; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; display:flex; flex-direction:column; }
+  .clip img { width:100%; height:92px; object-fit:cover; background:#081521; display:block; }
+  .clip .noimg { height:92px; background:#081521; color:var(--muted); font-size:12px; display:flex; align-items:center; justify-content:center; }
+  .clip .meta { padding:6px 9px; font-size:12px; color:var(--muted); }
+  .clip .meta b { color:var(--text); font-weight:600; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cut { flex:0 0 74px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; cursor:pointer; position:relative; user-select:none; }
+  .cut .bar { width:6px; flex:1; background:var(--line); border-radius:3px; min-height:60px; }
+  .cut:hover .bar { background:var(--blue); }
+  .cut.on .bar { background:var(--light); }
+  .cut.manual .bar { background:var(--orange); }
+  .cut.off { cursor:not-allowed; opacity:.4; }
+  .cut .badge { font-size:11px; text-align:center; line-height:1.25; padding:2px 5px; border-radius:6px; background:var(--panel); border:1px solid var(--line); min-width:64px; }
+  .cut.on .badge { border-color:var(--light); color:var(--light); }
+  .cut.manual .badge { border-color:var(--orange); color:var(--orange); }
+  .cut .time { font-size:11px; color:var(--muted); }
+  .bar-actions { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:6px; }
+  button { background:var(--blue); color:#fff; border:0; border-radius:8px; padding:11px 18px; font-size:15px; font-weight:600; cursor:pointer; }
+  button:hover { background:var(--light); }
+  button.quiet { background:transparent; border:1px solid var(--line); color:var(--muted); font-weight:500; padding:8px 14px; }
+  button:disabled { opacity:.45; cursor:default; }
+  .summary { color:var(--muted); }
+  .result { margin-top:16px; padding:14px 16px; border-radius:10px; background:var(--panel); border:1px solid var(--line); }
+  .result.ok { border-color:var(--light); }
+  .result.err { border-color:#d94b4b; color:#ffb4b4; }
+  .result code { background:#081521; padding:2px 6px; border-radius:4px; font-size:13px; word-break:break-all; }
+  .menu { position:fixed; z-index:50; background:#0a2236; border:1px solid var(--blue); border-radius:9px; box-shadow:0 12px 34px rgba(0,0,0,.55); min-width:205px; padding:5px; font-size:14px; }
+  .menu .item { padding:8px 12px; border-radius:6px; cursor:pointer; display:flex; justify-content:space-between; gap:18px; position:relative; white-space:nowrap; }
+  .menu .item:hover { background:var(--navy); }
+  .menu .item.sep { border-top:1px solid var(--line); margin-top:4px; padding-top:9px; }
+  .menu .item small { color:var(--muted); }
+  .menu .sub { display:none; position:absolute; left:100%; top:-6px; margin-left:3px; }
+  .menu .item:hover > .sub { display:block; }
+  .note { color:var(--muted); font-size:13px; max-width:850px; }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Click a cut</h1>
+  <span class="hint" id="hint">Pick an XML you exported from Premiere, then click a cut between two clips.</span>
+</header>
+<main>
+  <div id="pick">
+    <h2>Your exported XMLs</h2>
+    <div class="files" id="files"><div class="note">Looking for XMLs on your Desktop and in Documents...</div></div>
+    <div class="bar-actions" style="margin-top:12px"><input id="pathin" placeholder="or paste the full path of an XML (right-click the file, hold Option, Copy as Pathname)" style="flex:1;min-width:300px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:6px;padding:9px 11px;font-size:14px"><button class="quiet" id="pathgo">Open</button></div>
+  </div>
+
+  <div id="work" class="hidden">
+    <h2 id="title">Sequence</h2>
+    <div class="bar-actions">
+      <span id="seqpick"></span>
+      <span class="summary" id="fps"></span>
+      <button class="quiet" id="back">Choose a different XML</button>
+    </div>
+    <div class="strip-wrap"><div class="strip" id="strip"></div></div>
+    <div class="note" id="legend">Click the bar between two clips. Add transition, then Film Impact Push, then a direction. <b style="color:var(--light)">Blue</b> = Left, applied by itself in Premiere after you import.
+      <b style="color:var(--orange)">Orange</b> = Up, Down or Right: your whoosh is placed and the cut is marked, and you drop your own preset on it (a plugin cannot set a push's direction or apply a preset).</div>
+    <div class="bar-actions" style="margin-top:16px">
+      <button id="save" disabled>Save XML with these transitions</button>
+      <button class="quiet" id="clear">Clear all</button>
+      <span class="summary" id="count"></span>
+    </div>
+    <div id="result"></div>
+  </div>
+</main>
+<div id="menu" class="menu hidden"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const state = { path: null, sequence: null, info: null, plan: new Map() };
+const ARROW = { left: "←", up: "↑", down: "↓", right: "→" };
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const j = r.status === 204 ? null : await r.json();
+  if (!r.ok) throw new Error((j && j.error) || r.statusText);
+  return j;
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function ago(t) {
+  const m = Math.round((Date.now() / 1000 - t) / 60);
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+}
+
+async function loadFiles() {
+  try {
+    const list = await api("/api/xmls");
+    $("files").innerHTML = list.length ? list.map((f, i) => `<div class="file" data-i="${i}"><b title="${esc(f.path)}">${esc(f.name)}</b><small>${esc(f.folder)} · ${ago(f.mtime)} · ${(f.size / 1000).toFixed(0)} KB</small></div>`).join("") : '<div class="note">No exported XMLs found on the Desktop or in Documents.</div>';
+    document.querySelectorAll(".file").forEach((el) => el.addEventListener("click", () => openXml(list[el.dataset.i].path)));
+  } catch (e) { $("files").innerHTML = `<div class="result err">${esc(e.message)}</div>`; }
+}
+
+async function openXml(path, sequence) {
+  try {
+    const info = await api(`/api/open?path=${encodeURIComponent(path)}&sequence=${encodeURIComponent(sequence || "")}`);
+    Object.assign(state, { path, sequence: info.sequence, info });
+    state.plan = new Map();
+    $("pick").classList.add("hidden");
+    $("work").classList.remove("hidden");
+    $("hint").textContent = "Click the bar between two clips to add a transition there.";
+    render();
+  } catch (e) { alert(e.message); }
+}
+
+function render() {
+  const info = state.info;
+  $("title").textContent = info.sequence;
+  $("fps").textContent = `${info.clips.length} clips on V1, ${info.cuts.length} cuts, ${info.fps} fps`;
+  $("seqpick").innerHTML = info.sequences.length > 1 ? `<select id="sel">${info.sequences.map((s) => `<option ${s === info.sequence ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>` : "";
+  if ($("sel")) $("sel").addEventListener("change", (e) => openXml(state.path, e.target.value));
+  const total = info.clips.reduce((a, c) => a + Math.max(c.end - c.start, 1), 0) || 1;
+  const cutAt = new Map(info.cuts.map((c) => [c.frame, c]));
+  const parts = [];
+  info.clips.forEach((c, i) => {
+    const w = Math.max(130, Math.round(900 * Math.max(c.end - c.start, 1) / total));
+    parts.push(`<div class="clip" style="--w:${w}px"><img data-i="${i}" alt="" loading="lazy"><div class="noimg hidden">no preview</div><div class="meta"><b title="${esc(c.name)}">${esc(c.name)}</b>${((c.end - c.start) / info.fps).toFixed(1)} s</div></div>`);
+    const next = info.clips[i + 1];
+    if (next) {
+      const cut = cutAt.get(next.start);
+      if (cut) {
+        const d = state.plan.get(cut.frame);
+        const cls = !cut.usable ? "off" : d === "left" ? "on" : d ? "manual" : "";
+        const label = d ? `Push ${ARROW[d]}<br>${d === "left" ? "auto" : "marked"}` : (cut.usable ? "+" : "too close<br>to an end");
+        parts.push(`<div class="cut ${cls}" data-frame="${cut.frame}" title="${esc(cut.before)} → ${esc(cut.after)} at ${cut.seconds}s"><span class="time">${cut.seconds}s</span><div class="bar"></div><span class="badge">${label}</span></div>`);
+      } else parts.push(`<div class="cut off" title="these clips do not touch"><div class="bar"></div></div>`);
+    }
+  });
+  $("strip").innerHTML = parts.join("");
+  document.querySelectorAll(".clip img").forEach((img) => {
+    img.onerror = () => { img.classList.add("hidden"); img.nextElementSibling.classList.remove("hidden"); };
+    img.onload = () => { if (!img.naturalWidth) img.onerror(); };
+    img.src = `/thumb?path=${encodeURIComponent(state.path)}&sequence=${encodeURIComponent(state.sequence)}&i=${img.dataset.i}`;
+  });
+  document.querySelectorAll(".cut:not(.off)").forEach((el) => el.addEventListener("click", (ev) => openMenu(ev, Number(el.dataset.frame))));
+  const n = state.plan.size, left = [...state.plan.values()].filter((d) => d === "left").length;
+  $("count").textContent = n ? `${n} cut${n > 1 ? "s" : ""} chosen: ${left} left push (automatic), ${n - left} marked for your own preset` : (info.note || "No transitions chosen yet.");
+  $("save").disabled = !n;
+}
+
+function openMenu(ev, frame) {
+  ev.stopPropagation();
+  const cur = state.plan.get(frame);
+  const dirs = [["left", "Left", "automatic"], ["up", "Up", "marked for your preset"], ["down", "Down", "marked for your preset"], ["right", "Right", "marked for your preset"]];
+  const m = $("menu");
+  m.innerHTML = `
+    <div class="item">Add transition <span>▸</span><div class="menu sub">
+      <div class="item">Film Impact Push <span>▸</span><div class="menu sub">
+        ${dirs.map(([d, label, note]) => `<div class="item" data-set="${d}">${ARROW[d]} ${label} <small>${note}</small></div>`).join("")}
+      </div></div>
+    </div></div>
+    ${cur ? '<div class="item sep" data-clear="1">Remove transition here</div>' : ""}`;
+  m.classList.remove("hidden");
+  const x = Math.min(ev.clientX + 6, window.innerWidth - 230), y = Math.min(ev.clientY + 6, window.innerHeight - 120);
+  m.style.left = x + "px";
+  m.style.top = y + "px";
+  m.querySelectorAll("[data-set]").forEach((el) => el.addEventListener("click", (e) => { e.stopPropagation(); state.plan.set(frame, el.dataset.set); closeMenu(); render(); }));
+  const clr = m.querySelector("[data-clear]");
+  if (clr) clr.addEventListener("click", (e) => { e.stopPropagation(); state.plan.delete(frame); closeMenu(); render(); });
+}
+function closeMenu() { $("menu").classList.add("hidden"); }
+document.addEventListener("click", closeMenu);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenu(); });
+
+$("back").addEventListener("click", () => { $("work").classList.add("hidden"); $("pick").classList.remove("hidden"); $("result").innerHTML = ""; loadFiles(); });
+$("clear").addEventListener("click", () => { state.plan = new Map(); $("result").innerHTML = ""; render(); });
+$("save").addEventListener("click", async () => {
+  const plan = [...state.plan.entries()].map(([frame, direction]) => ({ frame, direction })).sort((a, b) => a.frame - b.frame);
+  $("save").disabled = true;
+  try {
+    const r = await api("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: state.path, sequence: state.sequence, plan }) });
+    $("result").innerHTML = `<div class="result ok"><b>Saved.</b> ${r.cuts} cut${r.cuts > 1 ? "s" : ""}: ${r.left} left push${r.left === 1 ? "" : "es"} for Premiere to apply by itself, ${r.marked} marked for your own preset.<br>
+      <code>${esc(r.out)}</code> (shown in Finder; your original is untouched)<br><br>
+      Import it into Premiere. Your whoosh is under each chosen cut. Left pushes appear within a few seconds. For each orange marker ("PH Push Up" and so on), drag your preset onto that cut.</div>`;
+  } catch (e) {
+    $("result").innerHTML = `<div class="result err"><b>Not saved:</b> ${esc(e.message)}</div>`;
+  }
+  $("save").disabled = state.plan.size === 0;
+});
+$("pathgo").addEventListener("click", () => { const v = $("pathin").value.trim().replace(/^['"]|['"]$/g, ""); if (v) openXml(v); });
+$("pathin").addEventListener("keydown", (e) => { if (e.key === "Enter") $("pathgo").click(); });
+const openParam = new URLSearchParams(location.search).get("open");   // cut_menu.html?open=/path/to/file.xml opens that file directly (for the app to link to a specific export)
+if (openParam) openXml(openParam); else loadFiles();
+</script>
+</body>
+</html>

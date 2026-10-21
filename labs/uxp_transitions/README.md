@@ -8,6 +8,14 @@ Standalone Premiere Pro UXP panel, not wired into `app/`. Built 2026-10-21 after
 
 Research (2026-10-21): Premiere's UXP API (25.6 and newer) can list video transition match names (`TransitionFactory.getVideoTransitionMatchNames`) and add one at a clip edge with a length and alignment (`VideoClipTrackItem.createAddVideoTransitionAction`, `AddTransitionOptions`). Adobe's docs do not say whether third-party match names are accepted. Film Impact is now part of Premiere (25.5, Adobe acquired it), so its transitions may be on the list. This panel is the test.
 
+## Click a cut (the menu): `cut_menu.py` + `cut_menu.html`
+
+Ryan's flow, decided 2026-10-21: he trims in Premiere and exports the XML; he opens this page, clicks a cut between two clips, chooses **Add transition > Film Impact Push > Left / Up / Down / Right**; **Save** writes `<name> - with transitions.xml` next to the original (never over it, never over an earlier save). Only the chosen cuts get anything. `Double-click "Click a cut.command" on the Desktop` (a copy of the program lives in `~/Documents/Transition Lab/click-a-cut/`), or `python3 labs/uxp_transitions/cut_menu.py`.
+
+**Direction:** a plugin cannot set a transition's direction (Premiere returns empty objects for transition track items) or apply a preset (Adobe's published plugin types, 27.0.0-beta.57, mention presets only for export and sequence presets). So **Left** is applied by the installed plugin by itself, and **Up, Down and Right** get an orange `PH Push Up` (etc.) marker at the cut with the whoosh already under it, for Ryan to drop his own preset on. Re-run the probe after Premiere updates; if Adobe exposes transition settings, direction slots straight in.
+
+Tests: `test_cut_menu.py` (the server through HTTP), `test_cut_menu_page.js` (the page in a simulated browser: open, menu at the mouse, directions, badges, change, remove, save; needs jsdom), `test_place_sfx.py` (the XML writer, including plans). The search for XMLs is limited to Desktop (2 levels) and Documents (1 level) with a 4 s budget: a two-level search of Documents took 39 s.
+
 ## The XML half: your whoosh under every cut (`place_sfx.py`, `make_whoosh.py`)
 
 `python3 labs/uxp_transitions/place_sfx.py in.xml out.xml` takes a Premiere-exported sequence, finds the cuts on V1 (a clip starting exactly where the previous one ends) and writes Ryan's whoosh at each one: a stereo pair on two new audio tracks after the existing ones, from 4 frames before the cut to 7 after (his test export: cut 116, whoosh 112 to 123), built on that export's structure (`templates/film_impact_push_whoosh_template.xml`). It inserts one block of text and changes nothing else (checked).

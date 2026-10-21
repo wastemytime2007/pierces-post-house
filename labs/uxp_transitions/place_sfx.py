@@ -120,12 +120,64 @@ def build_block(left_t: str, right_t: str, cuts: list[int], first_track_number: 
     return left_head + "\n".join(lefts) + left_tail + right_head + "\n".join(rights) + right_tail
 
 
-def markers_xml(cuts: list[int]) -> str:
-    """One sequence marker per cut, in the form PreCut writes and Premiere imports: the Transition Lab panel reads these. Name "PH transition", comment "match name|frames|alignment"."""
-    comment = f"{TRANSITION['match_name']}|{TRANSITION['frames']}|{TRANSITION['alignment']}"
-    return "".join(
-        f"\n<marker><name>PH transition</name><comment>{comment}</comment><in>{c}</in><out>-1</out><color><alpha>255</alpha><red>3</red><green>145</green><blue>216</blue></color></marker>"
-        for c in cuts)
+DIRECTIONS = ("left", "up", "down", "right")
+
+
+def markers_xml(plan: list[dict]) -> str:
+    """One sequence marker per chosen cut, in the form PreCut writes and Premiere imports.
+    Push left is applied by the Transition Lab panel: name "PH transition", comment "match name|frames|alignment".
+    Any other direction cannot be set by a script (Premiere's plugin interface cannot reach a transition's settings or apply a preset), so that cut gets a plain marker for Ryan, "PH Push Up" and so on, which the panel ignores."""
+    out = []
+    for item in plan:
+        c, d = item["frame"], item["direction"]
+        if d == "left":
+            comment = f"{TRANSITION['match_name']}|{TRANSITION['frames']}|{TRANSITION['alignment']}"
+            out.append(f"\n<marker><name>PH transition</name><comment>{comment}</comment><in>{c}</in><out>-1</out><color><alpha>255</alpha><red>3</red><green>145</green><blue>216</blue></color></marker>")
+        else:
+            out.append(f"\n<marker><name>PH Push {d.capitalize()}</name><comment>Drag your Push {d.capitalize()} preset onto this cut. The whoosh is already under it.</comment><in>{c}</in><out>-1</out>"
+                       f"<color><alpha>255</alpha><red>244</red><green>105</green><blue>11</blue></color></marker>")
+    return "".join(out)
+
+
+def apply_plan(raw: str, plan: list[dict] | None = None, sequence: str | None = None, track: int = 1, template: Path = DEFAULT_TEMPLATE, markers: bool = True) -> tuple[str, dict]:
+    """The input XML text with the whoosh (and markers) added at the cuts in `plan` (a list of {"frame", "direction"}); no plan means every usable cut, pushing left. Returns (new text, report)."""
+    s0, s1, name = sequence_span(raw, sequence)
+    seq_xml = raw[s0:s1]
+    cuts, duration = cuts_on_track(seq_xml, track)
+    usable = [c for c in cuts if c - BEFORE >= 0 and c + AFTER <= duration]
+    if plan is None:
+        plan = [{"frame": c, "direction": "left"} for c in usable]
+    for item in plan:
+        if item["direction"] not in DIRECTIONS:
+            raise ValueError(f"direction must be one of {DIRECTIONS}, not {item['direction']!r}")
+        if item["frame"] not in usable:
+            raise ValueError(f"frame {item['frame']} is not a usable cut on V{track} of {name!r} (usable: {usable})")
+    plan = sorted(plan, key=lambda x: x["frame"])
+    kept = [x["frame"] for x in plan]
+    if not kept:
+        raise ValueError(f"nothing to place: no cuts chosen on V{track} of {name!r} ({len(cuts)} cuts found)")
+    left_t, right_t = template_tracks(template)
+    n_audio = len(ET.fromstring(seq_xml).findall("media/audio/track"))
+    groups = [int(g) for g in re.findall(r"<groupindex>(\d+)</groupindex>", seq_xml)]
+    block = build_block(left_t, right_t, kept, n_audio + 1, max(groups or [0]), sfx_info())
+    m = list(re.finditer(r"</track>(\s*)</audio>", seq_xml))
+    assert m, "could not find the end of the sequence's audio tracks"
+    ins = m[-1].start() + len("</track>")
+    inserted_tracks = "\n" + block
+    marker_xml = markers_xml(plan) if markers else ""
+    mm = list(re.finditer(r"</media>(\s*)<timecode>", seq_xml))                  # the sequence's own media block ends before its timecode (a file's media block ends before </file>)
+    assert mm, "could not find where the sequence's markers belong"
+    mpos = mm[-1].start() + len("</media>")
+    assert mpos > ins, "markers come after the tracks"
+    new_seq = seq_xml[:ins] + inserted_tracks + seq_xml[ins:mpos] + marker_xml + seq_xml[mpos:]
+    out = raw[:s0] + new_seq + raw[s1:]
+    # verify: the output is the input plus the two inserted blocks and nothing else
+    check = out.replace(inserted_tracks, "", 1)
+    if marker_xml:
+        check = check.replace(marker_xml, "", 1)
+    assert check == raw, "output differs from the input in more than the inserted blocks"
+    ET.fromstring(out.replace("<!DOCTYPE xmeml>", "").split("?>", 1)[-1])      # still well-formed
+    return out, {"sequence": name, "video_track": track, "plan": plan, "usable_cuts": usable, "skipped_cuts": [c for c in cuts if c not in usable], "audio_tracks": [n_audio + 1, n_audio + 2], "transition": TRANSITION}
 
 
 def main() -> int:
@@ -135,40 +187,22 @@ def main() -> int:
     ap.add_argument("--sequence")
     ap.add_argument("--track", type=int, default=1)
     ap.add_argument("--template", default=str(DEFAULT_TEMPLATE))
-    ap.add_argument("--no-markers", action="store_true", help="do not write the 'PH transition' markers the Transition Lab panel reads")
+    ap.add_argument("--plan", help='JSON file: [{"frame": 116, "direction": "left"}, ...]; without it every usable cut gets the left push')
+    ap.add_argument("--no-markers", action="store_true", help="do not write the markers (the Transition Lab panel reads the 'PH transition' ones)")
     a = ap.parse_args()
     raw = Path(a.src).read_bytes().decode("utf-8")
-    s0, s1, name = sequence_span(raw, a.sequence)
-    seq_xml = raw[s0:s1]
-    cuts, duration = cuts_on_track(seq_xml, a.track)
-    kept = [c for c in cuts if c - BEFORE >= 0 and c + AFTER <= duration]
-    skipped = [c for c in cuts if c not in kept]
-    if not kept:
-        print(f"no usable cuts on V{a.track} of {name!r} ({len(cuts)} cuts found, {len(skipped)} too close to the ends)")
+    plan = json.loads(Path(a.plan).read_text()) if a.plan else None
+    try:
+        out, rep = apply_plan(raw, plan, a.sequence, a.track, Path(a.template), not a.no_markers)
+    except ValueError as e:
+        print(e)
         return 1
-    left_t, right_t = template_tracks(Path(a.template))
-    n_audio = len(ET.fromstring(seq_xml).findall("media/audio/track"))
-    groups = [int(g) for g in re.findall(r"<groupindex>(\d+)</groupindex>", seq_xml)]
-    block = build_block(left_t, right_t, kept, n_audio + 1, max(groups or [0]), sfx_info())
-    m = list(re.finditer(r"</track>(\s*)</audio>", seq_xml))
-    assert m, "could not find the end of the sequence's audio tracks"
-    ins = m[-1].start() + len("</track>")
-    inserted_tracks = "\n" + block
-    marker_xml = "" if a.no_markers else markers_xml(kept)
-    mm = list(re.finditer(r"</media>(\s*)<timecode>", seq_xml))                  # the sequence's own media block ends before its timecode (a file's media block ends before </file>)
-    assert mm, "could not find where the sequence's markers belong"
-    mpos = mm[-1].start() + len("</media>")
-    assert mpos > ins, "markers come after the tracks"
-    new_seq = seq_xml[:ins] + inserted_tracks + seq_xml[ins:mpos] + marker_xml + seq_xml[mpos:]
-    out = raw[:s0] + new_seq + raw[s1:]
-    # verify: the output is the input plus the two inserted blocks and nothing else
-    assert out.replace(inserted_tracks, "", 1).replace(marker_xml, "", 1) == raw if marker_xml else out.replace(inserted_tracks, "", 1) == raw, "output differs from the input in more than the inserted blocks"
-    ET.fromstring(out.replace("<!DOCTYPE xmeml>", "").split("?>", 1)[-1])      # still well-formed
     Path(a.dst).write_bytes(out.encode("utf-8"))
-    cuts_json = {"sequence": name, "video_track": a.track, "cuts": [{"frame": c, "whoosh_start": c - BEFORE, "whoosh_end": c + AFTER} for c in kept], "skipped_cuts": skipped, "transition": TRANSITION}
-    Path(a.dst).with_suffix(".cuts.json").write_text(json.dumps(cuts_json, indent=1))
-    print(f"{name!r}: {len(kept)} whoosh pair(s) placed at frames {kept}" + (f"; {len(skipped)} cut(s) too close to an end skipped" if skipped else ""))
-    print(f"wrote {a.dst} (new audio tracks A{n_audio + 1} and A{n_audio + 2}" + ("" if a.no_markers else f", {len(kept)} 'PH transition' marker(s)") + f") and {Path(a.dst).with_suffix('.cuts.json').name}")
+    Path(a.dst).with_suffix(".cuts.json").write_text(json.dumps(rep, indent=1))
+    frames = [x["frame"] for x in rep["plan"]]
+    auto = [x["frame"] for x in rep["plan"] if x["direction"] == "left"]
+    print(f"{rep['sequence']!r}: whoosh pair(s) placed at frames {frames}; {len(auto)} left push(es) for the panel to apply, {len(frames) - len(auto)} marked for your own preset")
+    print(f"wrote {a.dst} (new audio tracks A{rep['audio_tracks'][0]} and A{rep['audio_tracks'][1]}) and {Path(a.dst).with_suffix('.cuts.json').name}")
     return 0
 
 

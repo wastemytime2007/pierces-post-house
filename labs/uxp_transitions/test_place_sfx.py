@@ -111,4 +111,28 @@ for b in re.findall(r'<track [^>]*>(?:(?!</track>).)*clipitem-whoosh.*?</track>'
 after = re.sub(r"<marker><name>PH transition</name>.*?</marker>", "", after, flags=re.S)
 assert re.sub(r"\s+", "", after) == before, "removing the inserted tracks gives back the input exactly"
 print("untouched: removing the two inserted tracks and the markers gives back the input exactly")
+# 5. a plan: only the chosen cuts, with a direction each
+sys.path.insert(0, str(HERE))
+import place_sfx
+raw3 = three_in.read_text(encoding="utf-8")
+out5, rep5 = place_sfx.apply_plan(raw3, [{"frame": 290, "direction": "up"}, {"frame": 100, "direction": "left"}])
+tmp5 = tmp / "plan_out.xml"
+tmp5.write_text(out5, encoding="utf-8")
+rows5 = sfx_clips(tmp5)
+assert sorted({r["start"] for r in rows5}) == ["286", "96"] and len(rows5) == 4, "the whoosh only at the two chosen cuts (181 is untouched): " + str(sorted({r["start"] for r in rows5}))
+seq5 = ET.parse(tmp5).getroot().find("sequence")
+marks5 = [(m.findtext("name"), m.findtext("in")) for m in seq5.findall("marker")]
+assert marks5 == [("PH transition", "100"), ("PH Push Up", "290")], marks5
+assert "AE.AE_Impact_Push|6|0.5" in [m.findtext("comment") for m in seq5.findall("marker")], "left is the one the panel applies"
+assert not any("185" == m.findtext("in") for m in seq5.findall("marker")), "no marker at the cut that was not chosen"
+for bad, why in (([{"frame": 150, "direction": "left"}], "a frame that is not a cut"), ([{"frame": 100, "direction": "sideways"}], "an unknown direction"), ([], "an empty plan")):
+    try:
+        place_sfx.apply_plan(raw3, bad)
+        raise AssertionError("accepted " + why)
+    except ValueError:
+        pass
+for d in ("down", "right"):
+    o, _ = place_sfx.apply_plan(raw3, [{"frame": 185, "direction": d}])
+    assert f"<name>PH Push {d.capitalize()}</name>" in o and "<name>PH transition</name>" not in o, d
+print("plan: only the chosen cuts get the whoosh; left is applied by the panel, up/down/right get a 'PH Push ...' marker; bad input is refused")
 print("ALL CHECKS PASSED")
