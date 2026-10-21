@@ -1,0 +1,42 @@
+{
+  "_about": "The numbers of docs/reference/FRAMING_RULES.md, for code to read. Not wired into the app yet. 'basis' says how solid each is: sourced (several web pages agree), ryan (his own ruling), derived (arithmetic), mine (unverified judgment, needs his eye on a real cut).",
+  "portrait": {
+    "output": [1080, 1920],
+    "window_fraction_of_16x9_width": {"value": 0.316, "basis": "derived"},
+    "eye_line_fraction_from_top": {"min": 0.30, "max": 0.38, "basis": "derived from the upper-third rule"},
+    "face_height_fraction": {"min": 0.22, "max": 0.28, "basis": "mine"},
+    "head_top_min_px": {"value": 250, "basis": "derived from the top safe zone"},
+    "safe_px": {
+      "hard": {"top": 150, "bottom": 350, "left": 60, "right": 120},
+      "preferred": {"top": 250, "bottom": 420, "left": 90, "right": 120},
+      "basis": "sourced ranges (vendor blogs disagree: top 108-270, bottom 250-670, right 100-120, left 60-90); the conservative end is used"
+    },
+    "caption_band_start_y_px": {"value": 1100, "basis": "mine"},
+    "lower_third_top_fraction": {"value": 0.55, "basis": "ryan (TAG_Y in finish_cut.py)"}
+  },
+  "landscape": {
+    "output": [1920, 1080],
+    "eye_line_fraction_from_top": {"value": 0.333, "basis": "sourced"},
+    "headroom_fraction": {"min": 0.06, "max": 0.12, "basis": "derived from the thirds rule"}
+  },
+  "motion": {
+    "min_speaker_change_sec_to_move_frame": {"value": 1.0, "basis": "ryan (FRAME_MIN_SEC in follow_speaker.py)"},
+    "move_inside_a_shot": {"value": "never, except a smoothed path for a subject that really moves", "basis": "sourced"}
+  },
+  "punch_in": {
+    "factor": {"value": 1.15, "basis": "ryan (punch_in.py)"},
+    "sourced_range": {"min": 1.10, "max": 1.30, "common": [1.15, 1.20], "basis": "sourced"},
+    "try_next": {"value": 1.20, "basis": "mine"},
+    "keep_top_of_picture": {"value": true, "basis": "ryan"}
+  },
+  "resolution": {
+    "scale_warn_pct": {"value": 100, "basis": "derived (1 source pixel per output pixel)"},
+    "scale_refuse_pct": {"value": 120, "basis": "mine"},
+    "sources": {
+      "mitch_red": [7680, 4320],
+      "bob_red": [5760, 3240],
+      "uhd": [3840, 2160],
+      "proxy": [1920, 1080]
+    }
+  }
+}
