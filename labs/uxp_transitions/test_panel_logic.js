@@ -22,11 +22,19 @@ const clip = (name, startF, endF) => ({
 const items = [clip("B", 100, 200), clip("A", 0, 100), clip("C", 250, 300)];
 const track = { getTrackItems: async (type) => (type === "TRANSITION" ? calls.added : items) };
 const seq = { name: "test seq", getTimebase: async () => String(TPF), getVideoTrack: async () => track };
+let markerList = [];
+seq.guid = "seq-1";
 const project = {
   lockedAccess: (cb) => cb(),
-  executeTransaction: (cb, undo) => { cb({ addAction: (a) => calls.added.push(a) }); calls.undo = undo; return true; },
+  executeTransaction: (cb, undo) => {
+    cb({ addAction: (a) => { if (a.kind === "rename") a.target.name = a.name; else calls.added.push(a); } });
+    calls.undo = undo;
+    return true;
+  },
   getActiveSequence: async () => seq,
+  getSequences: async () => [seq],
 };
+const hooks = {};
 class AddTransitionOptions {
   constructor() { this.p = {}; }
   setDuration(t) { this.p.duration = t; return this; }
@@ -35,7 +43,9 @@ class AddTransitionOptions {
   setTransitionAlignment(v) { this.p.alignment = v; return this; }
 }
 const ppro = {
-  Constants: { TrackItemType: { CLIP: "CLIP", TRANSITION: "TRANSITION" } },
+  Constants: { TrackItemType: { CLIP: "CLIP", TRANSITION: "TRANSITION" }, ProjectEvent: { OPENED: "p.opened", ACTIVATED: "p.activated", DIRTY: "p.dirty" }, SequenceEvent: { ACTIVATED: "s.activated" }, OperationCompleteEvent: { IMPORT_MEDIA_COMPLETE: "o.import" } },
+  EventManager: { addGlobalEventListener: (name, fn) => { hooks[name] = fn; } },
+  Markers: { getMarkers: async () => ({ getMarkers: async () => markerList }) },
   Project: { getActiveProject: async () => project },
   TickTime: { createWithTicks: (s) => ({ ticks: s }) },
   TransitionFactory: {
@@ -55,6 +65,7 @@ global.document = {
 };
 const set = (id, v) => (global.document.getElementById(id).value = v);
 set("filter", "impact"); set("name", "AE.Impact Push"); set("track", "1"); set("frames", "6"); set("align", "0.5"); set("log", "");
+global.document.getElementById("auto").checked = true;
 require(path.join(__dirname, "index.js"));
 const log = () => els.log.value;
 const tick = () => new Promise((r) => setTimeout(r, 20));
@@ -103,5 +114,39 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   set("filter", "impact"); set("name", ""); els.log.value = "";                    // a partial word in the filter is not a name
   await handlers.first(); await tick();
   assert(log().includes("ERROR") && log().includes("match name"), "an empty name is reported, not thrown");
+  // ---- automatic mode: markers in the sequence are the plan ----
+  const mark = (frame, name, comment) => {
+    const m = { name, comment, frame, getName: async () => m.name, getComments: async () => m.comment, getStart: async () => tt(frame * TPF) };
+    m.createSetNameAction = (n) => ({ kind: "rename", target: m, name: n });
+    return m;
+  };
+  const good = mark(100, "PH transition", "AE.Impact Push|6|0.5");
+  const noClip = mark(50, "PH transition", "AE.Impact Push|6|0.5");
+  const badName = mark(250, "PH transition", "AE.Not Real|6|0.5");
+  const other = mark(10, "Comment", "just a marker");
+  markerList = [good, noClip, badName, other];
+  calls.created.length = 0; calls.added.length = 0; els.log.value = "";
+  assert(hooks["p.opened"] && hooks["s.activated"] && hooks["o.import"], "listens for project open, sequence activated and import");
+  hooks["s.activated"]();                                                                 // Premiere says a sequence was activated: the panel looks at every sequence after a short wait
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.deepStrictEqual(calls.created, ["AE.Impact Push"], "one transition: only the good marker is acted on: " + els.log.value);
+  assert.strictEqual(calls.added[0].on, "B", "added on the clip that starts at the marker (frame 100)");
+  assert.strictEqual(calls.added[0].opts.p.duration.ticks, String(6 * TPF));
+  assert.strictEqual(good.name, "PH transition done", "the marker is renamed in the same step");
+  assert.strictEqual(noClip.name, "PH transition FAILED", "no clip starts at frame 50: marked failed, not retried");
+  assert.strictEqual(badName.name, "PH transition FAILED", "an unknown transition name is marked failed");
+  assert.strictEqual(other.name, "Comment", "an unrelated marker is left alone");
+  assert(els.log.value.includes("Premiere has no transition named \"AE.Not Real\"") && els.log.value.includes("no clip on V1 starts at frame 50"), "the reasons are logged");
+  const n = calls.added.length;
+  hooks["p.opened"](); hooks["s.activated"]();
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.strictEqual(calls.added.length, n, "nothing is applied twice");
+  const again = mark(100, "PH transition", "AE.Impact Push|6|0.5");
+  markerList = [again];
+  global.document.getElementById("auto").checked = false;                                // the box off: nothing happens
+  hooks["p.opened"]();
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.strictEqual(again.name, "PH transition", "automatic mode off leaves the markers alone");
   console.log("panel logic: all checks passed");
+  process.exit(0);
 })().catch((e) => { console.error("FAILED:", e.message, "\nlog:\n" + els.log.value); process.exit(1); });

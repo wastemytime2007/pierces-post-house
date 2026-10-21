@@ -91,11 +91,24 @@ doc_ids = [e.get("id") for e in ET.parse(out3).getroot().iter() if e.tag == "cli
 assert len(doc_ids) == len(set(doc_ids)), "no clash with the sequence's own clip ids"
 print("three cuts: 3 pairs at", [(c - 4, c + 7) for c in cuts], "linked per pair, ids unique, file defined once")
 
+# markers: one per cut, in the form the Transition Lab panel reads
+seq = ET.parse(out3).getroot().find("sequence")
+marks = seq.findall("marker")
+assert [m.findtext("name") for m in marks] == ["PH transition"] * 3, "one 'PH transition' marker per cut"
+assert [m.findtext("in") for m in marks] == [str(c) for c in cuts] and {m.findtext("out") for m in marks} == {"-1"}, "at the cut frames, as point markers"
+assert {m.findtext("comment") for m in marks} == {"AE.AE_Impact_Push|6|0.5"}, "comment carries the transition name, frames and alignment"
+children = [c.tag for c in seq]
+assert children.index("media") < children.index("marker") < children.index("timecode"), "markers sit after the media block, before the timecode"
+r_one = ET.parse(out1).getroot().find("sequence").findall("marker")
+assert [m.findtext("in") for m in r_one] == ["116"], "the one-cut sequence gets its marker at 116"
+print("markers: three 'PH transition' markers at", cuts, "with the plan 'AE.AE_Impact_Push|6|0.5'")
+
 # 4. nothing else changed
 before = re.sub(r"\s+", "", three_in.read_text(encoding="utf-8-sig"))
 after = out3.read_text(encoding="utf-8-sig")
 for b in re.findall(r'<track [^>]*>(?:(?!</track>).)*clipitem-whoosh.*?</track>', after, re.S):
     after = after.replace(b, "")
+after = re.sub(r"<marker><name>PH transition</name>.*?</marker>", "", after, flags=re.S)
 assert re.sub(r"\s+", "", after) == before, "removing the inserted tracks gives back the input exactly"
-print("untouched: removing the two inserted tracks gives back the input exactly")
+print("untouched: removing the two inserted tracks and the markers gives back the input exactly")
 print("ALL CHECKS PASSED")

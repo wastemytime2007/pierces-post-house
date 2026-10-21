@@ -9,7 +9,8 @@ What it does (the XML half of "Film Impact Push + whoosh"; the transition itself
     (his template: cut at frame 116, whoosh at 112 to 123). The sound is `Whoosh Push.wav`, his selection from `Whooshes.wav` cut into its own file with the 120% speed and -5 dB baked in (make_whoosh.py):
     Premiere read the Time Remap version's in/out as plain source frames on import and played the wrong, nearly silent part, so nothing here relies on a speed setting
   - adds the two tracks AFTER the sequence's existing audio tracks and touches nothing else: the output is the input with one block of text inserted (checked)
-  - writes cuts.json next to the output: the cut frames, for the panel and for anyone checking
+  - writes one sequence marker per cut, named "PH transition", comment "AE.AE_Impact_Push|6|0.5": the plan for the Transition Lab panel, which adds the transitions by itself when the sequence appears in Premiere
+  - writes cuts.json next to the output: the cut frames, for anyone checking
 Handles Premiere-exported XML (plain <xmeml><sequence> with files defined inline).
 """
 import argparse
@@ -119,6 +120,14 @@ def build_block(left_t: str, right_t: str, cuts: list[int], first_track_number: 
     return left_head + "\n".join(lefts) + left_tail + right_head + "\n".join(rights) + right_tail
 
 
+def markers_xml(cuts: list[int]) -> str:
+    """One sequence marker per cut, in the form PreCut writes and Premiere imports: the Transition Lab panel reads these. Name "PH transition", comment "match name|frames|alignment"."""
+    comment = f"{TRANSITION['match_name']}|{TRANSITION['frames']}|{TRANSITION['alignment']}"
+    return "".join(
+        f"\n<marker><name>PH transition</name><comment>{comment}</comment><in>{c}</in><out>-1</out><color><alpha>255</alpha><red>3</red><green>145</green><blue>216</blue></color></marker>"
+        for c in cuts)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("src")
@@ -126,6 +135,7 @@ def main() -> int:
     ap.add_argument("--sequence")
     ap.add_argument("--track", type=int, default=1)
     ap.add_argument("--template", default=str(DEFAULT_TEMPLATE))
+    ap.add_argument("--no-markers", action="store_true", help="do not write the 'PH transition' markers the Transition Lab panel reads")
     a = ap.parse_args()
     raw = Path(a.src).read_bytes().decode("utf-8")
     s0, s1, name = sequence_span(raw, a.sequence)
@@ -143,17 +153,22 @@ def main() -> int:
     m = list(re.finditer(r"</track>(\s*)</audio>", seq_xml))
     assert m, "could not find the end of the sequence's audio tracks"
     ins = m[-1].start() + len("</track>")
-    new_seq = seq_xml[:ins] + "\n" + block + seq_xml[ins:]
+    inserted_tracks = "\n" + block
+    marker_xml = "" if a.no_markers else markers_xml(kept)
+    mm = list(re.finditer(r"</media>(\s*)<timecode>", seq_xml))                  # the sequence's own media block ends before its timecode (a file's media block ends before </file>)
+    assert mm, "could not find where the sequence's markers belong"
+    mpos = mm[-1].start() + len("</media>")
+    assert mpos > ins, "markers come after the tracks"
+    new_seq = seq_xml[:ins] + inserted_tracks + seq_xml[ins:mpos] + marker_xml + seq_xml[mpos:]
     out = raw[:s0] + new_seq + raw[s1:]
-    # verify: only a block of text was inserted
-    inserted_len = len(out) - len(raw)
-    assert out[:s0 + ins] == raw[:s0 + ins] and out[s0 + ins + inserted_len:] == raw[s0 + ins:], "output differs from the input in more than the inserted block"
+    # verify: the output is the input plus the two inserted blocks and nothing else
+    assert out.replace(inserted_tracks, "", 1).replace(marker_xml, "", 1) == raw if marker_xml else out.replace(inserted_tracks, "", 1) == raw, "output differs from the input in more than the inserted blocks"
     ET.fromstring(out.replace("<!DOCTYPE xmeml>", "").split("?>", 1)[-1])      # still well-formed
     Path(a.dst).write_bytes(out.encode("utf-8"))
     cuts_json = {"sequence": name, "video_track": a.track, "cuts": [{"frame": c, "whoosh_start": c - BEFORE, "whoosh_end": c + AFTER} for c in kept], "skipped_cuts": skipped, "transition": TRANSITION}
     Path(a.dst).with_suffix(".cuts.json").write_text(json.dumps(cuts_json, indent=1))
     print(f"{name!r}: {len(kept)} whoosh pair(s) placed at frames {kept}" + (f"; {len(skipped)} cut(s) too close to an end skipped" if skipped else ""))
-    print(f"wrote {a.dst} (new audio tracks A{n_audio + 1} and A{n_audio + 2}) and {Path(a.dst).with_suffix('.cuts.json').name}")
+    print(f"wrote {a.dst} (new audio tracks A{n_audio + 1} and A{n_audio + 2}" + ("" if a.no_markers else f", {len(kept)} 'PH transition' marker(s)") + f") and {Path(a.dst).with_suffix('.cuts.json').name}")
     return 0
 
 

@@ -16,6 +16,10 @@ Research (2026-10-21): Premiere's UXP API (25.6 and newer) can list video transi
 
 The Transition Lab panel then adds `AE.AE_Impact_Push`, 6 frames, centred, at the same cuts ("Add at EVERY cut"). The panel saves its whole log to `last_run_log.txt` in its data folder after every click. Limits: the tool reads cuts where both clips have real start and end frames (a sequence that already has transitions writes -1 at those clips); a cut closer than 4 frames to the start or 7 to the end is skipped. Second proof (baked file) not yet imported into Premiere.
 
+## Automatic mode (v0.4): no click
+
+`place_sfx.py` also writes one sequence marker per cut, named `PH transition`, comment `AE.AE_Impact_Push|6|0.5` (match name, frames, alignment, optionally `|video track`), in the form PreCut writes and Premiere imports. While the Transition Lab panel is loaded and its box is ticked, it looks at every sequence in the project (`project.getSequences()`, markers through `Markers.getMarkers`) when the project opens, a sequence is activated, media is imported or the project changes, plus every 3 seconds as a fallback. A sequence with pending markers gets each transition added at the clip that starts on the marker, and the marker is renamed `PH transition done` in the same undoable step (so nothing is applied twice); a marker it cannot act on becomes `PH transition FAILED` with the reason in the log. The panel logs which events it could listen for. Tested against a stand-in Premiere (`test_panel_logic.js`); not yet run in Premiere. The panel must be loaded: a plugin loaded from the UXP Developer Tools has to be loaded again every time Premiere starts; making it load by itself needs packaging as a .ccx (not done yet).
+
 ## The panel: what it does
 
 1. **List transitions**: every video transition match name Premiere offers, filtered by a text box (default "impact"), also saved to `transition_match_names.txt` in the plugin's data folder (the panel prints the path).
