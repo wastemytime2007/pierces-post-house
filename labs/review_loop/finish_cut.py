@@ -318,6 +318,53 @@ def version_name(src: Path) -> str:
     return f"{m.group(1) if m else src.stem}_v{(int(m.group(2)) if m else 1) + 1}.xml"
 
 
+MUSIC_CACHE = Path.home() / "Library" / "Application Support" / "Post House" / "music_cache"
+ARTLIST_MUSIC = Path.home() / "Downloads" / "Artlist Library" / "Music"
+AUDIO_EXT = {".wav", ".mp3", ".m4a", ".aac", ".flac"}
+_DURATIONS: dict[str, float] = {}
+
+
+def _seconds(path: Path) -> float:
+    key = str(path)
+    if key not in _DURATIONS:
+        try:
+            _DURATIONS[key] = timeline.probe_duration(key)
+        except timeline.TimelineError:
+            _DURATIONS[key] = 0.0
+    return _DURATIONS[key]
+
+
+def fallback_music(zone: float, name: str, cache: Path | None = None, library: Path | None = None) -> tuple[Path, str] | None:
+    """A music bed to use when one cannot be generated (the service is out of credits, 2026-10-21; Ryan: "use already generated music or music from the Artlist folder when we run out").
+
+    First an already generated bed (`score_*.mp3` in the music cache: the style he approved, modelled on the reference) long enough for the cut; if none is, a song from his Artlist library
+    (one per folder, the .wav before the .mp3, the " (1)" duplicates skipped, instrumentals first because a sung song under speech is the worse choice). Which one is decided by the cut's
+    name, so a batch of shorts does not all get the same track and a cut gets the same one every time. None when nothing is long enough: the caller then reports the layer as not added."""
+    import zlib
+    seed = zlib.crc32(name.encode("utf-8"))
+    need = zone + 4.0                                                    # what a generated take is made at: the fit needs room before the drop and after the last cut
+    cache_dir = Path(cache) if cache is not None else MUSIC_CACHE
+    gen = sorted(cache_dir.glob("score_*.mp3")) if cache_dir.is_dir() else []
+    fit = [g for g in gen if _seconds(g) >= need]
+    if fit:
+        pick = fit[seed % len(fit)]
+        return pick, f"an already generated music bed ({pick.name})"
+    lib = Path(library) if library is not None else ARTLIST_MUSIC
+    songs: list[Path] = []
+    if lib.is_dir():
+        for d in sorted(x for x in lib.iterdir() if x.is_dir()):
+            files = [f for f in d.iterdir() if f.suffix.lower() in AUDIO_EXT and not f.name.startswith(".") and not re.search(r" \(\d+\)\.[A-Za-z0-9]+$", f.name)]
+            if files:
+                songs.append(sorted(files, key=lambda f: (f.suffix.lower() != ".wav", f.name))[0])
+    songs = [s for s in songs if _seconds(s) >= need]
+    inst = [s for s in songs if re.search(r"instrumental|no backing|beat|no vocal", str(s.parent.name + s.name), re.I)]
+    pool = inst or songs
+    if pool:
+        pick = pool[seed % len(pool)]
+        return pick, f"music from your Artlist library ({pick.parent.name})"
+    return None
+
+
 def why(exc: Exception) -> str:
     """A failed layer's reason in one plain sentence, for the person (the tool's own long output stays in the logs): the cases seen on real cuts get their own words."""
     text = str(exc)
@@ -326,16 +373,21 @@ def why(exc: Exception) -> str:
         return "the music service is out of credits" + (f" ({m.group(1)} left, this cut needs {m.group(2)})" if m else "") + ": top up the ElevenLabs account and run it again"
     if "HyperFrames check FAILED" in text:
         return "the render check refused it (" + " ".join(x.strip() for x in text.splitlines() if "error(s)" in x)[:120] + ")"
-    first = next((x.strip() for x in text.splitlines() if x.strip() and not x.startswith("The tool said")), text.strip())
-    return first[:220]
+    lines = [x.strip() for x in text.splitlines() if x.strip()]
+    body = [x for x in lines if "nothing was kept" not in x and not x.startswith("The tool said")]      # the framing line is not the reason
+    first = next((x for x in body if re.search(r"REFUSING|Error|FAIL|failed", x)), body[0] if body else (lines[0] if lines else ""))
+    return re.sub(r"^REFUSING:\s*", "", first)[:220]
 
 
 def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = True, bleep: bool = True, sfx_at: float | None = None,
         music_reference: str | Path | None = None, progress=lambda s: None, runner=None, rebuild: bool = False, music_file: str | Path | None = None,
         caption_fixes: list[dict] | None = None, bleep_requests: list[dict] | None = None, bleep_fn=None, final_name: str | None = None,
         graphics: bool = False, sfx: bool = False, graphics_fn=None, choose_fn=None, punch: bool = True, dims_fn=None, cta: str = "",
-        graphics_edits: list[dict] | None = None, music_db: float | None = None, sfx_exclude: list[str] | None = None, sfx_keep: str = "", keep_going: bool = False) -> dict:
+        graphics_edits: list[dict] | None = None, music_db: float | None = None, sfx_exclude: list[str] | None = None, sfx_keep: str = "", keep_going: bool = False, music_fallback: bool = False, fallback_fn=None) -> dict:
     """Returns {"xml", "folder", "steps": [{"name", "done", "summary"}], "checks": [(name, ok, detail)], "music_raw"}. Raises FinishError, in words, when a step fails.
+
+    `music_fallback`: when music cannot be generated, an already generated bed or a song from the Artlist library is used instead (see fallback_music; `fallback_fn(zone, name)` replaces the picker in tests) and
+    the step says which and why; without it a failed generation fails the step as before.
 
     `keep_going` (the Get Creative batch): a layer that fails (graphics, captions, music or bleep) is left off, recorded in `steps` as {"done": False, "failed": True, "summary": "not added: <why>"}, and the
     layers that worked are kept. Without it, as before, one failure discards everything ("nothing was kept"). On 2026-10-21 the music service ran out of credits and, because of that, no sequence of a
@@ -494,6 +546,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             conformed = out / "audio_in/music_conformed.wav"
             fit_note = ""
             extend_note = ""
+            fallback_note = ""
             if music_file:
                 try:
                     have_s = timeline.probe_duration(str(Path(music_file).expanduser()))
@@ -506,8 +559,30 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
                 if music_file:
                     track = Path(music_file).expanduser()
                 else:
-                    tool("The music", "audio/score_music.py", *score_args)
-                    track = out / "audio_in/music.wav"
+                    try:
+                        tool("The music", "audio/score_music.py", *score_args)
+                        track = out / "audio_in/music.wav"
+                    except FinishError as gen_err:
+                        if not music_fallback:
+                            raise
+                        if take > 0:                                      # a first take was made but its beats drift, and no second could be: lay the first as it is
+                            lay_untimed(Path(music_raw), zone, conformed)
+                            fit_note = f"; NOT cut to the beat: a further take could not be made ({why(gen_err)}), so the first take plays as it is, trimmed and faded at the end"
+                            break
+                        pick = (fallback_fn or fallback_music)(zone, cut0.sequence_name)
+                        if pick is None:
+                            raise
+                        music_file, fallback_note = str(pick[0]), f"{pick[1]}, because the music could not be generated ({why(gen_err)})"
+                        ref = feats = None                                # nothing is measured against the reference or matched to its tone for a track that was not made for it
+                        progress("Music: could not be generated, so using " + pick[1])
+                        try:
+                            have_s = timeline.probe_duration(music_file)
+                        except timeline.TimelineError:
+                            have_s = float("inf")
+                        if have_s < zone + 1.0:
+                            music_file = str(extend_track(Path(music_file), zone + 4.0, out / "audio_in/music_extended.wav"))
+                            extend_note = f"; its end was repeated to cover the cut ({have_s:.1f}s)"
+                        track = Path(music_file)
                 tone_note = ""
                 if feats:
                     import tone_match
@@ -574,7 +649,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
             tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
             cur = nxt
             steps.append({"name": "music", "done": True,
-                          "summary": ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)")
+                          "summary": (fallback_note or ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)"))
                           + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note + extend_note})
     except Exception as exc:
         if not keep_going:

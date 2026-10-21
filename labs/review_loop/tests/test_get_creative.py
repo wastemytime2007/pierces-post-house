@@ -172,3 +172,12 @@ def test_a_layer_that_could_not_be_made_is_named_with_its_reason_and_the_sequenc
     it = res["items"][0]
     assert it["status"] == "done" and "added captions" in it["message"] and "music not added: the music service is out of credits" in it["message"]
     assert f.keep_going is True, "the batch always asks the finish to keep going"
+
+
+def test_music_taken_from_the_cache_or_the_artlist_library_is_named_in_the_message(monkeypatch, seqs):
+    f = Fake(monkeypatch)
+    f.items = [{"op": "music", "applied": True, "failed": False,
+                "summary": "music from your Artlist library (Aves - Bumpin' - No Backing Vocals), because the music could not be generated (the music service is out of credits (191 left, this cut needs 200): top up), with a sound effect on each graphic (2)"}]
+    res = ct.get_creative(seqs[:1], None, f.emit)
+    msg = res["items"][0]["message"]
+    assert res["items"][0]["status"] == "done" and "music is music from your Artlist library (Aves - Bumpin' - No Backing Vocals) (it could not be generated)" in msg, msg

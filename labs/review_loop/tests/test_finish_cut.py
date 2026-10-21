@@ -575,3 +575,80 @@ def test_a_file_slug_becomes_a_readable_topic_and_a_real_title_is_left_alone():
     assert fc.topic_of("Keeping the Rustic Without Going Cheap") == "Keeping the Rustic Without Going Cheap"
     assert fc.topic_of("A gruff contractor snaps at the camera crew, apologizes") == "A gruff contractor snaps at the camera crew, apologizes"
     assert " " in fc.topic_of("WK_06_mitch_why_country_insurance_cost_20_more")
+
+
+
+def _wav(path, seconds):
+    import numpy as np
+    import soundfile as sf
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(path), np.zeros(int(seconds * 8000), dtype="float32"), 8000)
+    return path
+
+
+def test_when_music_cannot_be_generated_an_already_generated_bed_is_used_and_the_step_says_which_and_why(xml, tmp_path):
+    """Ryan, 2026-10-21, credits gone: "use already generated music or music from the Artlist folder when we run out"."""
+    bed = tmp_path / "score_abc.mp3"
+    bed.write_bytes(b"")
+    f = Fake(fail_on="score_music.py")
+    picked = []
+
+    def pick(zone, name):
+        picked.append((zone, name))
+        return bed, "an already generated music bed (score_abc.mp3)"
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep, music_fallback=True, fallback_fn=pick)
+    music = next(s for s in r["steps"] if s["name"] == "music")
+    assert music["done"] and "already generated music bed (score_abc.mp3), because the music could not be generated" in music["summary"]
+    assert "pretend failure in score_music.py" in music["summary"] and "nothing was kept" not in music["summary"], music["summary"]
+    assert f.calls.count("score_music.py") == 1, "generation was tried once, not retried take after take"
+    assert "conform_music.py" in f.calls and "place_audio.py" in f.calls, "the bed is fitted to the cuts and placed like any music"
+    assert picked and picked[0][1], "the pick is told the cut's length and name"
+
+
+def test_without_the_fallback_a_failed_generation_still_fails_the_step_as_before(xml, tmp_path):
+    f = Fake(fail_on="score_music.py")
+    with pytest.raises(fc.FinishError, match="The music"):
+        fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep, fallback_fn=lambda z, n: (tmp_path / "x.mp3", "x"))
+
+
+def test_when_nothing_is_long_enough_the_layer_is_reported_not_added_and_the_rest_is_kept(xml, tmp_path):
+    f = Fake(fail_on="score_music.py")
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep, music_fallback=True, fallback_fn=lambda z, n: None, keep_going=True)
+    by = {s["name"]: s for s in r["steps"]}
+    assert by["music"]["failed"] and by["captions"]["done"] and by["bleep"]["done"]
+
+
+def test_the_picker_prefers_a_generated_bed_long_enough_and_spreads_cuts_across_them(tmp_path):
+    cache = tmp_path / "cache"
+    for n, secs in (("a", 12), ("b", 40), ("c", 41), ("d", 60), ("e", 9)):
+        _wav(cache / f"score_{n}.mp3".replace(".mp3", ".wav"), secs)
+        (cache / f"score_{n}.wav").rename(cache / f"score_{n}.mp3")                 # the picker reads score_*.mp3; ffprobe reads the wav inside whatever the name says
+    a = fc.fallback_music(30.0, "WK_01_bob_x", cache=cache, library=tmp_path / "none")
+    assert a and a[0].name in ("score_b.mp3", "score_c.mp3", "score_d.mp3") and "already generated" in a[1], "only beds with room for the cut (30 s + 4) qualify"
+    assert fc.fallback_music(30.0, "WK_01_bob_x", cache=cache, library=tmp_path / "none")[0] == a[0], "the same cut always gets the same bed"
+    names = {fc.fallback_music(30.0, f"WK_{i:02d}_cut", cache=cache, library=tmp_path / "none")[0].name for i in range(1, 30)}
+    assert len(names) >= 2, "a batch of shorts is not all one track"
+
+
+def test_with_no_long_enough_generated_bed_the_artlist_library_is_used_instrumentals_first_one_file_per_folder(tmp_path):
+    cache = tmp_path / "cache"
+    _wav(cache / "score_short.wav", 10)
+    (cache / "score_short.wav").rename(cache / "score_short.mp3")
+    lib = tmp_path / "Music"
+    _wav(lib / "Artist - Sung Song" / "Artist - Sung Song.wav", 120)
+    _wav(lib / "Artist - Sung Song" / "Artist - Sung Song (1).wav", 120)
+    _wav(lib / "Band - Run - Instrumental version" / "Band - Run - Instrumental version.wav", 120)
+    _wav(lib / "Tiny - Clip" / "Tiny - Clip.wav", 15)
+    got = {fc.fallback_music(30.0, f"cut {i}", cache=cache, library=lib)[1] for i in range(12)}
+    assert got == {"music from your Artlist library (Band - Run - Instrumental version)"}, "the instrumental, never the sung one, never one too short"
+    only_sung = tmp_path / "Music2"
+    _wav(only_sung / "Artist - Sung Song" / "Artist - Sung Song.wav", 120)
+    assert fc.fallback_music(30.0, "cut", cache=cache, library=only_sung)[1] == "music from your Artlist library (Artist - Sung Song)", "a sung song is better than no music"
+    assert fc.fallback_music(300.0, "a long one", cache=cache, library=lib) is None, "nothing long enough: None, so the layer is reported not added"
+    assert fc.fallback_music(30.0, "cut", cache=tmp_path / "nope", library=tmp_path / "nope") is None
+
+
+def test_the_reason_skips_the_framing_line_and_takes_the_tools_own_words():
+    e = fc.FinishError("The music failed, so nothing was kept. The tool said:\nREFUSING: pretend failure in score_music.py\nmore detail")
+    assert fc.why(e) == "pretend failure in score_music.py"
+    assert fc.why(fc.FinishError("plain words, no framing")) == "plain words, no framing"
