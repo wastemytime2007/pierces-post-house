@@ -15,6 +15,9 @@ import { sendCommand } from "../../App.jsx";
  */
 const STATUS_LABEL = { "VERIFIED": "Verified", "APPLIED-UNMEASURED": "Applied, look at it", "NOT DONE": "Not done", "FAILED": "Failed" };
 const STATUS_CLASS = { "VERIFIED": "ok", "APPLIED-UNMEASURED": "warn", "NOT DONE": "warn", "FAILED": "bad" };
+// Creative stage (Ryan, 2026-10-21): the XML that comes in is already the cut he trimmed in Premiere. This tab adds to it (graphics, captions, music, bleep, transitions and sound) and sends it back
+// to Premiere. It never reviews the story, never fixes or rebuilds the cut, never starts the AI editor. The editing machinery below stays in the file, switched off by this one flag.
+const CREATIVE_STAGE = true;
 const fileName = (p) => (p || "").split("/").pop();
 const dirName = (p) => (p || "").split("/").slice(0, -1).join("/");
 
@@ -50,6 +53,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const openedRef = useRef(false); // the last session was reopened (or there was none) once for this mount
   const autoOnRef = useRef(true);
   const [autoOn, setAutoOn] = useState(() => {
+    if (CREATIVE_STAGE) return false;
     try { return localStorage.getItem("review.autoEdit") !== "off"; } catch (e) { return true; }
   });
   // The AI editor's own loop: { status: idle | running | done, round, of, label, fixing, summary, best, left, versions }
@@ -149,7 +153,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         setExportResult(null);
         setIncoming("");
         setInfo("");
-        if (ev.stale) setInfo("This review was made by an older version of the AI editor, so it does not have what has been fixed since (for example cutting an off-camera voice, or finishing with graphics and sound). Press Start over to run the current editor on this cut.");
+        if (ev.stale && !CREATIVE_STAGE) setInfo("This review was made by an older version of the AI editor, so it does not have what has been fixed since (for example cutting an off-camera voice, or finishing with graphics and sound). Press Start over to run the current editor on this cut.");
         const interrupted = !ev.auto_running && !a && autoOnRef.current && vs.length > 0;          // the AI editor never reported how it ended: the app was closed or restarted while it worked
         setActivity([{ t: Date.now(), kind: "info", text: interrupted
           ? `Reopened your earlier review of this cut (${vs.map((v) => v.label).join(", ")}). The AI editor did not finish last time (the app was closed or restarted while it worked), so it is picking up from ${vs[vs.length - 1].label}.`
@@ -359,11 +363,13 @@ export default function ReviewTab({ subscribe, onStatus }) {
   };
 
   aiOnlyRef.current = (xml, folder, tag, root) => {
+    if (CREATIVE_STAGE) return;
     sendCommand({ type: "ai_review", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml, direction: directionRef.current }).catch((e) => setAi((a) => ({ ...a, [tag]: { status: "failed", message: String(e) } })));
   };
 
   // A new version (the cut just built, or one made from your notes): the AI editor takes it from here, unless it is switched off, then only the review runs.
   aiStartRef.current = (xml, folder, tag, root) => {
+    if (CREATIVE_STAGE) return;
     if (autoOnRef.current) {
       sendCommand({ type: "auto_edit", xml, folder, tag, root: root || versionsRef.current[0]?.xml || xml, finish: autoFinishRef.current ? finishOptsRef.current : null, direction: directionRef.current }).catch((e) => setAuto({ status: "done", summary: `The AI editor could not start: ${e}`, left: [], versions: [], rounds: [] }));
     } else {
@@ -397,6 +403,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
 
   const apply = useCallback(async () => {
     if (!version) return;
+    if (CREATIVE_STAGE) {
+      setInfo("This stage does not re-edit your cut. Notes stay on the page for you; add graphics, captions, music and transitions, then Open in Premiere.");
+      return;
+    }
     setError("");
     setInfo("");
     try {
@@ -497,12 +507,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       );
     }
-    const yours = auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
+    const yours = CREATIVE_STAGE ? "Your cut is open exactly as you trimmed it. Nothing here edits it. Add graphics, captions, music, transitions and sound, then Open in Premiere." : auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
     return (
       <div className={`ai-strip yours ${outcomeBad ? "bad" : ""}`} role="status" aria-live="polite">
         <span className="ai-dot" />
         <div className="ai-strip-main">
-          <div className="ai-strip-title">Your turn <span className="ai-time">{auto.status === "done" ? (auto.outcome === "clean" ? "nothing left for the editor" : "the editor has done what it can") : "the editor is waiting on you"}</span></div>
+          <div className="ai-strip-title">Your turn <span className="ai-time">{CREATIVE_STAGE ? "your cut is not being edited" : auto.status === "done" ? (auto.outcome === "clean" ? "nothing left for the editor" : "the editor has done what it can") : "the editor is waiting on you"}</span></div>
           <div className="ai-strip-sub">{yours}</div>
         </div>
       </div>
@@ -516,11 +526,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className="run-pipeline-section">
           <div className="run-pipeline-section-label">Choose the cut to review</div>
           <p className="pm-tab-sub">
-            Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing
-            on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere.
+            {CREATIVE_STAGE
+              ? "Open the XML you trimmed in Premiere. It shows here exactly as you cut it: the video and every clip on a timeline. Nothing in this stage edits the cut. Add graphics, captions, music and the bleep with Finish the cut, click any cut to add a transition and its sound, then Open in Premiere."
+              : "Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere."}
           </p>
           {StatusStrip()}
-          {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">No cut from this project yet. Pick ideas on the Ideas tab and press Review.</div>}
+          {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">{CREATIVE_STAGE ? "No XML yet. Press Browse and choose the XML you exported from Premiere." : "No cut from this project yet. Pick ideas on the Ideas tab and press Review."}</div>}
           {exportsList.length > 0 && (
             <div className="transcripts-list">
               {exportsList.slice(0, 8).map((x) => (
@@ -576,6 +587,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         ))}
         <span className="transcript-row-name" title={version.xml}>{fileName(version.xml)}</span>
         <span style={{ flex: 1 }} />
+        {!CREATIVE_STAGE && (<>
         <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="When on, the AI editor reviews each version, submits the fixes it can make and repeats until nothing fixable is left. You can stop it any time.">
           <input type="checkbox" checked={autoOn} onChange={(e) => { setAutoOn(e.target.checked); try { localStorage.setItem("review.autoEdit", e.target.checked ? "on" : "off"); } catch (err) { /* private window */ } }} />
           AI editor works on its own
@@ -594,6 +606,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
               ? `Submit changes (${noteCount}) → V${versions.length + 1}`
               : `Submit changes → V${versions.length + 1}`}
         </button>
+        </>)}
         <button className="btn btn-ghost" onClick={() => setFinishing((x) => !x)} disabled={!!busy || auto.status === "running"}
           title="Add the finishing layers to this version: captions, a music bed, the bleep. Makes the next version; the picture is not touched.">
           Finish the cut…
@@ -710,11 +723,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
           title={`Review ${version.label}`}
           src={version.url}
           allow="autoplay; clipboard-write"
+          onLoad={() => { if (CREATIVE_STAGE) frameRef.current?.contentWindow?.postMessage({ type: "review:mode", submit: false }, "*"); }}
           style={{ flex: 1, minHeight: 640, width: "100%", border: `1px solid ${working ? "var(--accent, #00e0e0)" : "var(--border, #333)"}`, borderRadius: 8, background: "#000" }}
         />
       </div>
 
-      {auto.status === "done" && (
+      {!CREATIVE_STAGE && auto.status === "done" && (
         <div className={auto.outcome === "failed" || auto.outcome === "worse" || auto.outcome === "short" ? "pm-tab-warnings" : "run-pipeline-section"} role="status">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
             <div className="run-pipeline-section-label" style={{ margin: 0 }}>{auto.left?.length ? `What the AI editor could not fix by itself (${auto.left.length})` : "Nothing left for the AI editor"}</div>
@@ -746,7 +760,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
-      {!aiState && version && auto.status !== "running" && (
+      {!CREATIVE_STAGE && !aiState && version && auto.status !== "running" && (
         <div className="run-pipeline-section">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
             <div className="run-pipeline-section-label" style={{ margin: 0 }}>{version.label}: made from your notes, and the AI editor has not touched it</div>
@@ -758,7 +772,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
-      {aiState && (
+      {!CREATIVE_STAGE && aiState && (
         <div className="run-pipeline-section">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
             <div className="run-pipeline-section-label" style={{ margin: 0 }}>
