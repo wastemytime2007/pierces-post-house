@@ -11,7 +11,7 @@ const TICKS_PER_SECOND = 254016000000;
 
 function log(...parts) {
   const el = $("log");
-  el.value += parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ") + "\n";
+  el.value = (el.value || "") +parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ") + "\n";
   el.scrollTop = el.scrollHeight;
 }
 
