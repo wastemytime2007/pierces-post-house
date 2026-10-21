@@ -18,13 +18,24 @@ const clip = (name, startF, endF) => ({
   getEndTime: async () => tt(endF * TPF),
   createAddVideoTransitionAction: (transition, opts) => ({ kind: "add", on: name, transition, opts }),
   getComponentChain: async () => chainOf(name),
+  getInPoint: async () => tt(0),
 });
 // a clip's effects: Opacity and Motion, plus whatever the probe appends
 const chains = {};
-const fakeComponent = (label) => ({
-  getDisplayName: async () => label, getMatchName: async () => `AE.${label}`, getParamCount: () => 1,
-  getParam: () => ({ displayName: label === "Impact Move FX" ? "Direction" : "Amount", getStartValue: async () => ({ value: 2 }), areKeyframesSupported: async () => true }),
-});
+function fakeParam(name, value) {
+  const prm = {
+    displayName: name, v: value,
+    getStartValue: async () => ({ value: prm.v }), areKeyframesSupported: async () => true,
+    isTimeVarying: () => false, getKeyframeListAsTickTimes: () => [], getValueAtTime: async () => ({ value: prm.v }),
+    createKeyframe: (v) => ({ value: v }),
+    createSetValueAction: (kf) => ({ kind: "set", apply: () => { prm.v = kf.value; } }),
+  };
+  return prm;
+}
+const fakeComponent = (label) => {
+  const params = label === "Impact Move FX" ? [fakeParam("Direction", 2), fakeParam("Enable Motion Blur", false), fakeParam("Motion Blur", 5)] : [fakeParam("Amount", 2)];
+  return { getDisplayName: async () => label, getMatchName: async () => `AE.${label}`, getParamCount: () => params.length, getParam: (i) => params[i] };
+};
 function chainOf(name) {
   if (!chains[name]) {
     const list = [fakeComponent("Opacity"), fakeComponent("Motion")];
@@ -190,6 +201,34 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   fire("p.opened");
   await new Promise((r) => setTimeout(r, 1300));
   assert.strictEqual(calls.added.length, nAdded, "the probe does not run twice");
+
+  // ---- write test: set two of the effect's settings and read them back ----
+  calls.saved.length = 0;
+  const wt = mark(100, "PH effect write test", "Impact_Move_FX");
+  markerList = [wt];
+  fire("p.opened");
+  await new Promise((r) => setTimeout(r, 1300));
+  const w = calls.saved.find((x) => x[0] === "effect_write_test.txt");
+  assert(w && w[1].includes('"Enable Motion Blur": before false, set to true (accepted), after true') && w[1].includes('"Motion Blur": before 5, set to 7 (accepted), after 7'), "settings are set and read back: " + (w && w[1]));
+  assert.strictEqual(wt.name, "PH effect write test done");
+
+  // ---- template reader: a sequence named with "PH template" is recorded, Film Impact settings included ----
+  calls.saved.length = 0;
+  markerList = [];
+  seq.name = "PH template push";
+  fire("s.activated");
+  await new Promise((r) => setTimeout(r, 2600));
+  const tpl = calls.saved.find((x) => x[0] === "template_PH template push.json");
+  assert(tpl, "the template is written: " + calls.saved.map((x) => x[0]).join(", "));
+  const tj = JSON.parse(tpl[1]);
+  const clipB = tj.clips.find((c) => c.start_frame === 100);
+  const mv = clipB.effects.find((e) => e.match === "AE.Impact Move FX");
+  assert(mv && mv.params.some((q) => q.name === "Enable Motion Blur" && q.value === true), "the clip's Film Impact settings are recorded, as last set");
+  assert(!clipB.effects.some((e) => e.match === "AE.Opacity"), "built-in effects are left out unless animated");
+  const before = calls.saved.length;
+  fire("s.activated");
+  await new Promise((r) => setTimeout(r, 2600));
+  assert.strictEqual(calls.saved.filter((x) => x[0].startsWith("template_")).length, 1, "an unchanged template is not written again");
   console.log("panel logic: all checks passed");
   process.exit(0);
 })().catch((e) => { console.error("FAILED:", e.message, "\nlog:\n" + els.log.value); process.exit(1); });

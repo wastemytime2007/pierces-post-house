@@ -275,6 +275,143 @@ async function runProbe(project, seq, m) {
   await saveText("last_run_log.txt", $("log").value, true);
 }
 
+// ---- write test: can the script SET an effect's settings? ---------------------------------------------------------------------------------------
+// A marker "PH effect write test" at a cut, comment = the effect's match name (e.g. Impact_Move_FX). The plugin makes sure that effect is on the clip that starts at the cut,
+// sets "Enable Motion Blur" to true and "Motion Blur" to 7, reads them back and writes the result to effect_write_test.txt.
+const WRITE_TEST = "PH effect write test";
+
+function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]/g, ""); }
+
+async function findComponent(clip, want) {
+  const chain = await clip.getComponentChain();
+  const n = await chain.getComponentCount();
+  for (let c = 0; c < n; c++) {
+    const comp = await chain.getComponentAtIndex(c);
+    if (norm(await comp.getMatchName()).includes(norm(want))) return { chain, comp };
+  }
+  return { chain, comp: null };
+}
+
+async function paramByName(comp, name) {
+  const pc = await comp.getParamCount();
+  for (let p = 0; p < pc; p++) {
+    const prm = await comp.getParam(p);
+    if (prm.displayName === name) return prm;
+  }
+  return null;
+}
+
+async function runWriteTest(project, seq, m) {
+  const want = cleanName(await m.getComments()) || "Impact_Move_FX";
+  const lines = [`sequence: ${seq.name}`, `effect: ${want}`];
+  try {
+    const tpf = await ticksPerFrame(seq);
+    const start = (await m.getStart()).ticksNumber;
+    let clip = null;
+    for (const it of await (await seq.getVideoTrack(0)).getTrackItems(ppro.Constants.TrackItemType.CLIP, false)) {
+      if (Math.abs((await it.getStartTime()).ticksNumber - start) < tpf / 2) clip = it;
+    }
+    if (!clip) throw new Error(`no clip starts at frame ${Math.round(start / tpf)}`);
+    let { comp } = await findComponent(clip, want);
+    if (!comp) {
+      const names = await ppro.VideoFilterFactory.getMatchNames();
+      const match = names.find((n) => norm(n).includes(norm(want)));
+      if (!match) throw new Error(`no video effect named like ${want}`);
+      const created = await ppro.VideoFilterFactory.createComponent(match);
+      const chain = await clip.getComponentChain();
+      project.lockedAccess(() => project.executeTransaction((cpd) => cpd.addAction(chain.createAppendComponentAction(created)), "Post House: add effect (write test)"));
+      comp = (await findComponent(clip, want)).comp;
+      lines.push(`added ${match} to the clip`);
+    }
+    const targets = [["Enable Motion Blur", true], ["Motion Blur", 7]];
+    for (const [name, value] of targets) {
+      const prm = await paramByName(comp, name);
+      if (!prm) { lines.push(`"${name}": not found`); continue; }
+      const before = await prm.getStartValue();
+      let accepted;
+      project.lockedAccess(() => {
+        accepted = project.executeTransaction((cpd) => cpd.addAction(prm.createSetValueAction(prm.createKeyframe(value), true)), `Post House: set ${name} (write test)`);
+      });
+      const after = await prm.getStartValue();
+      lines.push(`"${name}": before ${JSON.stringify(before && before.value)}, set to ${JSON.stringify(value)} (${accepted ? "accepted" : "NOT accepted"}), after ${JSON.stringify(after && after.value)}`);
+    }
+    project.lockedAccess(() => project.executeTransaction((cpd) => cpd.addAction(m.createSetNameAction(`${WRITE_TEST} done`)), "Post House: write test done"));
+  } catch (e) {
+    lines.push(`FAILED: ${(e && (e.stack || e.message)) || String(e)}`);
+    await markFailed(project, m);
+  }
+  log(`--- effect write test\n${lines.join("\n")}`);
+  await saveText("effect_write_test.txt", lines.join("\n"), true);
+  await saveText("last_run_log.txt", $("log").value, true);
+}
+
+// ---- template reader: a sequence whose name contains "PH template" is read, every clip's Film Impact effects with all settings and keyframes -------
+// Written to template_<sequence name>.json whenever it changes, so a look Ryan builds by hand can be copied to any cut later.
+const templateSeen = {};
+
+async function readTemplate(seq) {
+  const tpf = await ticksPerFrame(seq);
+  const out = { sequence: seq.name, ticks_per_frame: tpf, read_at: new Date().toISOString(), clips: [] };
+  const track = await seq.getVideoTrack(0);
+  const rows = [];
+  for (const it of await track.getTrackItems(ppro.Constants.TrackItemType.CLIP, false)) {
+    rows.push({ it, start: (await it.getStartTime()).ticksNumber, end: (await it.getEndTime()).ticksNumber, inPoint: (await it.getInPoint()).ticksNumber });
+  }
+  rows.sort((a, b) => a.start - b.start);
+  for (const r of rows) {
+    const clip = { name: await r.it.getName(), start_frame: Math.round(r.start / tpf), end_frame: Math.round(r.end / tpf), in_ticks: r.inPoint, effects: [] };
+    const chain = await r.it.getComponentChain();
+    const n = await chain.getComponentCount();
+    for (let c = 0; c < n; c++) {
+      const comp = await chain.getComponentAtIndex(c);
+      const match = await comp.getMatchName();
+      const isImpact = match.includes("Impact");
+      const eff = { display: await comp.getDisplayName(), match, params: [] };
+      const pc = await comp.getParamCount();
+      for (let p = 0; p < pc; p++) {
+        const prm = await comp.getParam(p);
+        let varying = false;
+        try { varying = !!prm.isTimeVarying(); } catch (e) { varying = false; }
+        if (!isImpact && !varying) continue;          // built-in Motion/Opacity only when they are animated
+        const entry = { index: p, name: prm.displayName, time_varying: varying };
+        try { const kf = await prm.getStartValue(); entry.value = kf && kf.value !== undefined ? kf.value : null; } catch (e) { entry.value_error = e.message; }
+        if (varying) {
+          entry.keyframes = [];
+          for (const t of prm.getKeyframeListAsTickTimes() || []) {
+            let v = null;
+            try { v = await prm.getValueAtTime(t); } catch (e) { v = `error: ${e.message}`; }
+            entry.keyframes.push({ ticks: t.ticksNumber, value: v && v.value !== undefined ? v.value : v });
+          }
+        }
+        eff.params.push(entry);
+      }
+      if (eff.params.length) clip.effects.push(eff);
+    }
+    out.clips.push(clip);
+  }
+  return out;
+}
+
+async function scanTemplates(reason) {
+  try {
+    const project = await ppro.Project.getActiveProject();
+    if (!project) return;
+    for (const seq of await project.getSequences()) {
+      if (!String(seq.name).includes("PH template")) continue;
+      const t = await readTemplate(seq);
+      const sig = JSON.stringify(t.clips);
+      if (templateSeen[seq.name] === sig) continue;
+      templateSeen[seq.name] = sig;
+      const nEff = t.clips.reduce((a, c) => a + c.effects.length, 0);
+      await saveText(`template_${String(seq.name).replace(/[^A-Za-z0-9 _-]/g, "_")}.json`, JSON.stringify(t, null, 1), true);
+      log(`--- template read (${reason}): "${seq.name}", ${t.clips.length} clips, ${nEff} effect(s) recorded`);
+      await saveText("last_run_log.txt", $("log").value, true);
+    }
+  } catch (e) {
+    log("template read ERROR:", (e && (e.stack || e.message)) || String(e));
+  }
+}
+
 async function scanProject(reason) {
   if (scanning || !$("auto").checked) return;
   scanning = true;
@@ -289,6 +426,10 @@ async function scanProject(reason) {
         const nm = await m.getName();
         if (nm === PENDING) pending.push(m);
         if (nm === PROBE) probes.push(m);
+        if (nm === WRITE_TEST) {
+          const key = `${seq.guid}:write:${(await m.getStart()).ticksNumber}`;
+          if (!handled.has(key)) { handled.add(key); await runWriteTest(project, seq, m); }
+        }
       }
       if (pending.length) await runPlan(project, seq, pending, reason);
       for (const m of probes) {
@@ -368,7 +509,7 @@ $("describe").addEventListener("click", () => guard("describe transitions", desc
 $("list").addEventListener("click", () => guard("list transitions", listTransitions));
 $("first").addEventListener("click", () => guard("add at first cut", () => apply(true)));
 $("all").addEventListener("click", () => guard("add at every cut", () => apply(false)));
-log("Transition Lab v0.7: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
+log("Transition Lab v0.8: automatic mode. Sequences with \"PH transition\" markers get their transitions without a click (tick the box to turn it on or off).");
 noteStartup();
 startAuto();
 // the probe runs whenever a sequence is activated or a project opens (at load there is usually no project yet); quietly, only when there are transitions to describe
@@ -392,3 +533,6 @@ for (const [group, name] of [["SequenceEvent", "ACTIVATED"], ["ProjectEvent", "O
   try { ppro.EventManager.addGlobalEventListener(ppro.Constants[group][name], () => setTimeout(() => describeQuietly(`${group}.${name}`), 1500), false); } catch (e) { /* logged by startAuto already */ }
 }
 setInterval(() => describeQuietly("timer"), 10000);
+// templates Ryan builds by hand (a sequence named with "PH template") are read every 10 s and when a sequence is activated; written only when they change
+setInterval(() => scanTemplates("timer"), 10000);
+try { ppro.EventManager.addGlobalEventListener(ppro.Constants.SequenceEvent.ACTIVATED, () => setTimeout(() => scanTemplates("SequenceEvent.ACTIVATED"), 2000), false); } catch (e) { /* timer covers it */ }
