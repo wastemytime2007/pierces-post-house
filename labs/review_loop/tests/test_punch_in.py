@@ -57,7 +57,7 @@ def test_running_it_twice_changes_nothing_more(tmp_path):
 
 
 def test_a_split_punched_clip_is_never_punched_closer():
-    """A revised cut can split a punched clip in two; the second half must not go to 115% of 115%."""
+    """A revised cut can split a punched clip in two; the second half must not go to 120% of 120%."""
     s = 44.44 * pi.PUNCH
     cut = _cut([(5, "/c.mp4", 0.3, 44.44), (3, "/c.mp4", 0.3, s), (3, "/c.mp4", 0.3, s)])
     assert pi.plan(cut, DIMS) == []

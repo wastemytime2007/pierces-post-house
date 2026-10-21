@@ -24,7 +24,7 @@ import framing  # noqa: E402
 import follow_speaker as fs  # noqa: E402
 import timeline  # noqa: E402
 
-PUNCH = 1.15                 # how much closer the punched-in clip is
+PUNCH = 1.20                 # how much closer the punched-in clip is (Ryan, 2026-10-21: "20% punch in is good"; it was 1.15)
 SAME_X = 0.08                # two clips whose mid-frame points are this close (fraction of the source width) show the same person: each clip is centred on that moment's face, so one person drifts up to 4% from clip to clip (Septic cut), and two people stand about 40% apart
 SAME_SCALE = 0.1             # percentage points
 

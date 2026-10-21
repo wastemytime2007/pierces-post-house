@@ -3,7 +3,7 @@
   "portrait": {
     "output": [1080, 1920],
     "window_fraction_of_16x9_width": {"value": 0.316, "basis": "derived"},
-    "eye_line_fraction_from_top": {"min": 0.30, "max": 0.38, "basis": "derived from the upper-third rule"},
+    "eye_line_fraction_from_top": {"min": 0.30, "max": 0.38, "basis": "ryan (2026-10-21: upper third eye line is good); the band is derived"},
     "face_height_fraction": {"min": 0.22, "max": 0.28, "basis": "mine"},
     "head_top_min_px": {"value": 250, "basis": "derived from the top safe zone"},
     "safe_px": {
@@ -16,7 +16,7 @@
   },
   "landscape": {
     "output": [1920, 1080],
-    "eye_line_fraction_from_top": {"value": 0.333, "basis": "sourced"},
+    "eye_line_fraction_from_top": {"value": 0.333, "basis": "ryan (2026-10-21: upper third eye line is good); also sourced"},
     "headroom_fraction": {"min": 0.06, "max": 0.12, "basis": "derived from the thirds rule"}
   },
   "motion": {
@@ -24,10 +24,17 @@
     "move_inside_a_shot": {"value": "never, except a smoothed path for a subject that really moves", "basis": "sourced"}
   },
   "punch_in": {
-    "factor": {"value": 1.15, "basis": "ryan (punch_in.py)"},
+    "factor": {"value": 1.20, "basis": "ryan (2026-10-21: 20% is good; punch_in.py)"},
     "sourced_range": {"min": 1.10, "max": 1.30, "common": [1.15, 1.20], "basis": "sourced"},
-    "try_next": {"value": 1.20, "basis": "mine"},
     "keep_top_of_picture": {"value": true, "basis": "ryan"}
+  },
+  "broll": {
+    "frame_on": {"value": "the subject of the clip: a person, action with hands, or an object", "basis": "ryan (2026-10-21)"},
+    "subjects": ["person", "hands_action", "object"]
+  },
+  "outputs": {
+    "portrait": {"output": [1080, 1920], "serves": "Reels (one portrait crop for the vertical platforms)", "basis": "ryan (2026-10-21)"},
+    "landscape": {"output": [1920, 1080], "serves": "YouTube and longer-form media", "basis": "ryan (2026-10-21)"}
   },
   "resolution": {
     "scale_warn_pct": {"value": 100, "basis": "derived (1 source pixel per output pixel)"},
