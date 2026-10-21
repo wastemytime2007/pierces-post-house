@@ -89,6 +89,17 @@ const tick = () => new Promise((r) => setTimeout(r, 20));
   assert.strictEqual(calls.created[0], "AE.Impact Push", "uses the exact name found in the filter box");
   assert(log().includes("using \"AE.Impact Push\" from the filter box"));
 
+  // a pasted name with a trailing full stop is cleaned; a name that does not exist is refused before Premiere is asked
+  calls.created.length = 0; calls.added.length = 0;
+  set("name", "AE.Impact Push."); els.log.value = "";
+  await handlers.first(); await tick();
+  assert.strictEqual(calls.created[0], "AE.Impact Push", "trailing full stop cleaned: " + log());
+  assert(log().includes("cleaned the name"));
+  calls.created.length = 0; set("name", "AE.Not A Real One"); els.log.value = "";
+  await handlers.first(); await tick();
+  assert.strictEqual(calls.created.length, 0, "an unknown name never reaches Premiere");
+  assert(log().includes("Premiere has no transition named"), log());
+
   set("filter", "impact"); set("name", ""); els.log.value = "";                    // a partial word in the filter is not a name
   await handlers.first(); await tick();
   assert(log().includes("ERROR") && log().includes("match name"), "an empty name is reported, not thrown");

@@ -96,17 +96,31 @@ function addAt(project, clip, matchName, durationTicks, alignment) {
   return accepted;
 }
 
-async function apply(onlyFirst) {
-  let matchName = $("name").value.trim();
-  if (!matchName) {                                   // a name pasted into the filter box by mistake: use it if it is exactly one of Premiere's names
-    const typed = $("filter").value.trim();
-    const names = await ppro.TransitionFactory.getVideoTransitionMatchNames();
-    if (typed && names.includes(typed)) {
-      matchName = typed;
-      log(`the name box was empty; using "${typed}" from the filter box`);
+function cleanName(raw) {
+  return String(raw || "").trim().replace(/^[`'"\s]+/, "").replace(/[`'".,;:\s]+$/, ""); // a pasted name often carries a trailing full stop or quote
+}
+
+async function resolveName(raw) {
+  const names = await ppro.TransitionFactory.getVideoTransitionMatchNames();
+  let typed = cleanName(raw);
+  if (!typed) {                                       // a name pasted into the filter box by mistake: use it if it is one of Premiere's names
+    const f = cleanName($("filter").value);
+    if (f && names.includes(f)) {
+      log(`the name box was empty; using "${f}" from the filter box`);
+      typed = f;
     }
   }
-  if (!matchName) throw new Error("type or paste a transition match name into the SECOND box (\"Transition match name\"); list them with button 1");
+  if (!typed) throw new Error("type or paste a transition match name into the SECOND box (\"Transition match name\"); list them with button 1");
+  if (typed !== String(raw || "").trim()) log(`cleaned the name: "${String(raw).trim()}" -> "${typed}"`);
+  if (names.includes(typed)) return typed;
+  const ci = names.find((n) => n.toLowerCase() === typed.toLowerCase());
+  if (ci) return ci;
+  const near = names.filter((n) => n.toLowerCase().includes(typed.toLowerCase().slice(0, Math.max(6, typed.length - 3)))).slice(0, 8);
+  throw new Error(`Premiere has no transition named "${typed}".` + (near.length ? ` Close names: ${near.join(", ")}` : " Use button 1 to see the names."));
+}
+
+async function apply(onlyFirst) {
+  const matchName = await resolveName($("name").value);
   const trackNumber = parseInt($("track").value, 10) || 1;
   const frames = parseFloat($("frames").value) || 6;
   const alignment = parseFloat($("align").value);
@@ -129,4 +143,4 @@ async function apply(onlyFirst) {
 $("list").addEventListener("click", () => guard("list transitions", listTransitions));
 $("first").addEventListener("click", () => guard("add at first cut", () => apply(true)));
 $("all").addEventListener("click", () => guard("add at every cut", () => apply(false)));
-log("Transition Lab v0.2 (saves last_run_log.txt after every click). Start with: List transitions.");
+log("Transition Lab v0.3 (saves last_run_log.txt after every click). Start with: List transitions.");
