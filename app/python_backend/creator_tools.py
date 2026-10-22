@@ -350,6 +350,8 @@ def list_exports(project_dir: str | Path) -> list[dict]:
         pass
     if (d / "exports").is_dir():
         for p in (d / "exports").rglob("*.xml"):
+            if p.name.startswith("."):                    # macOS "._" sidecar on an external drive, not an export
+                continue
             seen.setdefault(str(p), p.stat().st_mtime)
     return [{"path": p, "name": Path(p).name, "mtime": t, "session": session_summary(p)} for p, t in sorted(seen.items(), key=lambda kv: kv[1], reverse=True)[:30]]
 

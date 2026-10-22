@@ -402,7 +402,8 @@ def list_ideas(project) -> list[dict]:
     if not plans_dir.exists():
         return []
     out = []
-    for fp in sorted(plans_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    # macOS writes "._<name>.json" AppleDouble sidecars on external drives; they are not ideas and are not UTF-8
+    for fp in sorted((p for p in plans_dir.glob("*.json") if not p.name.startswith(".")), key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             d = json.loads(fp.read_text())
             out.append({
@@ -417,7 +418,7 @@ def list_ideas(project) -> list[dict]:
                 "selected_platform_key": d.get("selected_platform_key", ""),
                 "selected_aspect_key": d.get("selected_aspect_key", ""),
             })
-        except (json.JSONDecodeError, KeyError, OSError):
+        except (ValueError, KeyError, OSError):          # ValueError covers a bad JSON file and a file that is not UTF-8
             continue
     return out
 

@@ -152,10 +152,10 @@ def load_audio_index(index_dir: Path) -> list[AudioInfo]:
     if not index_dir.exists():
         return []
     out = []
-    for fp in sorted(index_dir.glob("*.json")):
+    for fp in sorted(p for p in index_dir.glob("*.json") if not p.name.startswith(".")):   # not macOS "._" sidecars
         try:
             d = json.loads(fp.read_text())
             out.append(AudioInfo(**d))
-        except (json.JSONDecodeError, TypeError, OSError):
+        except (ValueError, TypeError, OSError):
             continue
     return out
