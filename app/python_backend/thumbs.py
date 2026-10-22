@@ -30,12 +30,51 @@ def _cache_dir() -> Path:
     return d
 
 
+_INDEX: dict = {"at": 0.0, "by_stem": {}}
+
+
+def _proxy_index(max_age: float = 90.0) -> dict:
+    """Proxy files by the clip name they stand for, from every `...Proxies` folder at the top of every connected drive (`/Volumes/<drive>/<something Proxies>/A001_..._Proxy.mov`).
+    Scanned once and reused; rescanned after `max_age` seconds so a drive plugged in later is found."""
+    import time
+    if time.time() - _INDEX["at"] < max_age and _INDEX["by_stem"]:
+        return _INDEX["by_stem"]
+    by_stem: dict = {}
+    try:
+        for vol in Path("/Volumes").iterdir():
+            try:
+                for d in vol.iterdir():
+                    if d.is_dir() and "proxies" in d.name.lower() and not d.name.startswith("."):
+                        for f in d.iterdir():
+                            if f.suffix.lower() in VIDEO_SUFFIXES and not f.name.startswith("."):
+                                stem = f.stem
+                                for tail in ("_Proxy", "_proxy", "-Proxy"):
+                                    stem = stem[: -len(tail)] if stem.endswith(tail) else stem
+                                by_stem.setdefault(stem, f)
+                                by_stem.setdefault(stem.rsplit("_", 1)[0] if stem.rsplit("_", 1)[-1].isdigit() and stem.count("_") > 2 else stem, f)
+            except OSError:
+                continue
+    except OSError:
+        pass
+    _INDEX["at"], _INDEX["by_stem"] = time.time(), by_stem
+    return by_stem
+
+
+def _find_proxy(p: Path) -> Path | None:
+    """A small, readable stand-in for a clip, on the same timeline as the original: the app's own `proxies/<stem>.mp4` beside it, or (for footage ffmpeg cannot read, like RED .R3D)
+    a proxy named after it in a `...Proxies` folder on any connected drive."""
+    own = p.parent / "proxies" / f"{p.stem}.mp4"
+    if own.is_file():
+        return own
+    return _proxy_index().get(p.stem)
+
+
 def frame_data_uri(path: str | Path, t: float = 1.0, width: int = 480) -> str | None:
     """One frame of a video at second `t` as a JPEG data URI, or None when it cannot be had."""
     p = Path(path)
-    proxy = p.parent / "proxies" / f"{p.stem}.mp4"           # the small local proxy, same timeline as the original: quick, and works with the drive unplugged
     try:
-        if proxy.is_file() and not proxy.name.startswith("."):
+        proxy = _find_proxy(p)                                    # the small stand-in, same timeline as the original: quick, readable, and (the app's own) works with the drive unplugged
+        if proxy is not None:
             p = proxy
         if not p.is_file() or p.suffix.lower() not in VIDEO_SUFFIXES or p.name.startswith("."):
             return None

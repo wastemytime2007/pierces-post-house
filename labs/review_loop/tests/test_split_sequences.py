@@ -122,3 +122,21 @@ def test_precuts_helper_timelines_are_not_listed_as_cuts(tmp_path):
     p.write_text(_doc(_bin("Seqs", cut, _bin("Files", _bin("Nested Seqs", nested)))))
     assert [r["name"] for r in ss.list_sequences(ss._load(p))] == ["A real cut"]
     assert ss.is_helper("Nested Sequence 01") and ss.is_helper("x", "FOOTAGE/Files 18/Nested Seqs") and not ss.is_helper("Day 1", "SEQS/Shoot Days")
+
+
+
+def test_listing_names_the_frame_that_stands_for_each_sequence(tmp_path):
+    """The picker shows each sequence by a frame of its own footage: the first clip on the first video track, a second in."""
+    import split_sequences as ss
+    xml = tmp_path / "two.xml"
+    xml.write_text("""<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE xmeml><xmeml version="4"><project><children>
+<sequence id="s1"><name>First story</name><duration>900</duration><rate><timebase>30</timebase><ntsc>FALSE</ntsc></rate><media><video><track>
+<clipitem id="c1"><name>b</name><start>300</start><end>600</end><in>60</in><out>360</out><rate><timebase>30</timebase></rate><file id="f2"/></clipitem>
+<clipitem id="c0"><name>a</name><start>0</start><end>300</end><in>150</in><out>450</out><rate><timebase>30</timebase></rate><file id="f1"><pathurl>file://localhost/Volumes/Shoot/My%20Clip.mp4</pathurl></file></clipitem>
+</track></video></media></sequence>
+<sequence id="s2"><name>Second story</name><duration>300</duration><rate><timebase>30</timebase></rate><media><video><track>
+<clipitem id="c3"><name>x</name><start>0</start><end>300</end><in>0</in><out>300</out><rate><timebase>30</timebase></rate><file id="f9"/></clipitem>
+</track></video></media></sequence></children></project></xmeml>""")
+    rows = {r["name"]: r for r in ss.list_sequences(ss._load(xml), check=False)}
+    assert rows["First story"]["first_frame"] == {"path": "/Volumes/Shoot/My Clip.mp4", "t": 6.0}     # earliest clip (start 0), in 150 frames at 30 fps = 5 s, plus a second
+    assert rows["Second story"]["first_frame"] is None                                              # its file has no path anywhere: nothing to show, and no error

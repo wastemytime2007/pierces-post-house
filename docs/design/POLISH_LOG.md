@@ -17,3 +17,9 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 11 | Project covers say where the project stands ("Ready to find stories", "4 stories found", "XML out for trimming"); backend `project_summary` | `test_project_summary.py` (2), run on the real projects |
 | 12 | The summary also counts XMLs saved anywhere, from the app's own export record | run on the real projects: Wall Removal 2, Weekend Septic 7 |
 | 13 | New project is a sheet over the home screen, not a form that pushes the list down | screenshot dark |
+| 14 | New app icon: the house-and-play mark as a proper macOS icon (`app/dev/icon.svg`, full icon set generated) | rendered and viewed; Dock appearance not seen |
+| 15 | The sequence listing names the frame that stands for each sequence (first clip on V1, a second in) | `test_split_sequences.py` (9), run on the real 71-sequence XML |
+| 16 | Frames are cut from proxies on any connected drive (`...Proxies` folders), so RED R3D long-form works | real XML: frames for 9 of 12 sequences checked (the other 3 have no proxy on the connected drives) |
+| 17 | The sequence picker is a contact sheet: each sequence by its own frame, check marks, sticky "Open N sequences" | screenshot dark and light |
+| 18 | Duration chips read 0:28, not "0 min" | screenshot |
+| 19 | While choosing, the sheet has the whole screen (no intro above it) | screenshot |

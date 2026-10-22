@@ -65,6 +65,22 @@ async function counts(page, label) {
   await page.screenshot({ path: path.join(out, "02_review_empty.png") });
   await counts(page, "02_review_empty");
 
+  // 2b. the sequences of one XML, as a contact sheet
+  {
+    const fr = fs.existsSync(FR) ? fs.readdirSync(FR).filter((f) => f.endsWith(".jpg")).sort() : [];
+    const rows = NAMES.map((n, i) => ({ id: "s" + i, name: n, bin: "SEQS/Shorts", clips: 3 + i, seconds: 28 + i * 4, fps: 30, problem: i === 6 ? "it uses a file the XML never defines" : null, first_frame: { path: "/x/" + i + ".mp4", t: 3 } }));
+    await page.evaluate((r) => window.__emit({ type: "sequences_listed", xml: "/x/wk.xml", sequences: r }), rows);
+    const th = {};
+    rows.forEach((r, i) => { if (fr.length) th[`seq:/x/wk.xml:${r.id}`] = "data:image/jpeg;base64," + fs.readFileSync(path.join(FR, fr[i % fr.length])).toString("base64"); });
+    await page.evaluate((x) => window.__emit({ type: "frame_thumbs", thumbs: x }), th);
+    await page.waitForTimeout(300);
+    await page.locator(".sp-tile").nth(1).click();
+    await page.locator(".sp-tile").nth(2).click();
+    await page.screenshot({ path: path.join(out, "02b_contact_sheet.png") });
+    await counts(page, "02b_contact_sheet");
+    await page.getByRole("button", { name: "Cancel" }).click();
+  }
+
   // 3. a cut open (V1 and V2), the page loaded
   await page.evaluate((v) => window.__emit({ type: "review_session_loaded", root: v[0].xml, versions: v, ai: {}, auto: null, auto_running: false }), [v1, v2]);
   await page.waitForTimeout(2500);

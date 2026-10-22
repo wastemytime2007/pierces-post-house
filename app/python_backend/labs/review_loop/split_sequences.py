@@ -58,6 +58,27 @@ def _fps(seq: ET.Element) -> float:
     return tb * 1000 / 1001 if (r.findtext("ntsc") or "").upper() == "TRUE" else float(tb)
 
 
+def _first_frame(seq: ET.Element, files: dict) -> dict | None:
+    """The picture that stands for a sequence in a picker: its first clip on the first video track, as {"path", "t"} (a second in, so a fade-in is not what is shown). None when the clip's file has no path."""
+    from urllib.parse import unquote, urlparse
+    track = seq.find("media/video/track")
+    if track is None:
+        return None
+    items = sorted((ci for ci in track.findall("clipitem") if ci.find("file") is not None), key=lambda ci: int(ci.findtext("start") or 0) if int(ci.findtext("start") or 0) >= 0 else 10 ** 9)
+    for ci in items:
+        f = ci.find("file")
+        full = f if f.find("pathurl") is not None else files.get(f.get("id"))
+        if full is None or full.find("pathurl") is None:
+            continue
+        url = full.findtext("pathurl") or ""
+        path = unquote(urlparse(url).path)
+        r = ci.find("rate")
+        tb = int((r.findtext("timebase") if r is not None else None) or 30)
+        fps = tb * 1000 / 1001 if r is not None and (r.findtext("ntsc") or "").upper() == "TRUE" else float(tb)
+        return {"path": path, "t": round(max(0, int(ci.findtext("in") or 0)) / fps + 1.0, 2)}
+    return None
+
+
 def _clip_count(seq: ET.Element) -> int:
     return sum(len(t.findall("clipitem")) for t in seq.findall("media/video/track"))
 
@@ -83,7 +104,14 @@ def list_sequences(root: ET.Element, check: bool = True) -> list[dict]:
             continue
         fps = _fps(s)
         dur = int(s.findtext("duration") or 0)
-        rows.append({"id": s.get("id"), "name": name, "bin": binp, "clips": n, "seconds": round(dur / fps, 1), "fps": round(fps, 3), "problem": None})
+        rows.append({"id": s.get("id"), "name": name, "bin": binp, "clips": n, "seconds": round(dur / fps, 1), "fps": round(fps, 3), "problem": None, "_el": s})
+    all_files = _defs(root)[0] if rows else {}
+    for r in rows:
+        el = r.pop("_el")
+        try:
+            r["first_frame"] = _first_frame(el, all_files)
+        except (ValueError, TypeError, AttributeError):
+            r["first_frame"] = None
     if check and rows:
         defs = _defs(root)
         for r in rows:

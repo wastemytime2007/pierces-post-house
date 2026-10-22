@@ -31,6 +31,11 @@ function CutThumb({ xml, className = "" }) {
   return <span className={`cut-thumb ${className} ${u ? "" : "empty"}`} style={u ? { backgroundImage: `url(${u})` } : undefined} aria-hidden="true">{!u && <Icon name="film" size={14} />}</span>;
 }
 
+function PickThumb({ k }) {
+  const u = useThumb(k);
+  return <span className={`sp-art ${u ? "" : "empty"}`} style={u ? { backgroundImage: `url(${u})` } : undefined}>{!u && <Icon name="film" size={20} />}</span>;
+}
+
 // File names read as words: underscores become spaces and a split contraction is put back (someone_s -> someone's)
 const pretty = (n) => String(n).replace(/_/g, " ").replace(/(\w) (s|t|re|ve|ll|d)(?= |$)/g, "$1'$2");
 
@@ -96,6 +101,9 @@ export default function ReviewTab({ subscribe, onStatus }) {
   });
   const [choosing, setChoosing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  useEffect(() => {
+    if (picker?.rows?.length) requestFrames(picker.rows.filter((r) => r.first_frame).map((r) => ({ key: `seq:${picker.xml}:${r.id}`, path: r.first_frame.path, t: r.first_frame.t })), 320);
+  }, [picker?.xml, picker?.rows]);
   useEffect(() => { if (seqSet?.items?.length) requestFrames(seqSet.items.map((sq) => cutFrameItem(sq.xml)), 200); }, [seqSet]);
   useEffect(() => { if (exportsList?.length) requestFrames(exportsList.slice(0, 8).map((x) => cutFrameItem(x.path)), 420); }, [exportsList]);
   const [scopeAll, setScopeAll] = useState(true);                  // Get Creative: every sequence opened, or only this one
@@ -592,46 +600,54 @@ export default function ReviewTab({ subscribe, onStatus }) {
     }
   };
 
+  // The sequences an XML holds, as a contact sheet: each by a frame of its own footage. Choose the ones to finish.
   function SequencePicker() {
-    if (reading) return <div className="sync-section-hint" role="status">Reading the sequences in {fileName(reading)}… (a large project takes a few seconds)</div>;
+    if (reading) return <div className="sp-reading" role="status"><span className="setup-spinner" /> Reading the sequences in {fileName(reading)}… <span>A large project takes a few seconds.</span></div>;
     if (!picker) return null;
     const q = picker.filter.trim().toLowerCase();
     const shown = picker.rows.filter((r) => (!picker.hideAuto || !isAutoSave(r.bin)) && (!q || r.name.toLowerCase().includes(q) || r.bin.toLowerCase().includes(q)));
+    const openable = shown.filter((r) => !r.problem);
     const set = (patch) => setPicker((x) => ({ ...x, ...patch }));
     const toggle = (id) => set({ selected: picker.selected.includes(id) ? picker.selected.filter((x) => x !== id) : [...picker.selected, id] });
+    const all = openable.length > 0 && openable.every((r) => picker.selected.includes(r.id));
     return (
-      <div className="run-pipeline-section" role="dialog" aria-label="Choose sequences">
-        <div className="run-pipeline-section-label">{picker.rows.length} sequences in {fileName(picker.xml)}</div>
-        <div className="sync-section-hint">Each one you open is cut out into its own XML in a folder named "{fileName(picker.xml).replace(/\.xml$/i, "")} - seqs" next to this file. The original is not changed. Open as many as you like and switch between them.</div>
-        <div className="pm-tab-row" style={{ alignItems: "center", flexWrap: "wrap" }}>
-          <input value={picker.filter} placeholder="Filter by name or bin" onChange={(e) => set({ filter: e.target.value })}
-            style={{ font: "inherit", background: "transparent", color: "inherit", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 6, padding: "4px 8px", minWidth: 220 }} />
-          <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={picker.hideAuto} onChange={(e) => set({ hideAuto: e.target.checked })} />
-            Hide Premiere auto-saves
-          </label>
-          <button className="btn btn-ghost" onClick={() => set({ selected: [...new Set([...picker.selected, ...shown.filter((r) => !r.problem).map((r) => r.id)])] })}>Select all shown ({shown.filter((r) => !r.problem).length})</button>
-          <button className="btn btn-ghost" onClick={() => set({ selected: [] })}>Clear</button>
+      <section className="sp" role="dialog" aria-label="Choose sequences">
+        <header className="sp-head">
+          <div>
+            <h2>{picker.rows.length} sequence{picker.rows.length === 1 ? "" : "s"}</h2>
+            <p>In {fileName(picker.xml)}. Choose the ones to finish. Your original XML is never changed.</p>
+          </div>
+          <div className="sp-tools">
+            <input type="search" value={picker.filter} placeholder="Filter by name or bin" aria-label="Filter sequences" onChange={(e) => set({ filter: e.target.value })} />
+            <label className="rv-check"><input type="checkbox" checked={picker.hideAuto} onChange={(e) => set({ hideAuto: e.target.checked })} /><span>Hide auto-saves</span></label>
+            <button className="btn btn-sm" onClick={() => set({ selected: all ? picker.selected.filter((id) => !openable.some((r) => r.id === id)) : [...new Set([...picker.selected, ...openable.map((r) => r.id)])] })}>{all ? "Clear shown" : `Select all ${openable.length}`}</button>
+          </div>
+        </header>
+        <div className="sp-grid">
+          {shown.map((r) => {
+            const on = picker.selected.includes(r.id);
+            return (
+              <button key={r.id} className={`sp-tile ${on ? "on" : ""}`} disabled={!!r.problem} aria-pressed={on} onClick={() => toggle(r.id)}
+                title={r.problem ? `Cannot be opened: ${r.problem}` : r.name}>
+                <PickThumb k={`seq:${picker.xml}:${r.id}`} />
+                <span className="sp-check" aria-hidden="true">{on && <Icon name="check" size={13} />}</span>
+                <span className="sp-dur">{Math.floor(r.seconds / 60)}:{String(Math.round(r.seconds % 60)).padStart(2, "0")}</span>
+                <span className="sp-name">{pretty(r.name)}</span>
+                <span className="sp-meta">{r.problem ? "Uses media the XML does not hold" : `${r.clips} clip${r.clips === 1 ? "" : "s"}${r.bin ? ` · ${r.bin.split("/").pop()}` : ""}`}</span>
+              </button>
+            );
+          })}
+          {shown.length === 0 && <div className="sp-none">Nothing matches.</div>}
         </div>
-        <div className="transcripts-list" style={{ maxHeight: 340, overflowY: "auto" }}>
-          {shown.map((r) => (
-            <label className="transcript-row" key={r.id} style={{ cursor: r.problem ? "not-allowed" : "pointer", opacity: r.problem ? 0.55 : 1 }} title={r.problem || ""}>
-              <input type="checkbox" disabled={!!r.problem} checked={picker.selected.includes(r.id)} onChange={() => toggle(r.id)} style={{ marginRight: 10 }} />
-              <div className="transcript-row-main">
-                <div className="transcript-row-name">{r.name}</div>
-                <div className="transcript-row-folder">{r.bin || "(no bin)"} · {r.clips} clip{r.clips === 1 ? "" : "s"} · {fmtDur(r.seconds)}{r.problem ? " · cannot be opened: it uses media the XML does not define (offline in Premiere)" : ""}</div>
-              </div>
-            </label>
-          ))}
-          {shown.length === 0 && <div className="sync-section-hint">Nothing matches.</div>}
-        </div>
-        <div className="pm-tab-row">
-          <button className="btn btn-primary" disabled={picker.selected.length === 0} onClick={openPicked}>
-            {picker.selected.length === 0 ? "Choose sequences to open" : `Open ${picker.selected.length} sequence${picker.selected.length === 1 ? "" : "s"}`}
-          </button>
+        <footer className="sp-foot">
+          <span>{picker.selected.length ? `${picker.selected.length} chosen` : "Nothing chosen yet"}</span>
+          <span className="rv-spacer" />
           <button className="btn btn-ghost" onClick={() => setPicker(null)}>Cancel</button>
-        </div>
-      </div>
+          <button className="btn btn-primary" disabled={picker.selected.length === 0} onClick={openPicked}>
+            {picker.selected.length === 0 ? "Open sequences" : `Open ${picker.selected.length} sequence${picker.selected.length === 1 ? "" : "s"}`}
+          </button>
+        </footer>
+      </section>
     );
   }
 
@@ -892,9 +908,11 @@ export default function ReviewTab({ subscribe, onStatus }) {
   // ---- nothing chosen yet
   if (!version) {
     keysRef.current = { open: () => { if (!busy) browse(); } };
+    const picking = !!picker || !!reading;                       // choosing sequences: the contact sheet gets the whole screen
     return (
-      <div className="review-tab rv-empty">
+      <div className={`review-tab rv-empty ${picking ? "picking" : ""}`}>
         <div className="rv-empty-card">
+          {!picking && (<>
           <h1>Finish</h1>
           <p>Bring back the cut you trimmed in Premiere. Post House leaves your edit as it is and adds the finishing touches.</p>
           <ol className="rv-steps">
@@ -906,6 +924,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
             <button className="btn btn-primary" disabled={!!busy} onClick={browse}><Icon name="folderOpen" size={15} /> Choose XML…</button>
             <span className="rv-hint">or press ⌘O</span>
           </div>
+          </>)}
           {(error || making || busy) && (
             <div className="rv-notices" style={{ marginTop: 16 }}>
               {StatusStrip()}
@@ -914,7 +933,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           )}
           {SequencePicker()}
           {CreativePanel()}
-          {exportsList.length > 0 && (
+          {!picking && exportsList.length > 0 && (
             <>
               <h2 className="rv-recent-head">Recent cuts</h2>
               <ul className="rv-posters">
