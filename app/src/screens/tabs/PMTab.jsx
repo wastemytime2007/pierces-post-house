@@ -570,9 +570,9 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
 
         {activePipelineJobs.length === 0 ? (
           <div className="empty-state">
-            Add footage above, then choose Organize to process it.
-            <br />
-            A-roll proxies + transcription and B-roll proxies + tagging run in parallel.
+            <strong>Nothing is being processed.</strong>
+            <span>Add your footage above, then choose Get it ready. Interviews are transcribed and
+            B-roll is described and tagged, at the same time, so Stories has something to read.</span>
           </div>
         ) : (
           activePipelineJobs.map(([jobId, job]) =>

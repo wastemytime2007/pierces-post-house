@@ -129,7 +129,8 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
           <h2 id="trim-sent-h">Sent to Premiere</h2>
           {recent.length === 0 ? (
             <div className="trim-empty">
-              <p>Nothing has been exported from this project yet.</p>
+              <p><strong>Nothing has gone to Premiere yet.</strong></p>
+              <p>Choose the stories worth cutting and they arrive here, each as its own sequence.</p>
               <button className="btn btn-primary" onClick={() => onGoTo("ideas")}>Choose stories</button>
             </div>
           ) : (

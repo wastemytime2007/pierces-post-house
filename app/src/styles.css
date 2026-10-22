@@ -5657,3 +5657,9 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .cover, .sp-tile, .trim-row, .idea-card, .frame-pick-tile { border-radius: var(--radius-card); }
 .modal, .rv-sheet, .cp, .set-win .modal { border-radius: var(--radius-sheet); }
 .rv-frame iframe, .rv-compare-one, .sp-peek-art { border-radius: var(--radius-frame); }
+
+/* An empty state says what it is and what to do, never a paragraph of machinery */
+.empty-state { display: flex; flex-direction: column; gap: 5px; }
+.empty-state strong { font-weight: 600; color: var(--fg-0); }
+.empty-state span { color: var(--fg-2); max-width: 62ch; }
+.trim-empty p { margin: 0 0 6px; }

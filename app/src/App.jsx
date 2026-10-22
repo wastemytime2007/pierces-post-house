@@ -19,6 +19,7 @@ import ShortcutsSheet from "./components/ShortcutsSheet.jsx";
 import Icon from "./components/Icon.jsx";
 import { ingest as ingestThumb, useThumb } from "./thumbStore.js";
 import { chime } from "./chime.js";
+import { explainLine } from "./errors.js";
 import { undo as undoOne, redo as redoOne, clearUndo } from "./undo.js";
 
 // The project you are in, by its own frame and name
@@ -194,8 +195,9 @@ export default function App() {
               logAppend({ level: "warn", message: msg });
               break; // don't also show the generic toast
             }
+            // What happened and what to do, in the toast; the raw text stays in Activity for whoever fixes the app
             logAppend({ level: "error", message: msg });
-            showToast(msg, "error");
+            showToast(explainLine(msg), "error");
             break;
           }
 
