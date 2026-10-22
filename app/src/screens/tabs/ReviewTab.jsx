@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "../../components/Icon.jsx";
-import { useThumb, requestFrames, cutFrameItem } from "../../thumbStore.js";
+import { useThumb, requestFrames, cutFrameItem, setFallback, hintFrame, takeHint } from "../../thumbStore.js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { sendCommand } from "../../App.jsx";
@@ -336,10 +336,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
         if (ev.sequences.length <= 1) {                                      // one cut (or none the reader recognises): opens exactly as it always did
           buildRef.current?.(ev.xml);
         } else {
+          ev.sequences.forEach((r) => hintFrame(`${ev.xml}:${r.id}`, r.first_frame));
           setPicker({ xml: ev.xml, rows: ev.sequences, selected: [], filter: "", hideAuto: true });
         }
       } else if (ev.type === "sequences_extracted") {
         setPicker(null);
+        ev.sequences.forEach((s) => setFallback(s.xml, takeHint(`${ev.xml}:${s.id}`)));       // a frame of the cut's own footage until it has a preview of its own
         setSeqSet({ source: ev.xml, items: ev.sequences.map((s) => ({ id: s.id, name: s.name, xml: s.xml })) });
         if (ev.sequences[0]) openReviewRef.current?.(ev.sequences[0].xml);
       } else if (ev.type === "creative_started") {

@@ -1531,8 +1531,9 @@ def handle_frame_thumbs(cmd: dict) -> None:
         out = {}
         for it in items:
             uri = None
-            for cand in [it.get("path", ""), *it.get("alts", [])]:      # the first file that exists and gives a frame wins; a short clip falls back to its first second
-                uri = thumbs.frame_data_uri(cand, float(it.get("t") or 1.0), width) or thumbs.frame_data_uri(cand, 0.5, width)
+            cands = [(it.get("path", ""), it.get("t"))] + [((a.get("path", ""), a.get("t")) if isinstance(a, dict) else (a, it.get("t"))) for a in it.get("alts", [])]
+            for cand, ct in cands:                                      # the first file that exists and gives a frame wins; an alternative may name its own second; a short clip falls back to its first second
+                uri = thumbs.frame_data_uri(cand, float(ct or it.get("t") or 1.0), width) or thumbs.frame_data_uri(cand, 0.5, width)
                 if uri:
                     break
             out[str(it.get("key"))] = uri

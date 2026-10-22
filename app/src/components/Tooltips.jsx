@@ -9,7 +9,8 @@ export default function Tooltips() {
     let timer = 0;
     let current = null;
     let lastShown = 0;
-    const find = (n) => (n && n.closest ? n.closest("[title],[data-tip]") : null);
+    // A frame (iframe) keeps its title for assistive tech; hovering the page inside it is not hovering a control
+    const find = (n) => { const el = n && n.closest ? n.closest("[title],[data-tip]") : null; return el && el.tagName === "IFRAME" ? null : el; };
 
     const adopt = (el) => {
       const t = el.getAttribute("title");

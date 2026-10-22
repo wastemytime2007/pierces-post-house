@@ -41,10 +41,18 @@ export function requestPosters(projects) {
 }
 
 /** The frame that stands for a cut (an XML): from its finished version if it has one (so graphics show), else from the first review. Returns the request item. */
+const fallbacks = new Map();
+/** A frame of the cut's own footage, known from the sequence listing, for a cut that has no preview yet: { path, t }. */
+export function setFallback(xml, frame) { if (frame && frame.path) fallbacks.set(String(xml), frame); }
+const hints = new Map();
+export function hintFrame(key, frame) { if (frame && frame.path) hints.set(key, frame); }
+export function takeHint(key) { return hints.get(key); }
+
 export function cutFrameItem(xml, t = 3) {
   const base = String(xml).replace(/\.xml$/i, "");
   const v2 = `${base}_v2 - revised`;
-  return { key: `cut:${xml}`, path: `${v2}/preview_full.mp4`, alts: [`${v2}/preview.mp4`, `${base} - review/preview.mp4`], t };
+  const fb = fallbacks.get(String(xml));
+  return { key: `cut:${xml}`, path: `${v2}/preview_full.mp4`, alts: [`${v2}/preview.mp4`, `${base} - review/preview.mp4`, ...(fb ? [{ path: fb.path, t: fb.t }] : [])], t };
 }
 
 export { tileColors } from "./tileColors.js";
