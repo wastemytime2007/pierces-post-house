@@ -623,6 +623,8 @@ def test_the_picker_prefers_a_generated_bed_long_enough_and_spreads_cuts_across_
     for n, secs in (("a", 12), ("b", 40), ("c", 41), ("d", 60), ("e", 9)):
         _wav(cache / f"score_{n}.mp3".replace(".mp3", ".wav"), secs)
         (cache / f"score_{n}.wav").rename(cache / f"score_{n}.mp3")                 # the picker reads score_*.mp3; ffprobe reads the wav inside whatever the name says
+    fc._PICKED.clear()
+    fc._RECENT.clear()
     a = fc.fallback_music(30.0, "WK_01_bob_x", cache=cache, library=tmp_path / "none")
     assert a and a[0].name in ("score_b.mp3", "score_c.mp3", "score_d.mp3") and "already generated" in a[1], "only beds with room for the cut (30 s + 4) qualify"
     assert fc.fallback_music(30.0, "WK_01_bob_x", cache=cache, library=tmp_path / "none")[0] == a[0], "the same cut always gets the same bed"
@@ -652,3 +654,94 @@ def test_the_reason_skips_the_framing_line_and_takes_the_tools_own_words():
     e = fc.FinishError("The music failed, so nothing was kept. The tool said:\nREFUSING: pretend failure in score_music.py\nmore detail")
     assert fc.why(e) == "pretend failure in score_music.py"
     assert fc.why(fc.FinishError("plain words, no framing")) == "plain words, no framing"
+
+
+def test_the_reason_is_the_errors_own_message_never_a_line_of_source_from_the_traceback():
+    e = fc.FinishError("Fitting the music to the cuts failed, so nothing was kept. The tool said:\n"
+                       "    raise ConformError(f\"the track is too short: segment {k + 1} needs audio to {start + src_len:.1f} s of {grid['seconds']} s\")\n"
+                       "conform_music.ConformError: the track is too short: segment 5 needs audio to 61.2 s of 55.0 s")
+    assert fc.why(e) == "the track is too short: segment 5 needs audio to 61.2 s of 55.0 s"
+    assert fc.why(fc.FinishError("x\nValueError: zero-size array to reduction operation maximum which has no identity")).startswith("zero-size array")
+
+
+def test_a_track_too_short_for_the_beat_fit_is_lengthened_once_and_the_fit_tried_again(xml, tmp_path, monkeypatch):
+    class Short(Fake):
+        n = 0
+
+        def __call__(self, cmd, **kw):
+            if Path(cmd[1]).name == "conform_music.py" and Short.n == 0:
+                Short.n += 1
+                self.calls.append("conform_music.py")
+                return subprocess.CompletedProcess(cmd, 1, "", "conform_music.ConformError: the track is too short: segment 5 needs audio to 61.2 s of 55.0 s")
+            return super().__call__(cmd, **kw)
+    extended = []
+
+    def fake_extend(track, need, out):
+        extended.append(need)
+        Path(out).write_bytes(b"")
+        return Path(out)
+    monkeypatch.setattr(fc, "extend_track", fake_extend)
+    f = Short()
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep)
+    music = next(s for s in r["steps"] if s["name"] == "music")
+    assert music["done"] and extended == [64.2], "lengthened to what the fit asked for plus 3 s, and the music step went on"
+    assert f.calls.count("conform_music.py") == 2 and "repeated once to give the beat fit room" in music["summary"]
+
+
+def test_a_batch_of_cuts_is_not_all_given_the_same_bed_and_each_cut_keeps_its_own(tmp_path):
+    cache = tmp_path / "cache"
+    for n in range(8):
+        _wav(cache / f"score_{n}.wav", 40)
+        (cache / f"score_{n}.wav").rename(cache / f"score_{n}.mp3")
+    fc._PICKED.clear()
+    fc._RECENT.clear()
+    picks = [fc.fallback_music(20.0, f"WK_{i:02d}_x", cache=cache, library=tmp_path / "none")[0].name for i in range(1, 9)]
+    assert len(set(picks)) == 8, f"eight cuts, eight beds: {picks}"
+    assert fc.fallback_music(20.0, "WK_03_x", cache=cache, library=tmp_path / "none")[0].name == picks[2], "a cut asked again keeps its bed"
+
+
+def test_a_fallback_bed_the_mix_refuses_is_replaced_by_another_and_the_step_names_the_one_that_worked(xml, tmp_path):
+    """WK_05, 2026-10-21: the bed picked had a level swinging 13.7 dB; the mix refused it (BED-STEADY) and the music was left off. Generated takes were retried on a refusal, fallbacks were not."""
+    beds = []
+    for n in ("one", "two", "three"):
+        b = tmp_path / f"score_{n}.mp3"
+        b.write_bytes(b"")
+        beds.append(b)
+    it = iter(beds)
+
+    class Refuses(Fake):
+        n = 0
+
+        def __call__(self, cmd, **kw):
+            if Path(cmd[1]).name == "make_audio.py" and Refuses.n < 2 and "--music-file" in [str(a) for a in cmd]:
+                Refuses.n += 1
+                return subprocess.CompletedProcess(cmd, 1, "", "[FAIL] BED-STEADY    the music's level while it plays varies by 13.7 dB from one second to the next")
+            return super().__call__(cmd, **kw)
+    f = Refuses(fail_on="score_music.py")
+    refused_picks = []
+
+    def pick(zone, name):
+        b = next(it)
+        refused_picks.append(b.name)
+        return b, f"an already generated music bed ({b.name})"
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep, music_fallback=True, fallback_fn=pick)
+    music = next(s for s in r["steps"] if s["name"] == "music")
+    assert music["done"] and "(score_three.mp3)" in music["summary"], music["summary"]
+    assert refused_picks == ["score_one.mp3", "score_two.mp3", "score_three.mp3"], "two beds refused, the third used"
+    assert f.calls.count("score_music.py") == 3, "each retry tries to generate first (a new take costs nothing when the service refuses), then falls back"
+
+
+def test_after_the_allowed_number_of_beds_the_music_step_gives_up_and_says_why(xml, tmp_path):
+    bed = tmp_path / "score_x.mp3"
+    bed.write_bytes(b"")
+
+    class AlwaysRefuses(Fake):
+        def __call__(self, cmd, **kw):
+            if Path(cmd[1]).name == "make_audio.py" and "--music-file" in [str(a) for a in cmd]:
+                return subprocess.CompletedProcess(cmd, 1, "", "[FAIL] BED-STEADY    the level swings")
+            return super().__call__(cmd, **kw)
+    f = AlwaysRefuses(fail_on="score_music.py")
+    r = fc.run(xml, tmp_path / "out", runner=f, bleep_fn=f.bleep, music_fallback=True, fallback_fn=lambda z, n: (bed, "a bed"), keep_going=True)
+    music = next(s for s in r["steps"] if s["name"] == "music")
+    assert music["failed"] and "BED-STEADY" in music["summary"]
+    assert f.calls.count("score_music.py") == fc.FALLBACK_TRIES, "no more than the allowed number of beds"

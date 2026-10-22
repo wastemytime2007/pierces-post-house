@@ -334,21 +334,40 @@ def _seconds(path: Path) -> float:
     return _DURATIONS[key]
 
 
-def fallback_music(zone: float, name: str, cache: Path | None = None, library: Path | None = None) -> tuple[Path, str] | None:
+_PICKED: dict[tuple, tuple[Path, str]] = {}                              # (cache, library, cut name) -> the pick, so a cut keeps its bed
+_RECENT: list[str] = []                                                  # the last beds handed out, so the next cut of a batch takes a different one
+
+
+FALLBACK_TRIES = 4                       # beds tried in all when the mix refuses one (a bed whose level swings too much to sit under a voice)
+
+
+def fallback_music(zone: float, name: str, cache: Path | None = None, library: Path | None = None, exclude: tuple = ()) -> tuple[Path, str] | None:
     """A music bed to use when one cannot be generated (the service is out of credits, 2026-10-21; Ryan: "use already generated music or music from the Artlist folder when we run out").
 
     First an already generated bed (`score_*.mp3` in the music cache: the style he approved, modelled on the reference) long enough for the cut; if none is, a song from his Artlist library
     (one per folder, the .wav before the .mp3, the " (1)" duplicates skipped, instrumentals first because a sung song under speech is the worse choice). Which one is decided by the cut's
     name, so a batch of shorts does not all get the same track and a cut gets the same one every time. None when nothing is long enough: the caller then reports the layer as not added."""
     import zlib
+    key = (str(cache), str(library), name)
+    if key in _PICKED and _PICKED[key][0].is_file() and _PICKED[key][0].name not in exclude:
+        return _PICKED[key]
     seed = zlib.crc32(name.encode("utf-8"))
+
+    def choose(pool: list[Path], what) -> tuple[Path, str]:
+        start = seed % len(pool)
+        order = pool[start:] + pool[:start]                              # from the cut's own place in the pool, skipping what the last cuts took
+        order = [c for c in order if c.name not in exclude] or order                    # never a bed the mix has just refused
+        pick = next((c for c in order if str(c) not in _RECENT), order[0])
+        _RECENT.append(str(pick))
+        del _RECENT[:-12]
+        _PICKED[key] = (pick, what(pick))
+        return _PICKED[key]
     need = zone + 4.0                                                    # what a generated take is made at: the fit needs room before the drop and after the last cut
     cache_dir = Path(cache) if cache is not None else MUSIC_CACHE
     gen = sorted(cache_dir.glob("score_*.mp3")) if cache_dir.is_dir() else []
     fit = [g for g in gen if _seconds(g) >= need]
     if fit:
-        pick = fit[seed % len(fit)]
-        return pick, f"an already generated music bed ({pick.name})"
+        return choose(fit, lambda pk: f"an already generated music bed ({pk.name})")
     lib = Path(library) if library is not None else ARTLIST_MUSIC
     songs: list[Path] = []
     if lib.is_dir():
@@ -360,8 +379,7 @@ def fallback_music(zone: float, name: str, cache: Path | None = None, library: P
     inst = [s for s in songs if re.search(r"instrumental|no backing|beat|no vocal", str(s.parent.name + s.name), re.I)]
     pool = inst or songs
     if pool:
-        pick = pool[seed % len(pool)]
-        return pick, f"music from your Artlist library ({pick.parent.name})"
+        return choose(pool, lambda pk: f"music from your Artlist library ({pk.parent.name})")
     return None
 
 
@@ -374,6 +392,10 @@ def why(exc: Exception) -> str:
     if "HyperFrames check FAILED" in text:
         return "the render check refused it (" + " ".join(x.strip() for x in text.splitlines() if "error(s)" in x)[:120] + ")"
     lines = [x.strip() for x in text.splitlines() if x.strip()]
+    for x in reversed(lines):                                              # a traceback ends with the error's own message: "ConformError: the track is too short: ..."
+        m = re.match(r"^(?:[\w.]+\.)?\w*(?:Error|Exception): (.+)$", x)
+        if m:
+            return m.group(1)[:220]
     body = [x for x in lines if "nothing was kept" not in x and not x.startswith("The tool said")]      # the framing line is not the reason
     first = next((x for x in body if re.search(r"REFUSING|Error|FAIL|failed", x)), body[0] if body else (lines[0] if lines else ""))
     return re.sub(r"^REFUSING:\s*", "", first)[:220]
@@ -518,144 +540,168 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
 
     # 2. music (and an effect when asked): generated, modelled on the reference, a beat on frame 0 and on every cut, a bed under the voice
     cur_before = cur
-    try:
-        if music and have["music"]:
-            steps.append({"name": "music", "done": False, "summary": "the cut already has generated audio, so no second music bed was added"})
-        elif music:
-            progress("Music: describing the feel, generating it, fitting it to every cut (a few minutes, uses the music service)")
-            import build_review
-            try:
-                build_review.build(cur, out / "review_for_audio", height=960)
-            except Exception as e:
-                raise FinishError(f"Rendering the cut to fit the music to failed, so nothing was kept: {type(e).__name__}: {e}") from e
-            ref = Path(music_reference).expanduser() if music_reference else reference_track()
-            if music_file:
-                ref = None                                               # a rebuild keeps the track it has: nothing is measured or generated again
-            events = [0.0] + sorted({round(v.tl_start, 4) for v in timeline.load_cut(cur).video if v.tl_start > 0})
-            (out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
-            (out / "audio_in").mkdir(exist_ok=True)
-            plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, math.ceil(zone) + 4))), "style": MUSIC_STYLE}]}      # a little more than the cut: fitting it to the cuts takes the tail off, and a track a hair short refuses
-            (out / "score.json").write_text(json.dumps(plan, indent=1))
-            score_args = ["--plan", out / "score.json", "--out", out / "audio_in/music.wav"]
-            feats = None
-            if ref and not music_file:
-                import reference_music
-                feats = reference_music.analyze(ref)
-                (out / "audio_in/reference_features.json").write_text(json.dumps(feats, indent=1, default=float))
-                score_args += ["--reference-features", out / "audio_in/reference_features.json"]
-            conformed = out / "audio_in/music_conformed.wav"
-            fit_note = ""
-            extend_note = ""
-            fallback_note = ""
-            if music_file:
+    music_file_given = music_file                                           # what the caller passed: a retry with another bed starts from it again
+    fb_tried: list[str] = []                                                # fallback beds the mix refused (BED-STEADY, BED-LEVEL), so the next try takes another
+    fb_last = ""                                                            # the bed picked this time, by its own name (the file used may be a lengthened copy)
+    while True:
+        try:
+            if music and have["music"]:
+                steps.append({"name": "music", "done": False, "summary": "the cut already has generated audio, so no second music bed was added"})
+            elif music:
+                progress("Music: describing the feel, generating it, fitting it to every cut (a few minutes, uses the music service)")
+                import build_review
                 try:
-                    have_s = timeline.probe_duration(str(Path(music_file).expanduser()))
-                except timeline.TimelineError:
-                    have_s = float("inf")                                # a track that cannot be measured is left to the fit to refuse in its own words
-                if have_s < zone + 1.0:                                  # the cut grew past the track the first finish made
-                    music_file = str(extend_track(Path(music_file).expanduser(), zone + 4.0, out / "audio_in/music_extended.wav"))
-                    extend_note = f"; the music track ({have_s:.1f}s) was shorter than the revised cut ({zone:.1f}s), so its end was repeated to cover it"
-            for take in range(1 if music_file else MUSIC_TAKES):
+                    if not (out / "review_for_audio" / "preview.mp4").is_file():          # once: a retry with another bed fits the same cut
+                        build_review.build(cur, out / "review_for_audio", height=960)
+                except Exception as e:
+                    raise FinishError(f"Rendering the cut to fit the music to failed, so nothing was kept: {type(e).__name__}: {e}") from e
+                ref = Path(music_reference).expanduser() if music_reference else reference_track()
                 if music_file:
-                    track = Path(music_file).expanduser()
-                else:
+                    ref = None                                               # a rebuild keeps the track it has: nothing is measured or generated again
+                events = [0.0] + sorted({round(v.tl_start, 4) for v in timeline.load_cut(cur).video if v.tl_start > 0})
+                (out / "events.json").write_text(json.dumps({"events": [{"t": e} for e in events]}, indent=1))
+                (out / "audio_in").mkdir(exist_ok=True)
+                plan = {"global": MUSIC_STYLE, "avoid": MUSIC_AVOID, "sections": [{"name": "groove", "seconds": float(max(3.0, min(120.0, math.ceil(zone) + 4))), "style": MUSIC_STYLE}]}      # a little more than the cut: fitting it to the cuts takes the tail off, and a track a hair short refuses
+                (out / "score.json").write_text(json.dumps(plan, indent=1))
+                score_args = ["--plan", out / "score.json", "--out", out / "audio_in/music.wav"]
+                feats = None
+                if ref and not music_file:
+                    import reference_music
+                    feats = reference_music.analyze(ref)
+                    (out / "audio_in/reference_features.json").write_text(json.dumps(feats, indent=1, default=float))
+                    score_args += ["--reference-features", out / "audio_in/reference_features.json"]
+                conformed = out / "audio_in/music_conformed.wav"
+                fit_note = ""
+                extend_note = ""
+                fallback_note = ""
+                if music_file:
                     try:
-                        tool("The music", "audio/score_music.py", *score_args)
-                        track = out / "audio_in/music.wav"
-                    except FinishError as gen_err:
-                        if not music_fallback:
-                            raise
-                        if take > 0:                                      # a first take was made but its beats drift, and no second could be: lay the first as it is
-                            lay_untimed(Path(music_raw), zone, conformed)
-                            fit_note = f"; NOT cut to the beat: a further take could not be made ({why(gen_err)}), so the first take plays as it is, trimmed and faded at the end"
-                            break
-                        pick = (fallback_fn or fallback_music)(zone, cut0.sequence_name)
-                        if pick is None:
-                            raise
-                        music_file, fallback_note = str(pick[0]), f"{pick[1]}, because the music could not be generated ({why(gen_err)})"
-                        ref = feats = None                                # nothing is measured against the reference or matched to its tone for a track that was not made for it
-                        progress("Music: could not be generated, so using " + pick[1])
+                        have_s = timeline.probe_duration(str(Path(music_file).expanduser()))
+                    except timeline.TimelineError:
+                        have_s = float("inf")                                # a track that cannot be measured is left to the fit to refuse in its own words
+                    if have_s < zone + 1.0:                                  # the cut grew past the track the first finish made
+                        music_file = str(extend_track(Path(music_file).expanduser(), zone + 4.0, out / "audio_in/music_extended.wav"))
+                        extend_note = f"; the music track ({have_s:.1f}s) was shorter than the revised cut ({zone:.1f}s), so its end was repeated to cover it"
+                for take in range(1 if music_file else MUSIC_TAKES):
+                    if music_file:
+                        track = Path(music_file).expanduser()
+                    else:
                         try:
-                            have_s = timeline.probe_duration(music_file)
-                        except timeline.TimelineError:
-                            have_s = float("inf")
-                        if have_s < zone + 1.0:
-                            music_file = str(extend_track(Path(music_file), zone + 4.0, out / "audio_in/music_extended.wav"))
-                            extend_note = f"; its end was repeated to cover the cut ({have_s:.1f}s)"
-                        track = Path(music_file)
-                tone_note = ""
-                if feats:
-                    import tone_match
-                    matched = out / "audio_in/music_matched.wav"
+                            tool("The music", "audio/score_music.py", *score_args)
+                            track = out / "audio_in/music.wav"
+                        except FinishError as gen_err:
+                            if not music_fallback:
+                                raise
+                            if take > 0:                                      # a first take was made but its beats drift, and no second could be: lay the first as it is
+                                lay_untimed(Path(music_raw), zone, conformed)
+                                fit_note = f"; NOT cut to the beat: a further take could not be made ({why(gen_err)}), so the first take plays as it is, trimmed and faded at the end"
+                                break
+                            pick = (fallback_fn or fallback_music)(zone, cut0.sequence_name, exclude=tuple(fb_tried)) if not fallback_fn else fallback_fn(zone, cut0.sequence_name)
+                            if pick is None:
+                                raise
+                            music_file, fallback_note = str(pick[0]), f"{pick[1]}, because the music could not be generated ({why(gen_err)})"
+                            fb_last = Path(pick[0]).name
+                            ref = feats = None                                # nothing is measured against the reference or matched to its tone for a track that was not made for it
+                            progress("Music: could not be generated, so using " + pick[1])
+                            try:
+                                have_s = timeline.probe_duration(music_file)
+                            except timeline.TimelineError:
+                                have_s = float("inf")
+                            if have_s < zone + 1.0:
+                                music_file = str(extend_track(Path(music_file), zone + 4.0, out / "audio_in/music_extended.wav"))
+                                extend_note = f"; its end was repeated to cover the cut ({have_s:.1f}s)"
+                            track = Path(music_file)
+                    tone_note = ""
+                    if feats:
+                        import tone_match
+                        matched = out / "audio_in/music_matched.wav"
+                        try:
+                            tm = tone_match.match_tone(track, feats, matched)
+                            (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
+                            track = matched
+                        except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
+                            tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
+                    music_raw = str(track)
                     try:
-                        tm = tone_match.match_tone(track, feats, matched)
-                        (out / "audio_in/tone_match.json").write_text(json.dumps(tm, indent=1, default=float))
-                        track = matched
-                    except Exception as e:                       # the take is too far from the reference's tone for an EQ to fix (match_tone refuses past 6 dB): use it as it is, and say so
-                        tone_note = f"; its tone could not be matched to the reference ({str(e).split(':')[0][:110]}), so it is used as generated"
-                music_raw = str(track)
-                try:
-                    tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
-                    fit_note = "" if take == 0 else f"; take {take + 1} (the first take's beats were not steady enough to cut to)"
-                    break
-                except FinishError as e:
-                    if "steady grid" not in str(e):
-                        raise
-                    # a generated take whose beats drift cannot be cut to the beat (2026-10-09: this failed the whole finish, captions and graphics with it). Try another take; after the last,
-                    # lay the take as it is, trimmed to the cut and faded, and say so
-                    if take == (0 if music_file else MUSIC_TAKES - 1):
-                        lay_untimed(track, zone, conformed)
-                        fit_note = "; NOT cut to the beat: no take had beats steady enough to fit to the cuts, so the last one plays as it is, trimmed and faded at the end"
+                        try:
+                            tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
+                        except FinishError as short:
+                            if "the track is too short" not in str(short):
+                                raise
+                            # the fit needs audio up to a point the track does not reach (a song's intro before its first beat, a bed a little short): its end is repeated to give it room, once
+                            m = re.search(r"needs audio to ([\d.]+)\s*s of ([\d.]+)\s*s", str(short))
+                            need_s = float(m.group(1)) + 3.0 if m else timeline.probe_duration(str(track)) + zone
+                            track = extend_track(track, need_s, out / "audio_in/music_extended_fit.wav")
+                            music_raw = str(track)
+                            extend_note += f"; its end was repeated once to give the beat fit room ({need_s:.0f}s)"
+                            tool("Fitting the music to the cuts", "audio/conform_music.py", "--music", track, "--events", out / "events.json", "--total", f"{zone:.4f}", "--out", conformed, "--tail", "run")
+                        fit_note = "" if take == 0 else f"; take {take + 1} (the first take's beats were not steady enough to cut to)"
                         break
-                    progress("Music: that take's beats were not steady enough to cut to; generating another")
-            margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
-                     "--mix-style", "bed", "--music-db", f"{(MUSIC_DB if music_db is None else music_db):g}", "--music-file", conformed]
-            times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
-            sfx_note = ""
-            sfx_name = ""
-            if times:
-                choice = choose_fn() if choose_fn else choose_graphic_sfx(exclude=tuple(sfx_exclude or ()), prefer=sfx_keep)
-                sfx_name = choice["name"] if choice else ""
-                if choice:
-                    lead = min(max(choice["peak_at"] - SFX_HIT_AT, 0.0), 0.8)                  # start early so the effect's peak lands as the graphic wipes in
-                    times = sorted({round(max(0.0, x - lead), 3) for x in times})
-                    times = [x for i, x in enumerate(times) if i == 0 or x - times[i - 1] >= SFX_MAX_SEC]      # never two on top of each other
-                    margs += ["--sfx-file", prepare_effect(choice, out / "audio_in"), "--sfx-below-mean-db", "3"]
-                    sfx_note = f" ({choice['name'].rsplit('.', 1)[0]})"
-                else:
-                    sfx_note = " (no real whoosh was found in the library, so make_audio's own library lookup chose it)"
-            margs += ["--sfx-at", f"{times[0]:g}"] if times else ["--no-sfx"]
-            if ref and not tone_note:
-                margs += ["--music-reference", ref]
-            try:
-                tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
-            except FinishError as e:
-                if "REFERENCE-MATCH" not in str(e) or "--music-reference" not in margs:
-                    raise
-                # the take does not match the reference on the measures make_audio holds it to: mix it anyway, and say so with the numbers instead of hiding it or failing the whole finish
-                miss = next((l.strip() for l in str(e).splitlines() if "REFERENCE-MATCH" in l), "")
-                margs = [a for i, a in enumerate(margs) if a != "--music-reference" and (i == 0 or margs[i - 1] != "--music-reference")]
-                tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
-                tone_note += "; it does NOT match the reference's feel (" + re.sub(r"^\[FAIL\]\s*REFERENCE-MATCH\s*", "", miss)[:160] + "), so judge it by ear"
-            for name in ("placement.json", "audio.json"):                       # the same library effect on each remaining graphic: more entries of the one effect file, which place_audio puts on one pair of tracks
-                f = out / "audio" / name
-                if len(times) > 1 and f.is_file():
-                    meta = json.loads(f.read_text())
-                    tmpl = next((c for c in meta["clips"] if c["kind"] == "sfx"), None)
-                    if tmpl:
-                        meta["clips"] += [{**tmpl, "start_sec": float(x)} for x in times[1:]]
-                        f.write_text(json.dumps(meta, indent=1))
-            nxt = out / "_step_music.xml"
-            tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
-            cur = nxt
-            steps.append({"name": "music", "done": True,
-                          "summary": (fallback_note or ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)"))
-                          + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note + extend_note})
-    except Exception as exc:
-        if not keep_going:
-            raise
-        cur = cur_before
-        steps.append({"name": "music", "done": False, "failed": True, "summary": "not added: " + why(exc)})
+                    except FinishError as e:
+                        if "steady grid" not in str(e):
+                            raise
+                        # a generated take whose beats drift cannot be cut to the beat (2026-10-09: this failed the whole finish, captions and graphics with it). Try another take; after the last,
+                        # lay the take as it is, trimmed to the cut and faded, and say so
+                        if take == (0 if music_file else MUSIC_TAKES - 1):
+                            lay_untimed(track, zone, conformed)
+                            fit_note = "; NOT cut to the beat: no take had beats steady enough to fit to the cuts, so the last one plays as it is, trimmed and faded at the end"
+                            break
+                        progress("Music: that take's beats were not steady enough to cut to; generating another")
+                margs = ["--xml", cur, "--base", out / "review_for_audio/preview.mp4", "--out", out / "audio", "--start", "0", "--end", f"{zone - 0.001:.3f}",
+                         "--mix-style", "bed", "--music-db", f"{(MUSIC_DB if music_db is None else music_db):g}", "--music-file", conformed]
+                times = ([sfx_at] if sfx_at is not None else []) + (sfx_times if sfx else [])
+                sfx_note = ""
+                sfx_name = ""
+                if times:
+                    choice = choose_fn() if choose_fn else choose_graphic_sfx(exclude=tuple(sfx_exclude or ()), prefer=sfx_keep)
+                    sfx_name = choice["name"] if choice else ""
+                    if choice:
+                        lead = min(max(choice["peak_at"] - SFX_HIT_AT, 0.0), 0.8)                  # start early so the effect's peak lands as the graphic wipes in
+                        times = sorted({round(max(0.0, x - lead), 3) for x in times})
+                        times = [x for i, x in enumerate(times) if i == 0 or x - times[i - 1] >= SFX_MAX_SEC]      # never two on top of each other
+                        margs += ["--sfx-file", prepare_effect(choice, out / "audio_in"), "--sfx-below-mean-db", "3"]
+                        sfx_note = f" ({choice['name'].rsplit('.', 1)[0]})"
+                    else:
+                        sfx_note = " (no real whoosh was found in the library, so make_audio's own library lookup chose it)"
+                margs += ["--sfx-at", f"{times[0]:g}"] if times else ["--no-sfx"]
+                if ref and not tone_note:
+                    margs += ["--music-reference", ref]
+                try:
+                    tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
+                except FinishError as e:
+                    if "REFERENCE-MATCH" not in str(e) or "--music-reference" not in margs:
+                        raise
+                    # the take does not match the reference on the measures make_audio holds it to: mix it anyway, and say so with the numbers instead of hiding it or failing the whole finish
+                    miss = next((l.strip() for l in str(e).splitlines() if "REFERENCE-MATCH" in l), "")
+                    margs = [a for i, a in enumerate(margs) if a != "--music-reference" and (i == 0 or margs[i - 1] != "--music-reference")]
+                    tool("Mixing the music under the voice", "audio/make_audio.py", *margs)
+                    tone_note += "; it does NOT match the reference's feel (" + re.sub(r"^\[FAIL\]\s*REFERENCE-MATCH\s*", "", miss)[:160] + "), so judge it by ear"
+                for name in ("placement.json", "audio.json"):                       # the same library effect on each remaining graphic: more entries of the one effect file, which place_audio puts on one pair of tracks
+                    f = out / "audio" / name
+                    if len(times) > 1 and f.is_file():
+                        meta = json.loads(f.read_text())
+                        tmpl = next((c for c in meta["clips"] if c["kind"] == "sfx"), None)
+                        if tmpl:
+                            meta["clips"] += [{**tmpl, "start_sec": float(x)} for x in times[1:]]
+                            f.write_text(json.dumps(meta, indent=1))
+                nxt = out / "_step_music.xml"
+                tool("Placing the music", "audio/place_audio.py", cur, out / "audio", "--out", nxt)
+                cur = nxt
+                steps.append({"name": "music", "done": True,
+                              "summary": (fallback_note or ("the same music as before, refitted to the revised cuts" if music_file else "a music bed modelled on " + ref.parent.name if ref else "a music bed from the style words (no reference track was found)"))
+                              + (f", with a sound effect on each graphic ({len(times)}){sfx_note}" if times else ", no sound effect") + tone_note + fit_note + extend_note})
+            break
+        except Exception as exc:
+            if music_fallback and fallback_note and re.search(r"BED-(STEADY|LEVEL)", str(exc)) and len(fb_tried) < FALLBACK_TRIES - 1:
+                fb_tried.append(fb_last)
+                progress("Music: the mix refused that bed (" + why(exc)[:80] + "), trying another")
+                cur, music_file = cur_before, music_file_given
+                continue                                                    # another bed, from the top of the music step
+            if not keep_going:
+                raise
+            cur = cur_before
+            steps.append({"name": "music", "done": False, "failed": True, "summary": "not added: " + why(exc)})
+            break
 
     if sfx and not music and graphics:
         steps.append({"name": "sfx", "done": False, "summary": "the sound effects are mixed and placed with the music step, and the music is off, so none were added"})

@@ -284,6 +284,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         if (ev.status === "done" && versionsRef.current[0]?.xml === ev.xml) openReviewRef.current?.(ev.xml);          // the sequence on screen has new versions: show them
       } else if (ev.type === "creative_batch_done") {
         setCreative({ running: false, state: { state: ev.state, items: ev.items } });
+        setSeqSet((s) => (s && ev.items.some((i) => i.xml === s.items?.[0]?.xml)) || ev.items.length < 2 ? s : { source: ev.xml, items: ev.items.map((i) => ({ id: i.xml, name: i.name, xml: i.xml })) });
       } else if (ev.type === "creative_failed") {
         setCreative((c) => c && { ...c, running: false });
         setError(ev.message || "Get Creative could not start.");
@@ -463,6 +464,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
       : st.state === "done" ? `Get Creative finished: ${n("done")} done${n("skipped") ? `, ${n("skipped")} left alone` : ""}${n("failed") ? `, ${n("failed")} failed` : ""}`
       : `Get Creative ${st.state === "stopped" ? "stopped" : "was interrupted"}: ${n("done")} of ${items.length} done`;
     const mark = { done: "✓", skipped: "–", failed: "✗", running: "…", waiting: "·" };
+    const premiereFor = () => (chosenApp ? chosenApp.path : premiereApps.length === 1 ? premiereApps[0].path : null);
+    const toPremiere = async (i) => {
+      const p = premiereFor();
+      if (!p) { setError(premiereApps.length ? "More than one Premiere is installed: choose one with 'Premiere version…' on any open cut first, then try again." : "Adobe Premiere Pro was not found in your Applications folder."); return; }
+      setError("");
+      setExportResult(null);
+      await sendCommand({ type: "export_xml", xml: i.final_xml || i.xml, open: true, app: p });
+    };
     return (
       <div className={n("failed") && !creative.running ? "pm-tab-warnings" : "run-pipeline-section"} role="status" aria-live="polite">
         <div className="pm-tab-row" style={{ alignItems: "center" }}>
@@ -482,9 +491,15 @@ export default function ReviewTab({ subscribe, onStatus }) {
           {items.map((i) => (
             <div className="transcript-row" key={i.xml}>
               <div className="transcript-row-main">
-                <div className="transcript-row-name">{mark[i.status] || "·"} {i.name}</div>
+                <div className="transcript-row-name">{i.status === "done" && /not added/.test(i.message || "") ? "⚠" : mark[i.status] || "·"} {i.name}</div>
                 <div className="transcript-row-folder">{i.status === "running" ? (i.step || "starting") : i.message || (i.status === "waiting" ? "waiting" : "")}</div>
               </div>
+              {(i.status === "done" || i.status === "skipped") && (
+                <div className="pm-tab-row">
+                  <button className="btn btn-ghost" disabled={!!busy} onClick={() => openReview(i.xml)} title="Open this sequence's review: its versions, with the finished one showing">Review</button>
+                  <button className="btn btn-primary" disabled={!!busy} onClick={() => toPremiere(i)} title="Check the finished version, then open it in Premiere">Open in Premiere</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
