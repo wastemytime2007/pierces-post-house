@@ -298,6 +298,22 @@ export default function IdeasTab({
   });
   useEffect(() => { ideas.forEach((i) => seenIdeas.current.add(i.idea_id)); }, [ideas]);
 
+  // Coming here from the palette: the story it named is brought into view and shown for a moment, so landing on the page is landing on the story
+  useEffect(() => {
+    const onReveal = (e) => {
+      if (e.detail?.kind !== "story" || !e.detail.id) return;
+      requestAnimationFrame(() => {
+        const card = document.querySelector(`[data-idea="${e.detail.id}"]`);
+        if (!card) return;
+        card.scrollIntoView({ block: "center", behavior: "smooth" });
+        card.classList.add("ph-found");
+        setTimeout(() => card.classList.remove("ph-found"), 1400);
+      });
+    };
+    window.addEventListener("posthouse-reveal", onReveal);
+    return () => window.removeEventListener("posthouse-reveal", onReveal);
+  }, []);
+
   // The palette can reach a story by its own title
   useEffect(() => {
     const titleOf = (i) => (i.kind === "story_angle" ? i.data?.brief?.title : i.data?.concept) || "Untitled";
@@ -926,7 +942,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
   };
 
   return (
-    <div className={`idea-card is-angle ${selected ? "is-selected" : ""} ${idea._fresh ? "ph-new" : ""}`} style={idea._fresh ? { "--n": idea._n || 0 } : undefined}>
+    <div data-idea={idea.idea_id} className={`idea-card is-angle ${selected ? "is-selected" : ""} ${idea._fresh ? "ph-new" : ""}`} style={idea._fresh ? { "--n": idea._n || 0 } : undefined}>
       <Storyboard
         ranges={sourceRanges}
         selected={selected}

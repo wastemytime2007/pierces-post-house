@@ -5543,3 +5543,8 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .sc-cols fieldset { margin: 0 0 10px; padding: 0; border: 0; }
 .sc-cols legend { padding: 0 0 5px; color: var(--fg-2); font-size: var(--text-footnote); }
 @media (max-width: 720px) { .sc-cols { grid-template-columns: 1fr; } }
+
+/* The story the palette took you to: shown for a moment, then back to normal. Off under reduced motion, where the ring simply appears and goes. */
+@keyframes ph-found { 0% { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.55); } 100% { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0); } }
+.idea-card.ph-found { animation: ph-found 1400ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .idea-card.ph-found { animation: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.45); } }
