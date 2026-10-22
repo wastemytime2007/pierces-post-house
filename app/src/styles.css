@@ -4876,3 +4876,9 @@ kbd {
 .rv-recent-row:hover:not(:disabled) { background: var(--bg-2); }
 .rv-recent-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rv-recent-meta { color: var(--fg-1); font-size: var(--text-footnote); flex: none; }
+
+/* Project tab (2026-10-21): fields in rows, one primary action */
+.pm-tab { max-width: 1040px; }
+.pm-tab > h2 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+.pm-tab-row > .pm-tab-field, .pm-tab-row > label { flex: 1; min-width: 0; }
+.pm-tab-submit { align-self: flex-start; min-height: var(--control-h); padding: 0 18px; }

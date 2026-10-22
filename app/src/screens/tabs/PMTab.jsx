@@ -415,15 +415,13 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
 
   return (
     <div className="pm-tab">
-      <h2>Project Manager</h2>
+      <h2>Project</h2>
       <p className="pm-tab-sub">
-        Point this at one real project. Declare footage once below —
-        Organize writes the Project Manifest and starts processing it in
-        the same step.
+        Add your footage once. Organize saves the project and starts processing it.
       </p>
 
       <FolderField
-        label="Project folder (manifest.json is written here — the parent of the sources below, not the same path as one of them)"
+        label="Project folder"
         value={rootDir}
         onPick={pickRootDir}
       />
@@ -432,9 +430,10 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         <TextField label="Client name" value={clientName} onChange={setClientName} />
         <TextField label="Project name" value={projectName} onChange={setProjectName} />
       </div>
+      <div className="pm-tab-row">
       <SelectField label="Project type" value={projectType} onChange={setProjectType} options={PROJECT_TYPES} />
       <label className="pm-tab-field">
-        <span>Audience / content goal (optional)</span>
+        <span>Audience and goal (optional)</span>
         <select value={audienceProfileId} onChange={(e) => setAudienceProfileId(e.target.value)}>
           <option value="">None selected</option>
           {(audienceProfiles || []).map((p) => (
@@ -443,7 +442,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         </select>
         {!audienceProfiles?.length && (
           <span className="form-hint">
-            No profiles yet — add one via the "audiences &amp; goals" button in the titlebar.
+            None yet. Add one with “audiences &amp; goals” in the title bar.
           </span>
         )}
         {/* 2026-09-11, Ryan: "I keep setting the audience and organizing to
@@ -457,9 +456,10 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         <span className={savedAudienceGoal ? "form-hint" : "form-hint form-hint-warn"}>
           {savedAudienceGoal
             ? `Saved on this project: "${savedAudienceGoal.slice(0, 70)}${savedAudienceGoal.length > 70 ? "…" : ""}"`
-            : "Not saved on this project yet — pick one above, then click Organize."}
+            : "Not saved yet. Choose one, then Organize."}
         </span>
       </label>
+      </div>
 
       {notice && (
         <div className="pm-tab-notice">
@@ -487,9 +487,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
       {realByKind.aroll.length > 0 && (
         <div className="pm-tab-dualuse">
           <span className="pm-tab-dualuse-label">
-            Dual-use — A-Roll that also serves as B-Roll (the subject keeps
-            talking while the shooter grabs coverage). Tagged as B-roll by
-            the pipeline the moment this is checked; check any that apply:
+            Also use as B-roll: interview footage where the shooter grabbed coverage while the subject kept talking.
           </span>
           {realByKind.aroll.map((s) => (
             <label key={s.root_path} className="pm-tab-dualuse-row">
@@ -505,13 +503,13 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
       )}
 
       <FolderField
-        label="Brand assets folder (optional — logos, fonts; a separate thing from the Assets zone above)"
+        label="Brand assets folder (optional: logos, fonts)"
         value={brandAssetsDir}
         onPick={pickBrandAssetsDir}
       />
 
       <button className="pm-tab-submit" disabled={!canSubmit} onClick={handleOrganize}>
-        {submitting ? "Organizing…" : "Organize (writes the manifest and starts processing)"}
+        {submitting ? "Organizing…" : "Organize"}
       </button>
 
       {error && <pre className="pm-tab-error">{error}</pre>}
