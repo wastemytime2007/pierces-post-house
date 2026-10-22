@@ -44,6 +44,17 @@ fs.mkdirSync(out, { recursive: true });
     await tiles.nth(5).click({ modifiers: ["Shift"] });
     report.rangeChosen = await page.evaluate(() => document.querySelectorAll(".sp-tile.on").length);          // 5 expected (tiles 2 to 6)
     report.footer = await page.evaluate(() => document.querySelector(".sp-foot span")?.textContent);
+    // arrow keys walk the sheet, Space looks at one frame large, Escape puts it back
+    await tiles.nth(0).focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press(" ");
+    await page.waitForTimeout(400);
+    report.peek = await page.evaluate(() => { const e = document.querySelector(".sp-peek-art"); return e ? /url\(["']?data:image/.test(e.style.backgroundImage) : false; });
+    await page.screenshot({ path: path.join(out, "e3_peek.png") });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    report.peekClosed = await page.evaluate(() => !document.querySelector(".sp-peek"));
   } catch (e) {
     report.failed = String(e.message || e).split("\n")[0];
     await page.screenshot({ path: path.join(out, "e_failed.png") }).catch(() => {});

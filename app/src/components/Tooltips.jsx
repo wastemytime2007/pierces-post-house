@@ -63,9 +63,11 @@ export default function Tooltips() {
   }, []);
 
   if (!tip) return null;
+  // "Open in Premiere ⌘E": the key is part of the tooltip, written after a tab in the title
+  const [text, key] = String(tip.text).split("\t");
   return (
     <div className="tooltip" role="tooltip" style={{ left: tip.x, top: tip.y, transform: `translate(-50%, ${tip.below ? "0" : "-100%"})` }}>
-      {tip.text}
+      {text}{key && <kbd className="tooltip-key">{key}</kbd>}
     </div>
   );
 }

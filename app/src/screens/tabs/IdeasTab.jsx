@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import PageHeader from "../../components/PageHeader.jsx";
 import Icon from "../../components/Icon.jsx";
 import { useThumb, requestFrames } from "../../thumbStore.js";
+import { record } from "../../undo.js";
 import { sendCommand } from "../../App.jsx";
 import ExportModal from "../../components/ExportModal.jsx";
 import HelpTooltip from "../../components/HelpTooltip.jsx";
@@ -269,6 +270,7 @@ export default function IdeasTab({
       const next = new Set(prev);
       if (next.has(idea_id)) next.delete(idea_id);
       else next.add(idea_id);
+      record(next.has(idea_id) ? "choosing that story" : "removing that story", () => setSelectedIds(prev), () => setSelectedIds(next));
       return next;
     });
   }, []);
@@ -286,6 +288,14 @@ export default function IdeasTab({
       }
       return changed ? next : prev;
     });
+  }, [ideas]);
+
+  // The palette can reach a story by its own title
+  useEffect(() => {
+    const titleOf = (i) => (i.kind === "story_angle" ? i.data?.brief?.title : i.data?.concept) || "Untitled";
+    window.dispatchEvent(new CustomEvent("posthouse-content", { detail: ideas
+      .filter((i) => i.kind === "deliverable" || i.kind === "story_angle")
+      .map((i) => ({ id: `story-${i.idea_id}`, label: titleOf(i), hint: "story", icon: "sparkles", tab: "ideas", go: { kind: "story", id: i.idea_id } })) }));
   }, [ideas]);
 
   // Every story's frames are cut as soon as the stories arrive, so the page fills at once instead of card by card as each scrolls into view
@@ -516,7 +526,7 @@ export default function IdeasTab({
             <span className="floating-export-badge">{selectedExportable.length}</span>
             {selectedExportable.length === 1 ? "story" : "stories"} chosen
           </div>
-          <button className="btn btn-ghost" onClick={() => setSelectedIds(new Set())}>
+          <button className="btn btn-ghost" onClick={() => { const was = selectedIds; setSelectedIds(new Set()); record("clearing the chosen stories", () => setSelectedIds(was), () => setSelectedIds(new Set())); }}>
             Clear
           </button>
           <button

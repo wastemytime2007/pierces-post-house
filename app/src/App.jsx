@@ -19,6 +19,7 @@ import ShortcutsSheet from "./components/ShortcutsSheet.jsx";
 import Icon from "./components/Icon.jsx";
 import { ingest as ingestThumb, useThumb } from "./thumbStore.js";
 import { chime } from "./chime.js";
+import { undo as undoOne, redo as redoOne, clearUndo } from "./undo.js";
 
 // The project you are in, by its own frame and name
 function ProjectChip({ name }) {
@@ -605,7 +606,31 @@ export default function App() {
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("posthouse-palette", openPalette); window.removeEventListener("posthouse-shortcuts", openShortcuts); };
   }, []);
   useEffect(() => { if (paletteOpen && backendReady) sendCommand({ type: "list_projects" }).catch(() => {}); }, [paletteOpen, backendReady]);
+  // Command-Z anywhere that is not a text field
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      if (/^(INPUT|TEXTAREA)$/.test(e.target?.tagName) || e.target?.isContentEditable) return;
+      e.preventDefault();
+      const l = e.shiftKey ? redoOne() : undoOne();
+      if (l) showToast(`${e.shiftKey ? "Redid" : "Undid"} ${l}`, "info");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showToast]);
+  // A project's choices do not carry over to the next one
+  useEffect(() => { clearUndo(); }, [project?.name]);
   const goTo = (tab) => window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab } }));
+  // Stories and open sequences, published by their own screens so the palette can reach them
+  const [paletteContent, setPaletteContent] = useState([]);
+  useEffect(() => {
+    const onContent = (e) => setPaletteContent((e.detail || []).map((it) => ({
+      ...it, group: it.group || "In this project", icon: it.icon || "film",
+      run: () => { goTo(it.tab); if (it.go) setTimeout(() => window.dispatchEvent(new CustomEvent("posthouse-reveal", { detail: it.go })), 180); },
+    })));
+    window.addEventListener("posthouse-content", onContent);
+    return () => window.removeEventListener("posthouse-content", onContent);
+  }, []);
   const goThen = (tab, menuId) => { goTo(tab); setTimeout(() => window.dispatchEvent(new CustomEvent("posthouse-menu", { detail: menuId })), 160); };
   const paletteItems = [
     ...(project ? [
@@ -621,7 +646,9 @@ export default function App() {
     { id: "p-all", group: "Projects", icon: "list", label: "All projects", keywords: "home start", run: () => closeProject() },
     { id: "p-new", group: "Projects", icon: "plus", label: "New project…", keywords: "create", run: () => { closeProject(); setTimeout(() => window.dispatchEvent(new CustomEvent("posthouse-new-project")), 80); } },
     ...knownProjects.slice(0, 14).map((p) => ({ id: `p-${p.name}`, group: "Projects", icon: "folder", label: p.name, hint: "open", keywords: "project open", run: () => openProject(p.name) })),
-    { id: "s-key", group: "Settings", icon: "sliders", label: "API key…", keywords: "anthropic claude", run: () => setShowSettings(true) },
+    // What is in the project, not only what can be done to it: a story or an open sequence by its own name (Linear's one door reaches content too)
+    ...paletteContent.slice(0, 20),
+    { id: "s-key", group: "Settings", icon: "sliders", label: "API key…", keywords: "anthropic claude", run: () => openSettings() },
     { id: "s-aud", group: "Settings", icon: "sliders", label: "Audiences and goals…", run: () => setShowAudienceProfiles(true) },
     { id: "s-inc", group: "Settings", icon: "sliders", label: "Default includes…", run: () => setShowAutoInclude(true) },
     { id: "s-keys", group: "Settings", icon: "sliders", label: "Keyboard shortcuts", hint: "?", run: () => setShortcutsOpen(true) },
@@ -651,6 +678,8 @@ export default function App() {
     listen("menu-command", (e) => {
       if (e.payload === "settings") openSettings();
       else if (e.payload === "open_project") closeProject();
+      else if (e.payload === "undo") { const l = undoOne(); if (l) showToast(`Undid ${l}`, "info"); }
+      else if (e.payload === "redo") { const l = redoOne(); if (l) showToast(`Redid ${l}`, "info"); }
       else if (e.payload === "new_project") window.dispatchEvent(new CustomEvent("posthouse-new-project"));
       else if (e.payload === "palette") window.dispatchEvent(new CustomEvent("posthouse-palette"));
       else if (e.payload === "shortcuts") window.dispatchEvent(new CustomEvent("posthouse-shortcuts"));

@@ -5579,3 +5579,12 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 /* An export, shown as the cuts it holds */
 .trim-strip { display: inline-flex; gap: 2px; flex: none; }
 .trim-strip span { width: 34px; height: 22px; border-radius: 3px; background-size: cover; background-position: center; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }
+
+/* The shortcut, inside its tooltip */
+.tooltip-key { margin-left: 7px; padding: 1px 5px; border-radius: 4px; background: rgba(127,127,127,0.22); font-family: inherit; font-size: 0.92em; }
+
+/* Space on a tile: that frame, large */
+.sp-peek { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0,0,0,0.72); backdrop-filter: blur(12px); cursor: zoom-out; }
+.sp-peek-art { width: min(74vw, 1100px); aspect-ratio: 16 / 9; border-radius: 12px; background: var(--bg-2, #000) center / contain no-repeat; box-shadow: 0 24px 70px rgba(0,0,0,0.5); }
+.sp-peek-name { color: #fff; font-size: var(--text-title); }
+.sp-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -54,10 +54,23 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [redoOpt, setRedoOpt] = useState(false);                  // start these over from the original (not remembered between runs)
   const [creativeHidden, setCreativeHidden] = useState("");         // the started-stamp of a finished batch the person hid
   const [picker, setPicker] = useState(null);                      // { xml, rows, selected: [ids], filter, hideAuto }
+  const [peek, setPeek] = useState(null);                          // one sequence looked at large, on Space (Quick Look)
   const [seqSet, setSeqSet] = useState(() => {                   // the sequences opened from one XML survive leaving the tab and coming back
     try { return JSON.parse(localStorage.getItem("review.seqSet") || "null"); } catch (e) { return null; }
   });
                      // { source, items: [{ id, name, xml }] }: the sequences opened from one XML, to switch between
+
+  // The palette can reach an open sequence by its own name, and open it
+  useEffect(() => {
+    const items = (seqSet?.items || []).map((it) => ({ id: `seq-${it.id}`, label: pretty(it.name), hint: "sequence", icon: "film", tab: "review", go: { kind: "sequence", xml: it.xml } }));
+    if (items.length) window.dispatchEvent(new CustomEvent("posthouse-content", { detail: items }));
+  }, [seqSet]);
+
+  useEffect(() => {
+    const onReveal = (e) => { if (e.detail?.kind === "sequence" && e.detail.xml) openReviewRef.current?.(e.detail.xml); };
+    window.addEventListener("posthouse-reveal", onReveal);
+    return () => window.removeEventListener("posthouse-reveal", onReveal);
+  }, []);
   const [incoming, setIncoming] = useState(""); // an export made while a review is open: offered, never swapped in under the notes being written
   const [exportsList, setExportsList] = useState([]);
   const [versions, setVersions] = useState([]); // [{label, xml, folder, url, qa}]
@@ -642,7 +655,17 @@ export default function ReviewTab({ subscribe, onStatus }) {
     };
     const all = openable.length > 0 && openable.every((r) => picker.selected.includes(r.id));
     return (
-      <section className="sp" role="dialog" aria-label="Choose sequences">
+      <section className="sp" role="dialog" aria-label="Choose sequences"
+        onKeyDown={(e) => {
+          const tiles = [...e.currentTarget.querySelectorAll(".sp-tile:not([disabled])")];
+          const here = tiles.indexOf(document.activeElement);
+          const cols = Math.max(1, Math.round(e.currentTarget.querySelector(".sp-grid")?.clientWidth / (tiles[0]?.clientWidth || 1)) || 1);
+          const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+          if (step && here >= 0) { e.preventDefault(); tiles[Math.min(tiles.length - 1, Math.max(0, here + step))]?.focus(); }
+          else if (e.key === " " && here >= 0) { e.preventDefault(); setPeek(shown[here] || null); }
+          else if (e.key === "Escape") { e.preventDefault(); if (peek) setPeek(null); else setPicker(null); }
+          else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && picker.selected.length) { e.preventDefault(); openPicked(); }
+        }}>
         <header className="sp-head">
           <div>
             <h2>{picker.rows.length} sequence{picker.rows.length === 1 ? "" : "s"}</h2>
@@ -670,6 +693,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
           })}
           {shown.length === 0 && <div className="sp-none">Nothing matches.</div>}
         </div>
+        {peek && (
+          <div className="sp-peek" onMouseDown={() => setPeek(null)} role="dialog" aria-label={`${pretty(peek.name)}, larger`}>
+            <PeekFrame row={peek} xml={picker.xml} />
+            <span className="sp-peek-name">{pretty(peek.name)}</span>
+          </div>
+        )}
         <footer className="sp-foot">
           <span>{picker.selected.length ? `${picker.selected.length} chosen` : "Nothing chosen yet"}<span className="sp-hint"> · Shift-click picks a range</span></span>
           <span className="rv-spacer" />
@@ -888,7 +917,13 @@ export default function ReviewTab({ subscribe, onStatus }) {
   }
 
   // Every open sequence as a tile: its own frame (the finished version's when there is one), where it stands, one click to open it.
-  function SeqBoard() {
+  // One frame of the contact sheet, large, the way Space does it in Finder
+function PeekFrame({ row, xml }) {
+  const uri = useThumb(`seq:${xml}:${row.id}`);
+  return <span className="sp-peek-art" style={uri ? { backgroundImage: `url(${uri})` } : undefined} />;
+}
+
+function SeqBoard() {
     if (!board || !seqSet || seqSet.items.length < 2) return null;
     const byXml = Object.fromEntries((creative?.state?.items || []).map((i) => [i.xml, i]));
     const label = { done: "Finished", running: "Working", waiting: "Waiting", failed: "Needs a look", skipped: "Left as it was" };
