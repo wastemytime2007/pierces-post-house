@@ -5536,3 +5536,10 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
    The grid keeps room for it, and the gradient behind the footer is tall enough to read against. */
 .sp-grid { padding-bottom: 54px; }        /* the height of the sticky footer, so the last row is never under it */
 .sp-foot { padding: 14px 4px 12px; background: linear-gradient(to top, var(--bg-0) 55%, transparent); }
+
+/* The shortcut list grew with the app, so it reads in columns and scrolls rather than running off the screen */
+.sc-sheet { width: min(760px, 92vw); max-height: 86vh; display: flex; flex-direction: column; }
+.sc-cols { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 4px 28px; padding-right: 4px; }
+.sc-cols fieldset { margin: 0 0 10px; padding: 0; border: 0; }
+.sc-cols legend { padding: 0 0 5px; color: var(--fg-2); font-size: var(--text-footnote); }
+@media (max-width: 720px) { .sc-cols { grid-template-columns: 1fr; } }

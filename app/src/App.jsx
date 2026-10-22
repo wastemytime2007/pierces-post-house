@@ -37,6 +37,16 @@ function ProjectChip({ name }) {
 // IPC helpers
 // ---------------------------------------------------------------------------
 
+/** True only for somewhere a person is typing: a text field, a text area, or editable content. A checkbox, radio or button is not. */
+export function isTyping(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName;
+  if (tag === "TEXTAREA") return true;
+  if (tag !== "INPUT") return false;
+  return !["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"].includes((el.type || "text").toLowerCase());
+}
+
 export async function sendCommand(cmd) {
   return invoke("send_to_backend", { commandJson: JSON.stringify(cmd) });
 }
@@ -626,7 +636,9 @@ export default function App() {
   useEffect(() => {
     const onKey = (e) => {
       if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
-      if (/^(INPUT|TEXTAREA)$/.test(e.target?.tagName) || e.target?.isContentEditable) return;
+      // Only a field you can type into owns Command-Z. A checkbox or a button does not, and the
+      // commonest way to want undo is right after ticking one, when it still has the focus.
+      if (isTyping(e.target)) return;
       e.preventDefault();
       const l = e.shiftKey ? redoOne() : undoOne();
       if (l) showToast(`${e.shiftKey ? "Redid" : "Undid"} ${l}`, "info");
