@@ -644,14 +644,20 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .quit()
         .build()?;
     let file = SubmenuBuilder::new(app, "File")
+        .item(&item("new_project", "New Project…", "CmdOrCtrl+N")?)
+        .item(&item("open_project", "All Projects", "CmdOrCtrl+Shift+O")?)
+        .separator()
         .item(&item("open_xml", "Open XML…", "CmdOrCtrl+O")?)
         .item(&item("open_premiere", "Open in Premiere", "CmdOrCtrl+E")?)
+        .item(&item("show_in_finder", "Show in Finder", "CmdOrCtrl+Shift+R")?)
         .separator()
         .close_window()
         .build()?;
     let edit = SubmenuBuilder::new(app, "Edit")
-        .undo()
-        .redo()
+        .item(&item("undo", "Undo", "CmdOrCtrl+Z")?)
+        .item(&item("redo", "Redo", "CmdOrCtrl+Shift+Z")?)
+        .separator()
+        .item(&item("find", "Find…", "CmdOrCtrl+F")?)
         .separator()
         .cut()
         .copy()
@@ -673,7 +679,9 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .item(&item("palette", "Command Palette…", "CmdOrCtrl+K")?)
         .build()?;
     let view = SubmenuBuilder::new(app, "View")
+        .item(&item("toggle_sidebar", "Show Sidebar", "CmdOrCtrl+Alt+S")?)
         .item(&item("toggle_activity", "Show Activity Log", "CmdOrCtrl+Alt+L")?)
+        .item(&item("show_board", "All Sequences", "CmdOrCtrl+Alt+B")?)
         .separator()
         .fullscreen()
         .build()?;
@@ -750,6 +758,43 @@ fn save_window_state(win: &tauri::WebviewWindow) {
     }
 }
 
+/// The Settings window macOS expects behind Command-comma (HIG settings.md). One window: a second
+/// request brings the existing one forward rather than opening another.
+#[tauri::command]
+fn open_settings_window(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return;
+    }
+    let _ = tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("index.html?settings=1".into()))
+        .title("Settings")
+        .inner_size(620.0, 460.0)
+        .min_inner_size(520.0, 380.0)
+        .resizable(true)
+        .title_bar_style(tauri::TitleBarStyle::Transparent)
+        .build();
+}
+
+/// The Dock icon carries the news: a count of finished sequences while the app is in the background,
+/// cleared when the person looks (HIG notifications.md: a badge says how much is waiting, nothing more).
+#[tauri::command]
+fn set_dock_badge(app: AppHandle, count: u32) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_badge_count(if count == 0 { None } else { Some(count as i64) });
+    }
+}
+
+/// The window comes forward when the person acts on a notification.
+#[tauri::command]
+fn focus_main(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 fn main() {
     let backend: SharedBackend = Arc::new(Mutex::new(BackendHandle::new()));
     let setup_child: SharedSetupChild = Arc::new(Mutex::new(None));
@@ -776,7 +821,11 @@ fn main() {
         // Menu commands go to the page as one event; the page decides what each one means on the screen it is showing.
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
-            if !matches!(id.as_str(), "open_xml" | "open_premiere" | "get_creative" | "older_version" | "newer_version" | "settings" | "toggle_activity" | "palette" | "shortcuts" | "go_pm" | "go_ideas" | "go_trim" | "go_review") {
+            if id == "settings" {
+                open_settings_window(app.clone());
+                return;
+            }
+            if !matches!(id.as_str(), "open_xml" | "open_premiere" | "get_creative" | "older_version" | "newer_version" | "settings" | "toggle_activity" | "palette" | "shortcuts" | "go_pm" | "go_ideas" | "go_trim" | "go_review" | "new_project" | "open_project" | "show_in_finder" | "undo" | "redo" | "find" | "toggle_sidebar" | "show_board") {
                 return;
             }
             let _ = app.emit("menu-command", id);
@@ -789,6 +838,9 @@ fn main() {
             setup_install,
             setup_mark_complete,
             setup_reset,
+            open_settings_window,
+            set_dock_badge,
+            focus_main,
         ])
         .run(tauri::generate_context!())
         .expect("Error while running PreCut");

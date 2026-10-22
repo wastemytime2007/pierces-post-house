@@ -18,6 +18,7 @@ import CommandPalette from "./components/CommandPalette.jsx";
 import ShortcutsSheet from "./components/ShortcutsSheet.jsx";
 import Icon from "./components/Icon.jsx";
 import { ingest as ingestThumb, useThumb } from "./thumbStore.js";
+import { chime } from "./chime.js";
 
 // The project you are in, by its own frame and name
 function ProjectChip({ name }) {
@@ -135,6 +136,14 @@ export default function App() {
         ingestThumb(ev);                                       // stills from the footage go to whichever screen shows them
 
         switch (ev.type) {
+          case "creative_batch_done":
+            // The Dock says how many are waiting, but only while the person is somewhere else
+            if (ev.finished > 0 && typeof document !== "undefined" && !document.hasFocus()) {
+              invoke("set_dock_badge", { count: ev.finished }).catch(() => {});
+            }
+            chime("finished");
+            break;
+
           case "ready":
             setBackendReady(true);
             setSettings(ev.settings || null);
@@ -475,6 +484,13 @@ export default function App() {
     setShowApiKeyHelp(false);
   }, []);
 
+  // Looking at the app clears what the Dock was holding
+  useEffect(() => {
+    const clear = () => { invoke("set_dock_badge", { count: 0 }).catch(() => {}); };
+    window.addEventListener("focus", clear);
+    return () => window.removeEventListener("focus", clear);
+  }, []);
+
   const openProject = useCallback(async (name) => {
     // Remember which project we're opening so if the backend emits a
     // "Project not found" error, the error handler can match it back
@@ -514,6 +530,13 @@ export default function App() {
       logAppend({ level: "error", message: `Failed to delete project: ${e}` });
     }
   }, [logAppend]);
+
+  // Settings is a window of its own (HIG settings.md). The browser harness has no windows, so it falls back to the sheet.
+  const openSettings = useCallback(() => {
+    setShowAppMenu(false);
+    if (typeof window !== "undefined" && window.__IS_HARNESS__) { setShowSettings(true); return; }
+    invoke("open_settings_window").catch(() => setShowSettings(true));
+  }, []);
 
   const closeProject = useCallback(() => {
     try { localStorage.removeItem("ph.session"); } catch (e) { /* not kept */ }
@@ -626,7 +649,9 @@ export default function App() {
   useEffect(() => {
     let off;
     listen("menu-command", (e) => {
-      if (e.payload === "settings") setShowSettings(true);
+      if (e.payload === "settings") openSettings();
+      else if (e.payload === "open_project") closeProject();
+      else if (e.payload === "new_project") window.dispatchEvent(new CustomEvent("posthouse-new-project"));
       else if (e.payload === "palette") window.dispatchEvent(new CustomEvent("posthouse-palette"));
       else if (e.payload === "shortcuts") window.dispatchEvent(new CustomEvent("posthouse-shortcuts"));
       else if (String(e.payload).startsWith("go_")) window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: String(e.payload).slice(3) } }));
@@ -672,8 +697,8 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <header className="titlebar">
+    <div className={`app ${typeof window !== "undefined" && window.__IS_HARNESS__ ? "" : "has-traffic-lights"}`}>
+      <header className="titlebar" data-tauri-drag-region>
         <div className="titlebar-brand">
           <button className="titlebar-home" onClick={() => project && closeProject()} disabled={!project} aria-label={project ? "Post House, all projects" : "Post House"} title={project ? "All projects" : undefined}>
             <Mark size={20} /><span className="titlebar-wordmark">Post House</span>
@@ -697,7 +722,7 @@ export default function App() {
                 <div className="rv-menu-scrim" onMouseDown={() => setShowAppMenu(false)} />
                 <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setShowAppMenu(false); }}>
                   {settings && (
-                    <button role="menuitem" onClick={() => { setShowAppMenu(false); setShowSettings(true); }}>
+                    <button role="menuitem" onClick={openSettings}>
                       <span>API key…</span><span className="rv-menu-note">{apiKeyBadgeText}</span>
                     </button>
                   )}

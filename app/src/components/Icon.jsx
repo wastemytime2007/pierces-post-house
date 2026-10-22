@@ -1,6 +1,7 @@
 // One line-icon set, one stroke weight (SF Symbols style). Used where an icon labels an action or a kind of thing, never as decoration.
 const PATHS = {
   film: <><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="M7.5 5v14M16.5 5v14M3 9.5h4.5M3 14.5h4.5M16.5 9.5H21M16.5 14.5H21" /></>,
+  sliders: <><path d="M4 7h10M18 7h2M4 17h4M12 17h8" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,
   sparkles: <><path d="M10.5 3.5l1.6 4.4 4.4 1.6-4.4 1.6-1.6 4.4-1.6-4.4L4.5 9.5l4.4-1.6 1.6-4.4z" /><path d="M18 14l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8L18 14z" /></>,
   folder: <path d="M3 8a2.5 2.5 0 012.5-2.5H9l2 2.5h7.5A2.5 2.5 0 0121 10.5v6A2.5 2.5 0 0118.5 19h-13A2.5 2.5 0 013 16.5V8z" />,
   plus: <path d="M12 5v14M5 12h14" />,

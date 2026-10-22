@@ -1157,7 +1157,10 @@ def handle_get_creative(cmd: dict) -> None:
         import creator_tools
         try:
             creator_tools.get_creative(xmls, cmd.get("opts"), emit, _creative_stop.is_set)         # each step captures its own printing; wrapping the whole batch would redirect stdout for hours
-            creator_tools.notify(*creator_tools.finished_message(creator_tools.read_creative(xmls[0])))
+            state = creator_tools.read_creative(xmls[0])
+            creator_tools.notify(*creator_tools.finished_message(state))
+            done = sum(1 for i in (state or {}).get("items", []) if i.get("status") == "done")
+            emit({"type": "creative_batch_done", "xml": xmls[0], "finished": done})               # the Dock badge and the sound, if the person turned one on
         except creator_tools.ToolError as exc:
             emit({"type": "creative_failed", "xml": xmls[0], "message": str(exc)})
         except Exception as exc:

@@ -17,6 +17,7 @@
         window.__sent = [];                                       // every command the screen sent to the backend
         window.__handlers = {};
         let nextId = 1;
+        window.__IS_HARNESS__ = true;        // no traffic lights in a browser page: the title bar keeps its normal lead
         window.__TAURI_INTERNALS__ = {
           metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
           transformCallback(cb) { const id = nextId++; window["_" + id] = cb; return id; },

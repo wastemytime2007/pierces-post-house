@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import "./styles.css";
 import ProjectView from "./screens/ProjectView.jsx";
 import App from "./App.jsx";
+import SettingsWindow from "./screens/SettingsWindow.jsx";
 import { ingest } from "./thumbStore.js";
 
 const params = new URLSearchParams(window.location.search);
@@ -47,5 +48,7 @@ function Harness() {
   );
 }
 
-// ?app=1 mounts the whole app (title bar, project list, modals); feed it with window.__backend(event)
-ReactDOM.createRoot(document.getElementById("root")).render(params.get("app") ? <App /> : <Harness />);
+// ?app=1 mounts the whole app (title bar, project list, modals); ?settings=1 mounts the Settings window; feed either with window.__backend(event)
+ReactDOM.createRoot(document.getElementById("root")).render(
+  params.get("settings") ? <SettingsWindow /> : params.get("app") ? <App /> : <Harness />
+);
