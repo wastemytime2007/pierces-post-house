@@ -10,3 +10,10 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 4 | An XML dragged onto the window anywhere opens in Finish, with a veil that says so | build only; Tauri drag events cannot be simulated in the browser |
 | 5 | "Ideas" is now "Stories" in every visible string | grep |
 | 6 | Welcome text is the four steps | build |
+| 7 | Command palette (⌘K): every step, action, project and setting, fuzzy-filtered, keyboard only | screenshot dark, filter typed, build |
+| 8 | Keyboard shortcuts sheet (?), grouped | screenshot dark |
+| 9 | Sheet focus no longer draws a stray outline | build |
+| 10 | "Ready for ideas?" became "Ready to find stories?" | grep |
+| 11 | Project covers say where the project stands ("Ready to find stories", "4 stories found", "XML out for trimming"); backend `project_summary` | `test_project_summary.py` (2), run on the real projects |
+| 12 | The summary also counts XMLs saved anywhere, from the app's own export record | run on the real projects: Wall Removal 2, Weekend Septic 7 |
+| 13 | New project is a sheet over the home screen, not a form that pushes the list down | screenshot dark |

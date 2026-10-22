@@ -13,6 +13,8 @@ import WelcomeModal from "./components/WelcomeModal.jsx";
 import ApiKeyHelp from "./components/ApiKeyHelp.jsx";
 import ToastStack from "./components/ToastStack.jsx";
 import Mark from "./components/Mark.jsx";
+import CommandPalette from "./components/CommandPalette.jsx";
+import ShortcutsSheet from "./components/ShortcutsSheet.jsx";
 import Icon from "./components/Icon.jsx";
 import { ingest as ingestThumb } from "./thumbStore.js";
 
@@ -127,6 +129,10 @@ export default function App() {
             // a flash of "no rules" if they have some.
             sendCommand({ type: "get_auto_include_rules" }).catch(() => {});
             sendCommand({ type: "get_audience_profiles" }).catch(() => {});
+            break;
+
+          case "projects_list":
+            setKnownProjects(ev.projects || []);
             break;
 
           case "log":
@@ -516,6 +522,43 @@ export default function App() {
   const [xmlOver, setXmlOver] = useState(false);                // an XML is being dragged over the window
   const projectRef = useRef(null);
   projectRef.current = project;
+
+  // ---- ⌘K command palette and the shortcuts sheet
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [knownProjects, setKnownProjects] = useState([]);
+  useEffect(() => {
+    const onKey = (e) => {
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((x) => !x); }
+      else if (e.key === "?" && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setShortcutsOpen(true); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  useEffect(() => { if (paletteOpen && backendReady) sendCommand({ type: "list_projects" }).catch(() => {}); }, [paletteOpen, backendReady]);
+  const goTo = (tab) => window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab } }));
+  const goThen = (tab, menuId) => { goTo(tab); setTimeout(() => window.dispatchEvent(new CustomEvent("posthouse-menu", { detail: menuId })), 160); };
+  const paletteItems = [
+    ...(project ? [
+      { id: "go-pm", group: "Go to", icon: "film", label: "Footage", hint: "step 1", keywords: "project sources interviews", run: () => goTo("pm") },
+      { id: "go-ideas", group: "Go to", icon: "sparkles", label: "Stories", hint: "step 2", keywords: "ideas plan angles", run: () => goTo("ideas") },
+      { id: "go-trim", group: "Go to", icon: "cut", label: "Trim", hint: "step 3", keywords: "premiere exports xml waiting", run: () => goTo("trim") },
+      { id: "go-review", group: "Go to", icon: "check", label: "Finish", hint: "step 4", keywords: "review creative polish", run: () => goTo("review") },
+      { id: "do-xml", group: "Do", icon: "folderOpen", label: "Choose a trimmed XML…", hint: "⌘O", keywords: "open import bring back", run: () => goThen("review", "open_xml") },
+      { id: "do-gc", group: "Do", icon: "sparkles", label: "Get Creative…", hint: "⌘G", keywords: "captions graphics music finish", run: () => goThen("review", "get_creative") },
+      { id: "do-prem", group: "Do", icon: "arrowUpRight", label: "Open in Premiere", hint: "⌘E", keywords: "export send", run: () => goThen("review", "open_premiere") },
+      { id: "do-log", group: "Do", icon: "activity", label: "Show or hide the activity log", hint: "⌘⌥L", keywords: "log", run: () => window.dispatchEvent(new CustomEvent("posthouse-menu", { detail: "toggle_activity" })) },
+    ] : []),
+    { id: "p-all", group: "Projects", icon: "list", label: "All projects", keywords: "home start", run: () => closeProject() },
+    { id: "p-new", group: "Projects", icon: "plus", label: "New project…", keywords: "create", run: () => { closeProject(); setTimeout(() => window.dispatchEvent(new CustomEvent("posthouse-new-project")), 80); } },
+    ...knownProjects.slice(0, 14).map((p) => ({ id: `p-${p.name}`, group: "Projects", icon: "folder", label: p.name, hint: "open", keywords: "project open", run: () => openProject(p.name) })),
+    { id: "s-key", group: "Settings", icon: "sliders", label: "API key…", keywords: "anthropic claude", run: () => setShowSettings(true) },
+    { id: "s-aud", group: "Settings", icon: "sliders", label: "Audiences and goals…", run: () => setShowAudienceProfiles(true) },
+    { id: "s-inc", group: "Settings", icon: "sliders", label: "Default includes…", run: () => setShowAutoInclude(true) },
+    { id: "s-keys", group: "Settings", icon: "sliders", label: "Keyboard shortcuts", hint: "?", run: () => setShortcutsOpen(true) },
+  ];
   useEffect(() => {
     let offs = [];
     const isXml = (e) => (e.payload?.paths || []).some((p) => /\.xml$/i.test(p));
@@ -822,6 +865,8 @@ export default function App() {
         </div>
       )}
 
+      {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
+      {shortcutsOpen && <ShortcutsSheet onClose={() => setShortcutsOpen(false)} />}
       {xmlOver && (
         <div className="drop-veil" aria-hidden="true">
           <div className="drop-veil-card"><Icon name="folderOpen" size={28} /><b>Drop to open in Finish</b><span>Your trimmed XML opens on its own frames.</span></div>

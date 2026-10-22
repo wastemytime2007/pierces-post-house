@@ -39,7 +39,7 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.evaluate(() => window.__backend({ type: "settings", settings: { has_env: false, active_source: "none", llm_via_cli: false, welcome_seen: true, tour_seen: true, auto_include_nudge_seen: true } }));
   // Real frames: dev/frames/*.jpg if present (cut from your own footage with thumbs.py), else the posters stay as brand-color tiles
   const NAMES = ["Runnells Weekend", "Runnells Wall Removal", "Runnells Hanging Mirror", "Kitchen and Doors, 3 Reels", "How to remove wallpaper", "Test2"];
-  await page.evaluate((names) => window.__backend({ type: "projects_list", projects: names.map((n, i) => ({ name: n, dir: "/x/" + i, updated_at: Date.now() / 1000 - 3600 * (i * i + 1), source_count: n === "Test2" ? 0 : 2 + i })) }), NAMES);
+  await page.evaluate((names) => window.__backend({ type: "projects_list", projects: names.map((n, i) => ({ name: n, dir: "/x/" + i, updated_at: Date.now() / 1000 - 3600 * (i * i + 1), source_count: n === "Test2" ? 0 : 2 + i, summary: { transcribed: i === 4 ? 0 : 2, stories: [4, 3, 0, 1, 0, 0][i], exports: [1, 0, 0, 0, 0, 0][i] } })) }), NAMES);
   const FR = process.env.FRAMES || path.join(__dirname, "frames");
   if (fs.existsSync(FR)) {
     const files = fs.readdirSync(FR).filter((f) => f.endsWith(".jpg")).sort();
@@ -71,6 +71,14 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.getByRole("button", { name: /Process again/ }).click().catch(() => {});
   await shot("12c_process_dialog");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
+  await page.keyboard.press("Meta+k");
+  await shot("12d_palette");
+  await page.keyboard.type("cre");
+  await shot("12e_palette_filtered");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("?");
+  await shot("12f_shortcuts");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Settings" }).click();
   await shot("13_settings_menu");
   await page.getByRole("menuitem", { name: /API key/ }).click();

@@ -50,8 +50,10 @@ export default function ProjectView({
   useEffect(() => {
     // An XML dropped anywhere in the window, or chosen on the Trim step, opens in Finish
     const onOpen = () => setActiveTab("review");
+    const onGo = (e) => { if (e.detail?.tab) setActiveTab(e.detail.tab); };
     window.addEventListener("posthouse-open-xml", onOpen);
-    return () => window.removeEventListener("posthouse-open-xml", onOpen);
+    window.addEventListener("posthouse-go", onGo);
+    return () => { window.removeEventListener("posthouse-open-xml", onOpen); window.removeEventListener("posthouse-go", onGo); };
   }, []);
   const [reviewSub, setReviewSub] = useState(""); // the Review tab reports what it is doing ("building the cut…", "V2 open")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);

@@ -634,7 +634,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
             <div className="floating-next-text">
               <span className="floating-next-title">Indexing complete</span>
               <span className="floating-next-sub">
-                Footage transcribed and tagged. Ready for ideas?
+                Footage transcribed and described. Ready to find stories?
               </span>
             </div>
             <button className="btn btn-primary" onClick={onGoToIdeas}>

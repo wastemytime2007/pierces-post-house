@@ -562,6 +562,28 @@ class Project:
 
 # ---- Registry operations ---------------------------------------------------
 
+def project_summary(project_dir, d: dict) -> dict:
+    """Where a project stands, for the project list: interviews transcribed, stories found, XMLs sent to Premiere. Cheap (a few directory reads); never raises."""
+    out = {"transcribed": 0, "stories": 0, "exports": 0}
+    try:
+        for src in d.get("sources", []):
+            if src.get("kind") == "aroll":
+                out["transcribed"] += sum(1 for f in (src.get("files") or {}).values() if f.get("transcript_status") == "done")
+        root = Path(project_dir)
+        plans = root / "plans"
+        if plans.is_dir():
+            out["stories"] = sum(1 for p in plans.glob("*.json") if not p.name.startswith("."))
+        exports = root / "exports"
+        if exports.is_dir():
+            out["exports"] = sum(1 for p in exports.rglob("*.xml") if not p.name.startswith("."))
+        recorded = root / "review_exports.json"                     # exports saved anywhere, as the app recorded them
+        if recorded.is_file():
+            out["exports"] = max(out["exports"], sum(1 for r in json.loads(recorded.read_text()) if Path(r.get("path", "")).is_file()))
+    except (OSError, ValueError, AttributeError, TypeError):
+        pass
+    return out
+
+
 def list_projects() -> list[dict]:
     """Return a lightweight summary of all projects, sorted by updated_at desc.
 
@@ -593,6 +615,7 @@ def list_projects() -> list[dict]:
                 "source_count": len(d.get("sources", [])),
                 "root_dir": root_dir,
                 "dir": root_dir,
+                "summary": project_summary(root_dir, d),
                 "is_portable": True,
             })
             seen_names.add(d["name"])
@@ -621,6 +644,7 @@ def list_projects() -> list[dict]:
                 "source_count": len(d.get("sources", [])),
                 "root_dir": None,
                 "dir": str(pdir),
+                "summary": project_summary(pdir, d),
                 "is_portable": False,
             })
         except Exception:

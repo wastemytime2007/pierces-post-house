@@ -19,6 +19,16 @@ import Icon from "../components/Icon.jsx";
 import Mark from "../components/Mark.jsx";
 import { useThumb, requestPosters, tileColors } from "../thumbStore.js";
 
+// Where the project stands, in the words of the four steps
+function stageText(p) {
+  const s = p.summary || {};
+  if (p.source_count === 0) return "Add your footage";
+  if (!s.transcribed) return "Needs processing";
+  if (!s.stories) return "Ready to find stories";
+  if (!s.exports) return `${s.stories} ${s.stories === 1 ? "story" : "stories"} found`;
+  return "XML out for trimming";
+}
+
 function greeting() {
   const h = new Date().getHours();
   return h < 5 ? "Working late." : h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening.";
@@ -35,7 +45,7 @@ function Cover({ p, featured, onOpen, onDelete, index }) {
         <span className="cover-shade" />
         <span className="cover-info">
           <span className="cover-name">{p.name}</span>
-          <span className="cover-meta">{p.source_count === 0 ? "No footage yet" : `${p.source_count} source${p.source_count !== 1 ? "s" : ""}`} · {formatRelativeTime(p.updated_at)}</span>
+          <span className="cover-meta">{stageText(p)} · {formatRelativeTime(p.updated_at)}</span>
         </span>
       </button>
       <button className="cover-delete" title="Delete project" aria-label={`Delete ${p.name}`} onClick={() => onDelete(p.name)}><Icon name="trash" size={15} /></button>
@@ -101,6 +111,11 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   }, [backendReady]);
 
   useEffect(() => { refreshProjects(); }, [refreshProjects]);
+  useEffect(() => {
+    const onNew = () => setShowNewProject(true);
+    window.addEventListener("posthouse-new-project", onNew);
+    return () => window.removeEventListener("posthouse-new-project", onNew);
+  }, []);
   useEffect(() => { if (projects.length) requestPosters(projects); }, [projects]);
 
   // Subscribe to relevant backend events
@@ -210,13 +225,16 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         </div>
 
         {showNewProject && (
-          <div className="new-project-form">
-            <label className="form-label">Project name</label>
+          <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) { setShowNewProject(false); setCreateError(null); } }}>
+          <div className="new-project-form rv-sheet" role="dialog" aria-modal="true" aria-labelledby="np-title">
+            <h2 id="np-title">New project</h2>
+            <p className="rv-sheet-sub">A project holds one shoot: its interviews, B-roll and recorder audio.</p>
+            <label className="form-label">Name</label>
             <input
               type="text"
               autoFocus
               className="form-input"
-              placeholder="My first project"
+              placeholder="For example: Runnells weekend"
               value={newName}
               onChange={(e) => { setNewName(e.target.value); setCreateError(null); }}
               onKeyDown={handleKey}
@@ -289,6 +307,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
                 </>
               )}
             </div>
+          </div>
           </div>
         )}
 
