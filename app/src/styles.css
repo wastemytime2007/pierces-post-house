@@ -5601,8 +5601,12 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .rv-compare-hint { margin: 0; color: #9aa6b2; font-size: var(--text-footnote); text-align: center; }
 @media (max-width: 900px) { .rv-compare-pair { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; } }
 
-/* The Finish toolbar's menus sit above the review frame: an iframe later in the page was painting over them, so a menu item could be seen but not clicked */
-.rv-toolbar { position: relative; z-index: 50; }
+/* Stacking in the Finish room, in one place so the three layers cannot fight again:
+   the review frame at the bottom, the toolbar (and its menus) above it, and the board above both.
+   An iframe later in the page used to paint over the toolbar's menus, so a menu item could be seen
+   but not clicked; giving the toolbar a very high z-index then hid the board's own heading behind it. */
+.rv-frame { position: relative; z-index: 1; }
+.rv-toolbar { position: relative; z-index: 2; }
 
 /* Something that can be dragged out of the app */
 .rv-dragout { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-sm); background: var(--bg-2, var(--bg-1)); color: var(--fg-1); font-size: var(--text-footnote); cursor: grab; }
@@ -5668,3 +5672,27 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .page-tip { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 9px 12px 9px 11px; border-radius: var(--radius-card); background: rgba(var(--accent-rgb), 0.09); color: var(--fg-1); font-size: var(--text-body); max-width: 72ch; }
 .page-tip svg { color: var(--accent); flex: none; }
 .page-tip span { flex: 1; }
+
+/* The footage zones: the icon says what kind of thing goes here, but it is not a badge in a tinted
+   square on every card (EXPERIENCE.md names that as a tell). It sits with the heading, at its weight. */
+.dropzone-icon { width: auto; height: auto; background: none; color: var(--fg-2); }
+.dropzone.has-items .dropzone-icon { background: none; color: var(--accent); }
+
+/* Narrow window: the three Trim steps stack, and a stacked step is a row, not a tall box with
+   an empty right half. The number moves beside the words it belongs to. */
+@media (max-width: 1000px) {
+  .trim-steps li { display: grid; grid-template-columns: 22px 1fr; column-gap: 11px; align-items: baseline; padding: 11px 14px; }
+  .trim-steps li::before { margin: 0; align-self: start; }
+  .trim-steps li b, .trim-steps li span { grid-column: 2; }
+  .trim-steps li.trim-act { padding: 0; display: block; }
+  .trim-steps li.trim-act::before { position: absolute; margin: 12px 0 0 14px; }
+  .trim-act-btn { display: grid; grid-template-columns: 22px 1fr; column-gap: 11px; align-items: baseline; padding: 11px 14px 12px 14px; }
+  .trim-act-btn b, .trim-act-btn span { grid-column: 2; }
+  .trim-steps li.trim-act { position: relative; }
+  .trim-act-btn::before { content: ""; }
+}
+
+/* The merged result: the file it wrote, and anything it left out, each on its own line rather than running into the sentence before */
+.rv-merged span > span { display: block; }
+.rv-merged-file { margin-top: 3px; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-footnote); color: var(--fg-1); }
+.rv-merged-left { margin-top: 5px; color: var(--fg-2); font-size: var(--text-footnote); }

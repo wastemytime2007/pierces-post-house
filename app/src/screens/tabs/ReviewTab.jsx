@@ -1034,9 +1034,9 @@ function SeqBoard() {
         {merged && (
           <div className="rv-notice ok rv-merged ph-new" role="status">
             <span>
-              <strong>{merged.included} sequence{merged.included === 1 ? "" : "s"} checked and written into one XML.</strong>{" "}
-              {fileName(merged.xml)}
-              {merged.excluded.length > 0 && <> Left out, because they did not pass the export check: {merged.excluded.map((x) => `${pretty(x.name)} (${x.failed.join(", ")})`).join("; ")}.</>}
+              <strong>{merged.included} sequence{merged.included === 1 ? "" : "s"} checked and written into one XML.</strong>
+              <span className="rv-merged-file">{fileName(merged.xml)}</span>
+              {merged.excluded.length > 0 && <span className="rv-merged-left">Left out, because they did not pass the export check: {merged.excluded.map((x) => `${pretty(x.name)} (${x.failed.join(", ")})`).join("; ")}.</span>}
             </span>
             <span className="rv-dragout" {...dragProps(merged.xml)}><Icon name="doc" size={14} /> Drag to Premiere</span>
             <button className="btn btn-sm btn-primary" onClick={() => sendCommand({ type: "open_xml", path: merged.xml, ...(premiereApp ? { app: premiereApp } : {}) })}>Open in Premiere</button>

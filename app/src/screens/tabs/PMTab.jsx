@@ -524,7 +524,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
       />
 
       <button className="pm-tab-submit" disabled={!canSubmit} onClick={handleOrganize}>
-        {submitting ? "Organizing…" : "Organize"}
+        {submitting ? "Getting it ready…" : "Get it ready"}
       </button>
 
       {error && <pre className="pm-tab-error">{error}</pre>}
@@ -559,7 +559,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
             <button className="btn" onClick={() => setShowRunModal(true)} disabled={totalSources === 0}>Process again…</button>
           )}
         </div>
-        <p className="pm-section-lead">Organize starts processing by itself. Use Process again after adding footage, or to skip a step on purpose.</p>
+        <p className="pm-section-lead">Get it ready starts this by itself. Run it again after adding more footage, or to skip a step on purpose.</p>
 
         {showRunModal && (
           <RunPipelineModal
