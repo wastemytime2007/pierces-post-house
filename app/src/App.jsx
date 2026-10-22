@@ -271,6 +271,8 @@ export default function App() {
           try { handler(ev); } catch (e) { console.error(e); }
         }
       });
+      // The backend says "ready" once, when it starts. A page that loads after that (a reload) asks again, or it would wait for a message that never comes.
+      sendCommand({ type: "hello" }).catch(() => {});
     })();
     return () => { if (unlisten) unlisten(); };
   }, [logAppend, showToast]);

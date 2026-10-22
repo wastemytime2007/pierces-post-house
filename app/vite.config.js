@@ -9,6 +9,8 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     host: "localhost",
+    // The backend (Python, its HTML templates) and the Rust crate are not part of the page: a change there must not reload it and lose the backend's one-time "ready" (Tauri rebuilds its own side)
+    watch: { ignored: ["**/python_backend/**", "**/src-tauri/**", "**/premiere_extension/**", "**/dev/**", "**/tests/**"] },
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {

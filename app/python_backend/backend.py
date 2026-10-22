@@ -160,6 +160,15 @@ def err(message: str, job_id: Optional[str] = None, tb: Optional[str] = None) ->
 # Command handlers
 # ---------------------------------------------------------------------------
 
+def emit_ready() -> None:
+    emit({"type": "ready", "version": "0.4.43-precut-logo-cleanup", "settings": get_api_key_summary()})
+
+
+def handle_hello(cmd: dict) -> None:
+    """The page asks again whether the backend is up. The first `ready` is sent once at start, so a page that loads or reloads after it (a dev reload, a crash and Reload) would wait forever without this."""
+    emit_ready()
+
+
 def handle_ping(cmd: dict) -> None:
     emit({"type": "pong", "timestamp": time.time()})
 
@@ -1509,6 +1518,7 @@ def handle_frame_thumbs(cmd: dict) -> None:
 # ---------------------------------------------------------------------------
 
 HANDLERS = {
+    "hello": handle_hello,
     "project_posters": handle_project_posters,
     "frame_thumbs": handle_frame_thumbs,
     "ping": handle_ping,
@@ -1593,8 +1603,7 @@ def main() -> None:
     # Apply persisted settings to the current process env. Env vars still
     # take precedence — this only fills in what's missing.
     summary = apply_settings_to_env()
-    emit({"type": "ready", "version": "0.4.43-precut-logo-cleanup",
-          "settings": get_api_key_summary()})
+    emit_ready()
 
     for line in sys.stdin:
         line = line.strip()
