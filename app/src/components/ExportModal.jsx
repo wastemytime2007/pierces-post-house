@@ -91,9 +91,10 @@ export default function ExportModal({
             addProgress(`Generating B-roll markers for "${ev.sequence_name}"…`);
             break;
           case "export_matched": {
-            const phraseStr = `${ev.aroll_phrases} A-roll phrase${ev.aroll_phrases !== 1 ? "s" : ""}`;
+            const phrases = ev.aroll_phrases ?? ev.aroll_phrase_count ?? 0;        // the backend names it aroll_phrase_count
+            const phraseStr = `${phrases} A-roll phrase${phrases !== 1 ? "s" : ""}`;
             // Drop 3.7+: if we emitted markers, show those instead of cutaway count
-            const markerCount = ev.broll_markers ?? 0;
+            const markerCount = ev.broll_markers ?? ev.broll_marker_count ?? 0;
             const cutawayCount = ev.broll_cutaways ?? 0;
             if (markerCount > 0) {
               addProgress(`  ${phraseStr}, ${markerCount} B-roll marker${markerCount !== 1 ? "s" : ""}`);
@@ -130,7 +131,11 @@ export default function ExportModal({
             if (ev.xml === writtenPathRef.current) setOpenNote({ mode: ev.mode, message: ev.message });
             break;
           case "export_error":
+            setErrorMsg(ev.message || "Export failed");
+            setStage("error");
+            break;
           case "error":                                     // the backend refused before the export began: say so, never sit on "Starting..."
+            if (stage !== "running") break;                 // but never turn a finished export into a failure because something unrelated complained afterwards
             setErrorMsg(ev.message || "Export failed");
             setStage("error");
             break;
