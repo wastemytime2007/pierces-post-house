@@ -139,7 +139,7 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await boxes.nth(0).check({ force: true });
   await boxes.nth(1).check({ force: true });
   await shot("15c_ideas_chosen");
-  await page.getByRole("button", { name: /Export XML/ }).click().catch(() => {});
+  await page.getByRole("button", { name: /Open in Premiere/ }).click().catch(() => {});
   await shot("15d_export_dialog");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});

@@ -111,6 +111,8 @@ export default function ExportModal({
             break;
           case "export_complete":
             setWrittenPath(ev.xml_path);
+            // The point of the export is to be in Premiere: open it as soon as it is written (the library-only file is a bin, not a cut)
+            if (ev.xml_path && !libraryOnly) sendCommand({ type: "open_xml", path: ev.xml_path }).catch((e) => console.error("open_xml failed:", e));
             addProgress(`Wrote ${ev.sequences} sequence${ev.sequences !== 1 ? "s" : ""} + library of ${ev.broll_library_size} clips`, "accent");
             setStage("done");
             break;
@@ -196,11 +198,11 @@ export default function ExportModal({
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 580 }}>
         <div className="modal-header">
           <h2>
-            {stage === "done" ? "Export complete"
-              : stage === "error" ? "Export failed"
-              : stage === "running" ? "Exporting…"
-              : libraryOnly ? "Export library only"
-              : "Export to Premiere XML"}
+            {stage === "done" ? (libraryOnly ? "Library saved" : "Opening in Premiere")
+              : stage === "error" ? "Could not build the project"
+              : stage === "running" ? "Building…"
+              : libraryOnly ? "Save the clip library only"
+              : "Open in Premiere"}
           </h2>
           {stage !== "running" && (
             <button className="modal-close" onClick={onClose}>×</button>
@@ -256,7 +258,7 @@ export default function ExportModal({
               >
                 {libraryOnly
                   ? "Export library"
-                  : `Export ${selectedIdeas.length} timeline${selectedIdeas.length !== 1 ? "s" : ""}`}
+                  : `Open ${selectedIdeas.length} sequence${selectedIdeas.length !== 1 ? "s" : ""} in Premiere`}
               </button>
             </>
           )}
@@ -269,6 +271,7 @@ export default function ExportModal({
             <>
               <button className="btn btn-ghost" onClick={onExported}>Close</button>
               <button className="btn" onClick={handleReveal}>Show in Finder</button>
+              {!libraryOnly && writtenPath && <button className="btn" onClick={() => sendCommand({ type: "open_xml", path: writtenPath }).catch((e) => console.error("open_xml failed:", e))}>Open in Premiere again</button>}
               <button className="btn btn-primary" onClick={() => { onExported(); window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: "trim" } })); }}>
                 Next: trim in Premiere
               </button>
@@ -322,7 +325,7 @@ function ConfigureView({
         </div>
       ) : (
         <div className="export-summary">
-          <div className="export-summary-title">Timelines to export</div>
+          <div className="export-summary-title">Sequences to open</div>
           <ul className="export-idea-list">
             {selectedIdeas.map((idea) => {
               const d = idea.data || {};

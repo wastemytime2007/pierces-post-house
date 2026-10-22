@@ -305,7 +305,7 @@ export default function IdeasTab({
     <>
       <PageHeader
         title="Stories"
-        lead="Stories found in what your people actually said. Choose the ones worth cutting and export them to Premiere to trim."
+        lead="Stories found in what your people actually said. Choose the ones worth cutting and open them in Premiere to trim."
         next="Next: Finish, with your trimmed XML"
       />
       <div className="ideas-actions">
@@ -520,10 +520,10 @@ export default function IdeasTab({
           </button>
           <button
             className="btn btn-primary"
-            title="Save one Premiere XML with a sequence for each chosen story"
+            title="Build one Premiere project with a sequence for each chosen story, and open it in Premiere"
             onClick={() => requestExport(false)}
           >
-            Export XML… <Icon name="arrowUpRight" size={14} />
+            Open in Premiere <Icon name="arrowUpRight" size={14} />
           </button>
         </div>
       )}
