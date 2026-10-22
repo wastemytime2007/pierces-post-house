@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useThumb } from "../thumbStore.js";
 import Journey from "../components/Journey.jsx";
 import TrimTab from "./tabs/TrimTab.jsx";
 import { sendCommand } from "../App.jsx";
@@ -310,6 +311,7 @@ export default function ProjectView({
 
   return (
     <div className="project-view">
+      <Ambient name={project.name} />
       <nav className="project-nav" aria-label="Project">
         <button className="project-nav-back" onClick={onClose}>
           ‹ Projects
@@ -388,6 +390,12 @@ export default function ProjectView({
       </div>
     </div>
   );
+}
+
+// A soft glow from the project's own frame behind the page, so each project has its own atmosphere. Decoration only: hidden from assistive tech, never carries information.
+function Ambient({ name }) {
+  const u = useThumb(`poster:${name}`);
+  return <div className="ambient-wrap" aria-hidden="true"><div className="ambient" style={u ? { backgroundImage: `url(${u})` } : undefined} /></div>;
 }
 
 function Tab({ label, active, onClick, sub, disabled }) {

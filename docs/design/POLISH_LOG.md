@@ -53,3 +53,4 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 47 | Each cover says what is next ("Bring back your trimmed XML", "Find stories") as a pill (always on the big one, on hover for the rest) | screenshot dark |
 | 48 | The title bar shows the open project by its own frame and name | screenshot dark |
 | 49 | The wordmark is the way back to all projects | build |
+| 50 | Ambient: a soft glow from the open project's own frame behind each page (decoration only, hidden from assistive tech) | screenshot dark and light |
