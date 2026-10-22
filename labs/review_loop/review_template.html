@@ -192,6 +192,23 @@
   button.tint { background: rgba(76,179,238,.16); color: #4cb3ee; }
   button.tint:hover { background: rgba(76,179,238,.26); }
   #rate { min-height: 28px; padding: 0 6px; background: transparent; color: var(--dim); }
+
+  /* The ribbon (2026-10-21): muted lane colors, one saturation, and a real ruler where the empty bar was */
+  .lane.Clips .blk { background: #4a6fa5; opacity: .92; }
+  .lane.Captions .blk { background: #3b8fc4; }
+  .lane.Music .blk { background: #4d9f6f; }
+  .lane.SFX .blk { background: #c4a035; }
+  .lane.Graphics .blk { background: #6f7ae0; }
+  .lane.Callout .blk { background: #e0723a; } .lane.Card .blk { background: #9b7fe0; }
+  .lane.Suspects .blk { background: #d9566f; } .lane.Bleep .blk { background: #e08a1e; }
+  .lane.Edits .tk { background: #4cb86a; }
+  .blk { opacity: .88; }
+  .blk:hover, .tk:hover { outline: 1px solid rgba(255,255,255,.7); }
+  .bar { height: 34px; margin: 6px 0 2px; background: transparent; border-radius: 0; border-bottom: 1px solid rgba(255,255,255,.14); overflow: visible; }
+  .seg:nth-child(odd) { background: rgba(255,255,255,.035); } .seg:nth-child(even) { background: rgba(255,255,255,.07); }
+  .tick { position: absolute; bottom: 0; width: 1px; height: 8px; background: rgba(255,255,255,.32); pointer-events: none; }
+  .tick span { position: absolute; bottom: 12px; left: 0; transform: translateX(-50%); font-size: 11px; line-height: 1; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tick:first-child span { transform: none; }
   @media (max-width: 900px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
 </style>
@@ -1122,6 +1139,21 @@ tellHost({ type: 'review:count', n: notes.length });
   const src = document.getElementById('now'), dst = document.getElementById('nowCopy');
   const copy = () => { dst.innerHTML = src.innerHTML; };
   new MutationObserver(copy).observe(src, { childList: true, characterData: true, subtree: true }); copy();
+})();
+
+/* Ruler: seconds along the top of the ribbon */
+(() => {
+  const dur = DATA.duration || 0;
+  if (!dur) return;
+  const step = dur <= 20 ? 2 : dur <= 60 ? 5 : dur <= 180 ? 15 : dur <= 600 ? 60 : 300;
+  for (let t = 0; t <= dur + 0.01; t += step) {
+    const d = document.createElement('div');
+    d.className = 'tick';
+    d.style.left = (t / dur * 100) + '%';
+    const m = Math.floor(t / 60);
+    d.innerHTML = '<span>' + (dur > 60 ? m + ':' + String(Math.round(t - m * 60)).padStart(2, '0') : Math.round(t) + 's') + '</span>';
+    bar.insertBefore(d, bar.firstChild);
+  }
 })();
 </script>
 </body>
