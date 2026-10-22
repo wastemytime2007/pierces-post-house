@@ -38,6 +38,12 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForTimeout(15000);                                                 // frames are cut in the background, a few at a time
     report.framesShown = await page.evaluate(() => [...document.querySelectorAll(".sp-art")].filter((e) => /url\(["']?data:image/.test(e.style.backgroundImage)).length);
     await page.screenshot({ path: path.join(out, "e2_sheet_real.png") });
+    // click picks one, shift-click picks the range from the last click, a second shift-click from the same anchor adds the next stretch
+    const tiles = page.locator(".sp-tile:not([disabled])");
+    await tiles.nth(1).click();
+    await tiles.nth(5).click({ modifiers: ["Shift"] });
+    report.rangeChosen = await page.evaluate(() => document.querySelectorAll(".sp-tile.on").length);          // 5 expected (tiles 2 to 6)
+    report.footer = await page.evaluate(() => document.querySelector(".sp-foot span")?.textContent);
   } catch (e) {
     report.failed = String(e.message || e).split("\n")[0];
     await page.screenshot({ path: path.join(out, "e_failed.png") }).catch(() => {});

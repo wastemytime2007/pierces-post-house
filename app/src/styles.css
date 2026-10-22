@@ -5512,3 +5512,5 @@ label:has(input), .rv-opt, .rv-check { cursor: pointer; }
 
 /* Dropdowns: tall enough for their text */
 select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
+
+.sp-hint { color: var(--fg-3); }

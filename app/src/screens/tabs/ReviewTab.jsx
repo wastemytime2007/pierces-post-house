@@ -628,7 +628,18 @@ export default function ReviewTab({ subscribe, onStatus }) {
     const shown = picker.rows.filter((r) => (!picker.hideAuto || !isAutoSave(r.bin)) && (!q || r.name.toLowerCase().includes(q) || r.bin.toLowerCase().includes(q)));
     const openable = shown.filter((r) => !r.problem);
     const set = (patch) => setPicker((x) => ({ ...x, ...patch }));
-    const toggle = (id) => set({ selected: picker.selected.includes(id) ? picker.selected.filter((x) => x !== id) : [...picker.selected, id] });
+    // Click toggles one; shift-click takes everything between the last click and this one (what the shown tiles allow)
+    const toggle = (id, shift) => {
+      const ids = openable.map((r) => r.id);
+      const a = shift && picker.anchor ? ids.indexOf(picker.anchor) : -1;
+      const b = ids.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        const range = ids.slice(Math.min(a, b), Math.max(a, b) + 1);
+        set({ selected: [...new Set([...picker.selected, ...range])], anchor: id });
+        return;
+      }
+      set({ selected: picker.selected.includes(id) ? picker.selected.filter((x) => x !== id) : [...picker.selected, id], anchor: id });
+    };
     const all = openable.length > 0 && openable.every((r) => picker.selected.includes(r.id));
     return (
       <section className="sp" role="dialog" aria-label="Choose sequences">
@@ -647,7 +658,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           {shown.map((r) => {
             const on = picker.selected.includes(r.id);
             return (
-              <button key={r.id} className={`sp-tile ${on ? "on" : ""}`} disabled={!!r.problem} aria-pressed={on} onClick={() => toggle(r.id)}
+              <button key={r.id} className={`sp-tile ${on ? "on" : ""}`} disabled={!!r.problem} aria-pressed={on} onClick={(e) => toggle(r.id, e.shiftKey)}
                 title={r.problem ? `Cannot be opened: ${r.problem}` : r.name}>
                 <PickThumb k={`seq:${picker.xml}:${r.id}`} />
                 <span className="sp-check" aria-hidden="true">{on && <Icon name="check" size={13} />}</span>
@@ -660,7 +671,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           {shown.length === 0 && <div className="sp-none">Nothing matches.</div>}
         </div>
         <footer className="sp-foot">
-          <span>{picker.selected.length ? `${picker.selected.length} chosen` : "Nothing chosen yet"}</span>
+          <span>{picker.selected.length ? `${picker.selected.length} chosen` : "Nothing chosen yet"}<span className="sp-hint"> · Shift-click picks a range</span></span>
           <span className="rv-spacer" />
           <button className="btn btn-ghost" onClick={() => setPicker(null)}>Cancel</button>
           <button className="btn btn-primary" disabled={picker.selected.length === 0} onClick={openPicked}>
