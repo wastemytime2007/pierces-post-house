@@ -106,7 +106,7 @@ export default function ExportModal({
             break;
           }
           case "export_sync_started":
-            addProgress("Running audalign on clean-mic audio…");
+            addProgress("Lining your clean mic up with the camera sound…");
             break;
           case "export_sync_result":
             if (ev.pairs > 0) {
@@ -156,7 +156,7 @@ export default function ExportModal({
     try {
       const path = await save({
         defaultPath: defaultName,
-        filters: [{ name: "FCP7 XML", extensions: ["xml"] }],
+        filters: [{ name: "Premiere XML", extensions: ["xml"] }],
         title: "Save Premiere XML",
       });
       if (path) setSavePath(path);
@@ -403,18 +403,18 @@ function ConfigureView({
       />
       <label className="export-option">
         <div className="export-option-text" style={{ width: "100%" }}>
-          <div className="export-option-label">B-roll interpretation target</div>
+          <div className="export-option-label">What frame rate B-roll should play at</div>
           <div className="export-option-hint">
-            Any B-roll shot faster than this gets a second, labeled Project-panel
-            item to Interpret Footage to. Auto = smallest frame rate across all
-            your footage (logged in the export log below either way).
+            B-roll shot faster than this (slow motion) arrives with a second,
+            labelled copy in Premiere, ready to interpret. Auto uses the slowest
+            rate anything in this project was shot at.
           </div>
           <select
             value={brollTargetFpsMode}
             onChange={(e) => setBrollTargetFpsMode(e.target.value)}
             style={{ marginTop: 6 }}
           >
-            <option value="auto">Auto (smallest captured)</option>
+            <option value="auto">Auto (match your footage)</option>
             <option value="23.976">23.976 fps</option>
             <option value="24">24 fps</option>
             <option value="29.97">29.97 fps</option>
@@ -425,19 +425,19 @@ function ConfigureView({
       <ExportOption
         checked={runAudioSync}
         onChange={setRunAudioSync}
-        label="Run audio sync (audalign)"
-        hint="Detects the offset between your A-roll's camera audio and your clean mic recording"
+        label="Line the clean mic up with the camera sound"
+        hint="Finds how far apart the camera sound and the recorder are, and lines them up"
       />
       <ExportOption
         checked={includeCleanMic}
         onChange={setIncludeCleanMic}
-        label="Include clean mic audio as parallel track"
-        hint="Clean mic goes on A2 — synced automatically if confidence is high, or at 0 offset otherwise"
+        label="Bring the clean mic in on its own track"
+        hint="It lands on A2, lined up when the match is strong, otherwise at the start for you to nudge"
       />
       <ExportOption
         checked={includeOverlay}
         onChange={setIncludeOverlay}
-        label="Include safe-zone overlay PNG"
+        label="Show the safe area for the platform"
         hint="Platform-specific safezone (Reels / TikTok / Shorts / X / horizontal) on the top video track"
       />
       {/* Drop 4.47.3: per-export opt-out for the global Default Includes
@@ -455,7 +455,7 @@ function ConfigureView({
       )}
 
       <div className="form-hint" style={{ marginTop: 14, fontSize: 11 }}>
-        <strong>Note:</strong> Premiere doesn't support proxies in FCP7 XML. After importing this XML
+        <strong>Note:</strong> Premiere cannot be told about proxies through an XML. After importing this
         into Premiere, right-click any clip in the bin → Proxy → Attach Proxies → select your proxies
         folder. Premiere will auto-match all clips by filename.
       </div>

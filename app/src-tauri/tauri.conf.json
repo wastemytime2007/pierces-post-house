@@ -27,13 +27,18 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["/Volumes/**", "$HOME/**"]
+        "scope": [
+          "/Volumes/**",
+          "$HOME/**"
+        ]
       }
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": [
+      "app"
+    ],
     "resources": [
       "../python_backend/**/*.py",
       "../python_backend/**/*.png",

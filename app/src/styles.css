@@ -5642,3 +5642,18 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 @media (prefers-reduced-motion: reduce) {
   .cover-art.ph-arrived, .idea-card.ph-new, .board-tile.ph-new, .trim-act.ph-sent, .rv-merged.ph-new { animation: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Shape by role (EXPERIENCE § the "identical cards" tell). A radius says what
+   kind of thing something is, so three different things never share one look.
+   --------------------------------------------------------------------------- */
+:root {
+  --radius-control: 6px;      /* buttons, fields, chips: things you press */
+  --radius-card: 10px;        /* a thing that holds content: a cover, a tile, a row */
+  --radius-sheet: 14px;       /* something that came forward over the page */
+  --radius-frame: 12px;       /* the picture itself */
+}
+.btn, select, input[type="text"], input[type="search"], input[type="password"], .chip { border-radius: var(--radius-control); }
+.cover, .sp-tile, .trim-row, .idea-card, .frame-pick-tile { border-radius: var(--radius-card); }
+.modal, .rv-sheet, .cp, .set-win .modal { border-radius: var(--radius-sheet); }
+.rv-frame iframe, .rv-compare-one, .sp-peek-art { border-radius: var(--radius-frame); }
