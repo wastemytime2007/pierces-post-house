@@ -66,3 +66,6 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 60 | A Go menu (the four steps and the command palette) and a Help menu (keyboard shortcuts) in the native menu bar | `cargo check`; menu not clicked in the running app |
 | 61 | Welcome: the mark with a glow and a display-type title on the first screen; the second screen drops the graphic that repeated the list | screenshots dark |
 | 62 | Footage: project details (folder, names, type, audience) fold into one line once the project is set up, so the footage zones lead; they stay open for a new project | screenshot dark |
+| 63 | Home: a filter box appears once there are more than six projects; the count shows ("All projects (15)") | screenshot not taken for the filter; build |
+| 64 | Footage zones show a frame beside each source, cut from its first clip | screenshot dark (with stand-in frames) |
+| 65 | Review ribbon: a filmstrip lane (frames of the picture along the timeline, click to seek, playhead) built inside the page from the preview itself | screenshot; three page scripts pass (drive_page: its one known 40 s check) |

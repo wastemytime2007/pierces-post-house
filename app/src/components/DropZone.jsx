@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useThumb, requestFrames } from "../thumbStore.js";
 import Icon from "./Icon.jsx";
 import HelpTooltip from "./HelpTooltip.jsx";
 
@@ -139,8 +140,10 @@ export default function DropZone({
               const fileCount = typeof item === "string"
                 ? null
                 : Object.keys(item.files || {}).length;
+              const firstFile = typeof item === "string" ? null : Object.keys(item.files || {})[0] || (isFile ? path : null);
               return (
                 <div key={path} className="dropzone-fileitem" title={path}>
+                  {firstFile && <SourceThumb path={firstFile} />}
                   <span className="item-name">
                     {display}
                     {!isFile && fileCount > 0 && (
@@ -160,6 +163,14 @@ export default function DropZone({
       )}
     </div>
   );
+}
+
+// One frame of the first clip in a source, so a zone shows what is in it
+function SourceThumb({ path }) {
+  const key = `src:${path}`;
+  useEffect(() => { requestFrames([{ key, path, t: 4 }], 120); }, [key, path]);
+  const uri = useThumb(key);
+  return <span className={`dz-thumb ${uri ? "" : "empty"}`} style={uri ? { backgroundImage: `url(${uri})` } : undefined} aria-hidden="true" />;
 }
 
 function basename(p) {

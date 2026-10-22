@@ -5503,3 +5503,9 @@ label:has(input), .rv-opt, .rv-check { cursor: pointer; }
 .pm-details-title { font-weight: 600; font-size: var(--text-body); }
 .pm-details-sum { color: var(--fg-1); font-size: var(--text-footnote); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-details-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.section-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 28px 0 10px; }
+.section-row .section-head { margin: 0; }
+.home-filter { width: 220px; height: 28px; padding: 0 10px; font-size: var(--text-body); }
+.dz-thumb { flex: none; width: 44px; height: 30px; border-radius: 6px; background: var(--bg-3) center / cover; box-shadow: 0 0 0 0.5px var(--separator); margin-right: 10px; }
+.dropzone-fileitem { display: flex; align-items: center; }

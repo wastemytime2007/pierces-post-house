@@ -219,6 +219,12 @@
   #copy, #dl { background: transparent; color: var(--dim); min-height: 26px; font-size: 12px; }
   #copy:hover, #dl:hover { background: rgba(128,128,140,.22); color: var(--text); }
   #count { font-size: 13px; }
+
+  /* Filmstrip: frames of the picture along the ribbon, like an editing app. Made in the page from the preview itself. */
+  #filmstrip { position: relative; height: 46px; margin: 0 0 6px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.05); cursor: pointer; }
+  #filmstrip canvas { display: block; width: 100%; height: 100%; }
+  #filmstrip .fph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.5); pointer-events: none; }
+  #filmstrip.building::after { content: "Reading the picture…"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: var(--dim); }
   @media (max-width: 900px) and (min-width: 681px) { main { grid-template-columns: minmax(0, 1fr) 270px; gap: 8px 12px; padding: 10px; } }
   @media (max-width: 680px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
@@ -1165,6 +1171,40 @@ tellHost({ type: 'review:count', n: notes.length });
     d.innerHTML = '<span>' + (dur > 60 ? m + ':' + String(Math.round(t - m * 60)).padStart(2, '0') : Math.round(t) + 's') + '</span>';
     bar.insertBefore(d, bar.firstChild);
   }
+})();
+
+/* Filmstrip: a second, hidden video is stepped through the preview and a small frame is drawn for each slot. Nothing is sent anywhere; the main video is not touched. */
+(() => {
+  const dur = DATA.duration || 0;
+  if (!dur || !bar || !bar.parentNode) return;
+  const strip = document.createElement('div');
+  strip.id = 'filmstrip';
+  strip.className = 'building';
+  const cvs = document.createElement('canvas');
+  const ph = document.createElement('div');
+  ph.className = 'fph';
+  strip.appendChild(cvs);
+  strip.appendChild(ph);
+  bar.parentNode.insertBefore(strip, bar.nextSibling);
+  strip.addEventListener('click', e => { const r = strip.getBoundingClientRect(); v.currentTime = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur)); });
+  const place = () => { ph.style.left = (v.currentTime / dur * 100) + '%'; requestAnimationFrame(place); };
+  requestAnimationFrame(place);
+  const clean = LIVE ? DATA.preview_live_clean : 'preview.mp4';
+  const vid = document.createElement('video');
+  vid.muted = true; vid.preload = 'auto'; vid.playsInline = true; vid.src = clean;
+  const seek = t => new Promise(res => { const done = () => { vid.removeEventListener('seeked', done); res(); }; vid.addEventListener('seeked', done); vid.currentTime = t; setTimeout(done, 1500); });
+  vid.addEventListener('loadedmetadata', async () => {
+    const H = 92;                                                    /* drawn at twice the height it is shown at, so it is sharp on a retina screen */
+    const W = Math.max(24, Math.round(H * (vid.videoWidth / vid.videoHeight)));
+    const n = Math.min(80, Math.max(8, Math.ceil(strip.clientWidth / (W / 2))));
+    cvs.width = n * W; cvs.height = H;
+    const ctx = cvs.getContext('2d');
+    for (let k = 0; k < n; k++) {
+      await seek(Math.min(vid.duration - 0.05, (k + 0.5) / n * vid.duration));
+      try { ctx.drawImage(vid, k * W, 0, W, H); } catch (e) { return; }
+    }
+    strip.classList.remove('building');
+  });
 })();
 </script>
 </body>

@@ -50,8 +50,8 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.getByRole("button", { name: "Skip" }).first().click().catch(() => {});
   await page.evaluate(() => window.__backend({ type: "settings", settings: { has_env: false, active_source: "none", llm_via_cli: false, welcome_seen: true, tour_seen: true, auto_include_nudge_seen: true } }));
   // Real frames: dev/frames/*.jpg if present (cut from your own footage with thumbs.py), else the posters stay as brand-color tiles
-  const NAMES = ["Runnells Weekend", "Runnells Wall Removal", "Runnells Hanging Mirror", "Kitchen and Doors, 3 Reels", "How to remove wallpaper", "Test2"];
-  await page.evaluate((names) => window.__backend({ type: "projects_list", projects: names.map((n, i) => ({ name: n, dir: "/x/" + i, updated_at: Date.now() / 1000 - 3600 * (i * i + 1), source_count: n === "Test2" ? 0 : 2 + i, summary: { transcribed: i === 4 ? 0 : 2, stories: [4, 3, 0, 1, 0, 0][i], exports: [1, 0, 0, 0, 0, 0][i] } })) }), NAMES);
+  const NAMES = ["Runnells Weekend", "Runnells Wall Removal", "Runnells Hanging Mirror", "Kitchen and Doors, 3 Reels", "How to remove wallpaper", "Test2", "Tiling the bathroom", "Mitch interview"];
+  await page.evaluate((names) => window.__backend({ type: "projects_list", projects: names.map((n, i) => ({ name: n, dir: "/x/" + i, updated_at: Date.now() / 1000 - 3600 * (i * i + 1), source_count: n === "Test2" ? 0 : 2 + i, summary: { transcribed: i === 4 ? 0 : 2, stories: [4, 3, 0, 1, 0, 0][i] ?? 2, exports: [1, 0, 0, 0, 0, 0][i] ?? 0 } })) }), NAMES);
   const FR = process.env.FRAMES || path.join(__dirname, "frames");
   if (fs.existsSync(FR)) {
     const files = fs.readdirSync(FR).filter((f) => f.endsWith(".jpg")).sort();
@@ -69,6 +69,11 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await shot("11_new_project");
   await page.keyboard.press("Escape");
   await page.evaluate((p) => window.__backend({ type: "project_loaded", project: p }), PROJECT);
+  if (fs.existsSync(FR2)) {
+    const f3 = fs.readdirSync(FR2).filter((f) => f.endsWith(".jpg")).sort();
+    const u = (k) => "data:image/jpeg;base64," + fs.readFileSync(path.join(FR2, f3[k % f3.length])).toString("base64");
+    await page.evaluate((x) => window.__backend({ type: "frame_thumbs", thumbs: x }), { "src:wknd_Bob_01.mp4": u(0), "src:wknd_Mitch_01.mp4": u(1), "src:DJI_0021.mp4": u(2) });
+  }
   await shot("12_project_tab");
   // processing running: proxies done, transcription partway, audio sync pairs
   await page.evaluate(() => {

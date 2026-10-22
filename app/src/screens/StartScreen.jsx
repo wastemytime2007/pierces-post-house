@@ -70,6 +70,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   const [showNewProject, setShowNewProject] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState(null);
+  const [query, setQuery] = useState("");                     // a quick filter once there are many projects
   const [ctx, setCtx] = useState(null);                       // right-click menu on a project: { x, y, p }
   const [deleteTarget, setDeleteTarget] = useState(null);  // project name pending delete
   // Drop 4.16: optional custom save location for new projects (portability)
@@ -336,11 +337,19 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
           </div>
         ) : (
           <>
-            <h2 className="section-head">Continue</h2>
-            <Cover p={projects[0]} featured index={0} onOpen={onOpen} onDelete={setDeleteTarget} onContext={(x, y, p) => setCtx({ x, y, p })} />
-            {projects.length > 1 && <h2 className="section-head">All projects</h2>}
+            {!query && <>
+              <h2 className="section-head">Continue</h2>
+              <Cover p={projects[0]} featured index={0} onOpen={onOpen} onDelete={setDeleteTarget} onContext={(x, y, p) => setCtx({ x, y, p })} />
+            </>}
+            {projects.length > 1 && (
+              <div className="section-row">
+                <h2 className="section-head">{query ? "Matching projects" : `All projects (${projects.length})`}</h2>
+                {projects.length > 6 && <input type="search" className="home-filter" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter projects" aria-label="Filter projects" />}
+              </div>
+            )}
             <div className="cover-grid">
-              {projects.slice(1).map((p, i) => <Cover key={p.name} p={p} index={i + 1} onOpen={onOpen} onDelete={setDeleteTarget} onContext={(x, y, p) => setCtx({ x, y, p })} />)}
+              {(query ? projects.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase())) : projects.slice(1)).map((p, i) => <Cover key={p.name} p={p} index={i + 1} onOpen={onOpen} onDelete={setDeleteTarget} onContext={(x, y, p) => setCtx({ x, y, p })} />)}
+              {query && !projects.some((p) => p.name.toLowerCase().includes(query.trim().toLowerCase())) && <div className="sp-none">No project matches “{query}”.</div>}
             </div>
           </>
         )}
