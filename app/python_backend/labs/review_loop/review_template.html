@@ -88,6 +88,14 @@
   .grow .gc { margin-left: auto; color: #38d66b; font-size: 12px; }
   #gctl { display: none; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
   #gctl input[type=range] { width: 200px; }
+  #gwords { margin-top: 8px; font-size: 13px; }
+  #gwords label { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; margin-bottom: 5px; }
+  #gwords input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; font: inherit; min-width: 0; }
+  #gwords .gl { display: grid; grid-template-columns: 54px 1fr 84px; gap: 6px; align-items: center; margin-bottom: 4px; }
+  #gwords .gl select { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 5px; padding: 4px; font: inherit; }
+  #gwords .gl .gt { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; cursor: pointer; }
+  #gwords .gl.ch input[type=text], #gwords label.ch input[type=text] { border-color: #ffd400; }
+  #glines { max-height: 230px; overflow-y: auto; padding-right: 4px; }
   #gsum { color: var(--dim); font-size: 12px; margin-top: 6px; min-height: 16px; }
   #beatmap .ph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; pointer-events: none; z-index: 3; }
   .now { min-height: 22px; color: var(--dim); font-size: 13px; margin-bottom: 8px; }
@@ -144,6 +152,7 @@
     <div class="tools" style="margin:0 0 6px"><button id="gpick">Pick on the picture</button><button id="greset" style="display:none">Put this one back</button><button id="gresetall" style="display:none">Put all back</button></div>
     <div id="glist"></div>
     <div id="gctl"><label>Size <input type="range" id="gscale" min="25" max="300" step="1" value="100"> <span id="gscaleout">100%</span></label><span id="gwhen" class="empty"></span></div>
+    <div id="gwords"></div>
     <div id="gsum"></div>
   </div>
   <div class="now" id="now"></div>
@@ -848,7 +857,10 @@ try { GE = JSON.parse(localStorage.getItem(GKEY) || '{}'); } catch (e) { GE = {}
 let gsel = null, gpick = false;
 const gedit = document.getElementById('gedit'), gbox = document.getElementById('gbox'), gghost = document.getElementById('gghost');
 const gState = g => GE[g.id] || { dx: g.dx, dy: g.dy, scale: g.scale };
-const gChanged = g => !!GE[g.id] && (Math.abs(GE[g.id].dx - g.dx) > 1e-4 || Math.abs(GE[g.id].dy - g.dy) > 1e-4 || Math.abs(GE[g.id].scale - g.scale) > 0.05);
+const gTextChanged = g => !!(GE[g.id] && GE[g.id].text && g.fields && Object.keys(GE[g.id].text).some(k => (GE[g.id].text[k] || '').trim() !== (g.fields[k] || '')));
+const gLinesChanged = g => !!(GE[g.id] && GE[g.id].lines && g.lines && Object.keys(GE[g.id].lines).some(i => g.lines[i] && (GE[g.id].lines[i].text !== g.lines[i].text || GE[g.id].lines[i].pos !== g.lines[i].pos)));
+const gMoved = g => !!GE[g.id] && (Math.abs(GE[g.id].dx - g.dx) > 1e-4 || Math.abs(GE[g.id].dy - g.dy) > 1e-4 || Math.abs(GE[g.id].scale - g.scale) > 0.05);
+const gChanged = g => gMoved(g) || gTextChanged(g) || gLinesChanged(g);
 const gAsMade = g => Math.abs(gState(g).dx) < 1e-4 && Math.abs(gState(g).dy) < 1e-4 && Math.abs(gState(g).scale - 100) < 0.05;
 function gRect(g) {                               /* the box now, as fractions of the frame: as made (g.box), its middle moved by dx, dy and its size scaled about that middle */
   const s = gState(g), f = s.scale / 100, b = g.box, cx = (b[0] + b[2]) / 2 + s.dx, cy = (b[1] + b[3]) / 2 + s.dy, w = (b[2] - b[0]) * f, h = (b[3] - b[1]) * f;
@@ -889,11 +901,44 @@ function gList() {
   document.getElementById('gsum').textContent = n ? n + ' graphic' + (n === 1 ? '' : 's') + ' changed. They become the next version when you apply them.' : '';
   document.getElementById('gresetall').style.display = n ? '' : 'none';
   const g = gsel && GR.find(x => x.id === gsel);
-  document.getElementById('greset').style.display = g && !gAsMade(g) ? '' : 'none';
+  document.getElementById('greset').style.display = g && (!gAsMade(g) || gChanged(g)) ? '' : 'none';
   document.getElementById('gctl').style.display = g ? 'flex' : 'none';
   document.getElementById('gwhen').textContent = g ? 'on screen ' + fmt(g.start) + ' to ' + fmt(g.end) : '';
 }
-function gSelect(id) { gsel = id; gList(); gDraw(); }
+const FIELD_NAMES = { small: 'Topic line', big: 'Big word', joke: 'Joke line', name: 'Name', sub: 'Role' };
+function gWords() {
+  const el = document.getElementById('gwords'), g = gsel && GR.find(x => x.id === gsel);
+  el.innerHTML = '';
+  if (!g || !(g.fields || g.lines)) return;
+  const note = document.createElement('div'); note.className = 'empty'; note.style.marginBottom = '6px';
+  note.textContent = g.fields ? 'Change the words here. Only this graphic is redrawn (about a minute), in the same place and timing.' : 'Change a line\'s words or put it at the top or bottom. The captions are redrawn (a few minutes), every other line as it was.';
+  el.appendChild(note);
+  if (g.fields) {
+    Object.keys(g.fields).forEach(k => {
+      const lab = document.createElement('label'), inp = document.createElement('input');
+      lab.innerHTML = '<span>' + FIELD_NAMES[k] + '</span>'; inp.type = 'text'; inp.value = (GE[g.id] && GE[g.id].text && GE[g.id].text[k] !== undefined) ? GE[g.id].text[k] : g.fields[k]; inp.dataset.field = k;
+      inp.oninput = () => { const st = gState(g); const text = Object.assign({}, st.text || {}); text[k] = inp.value; gSet(g, { text }); lab.classList.toggle('ch', inp.value.trim() !== g.fields[k]); };
+      lab.classList.toggle('ch', inp.value.trim() !== g.fields[k]); lab.appendChild(inp); el.appendChild(lab);
+    });
+  }
+  if (g.lines) {
+    const box = document.createElement('div'); box.id = 'glines';
+    g.lines.forEach((ln, i) => {
+      const row = document.createElement('div'), cur = (GE[g.id] && GE[g.id].lines && GE[g.id].lines[i]) || ln;
+      row.className = 'gl' + (cur.text !== ln.text || cur.pos !== ln.pos ? ' ch' : '');
+      row.innerHTML = '<span class="gt">' + fmt(ln.start) + '</span>';
+      const inp = document.createElement('input'), sel = document.createElement('select');
+      inp.type = 'text'; inp.value = cur.text; inp.dataset.line = i;
+      sel.innerHTML = '<option value="bottom">bottom</option><option value="top">top</option>'; sel.value = cur.pos; sel.dataset.line = i;
+      const upd = () => { const st = gState(g); const lines = Object.assign({}, st.lines || {}); lines[i] = { text: inp.value.trim() || ln.text, pos: sel.value }; gSet(g, { lines }); row.classList.toggle('ch', lines[i].text !== ln.text || lines[i].pos !== ln.pos); };
+      inp.oninput = upd; sel.onchange = upd;
+      row.firstChild.onclick = () => { v.currentTime = Math.max(0, ln.start + 0.1); };
+      row.appendChild(inp); row.appendChild(sel); box.appendChild(row);
+    });
+    el.appendChild(box);
+  }
+}
+function gSelect(id) { gsel = id; gList(); gDraw(); gWords(); }
 function gSet(g, patch) { GE[g.id] = Object.assign({}, gState(g), patch); if (!gChanged(g)) delete GE[g.id]; gSave(); gList(); gDraw(); }
 if (GR.length) {
   document.getElementById('gpanel').style.display = 'block';
@@ -906,7 +951,7 @@ if (GR.length) {
     const under = GR.filter(g => gcover(g, fx, fy) && g.box[2] - g.box[0] < 0.97);          /* the full-frame overlay is picked from the list, not by every click */
     const live = under.filter(g => t >= g.start - 0.02 && t <= g.end + 0.02);
     const hit = (live.length ? live : under).sort((a, b) => b.track - a.track)[0];
-    if (hit) gSelect(hit.id); else { gsel = null; gList(); gDraw(); }
+    if (hit) gSelect(hit.id); else { gsel = null; gList(); gDraw(); gWords(); }
   });
   let drag = null;
   gbox.addEventListener('pointerdown', e => {
@@ -923,8 +968,8 @@ if (GR.length) {
   gbox.addEventListener('pointerup', gend); gbox.addEventListener('pointercancel', gend);
   gbox.addEventListener('wheel', e => { const g = GR.find(x => x.id === gsel); if (!g) return; e.preventDefault(); gSet(g, { scale: Math.max(25, Math.min(300, gState(g).scale + (e.deltaY < 0 ? 2 : -2))) }); }, { passive: false });
   document.getElementById('gscale').oninput = e => { const g = GR.find(x => x.id === gsel); if (g) gSet(g, { scale: +e.target.value }); };
-  document.getElementById('greset').onclick = () => { const g = GR.find(x => x.id === gsel); if (g) gSet(g, { dx: 0, dy: 0, scale: 100 }); };
-  document.getElementById('gresetall').onclick = () => { GR.forEach(g => { delete GE[g.id]; }); gSave(); gList(); gDraw(); };
+  document.getElementById('greset').onclick = () => { const g = GR.find(x => x.id === gsel); if (g) { delete GE[g.id]; gSave(); gList(); gDraw(); gWords(); } };
+  document.getElementById('gresetall').onclick = () => { GR.forEach(g => { delete GE[g.id]; }); gSave(); gList(); gDraw(); gWords(); };
   if (typeof ResizeObserver !== 'undefined') new ResizeObserver(gLayout).observe(document.getElementById('stage'));
   v.addEventListener('loadedmetadata', gLayout);
   tellHost({ type: 'review:graphics', n: GR.filter(gChanged).length });
@@ -933,7 +978,9 @@ if (GR.length) {
 function payload() {
   return { schema: 'review_notes.v0-draft', sequence: DATA.sequence, preview_duration_sec: DATA.duration,
     shape_coords: 'fractions of the video frame, 0..1, origin top-left',
-    graphic_edits: GR.filter(gChanged).map(g => ({ id: g.id, dx: Math.round(gState(g).dx * 1e5) / 1e5, dy: Math.round(gState(g).dy * 1e5) / 1e5, scale: Math.round(gState(g).scale * 100) / 100 })),
+    graphic_edits: GR.filter(gChanged).map(g => Object.assign({ id: g.id, dx: Math.round(gState(g).dx * 1e5) / 1e5, dy: Math.round(gState(g).dy * 1e5) / 1e5, scale: Math.round(gState(g).scale * 100) / 100 },
+      gTextChanged(g) ? { text: Object.fromEntries(Object.entries(GE[g.id].text).filter(([k, x]) => (x || '').trim() !== (g.fields[k] || '')).map(([k, x]) => [k, x.trim()])) } : {},
+      gLinesChanged(g) ? { lines: Object.keys(GE[g.id].lines).filter(i => g.lines[i] && (GE[g.id].lines[i].text !== g.lines[i].text || GE[g.id].lines[i].pos !== g.lines[i].pos)).map(i => ({ at: g.lines[i].at, text: GE[g.id].lines[i].text, pos: GE[g.id].lines[i].pos })) } : {})),
     transitions: TRANS.map(x => ({ timeline_sec: x.timeline_sec, direction: x.direction })),
     notes: notes.map(n => Object.assign({ timeline_sec: n.timeline_sec, clip: n.clip, source: n.source, source_sec: n.source_sec, text: n.text }, n.target ? { target: n.target } : {},
       n.ai ? { ai: true, kind: n.kind, key: n.key } : {}, n.suggested_op ? { suggested_op: n.suggested_op } : {}, {      // the AI review's notes keep their measured fix when they come back

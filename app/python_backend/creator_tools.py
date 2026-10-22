@@ -1058,7 +1058,7 @@ def finish_cut(xml: str, out: str | None = None, captions: bool = True, music: b
 
 
 CREATIVE_FILE = "get_creative.json"
-DEFAULT_CREATIVE = {"fillers": True, "captions": True, "graphics": True, "music": True, "bleep": True, "sfx": True}
+DEFAULT_CREATIVE = {"fillers": True, "captions": True, "graphics": True, "music": True, "bleep": True, "sfx": True, "redo": False}
 
 
 def creative_file(xml: str | Path) -> Path:
@@ -1147,10 +1147,27 @@ def get_creative(xmls: list[str], opts: dict | None = None, emit=None, stop=None
 
 def _creative_one(xml: str, o: dict, emit, say, it: dict) -> str:
     """One cut: its review (if it has none), then the steps. Returns what happened in a sentence (it starts with "skipped" when the cut was left alone)."""
+    import shutil
     import timeline
     use_labs()
     import finish_cut as fc
-    sess = load_session(xml)
+    if o.get("redo"):                                           # start over from the original: the earlier versions are moved aside (never deleted) so the new ones take V2, V3 again
+        src = Path(xml)
+        old = [d for d in src.parent.glob(f"{src.stem}_v*[0-9] - revised") if d.is_dir()]
+        if old:
+            keep = src.parent / "older versions"
+            keep.mkdir(exist_ok=True)
+            for d in old:
+                dest = keep / d.name
+                n = 2
+                while dest.exists():
+                    dest = keep / f"{d.name} ({n})"
+                    n += 1
+                shutil.move(str(d), str(dest))
+            say(f"the {len(old)} earlier version(s) were moved to 'older versions'")
+        sess = None
+    else:
+        sess = load_session(xml)
     if sess is None:
         say("building the review")
         res, _p = capture(build_review, xml)
@@ -1211,12 +1228,19 @@ def edit_graphics(xml: str, edits: list[dict], out: str | None = None, height: i
     unknown = [e.get("id") for e in edits if e.get("id") not in found]
     if unknown:
         raise ToolError(f"these graphics are not on this version of the cut: {unknown}")
+    for e in edits:
+        g = found[e["id"]]
+        if e.get("text") and not g.get("fields"):
+            raise ToolError(f"\"{g['label']}\" has no words of its own to change")
+        if e.get("lines") and not g.get("lines"):
+            raise ToolError(f"\"{g['label']}\" has no caption lines to change")
     W, H = found[edits[0]["id"]]["_size"]
     centers = {i: ((g["box"][0] + g["box"][2]) / 2 * W, (g["box"][1] + g["box"][3]) / 2 * H) for i, g in found.items()}
     folder, name = (Path(out).expanduser(), src.name) if out else free_version_folder(src)
     folder.mkdir(parents=True, exist_ok=True)
     dst = folder / name
     try:
+        edits = ge.render_text_edits(found, edits, folder, src, stage)                 # words changed: only those graphics are redrawn, into this version's folder
         ge.apply(src, dst, edits, centers, W, H)
     except ge.GraphicsError as exc:
         raise ToolError(str(exc)) from exc
@@ -1234,6 +1258,10 @@ def edit_graphics(xml: str, edits: list[dict], out: str | None = None, height: i
             moved.append(f"moved {float(e.get('dx', 0)) * 100:+.1f}% across and {float(e.get('dy', 0)) * 100:+.1f}% down")
         if abs(float(e.get("scale", 100)) - 100) > 1e-6:
             moved.append(f"scaled to {float(e.get('scale', 100)):g}%")
+        if e.get("text"):
+            moved.append("words changed to " + " / ".join(f'"{v}"' for v in e["text"].values() if v))
+        if e.get("lines"):
+            moved.append(f"{len(e['lines'])} caption line{'s' if len(e['lines']) != 1 else ''} changed")
         items.append({"note": i, "note_time": 0, "note_text": "Graphic: " + g["label"], "op": "graphic", "applied": True, "failed": False,
                       "summary": f"{g['label']}: " + (" and ".join(moved) if moved else "put back as it was made"), "why": ""})
     return {"folder": str(folder), "items": items, "applied": len(items), "notes": len(items), "xml": str(dst), "page": str(folder / "review.html"),

@@ -271,6 +271,19 @@ def pick_position(g: dict, blocked: list[dict], offset: float) -> tuple[str, boo
     return "bottom", True
 
 
+def choose_positions(groups: list[dict], blocked: list[dict], start: float, fixes: list[dict]) -> int:
+    """Each line's place: bottom unless something is in the way (pick_position), then a line put at the top or the bottom BY HAND (a fix with `pos`, from the review page) keeps that place over the automatic
+    choice. Returns how many lines could not avoid what is on screen."""
+    collisions = 0
+    for g in groups:
+        g["pos"], flagged = pick_position(g, blocked, start)
+        collisions += flagged
+        for fx in fixes:
+            if fx.get("pos") in ("top", "bottom") and g["show_start"] + start - 0.05 <= float(fx["at"]) <= g["show_end"] + start + 0.05:
+                g["pos"] = fx["pos"]
+    return collisions
+
+
 def build_groups_html(groups: list[dict], dur: float) -> str:
     rows = []
     for i, g in enumerate(groups):
@@ -353,10 +366,7 @@ def main() -> int:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1
     blocked = [b for pl in avoid for b in blocked_for(pl)]
-    collisions = 0
-    for g in groups:
-        g["pos"], flagged = pick_position(g, blocked, a.start)
-        collisions += flagged
+    collisions = choose_positions(groups, blocked, a.start, fixes)
     print(f"{len(ws)} words -> {len(groups)} caption lines; {sum(g['pos'] == 'top' for g in groups)} moved to the top to clear a callout"
           + (f"; {collisions} could not avoid one" if collisions else ""))
 

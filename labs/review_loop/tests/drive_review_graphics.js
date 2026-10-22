@@ -10,8 +10,12 @@ const template = fs.readFileSync(path.join(__dirname, "..", "review_template.htm
 const graphics = [
   { id: "overlay-clipitem-1", name: "Graphic - Overlay.mov", label: "Overlay (navy tint and lines)", track: 2, start: 0, end: 2.6, box: [0, 0, 1, 1], dx: 0, dy: 0, scale: 100, picture: "overlay-clipitem-1.png" },
   { id: "overlay-clipitem-2", name: "Graphic - Title.mov", label: "Title: If it is someone's home never cut corners", track: 3, start: 0, end: 2.6, box: [0.06, 0.4, 0.93, 0.47], dx: 0, dy: 0, scale: 100, picture: "overlay-clipitem-2.png" },
-  { id: "overlay-clipitem-3", name: "Graphic - Tag Mitch.mov", label: "Name tag: Mitch · Operator / CEO", track: 4, start: 2.4, end: 6.1, box: [0.04, 0.55, 0.43, 0.64], dx: 0, dy: 0, scale: 100, picture: "overlay-clipitem-3.png" },
+  { id: "overlay-clipitem-3", name: "Graphic - Tag Mitch.mov", label: "Name tag: Mitch · Operator / CEO", track: 4, start: 2.4, end: 6.1, box: [0.04, 0.55, 0.43, 0.64], dx: 0, dy: 0, scale: 100, picture: "overlay-clipitem-3.png",
+    fields: { name: "Mitch", sub: "Operator / CEO" } },
+  { id: "overlay-clipitem-4", name: "captions.mov", label: "captions", track: 5, start: 0, end: 12, box: [0.06, 0.69, 0.94, 0.81], dx: 0, dy: 0, scale: 100, picture: "overlay-clipitem-4.png", fields: null,
+    lines: [{ at: 1.0, text: "This is where someone lives,", pos: "bottom", start: 0.5, end: 1.5 }, { at: 2.0, text: "not just a house.", pos: "bottom", start: 1.6, end: 2.4 }, { at: 3.0, text: "You never cut a corner.", pos: "bottom", start: 2.5, end: 3.5 }] },
 ];
+graphics[1].fields = { small: "If it is someone's home never cut corners" };
 const data = {
   sequence: "Demo cut", duration: 12, preview: "preview.mp4", clips: [{ idx: 1, start: 0, end: 12, source: "a.mov", src_in: 0, src_out: 12 }], beatmap: [], graphics, frame: { width: 270, height: 480 },
 };
@@ -41,7 +45,7 @@ const asked = () => new Promise((resolve) => {
   assert.deepStrictEqual(errors, [], "no script errors: " + errors.join("; "));
   assert.strictEqual(doc.getElementById("gpanel").style.display, "block", "the graphics panel shows when the cut has graphics");
   const rows = [...doc.querySelectorAll("#glist .grow")];
-  assert.strictEqual(rows.length, 3);
+  assert.strictEqual(rows.length, 4);
   assert(rows[1].textContent.includes("Title: If it is someone's home never cut corners"), "picked by what it says: " + rows[1].textContent);
   assert.strictEqual(w.getComputedStyle(doc.getElementById("gbox")).display, "none", "nothing picked yet: no box");
 
@@ -100,6 +104,48 @@ const asked = () => new Promise((resolve) => {
   ptr(doc.getElementById("gbox"), "pointerup", 70, 100);
   const key = [...Array(w.localStorage.length).keys()].map((i) => w.localStorage.key(i)).find((k) => k.includes(":graphics:"));
   assert.strictEqual(JSON.stringify(JSON.parse(w.localStorage.getItem(key))), JSON.stringify({ "overlay-clipitem-3": { dx: -0.1, dy: 0, scale: 100 } }), "kept in the page's storage with this version");
+
+  // the words: a title's topic line, a name tag's role, and the captions line by line (words and top or bottom)
+  rows[1].click();
+  let inp = doc.querySelector('#gwords input[data-field="small"]');
+  assert(inp && inp.value === "If it is someone's home never cut corners", "the title's words are in a box to edit");
+  inp.value = "Never cut corners on someone's home";
+  inp.dispatchEvent(new w.Event("input", { bubbles: true }));
+  assert(doc.querySelector("#glist .grow.sel .gc").textContent === "changed", "changing only the words counts as a change");
+  rows[2].click();
+  inp = doc.querySelector('#gwords input[data-field="sub"]');
+  inp.value = "Owner and operator";
+  inp.dispatchEvent(new w.Event("input", { bubbles: true }));
+  rows[3].click();
+  const lineBoxes = [...doc.querySelectorAll("#gwords .gl input")];
+  assert.strictEqual(lineBoxes.length, 3, "every caption line is listed");
+  lineBoxes[0].value = "This is where SOMEONE lives,";
+  lineBoxes[0].dispatchEvent(new w.Event("input", { bubbles: true }));
+  const sels = [...doc.querySelectorAll("#gwords .gl select")];
+  sels[2].value = "top";
+  sels[2].dispatchEvent(new w.Event("change", { bubbles: true }));
+  p = await asked();
+  const byId = Object.fromEntries(p.graphic_edits.map((e) => [e.id, e]));
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(byId["overlay-clipitem-2"].text)), { small: "Never cut corners on someone's home" }, "only the changed field travels");
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(byId["overlay-clipitem-3"].text)), { sub: "Owner and operator" });
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(byId["overlay-clipitem-4"].lines)), [{ at: 1.0, text: "This is where SOMEONE lives,", pos: "bottom" }, { at: 3.0, text: "You never cut a corner.", pos: "top" }], "only the changed lines travel, with their moment");
+  assert(!("lines" in byId["overlay-clipitem-2"]) && !("text" in byId["overlay-clipitem-4"]));
+  // typing the original words back is not a change
+  rows[1].click();
+  inp = doc.querySelector('#gwords input[data-field="small"]');
+  inp.value = "If it is someone's home never cut corners";
+  inp.dispatchEvent(new w.Event("input", { bubbles: true }));
+  p = await asked();
+  assert(!p.graphic_edits.some((e) => e.id === "overlay-clipitem-2"), "the same words again: no change");
+  // put them all back
+  doc.getElementById("gresetall").click();
+  p = await asked();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(p.graphic_edits)), []);
+  // the earlier storage check follows from a clean state
+  rows[2].click();
+  ptr(doc.getElementById("gbox"), "pointerdown", 100, 100);
+  ptr(doc.getElementById("gbox"), "pointermove", 70, 100);
+  ptr(doc.getElementById("gbox"), "pointerup", 70, 100);
   assert.deepStrictEqual(errors, [], errors.join("; "));
   console.log("review page graphics: list by content, pick by location, drag, wheel and slider scale, ghost, put back, edits travel with the notes and are kept with the version");
   console.log("ALL CHECKS PASSED");

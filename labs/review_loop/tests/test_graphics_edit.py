@@ -169,3 +169,75 @@ def test_the_command_refuses_in_words_a_graphic_that_is_not_on_the_cut_or_nothin
         ct.edit_graphics(str(x), [{"id": "overlay-clipitem-9", "dx": 0.1, "dy": 0, "scale": 100}])
     with pytest.raises(ct.ToolError, match="no graphic was moved"):
         ct.edit_graphics(str(x), [])
+
+
+def _words_for(cut_xml: Path, tmp_path: Path):
+    """Put placement.json beside the title and tag, and captions.json beside a captions graphic, the way the finish leaves them."""
+    title_dir = tmp_path
+    (title_dir / "placement.json").write_text(json.dumps({"kind": "title_layer", "plan": {"title": {"small": "If it is someone's home", "big": "", "joke": ""}, "lower_thirds": []}}))
+
+
+def test_each_graphic_says_what_it_says_and_the_captions_list_their_lines(cut, tmp_path):
+    x, _ = cut
+    _words_for(x, tmp_path)
+    gs = {g["name"]: g for g in ge.describe(x)}
+    assert gs["Graphic - Title.mov"]["fields"] == {"small": "If it is someone's home"} and gs["Graphic - Title.mov"]["lines"] is None
+    capdir = tmp_path / "cap"
+    capdir.mkdir()
+    mov = _mov(capdir / "captions.mov", (20, 380, 230, 40))
+    (capdir / "captions.json").write_text(json.dumps({"window": {"start": 1.0, "end": 3.0}, "style": "pill", "fixes": [], "groups": [
+        {"text": "one line", "pos": "bottom", "show_start": 0.0, "show_end": 0.8, "words": []}, {"text": "next line", "pos": "top", "show_start": 0.9, "show_end": 1.9, "words": []}]}))
+    lay = ly.Layer("video", "captions.mov", str(mov), 1.0, 3.0, 4, 0, 0, "overlay-clipitem-9", None)
+    lines = ge.caption_lines(lay)
+    assert [(l["at"], l["text"], l["pos"]) for l in lines] == [(1.4, "one line", "bottom"), (2.4, "next line", "top")], "`at` is on the timeline: the window's start plus the middle of the line"
+    assert ge.fields_of(lay) is None, "the captions have lines, not fields"
+
+
+def test_the_captions_are_redrawn_with_the_changed_lines_as_fixes_tied_to_the_words_they_replaced(tmp_path, monkeypatch):
+    pdir = tmp_path / "caps"
+    pdir.mkdir()
+    (pdir / "cut_1080.mp4").write_bytes(b"proxy")
+    (pdir / "captions.json").write_text(json.dumps({"window": {"start": 0.0, "end": 8.0}, "style": "pill",
+                                                    "fixes": [{"at": 1.0, "text": "This is where SOMEONE lives,", "was": "There's a lot of ways"}],
+                                                    "groups": [{"text": "This is where SOMEONE lives,", "pos": "bottom", "show_start": 0.5, "show_end": 1.5, "words": []},
+                                                               {"text": "to make money.", "pos": "bottom", "show_start": 1.6, "show_end": 2.4, "words": []}]}))
+    (pdir / "placement.json").write_text(json.dumps({"avoid": [str(tmp_path / "graphics_title")]}))
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = [str(c) for c in cmd]
+        out = Path(seen["cmd"][seen["cmd"].index("--out") + 1])
+        (out / "captions.mov").write_bytes(b"mov")
+        seen["fixes"] = json.loads(Path(seen["cmd"][seen["cmd"].index("--fixes") + 1]).read_text())
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(ge.subprocess, "run", fake_run)
+    mov = ge._recaption(pdir, [{"at": 1.0, "text": "This is where HE lives,", "pos": "top"}, {"at": 2.0, "text": "to make money.", "pos": "top"}], tmp_path / "new", tmp_path / "cut.xml")
+    assert mov == str((tmp_path / "new" / "captions.mov").resolve())
+    fx = {f["at"]: f for f in seen["fixes"]}
+    assert fx[1.0]["was"] == "There's a lot of ways", "a second edit of a line is tied to its ORIGINAL words, so it replaces the first fix rather than stacking on it"
+    assert len([f for f in seen["fixes"] if 0.4 <= f["at"] <= 1.6]) == 1 and fx[1.0]["text"] == "This is where HE lives," and fx[1.0]["pos"] == "top"
+    assert fx[2.0] == {"at": 2.0, "text": "to make money.", "was": "to make money.", "pos": "top"}, "a move with no change of words keeps the words"
+    assert (tmp_path / "new" / "cut_1080.mp4").read_bytes() == b"proxy", "the transcript's proxy is reused, not rendered again"
+    assert seen["cmd"].count("--avoid") == 1 and str(tmp_path / "graphics_title") in seen["cmd"] and "--end" in seen["cmd"]
+    with pytest.raises(ge.GraphicsError, match="no caption line is showing"):
+        ge._recaption(pdir, [{"at": 7.0, "text": "x"}], tmp_path / "n2", tmp_path / "cut.xml")
+    monkeypatch.setattr(ge.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "HyperFrames check FAILED"))
+    with pytest.raises(ge.GraphicsError, match="captions could not be redrawn"):
+        ge._recaption(pdir, [{"at": 1.0, "text": "x"}], tmp_path / "n3", tmp_path / "cut.xml")
+
+
+def test_a_redrawn_graphic_points_at_its_new_file_and_the_check_tolerates_exactly_that(cut, tmp_path):
+    x, _ = cut
+    new = _mov(tmp_path / "newdir" / "Graphic - Title.mov", (27, 96, 216, 96)) if (tmp_path / "newdir").mkdir() is None else None
+    centers = {"overlay-clipitem-1": (135.0, 144.0)}
+    edits = [{"id": "overlay-clipitem-1", "dx": 0.0, "dy": 0.0, "scale": 100, "new_mov": str(new)}]
+    out = tmp_path / "o.xml"
+    ge.apply(x, out, edits, centers, W, H)
+    rows = ge.check(x, out, edits, centers, W, H)
+    assert all(ok for _n, ok, _d in rows) and any(n == "GRAPHICS-NEW-FILE" for n, _o, _d in rows), rows
+    assert str(new.resolve()).replace(" ", "%20") in out.read_text() or "newdir" in out.read_text()
+    assert "Basic Motion" not in out.read_text(), "only the file changed: no motion was asked for"
+    # a re-render of a different length would not fit where it was
+    short = _mov(tmp_path / "newdir" / "short.mov", (27, 96, 216, 96), seconds=0.5)
+    with pytest.raises(ge.GraphicsError, match="would not fit"):
+        ge.apply(x, tmp_path / "bad.xml", [{"id": "overlay-clipitem-1", "dx": 0, "dy": 0, "scale": 100, "new_mov": str(short)}], centers, W, H)

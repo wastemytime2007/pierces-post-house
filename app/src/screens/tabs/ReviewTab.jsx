@@ -35,6 +35,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [graphicCount, setGraphicCount] = useState(0);              // graphics moved or scaled on the page and not yet made into a version
   const [reading, setReading] = useState("");                      // the XML being read for its sequences
   const [creative, setCreative] = useState(null);                // Get Creative's batch: { running, state: { state, started, items: [{ xml, name, status, step, message, final_xml }] } }; the truth is on disk (get_creative.json), this is what the tab last heard
+  const [redoOpt, setRedoOpt] = useState(false);                  // start these over from the original (not remembered between runs)
   const [creativeHidden, setCreativeHidden] = useState("");         // the started-stamp of a finished batch the person hid
   const [picker, setPicker] = useState(null);                      // { xml, rows, selected: [ids], filter, hideAuto }
   const [seqSet, setSeqSet] = useState(() => {                   // the sequences opened from one XML survive leaving the tab and coming back
@@ -469,7 +470,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
     setError("");
     setInfo("");
     try {
-      await sendCommand({ type: "get_creative", xmls, opts: finishOpts });
+      await sendCommand({ type: "get_creative", xmls, opts: { ...finishOpts, redo: redoOpt } });
+      setRedoOpt(false);
     } catch (e) {
       setError(String(e.message || e));
     }
@@ -873,6 +875,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
               {label}
             </label>
           ))}
+          <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="For sequences already done with an older version of Get Creative: build everything again from the original. Their earlier versions are moved to a folder called older versions, not deleted.">
+            <input type="checkbox" checked={redoOpt} onChange={(e) => setRedoOpt(e.target.checked)} />
+            Start over from the original (the earlier versions go to "older versions")
+          </label>
           <div className="pm-tab-row">
             {(() => {
               const nothing = !finishOpts.fillers && !finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics;

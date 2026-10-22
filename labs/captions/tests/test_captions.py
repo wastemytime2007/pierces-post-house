@@ -225,3 +225,14 @@ def test_the_template_never_fades_a_line_out_before_it_has_faded_in_and_hides_it
     t = (Path(__file__).resolve().parents[1] / "caption_template.html").read_text()
     assert "Math.max(g.show_end - 0.12, g.show_start + 0.14)" in t
     assert "tl.set(id, { opacity: 0 }, Math.max(g.show_end, g.show_start + 0.26))" in t
+
+
+def test_a_line_put_at_the_top_by_hand_keeps_it_over_the_automatic_choice_and_one_left_alone_stays_automatic():
+    groups = [{"text": "a line", "show_start": 1.0, "show_end": 2.0, "words": speech(("a", 1.0, 1.4), ("line", 1.4, 2.0))},
+              {"text": "another line", "show_start": 3.0, "show_end": 4.0, "words": speech(("another", 3.0, 3.5), ("line", 3.5, 4.0))}]
+    n = mc.choose_positions(groups, [], 0.0, [{"at": 1.5, "text": "a line", "pos": "top"}])
+    assert [g["pos"] for g in groups] == ["top", "bottom"] and n == 0
+    n = mc.choose_positions(groups, [], 10.0, [{"at": 11.5, "text": "a line", "pos": "top"}])        # a window that starts at 10 s: the fix's time is on the timeline
+    assert [g["pos"] for g in groups] == ["top", "bottom"]
+    mc.choose_positions(groups, [], 0.0, [{"at": 1.5, "text": "a line", "pos": "sideways"}])
+    assert [g["pos"] for g in groups] == ["bottom", "bottom"], "only top or bottom are accepted"

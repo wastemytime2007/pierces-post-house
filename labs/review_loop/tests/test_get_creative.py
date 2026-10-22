@@ -181,3 +181,23 @@ def test_music_taken_from_the_cache_or_the_artlist_library_is_named_in_the_messa
     res = ct.get_creative(seqs[:1], None, f.emit)
     msg = res["items"][0]["message"]
     assert res["items"][0]["status"] == "done" and "music is music from your Artlist library (Aves - Bumpin' - No Backing Vocals) (it could not be generated)" in msg, msg
+
+
+def test_redo_moves_the_earlier_versions_aside_never_deletes_them_and_starts_again_from_the_original(monkeypatch, seqs):
+    f = Fake(monkeypatch, layers={"A_ums_creative", "A_ums"})                      # the latest version already carries layers: a normal run would leave it alone
+    stem = Path(seqs[0]).stem
+    for n in (2, 3):
+        d = Path(seqs[0]).parent / f"{stem}_v{n} - revised"
+        d.mkdir()
+        (d / f"{stem}_v{n}.xml").write_text("<xmeml/>")
+    f.sessions[seqs[0]] = {"versions": [{"label": "V1", "xml": seqs[0]}, {"label": "V2", "xml": str(Path(seqs[0]).parent / f"{stem}_v2 - revised" / f"{stem}_v2.xml")},
+                                        {"label": "V3", "xml": str(Path(seqs[0]).parent / f"{stem}_v3 - revised" / f"{stem}_v3.xml")}]}
+    skipped = ct.get_creative(seqs[:1], None, f.emit)
+    assert skipped["items"][0]["status"] in ("done", "skipped")
+    f2 = Fake(monkeypatch)
+    res = ct.get_creative(seqs[:1], {"redo": True}, f2.emit)
+    assert res["items"][0]["status"] == "done" and ("review", "A") in [c[:2] for c in f2.calls], "built again from the original"
+    older = Path(seqs[0]).parent / "older versions"
+    assert sorted(p.name for p in older.iterdir()) == [f"{stem}_v2 - revised", f"{stem}_v3 - revised"], "moved aside, not deleted"
+    assert (older / f"{stem}_v2 - revised" / f"{stem}_v2.xml").is_file()
+    assert not (Path(seqs[0]).parent / f"{stem}_v2 - revised").exists()

@@ -252,3 +252,43 @@ def test_the_timeline_map_puts_every_graphic_clip_in_one_graphics_lane_even_one_
     import layers
     for name in ("Graphic - Overlay.mov", "Graphic - Title.mov", "Graphic - Tag Bob.mov", "Graphic - Call to action.mov"):
         assert layers.lane_name(layers.Layer("video", name, "/x/" + name, 0.0, 1.0, 1)) == "Graphics", name
+
+
+def _placement(tmp_path, monkeypatch, spec, start=2.0):
+    gs = tmp_path / "gsap.min.js"
+    gs.write_text("// gsap")
+    monkeypatch.setattr(mo, "gsap_file", lambda: gs)
+    parts = {k: sp for k, _n, sp in mt.split_plan(mt.plan(spec, TL, 12.0))}
+    return parts, start
+
+
+def test_the_words_of_a_title_are_changed_by_redrawing_only_that_graphic_in_the_same_place_and_time(tmp_path, monkeypatch):
+    parts, _ = _placement(tmp_path, monkeypatch, SPLIT_SPEC)
+    sp = mt.shift_plan(parts["title"], 0.25)
+    pl = {"kind": "title_layer", "plan": sp, "render": {"width": 1080, "height": 1920, "fps": 29.97, "fps_arg": "30000/1001"}, "duration_sec": 3.0, "place_overlay_on_timeline_at_sec": 0.25,
+          "overlay": "Graphic - Title.mov", "anchors": [{"what": "title"}]}
+    drawn = []
+    code, new = mt.retext_layer(pl, {"small": "Never cut corners on someone's home"}, tmp_path / "new", render=lambda proj, mov, seq, info: drawn.append(Path(mov).name))
+    assert code == 0 and drawn == ["Graphic - Title.mov"], "one graphic redrawn, under the same file name"
+    assert new["plan"]["title"]["small"] == "Never cut corners on someone's home" and new["plan"]["title"]["on"] == sp["title"]["on"], "the words changed, the timing did not"
+    assert new["place_overlay_on_timeline_at_sec"] == 0.25 and new["duration_sec"] == 3.0 and new["anchors"] == [{"what": "title"}]
+    assert pl["plan"]["title"]["small"].startswith("If it is"), "the original placement is not changed"
+    assert "Never cut corners on someone" in (tmp_path / "new" / "hyperframes_project" / "index.html").read_text()
+
+
+def test_a_name_tag_is_measured_again_for_its_new_words_and_a_graphic_with_no_words_is_refused(tmp_path, monkeypatch):
+    parts, _ = _placement(tmp_path, monkeypatch, SPLIT_SPEC)
+    tag = mt.shift_plan(parts["tag-1"], 0.25)
+    mt.write_project(tmp_path / "p0", tag, 1080, 1920, 4.0)                  # measures the box for "Bob / Builder / Founder"
+    w0 = tag["lower_thirds"][0]["w"]
+    pl = {"kind": "title_layer", "plan": tag, "render": {"width": 1080, "height": 1920, "fps": 29.97, "fps_arg": "30000/1001"}, "duration_sec": 4.0, "place_overlay_on_timeline_at_sec": 0.25, "overlay": "t.mov"}
+    code, new = mt.retext_layer(pl, {"name": "Robert Pierce the Third", "sub": "Builder / Founder and the one who answers the phone"}, tmp_path / "t2", render=lambda *a: None)
+    assert code == 0 and new["plan"]["lower_thirds"][0]["w"] > w0, "the box is as wide as the new words need"
+    with pytest.raises(mt.TitleError, match="needs its name"):
+        mt.retext_layer(pl, {"name": "  "}, tmp_path / "t3", render=lambda *a: None)
+    overlay = {"kind": "title_layer", "plan": mt.shift_plan(parts["overlay"], 0.25), "render": pl["render"], "duration_sec": 3.0, "place_overlay_on_timeline_at_sec": 0.25, "overlay": "o.mov"}
+    with pytest.raises(mt.TitleError, match="no words to change"):
+        mt.retext_layer(overlay, {"small": "x"}, tmp_path / "t4", render=lambda *a: None)
+    title = {"kind": "title_layer", "plan": mt.shift_plan(parts["title"], 0.25), "render": pl["render"], "duration_sec": 3.0, "place_overlay_on_timeline_at_sec": 0.25, "overlay": "t.mov"}
+    with pytest.raises(mt.TitleError, match="topic or its big word"):
+        mt.retext_layer(title, {"small": ""}, tmp_path / "t5", render=lambda *a: None)

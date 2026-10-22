@@ -259,7 +259,7 @@ def shift_plan(sp: dict, start: float) -> dict:
     return s
 
 
-def _build_layer(xml: Path, spec: dict, p: dict, seq: dict, out: Path, total: float, start: float, mov_name: str, what: str, render=None) -> tuple[int, dict | None]:
+def _build_layer(xml: Path, spec: dict, p: dict, seq: dict, out: Path, total: float, start: float, mov_name: str, what: str, render=None, anchors: list | None = None) -> tuple[int, dict | None]:
     """One layer: its HyperFrames project, the render, its placement.json and its checks. `p` is the (possibly shifted) plan it draws; `start` where its clip begins on the timeline."""
     out.mkdir(parents=True, exist_ok=True)
     proj, mov = out / "hyperframes_project", out / mov_name
@@ -283,7 +283,7 @@ def _build_layer(xml: Path, spec: dict, p: dict, seq: dict, out: Path, total: fl
         render(proj, mov, seq, info)
     placement = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": start, "duration_sec": total, "overlay": mov.name, "overlay_path": str(mov.resolve()),
                  "render": {"width": seq["width"], "height": seq["height"], "fps": seq["fps"], "fps_arg": seq["fps_arg"]},
-                 "anchors": anchors_of(spec),
+                 "anchors": anchors if anchors is not None else anchors_of(spec),
                  "plan": p, "layout": info["layout"], "events": info["events"], "hyperframes": mo.HF_VERSION, "gsap": mo.GSAP_VERSION}
     (out / "placement.json").write_text(json.dumps(placement, indent=2))
     if render is None:
@@ -293,6 +293,39 @@ def _build_layer(xml: Path, spec: dict, p: dict, seq: dict, out: Path, total: fl
             print(v.stderr, file=sys.stderr)
             return 1, placement
     return 0, placement
+
+
+TITLE_FIELDS = ("small", "big", "joke")
+
+
+def retext_layer(placement: dict, text: dict, out: Path, render=None) -> tuple[int, dict | None]:
+    """The same graphic with new words, re-rendered alone (Ryan, 2026-10-21: edit the words of a graphic from the page): `placement` is the graphic's own placement.json, `text` is {"small": ..., "big": ..., "joke": ...}
+    for a title or {"name": ..., "sub": ...} for a name tag or the call to action. Its timing, position and look are exactly as they were; only the words change, and the lower third's box is measured again for them.
+    Written to `out` (a new folder) with its own checks; nothing else is touched."""
+    import copy
+    pl = copy.deepcopy(placement)
+    p = pl["plan"]
+    if p.get("title") and any(p["title"].get(k) for k in TITLE_FIELDS) and any(k in text for k in TITLE_FIELDS):          # a graphic that draws no title words (the overlay) has none to change
+        for k in TITLE_FIELDS:
+            if k in text:
+                p["title"][k] = str(text[k]).strip()
+        if not (p["title"].get("small") or p["title"].get("big")):
+            raise TitleError("a title needs at least its topic or its big word")
+    elif p.get("lower_thirds") and ("name" in text or "sub" in text):
+        lt = p["lower_thirds"][0]
+        if "name" in text:
+            lt["name"] = str(text["name"]).strip()
+        if "sub" in text:
+            lt["sub"] = str(text["sub"]).strip()
+        if not lt["name"]:
+            raise TitleError("a name tag needs its name")
+        lt.pop("w", None)
+        lt.pop("h", None)                                                  # measured again for the new words
+    else:
+        raise TitleError("this graphic has no words to change")
+    r = pl["render"]
+    seq = {"width": r["width"], "height": r["height"], "fps": r["fps"], "fps_arg": r["fps_arg"], "resolution": mo.RESOLUTIONS.get((r["width"], r["height"]))}
+    return _build_layer(Path("."), {}, p, seq, out, pl["duration_sec"], pl["place_overlay_on_timeline_at_sec"], pl["overlay"], "retext layer", render, anchors=pl.get("anchors"))
 
 
 def build_layers(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_spec) -> tuple[int, dict | None]:
