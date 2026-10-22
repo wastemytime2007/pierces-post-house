@@ -39,9 +39,10 @@ function stageText(p) {
   return "XML out for trimming";
 }
 
-function greeting() {
+function greeting(person) {
   const h = new Date().getHours();
-  return h < 5 ? "Working late." : h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening.";
+  const t = h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  return person ? `${t}, ${person}.` : `${t}.`;
 }
 
 // A project is its own footage: one frame from its interviews as the cover, the name over a soft shade. No footage yet: a color tile from the brand's blues.
@@ -64,7 +65,7 @@ function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   );
 }
 
-export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCreate, onDelete, subscribe, log, tourReady, onTourComplete }) {
+export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCreate, onDelete, subscribe, log, tourReady, onTourComplete, person }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
@@ -223,7 +224,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         <div className="start-hero">
           <div className="start-hero-text">
             <Mark size={34} />
-            <h1 className="start-title">{greeting()}</h1>
+            <h1 className="start-title">{greeting(person)}</h1>
             <p className="start-sub">{projects.length ? "Pick up where you left off, or start something new." : "Start a project, add your footage, and Post House finds the stories in it."}</p>
           </div>
           <div className="start-header-actions">

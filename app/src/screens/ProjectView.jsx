@@ -53,6 +53,11 @@ export default function ProjectView({
     return "pm";
   });
   const [exportsList, setExportsList] = useState([]);                         // XMLs this project has sent to Premiere (the Trim step lists them)
+  // The step is remembered with the project, so the next launch opens on it
+  useEffect(() => {
+    if (!project?.name) return;
+    try { localStorage.setItem("ph.session", JSON.stringify({ project: project.name, tab: activeTab })); } catch (e) { /* not kept */ }
+  }, [project?.name, activeTab]);
   useEffect(() => {
     // An XML dropped anywhere in the window, or chosen on the Trim step, opens in Finish
     const onOpen = () => setActiveTab("review");

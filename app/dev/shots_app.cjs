@@ -39,7 +39,7 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   };
   await page.goto(`http://localhost:${port}/harness.html?app=1`);
   await page.waitForTimeout(1200);
-  await page.evaluate(() => window.__backend({ type: "ready", version: "1.0", settings: { has_env: false, active_source: "none", llm_via_cli: false } }));
+  await page.evaluate(() => window.__backend({ type: "ready", version: "1.0", person: "Ryan", settings: { has_env: false, active_source: "none", llm_via_cli: false } }));
   await shot("09_welcome");
   await page.getByRole("button", { name: "Next" }).click();
   await shot("09b_welcome_rooms");

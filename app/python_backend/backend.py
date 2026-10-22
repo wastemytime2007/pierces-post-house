@@ -160,8 +160,43 @@ def err(message: str, job_id: Optional[str] = None, tb: Optional[str] = None) ->
 # Command handlers
 # ---------------------------------------------------------------------------
 
+def source_build() -> str:
+    """A short fingerprint of the backend's own Python on disk. Compared with the one taken at startup, it says whether this process is running code that has since changed
+    (2026-10-22: a backend from before a change answered "Unknown command" and a finished export looked like a failure; the app can now say "restart" instead of failing a button)."""
+    import hashlib
+    h = hashlib.sha256()
+    for f in sorted(Path(__file__).parent.rglob("*.py")):
+        try:
+            st = f.stat()
+        except OSError:
+            continue
+        h.update(f"{f.name}{st.st_mtime_ns}{st.st_size}".encode())
+    return h.hexdigest()[:12]
+
+
+_BUILD_AT_START = source_build()
+
+
+def person_name() -> str:
+    """The person's first name, for the greeting. Their account's full name, else the login name, else nothing: never a question to answer."""
+    import getpass
+    import pwd
+    try:
+        full = pwd.getpwuid(os.getuid()).pw_gecos.split(",")[0].strip()
+    except (KeyError, OSError, AttributeError):
+        full = ""
+    try:
+        name = full or getpass.getuser()
+    except Exception:
+        return ""
+    first = name.split()[0] if name.split() else ""
+    return first if first and first[0].isalpha() else ""
+
+
 def emit_ready() -> None:
-    emit({"type": "ready", "version": "0.4.43-precut-logo-cleanup", "settings": get_api_key_summary()})
+    emit({"type": "ready", "version": "0.4.43-precut-logo-cleanup", "settings": get_api_key_summary(),
+          "build": _BUILD_AT_START, "stale": source_build() != _BUILD_AT_START, "person": person_name(),
+          "commands": sorted(HANDLERS)})
 
 
 def handle_hello(cmd: dict) -> None:
@@ -1672,7 +1707,12 @@ def main() -> None:
         cmd_type = cmd.get("type")
         handler = HANDLERS.get(cmd_type)
         if handler is None:
-            err(f"Unknown command: {cmd_type}")
+            # Almost always a backend older than the page asking (the app is updated without restarting it), so say that rather than a developer's word
+            stale = source_build() != _BUILD_AT_START
+            err("This app needs restarting to finish updating." if stale else f"This version cannot do that yet ({cmd_type}).",
+                tb=f"Unknown command: {cmd_type}")
+            emit({"type": "ready", "version": "0.4.43-precut-logo-cleanup", "settings": get_api_key_summary(),
+                  "build": _BUILD_AT_START, "stale": stale, "person": person_name(), "commands": sorted(HANDLERS)})
             continue
         try:
             handler(cmd)

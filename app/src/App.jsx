@@ -44,6 +44,9 @@ export async function sendCommand(cmd) {
 
 export default function App() {
   const [backendReady, setBackendReady] = useState(false);
+  const [person, setPerson] = useState("");                  // the person's first name, from their account (no setup step)
+  const [stale, setStale] = useState(false);                 // this backend started before the code on disk changed: a restart is the answer
+  const resumedRef = useRef(false);                          // the app reopens the last project once, at launch, never again
   const [project, setProject] = useState(null);
   const [log, setLog] = useState([]);
   const [settings, setSettings] = useState(null);     // { active_source, has_env, has_settings, key_suffix, workspace_id, welcome_seen, tour_seen, api_key_help_auto_shown }
@@ -135,6 +138,18 @@ export default function App() {
           case "ready":
             setBackendReady(true);
             setSettings(ev.settings || null);
+            if (ev.person) setPerson(ev.person);
+            setStale(!!ev.stale);
+            if (!resumedRef.current) {
+              resumedRef.current = true;
+              try {                                           // open the project you were last in, on the step you were on
+                const last = JSON.parse(localStorage.getItem("ph.session") || "null");
+                if (last?.project) {
+                  if (last.tab) sessionStorage.setItem("ph.tab", last.tab);
+                  sendCommand({ type: "load_project", name: last.project }).catch(() => {});
+                }
+              } catch (e) { /* nothing remembered */ }
+            }
             logAppend({ level: "accent", message: `backend ready (v${ev.version})` });
             // Drop 4.46: pull saved auto-include rules so the modal renders
             // correctly the first time it's opened, and so users don't see
@@ -500,7 +515,19 @@ export default function App() {
     }
   }, [logAppend]);
 
-  const closeProject = useCallback(() => setProject(null), []);
+  const closeProject = useCallback(() => {
+    try { localStorage.removeItem("ph.session"); } catch (e) { /* not kept */ }
+    setProject(null);
+  }, []);
+
+  // What to reopen next launch: the project and the step it was left on (ProjectView keeps the step current).
+  useEffect(() => {
+    if (!project?.name) return;
+    try {
+      const was = JSON.parse(localStorage.getItem("ph.session") || "null");
+      localStorage.setItem("ph.session", JSON.stringify({ project: project.name, tab: was?.project === project.name ? was.tab : undefined }));
+    } catch (e) { /* not kept */ }
+  }, [project?.name]);
 
   const saveApiKey = useCallback(async (key) => {
     await sendCommand({ type: "set_api_key", api_key: key });
@@ -689,6 +716,7 @@ export default function App() {
 
       {!project ? (
         <StartScreen
+          person={person}
           backendReady={backendReady}
           onOpen={openProject}
           onOpenFromPath={openProjectFromPath}
@@ -888,6 +916,12 @@ export default function App() {
       )}
 
       <Tooltips />
+      {stale && (
+        <div className="stale-bar" role="status">
+          <Icon name="refresh" size={14} />
+          <span>Post House has updated. Quit and open it again to finish.</span>
+        </div>
+      )}
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
       {shortcutsOpen && <ShortcutsSheet onClose={() => setShortcutsOpen(false)} />}
       {xmlOver && (

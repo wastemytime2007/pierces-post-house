@@ -684,6 +684,72 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     MenuBuilder::new(app).items(&[&app_menu, &file, &edit, &review, &go, &view, &window, &help]).build()
 }
 
+
+// ---------------------------------------------------------------------------
+// Window state: the window opens where it was left (HIG windows.md: "people
+// expect a window to reopen in the same place and size"). Kept in the app's
+// own data folder as plain JSON; a missing or unreadable file just means the
+// defaults in tauri.conf.json are used.
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Default)]
+struct WindowState {
+    width: f64,
+    height: f64,
+    x: f64,
+    y: f64,
+    maximized: bool,
+}
+
+fn window_state_path(app: &AppHandle) -> Option<PathBuf> {
+    let dir = app.path().app_data_dir().ok()?;
+    let _ = std::fs::create_dir_all(&dir);
+    Some(dir.join("window.json"))
+}
+
+fn restore_window_state(app: &AppHandle) {
+    let Some(path) = window_state_path(app) else { return };
+    let Ok(text) = std::fs::read_to_string(path) else { return };
+    let Ok(st) = serde_json::from_str::<WindowState>(&text) else { return };
+    let Some(win) = app.get_webview_window("main") else { return };
+    // A window restored off every screen is unreachable, so anything absurd is ignored and the default is kept.
+    if st.width >= 600.0 && st.height >= 400.0 && st.width < 20000.0 && st.height < 20000.0 {
+        let _ = win.set_size(tauri::LogicalSize::new(st.width, st.height));
+    }
+    if st.x > -10000.0 && st.y > -10000.0 && st.x < 20000.0 && st.y < 20000.0 {
+        let _ = win.set_position(tauri::LogicalPosition::new(st.x, st.y));
+    }
+    if st.maximized {
+        let _ = win.maximize();
+    }
+}
+
+fn save_window_state(win: &tauri::WebviewWindow) {
+    let app = win.app_handle();
+    let Some(path) = window_state_path(app) else { return };
+    let scale = win.scale_factor().unwrap_or(1.0);
+    let maximized = win.is_maximized().unwrap_or(false);
+    // A maximized window's own size is the screen: keep the last unmaximized one so unmaximizing goes back to it.
+    if maximized {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Ok(mut st) = serde_json::from_str::<WindowState>(&text) {
+                st.maximized = true;
+                if let Ok(json) = serde_json::to_string(&st) {
+                    let _ = std::fs::write(&path, json);
+                }
+                return;
+            }
+        }
+    }
+    let (Ok(size), Ok(pos)) = (win.inner_size(), win.outer_position()) else { return };
+    let size = size.to_logical::<f64>(scale);
+    let pos = pos.to_logical::<f64>(scale);
+    let st = WindowState { width: size.width, height: size.height, x: pos.x, y: pos.y, maximized };
+    if let Ok(json) = serde_json::to_string(&st) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
 fn main() {
     let backend: SharedBackend = Arc::new(Mutex::new(BackendHandle::new()));
     let setup_child: SharedSetupChild = Arc::new(Mutex::new(None));
@@ -695,6 +761,18 @@ fn main() {
         .manage(backend)
         .manage(setup_child)
         .menu(build_menu)
+        .setup(|app| {
+            restore_window_state(app.handle());
+            Ok(())
+        })
+        .on_window_event(|win, event| {
+            // Written on every move, resize and close: it is a few bytes, and a crash should not lose where the window was.
+            if matches!(event, tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) | tauri::WindowEvent::CloseRequested { .. }) {
+                if let Some(w) = win.get_webview_window("main") {
+                    save_window_state(&w);
+                }
+            }
+        })
         // Menu commands go to the page as one event; the page decides what each one means on the screen it is showing.
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
