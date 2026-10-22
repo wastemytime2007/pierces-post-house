@@ -323,15 +323,23 @@ export default function IdeasTab({
   );
   const hasAngles = ideas.some((i) => i.kind === "story_angle");
 
+  // Nothing has been transcribed yet. The room still says what it is, because a screen reader navigates by headings, and it names the one thing to do.
   if (transcriptCount === 0 && ideas.length === 0) {
     return (
-      <div className="empty-state">
-        No transcripts available yet.
-        <br />
-        <br />
-        Run the pipeline on the Ingest tab to transcribe your A-roll, then
-        come back here to generate ideas with the AI producer.
-      </div>
+      <>
+        <PageHeader
+          title="Stories"
+          lead="Stories are found in what your people actually said, so the interviews have to be transcribed first."
+          next="Next: Footage, to add and transcribe your interviews"
+        />
+        <div className="empty-state">
+          <strong>No interviews have been transcribed yet.</strong>
+          <span>Add your footage on the Footage step and choose Get it ready. When the interviews are transcribed, come back and the stories are found here.</span>
+          <div style={{ marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={() => window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: "pm" } }))}>Go to Footage</button>
+          </div>
+        </div>
+      </>
     );
   }
 

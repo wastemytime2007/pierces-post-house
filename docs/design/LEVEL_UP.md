@@ -1,5 +1,13 @@
 # Level up: what the overnight research says this app still needs (2026-10-22)
 
+> **Built on 2026-10-22, in one pass (Ryan: "Implement all of them").** Every item below is now
+> marked **[done]**, **[done, not seen in the real window]** or **[not done]** with the reason.
+> What was checked for each is in `POLISH_LOG.md`, rounds 80 to 125. Two items were deliberately
+> left: the sample project (item 1) needs a cleared interview clip to ship, which is content and
+> Ryan's call; and the system window material (item 42) needs a transparent window that risks a
+> see-through app and that I cannot see to judge. The brand font (item 41) is licensed and only
+> Ryan can install it; the stack already picks it first, and Futura stands in until then.
+
 Ryan: "Go through all of the research done all night on app UI and user experience. How the best app developers create mind blowing app experiences and create a list of everything that can/should be done to this app to make it feel like its on that level."
 
 What was read, and how far to trust it, is in `DIRECTION_2.md` (two research passes), `EXPERIENCE.md` (the "why it felt AI-built" list) and `UI_SYSTEM.md` (the HIG review). The primary sources were Apple's HIG, Linear's own redesign post, Emil Kowalski on animation, Apple's Halide piece, Jony Ive as reported, Things 3 and Superhuman as reported, Pixelmator's launch posts. The agency-portfolio research (Instrument, Metalab, Fantasy, Pentagram) came back thin: positioning pages and ranking blogs, no design write-ups, so nothing below is claimed from them. Seventy-nine rounds are already done (`POLISH_LOG.md`); this list is what is left.
