@@ -29,6 +29,11 @@ fs.mkdirSync(out, { recursive: true });
     await page.waitForTimeout(6000);                                                  // posters arrive one by one
     report.projects = await page.evaluate(() => document.querySelectorAll(".cover").length);
     report.postersShown = await page.evaluate(() => [...document.querySelectorAll(".cover-art")].filter((e) => /url\(["']?data:image/.test(e.style.backgroundImage)).length);
+    // A frame can be loaded into an element that has no size, and then nothing is on screen. 2026-10-22:
+    // a stray `position: relative` overrode .cover-art's `absolute` and collapsed every cover to 0 by 0.
+    report.postersWithSize = await page.evaluate(() => [...document.querySelectorAll(".cover-art")]
+      .filter((e) => /url\(["']?data:image/.test(e.style.backgroundImage))
+      .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 40 && r.height > 40; }).length);
     await page.screenshot({ path: path.join(out, "e1_home_real.png") });
 
     // a project open (UI only: the backend is not asked to load or change anything), then Finish, then a real XML dropped on the window
@@ -78,9 +83,10 @@ fs.mkdirSync(out, { recursive: true });
     room: { ms: report.roomWorst, limit: 400, ok: (report.roomWorst ?? 0) <= 400 },
   };
   report.budgetKept = Object.values(report.budget).every((b) => b.ok !== false);
+  report.postersVisible = report.postersShown > 0 && report.postersShown === report.postersWithSize;
   report.pageErrors = errors;
   console.log(JSON.stringify(report));
   await browser.close();
   bridge.kill();
-  process.exit(report.failed || errors.length || !report.budgetKept ? 1 : 0);
+  process.exit(report.failed || errors.length || !report.budgetKept || !report.postersVisible ? 1 : 0);
 })();
