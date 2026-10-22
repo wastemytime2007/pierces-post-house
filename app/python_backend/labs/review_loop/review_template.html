@@ -151,6 +151,16 @@
   .lane .lb { text-transform: none; letter-spacing: 0; font-size: 11px; }
   h2 { font-size: 13px; margin: 12px 0 6px; }
   :focus-visible { outline: 2px solid #4cb3ee; outline-offset: 1px; }
+
+  .tabs { display: flex; gap: 2px; padding: 2px; background: var(--panel); border-radius: 7px; margin-bottom: 10px; position: sticky; top: 0; z-index: 3; }
+  .tabs button { flex: 1; border: 0; background: none; min-height: 24px; padding: 0 8px; border-radius: 5px; color: var(--dim); }
+  .tabs button[aria-selected=true] { background: #2b3644; color: var(--text); }
+  #right[data-tab=graphics] .pane-notes, #right[data-tab=graphics] .pane-details,
+  #right[data-tab=notes] .pane-graphics, #right[data-tab=notes] .pane-details,
+  #right[data-tab=details] .pane-graphics, #right[data-tab=details] .pane-notes { display: none; }
+  #gnone { display: none; }
+  #right.nographics #gnone { display: block; }
+  #detailsBox { display: none; }
   @media (max-width: 900px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
 </style>
@@ -177,7 +187,9 @@
       <button id="add">+ Note at this moment (n)</button>
     </div>
   </section>
-  <aside id="right">
+  <aside id="right" data-tab="notes">
+    <div class="tabs" role="tablist" aria-label="Inspector"><button role="tab" data-t="graphics" id="tabGraphics">Graphics</button><button role="tab" data-t="notes" id="tabNotes">Notes</button><button role="tab" data-t="details">Details</button></div>
+    <div class="pane pane-graphics">
     <div id="changes"></div>
     <div id="gpanel">
       <h2>On-screen graphics</h2>
@@ -188,6 +200,9 @@
       <div id="gwords"></div>
       <div id="gsum"></div>
     </div>
+    <div class="empty" id="gnone">No graphics on this cut. Run Get Creative to add a title card and name tags.</div>
+    </div>
+    <div class="pane pane-notes">
     <div id="editor">
       <div id="editorAt" class="where"></div>
       <div class="tools" id="tools">
@@ -215,7 +230,8 @@
       <button id="dl">Download JSON</button>
     </div>
     <div id="notes"></div>
-    <details id="detailsBox"><summary>Details</summary><div class="meta" id="meta"></div></details>
+    </div>
+    <div class="pane pane-details"><div class="meta" id="meta"></div></div>
   </aside>
   <section id="ribbon">
     <div class="bar" id="bar"><div class="head" id="head"></div></div>
@@ -1054,6 +1070,21 @@ if (window.parent !== window) {
 }
 setDrawMode(false); drawNotes(); tick();
 tellHost({ type: 'review:count', n: notes.length });
+
+/* Inspector tabs: Graphics (when the cut has any), Notes, Details. Writing a note, or picking a graphic, brings its tab forward. */
+(() => {
+  const right = document.getElementById('right'), tabs = [...right.querySelectorAll('.tabs [role=tab]')];
+  const hasG = () => !!(DATA.graphics && DATA.graphics.length) || getComputedStyle(document.getElementById('gpanel')).display !== 'none';
+  const show = t => { right.dataset.tab = t; tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === t))); };
+  tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.t)));
+  right.classList.toggle('nographics', !hasG());
+  document.getElementById('tabGraphics').style.display = hasG() ? '' : 'none';
+  show(hasG() ? 'graphics' : 'notes');
+  new MutationObserver(() => { if (getComputedStyle(document.getElementById('editor')).display !== 'none') show('notes'); }).observe(document.getElementById('editor'), { attributes: true, attributeFilter: ['style'] });
+  const cnt = document.getElementById('count'), nb = tabs.find(b => b.dataset.t === 'notes');
+  const label = () => { const m = /\d+/.exec(cnt.textContent || ''); nb.textContent = (m && m[0] !== '0') ? 'Notes (' + m[0] + ')' : 'Notes'; };
+  new MutationObserver(label).observe(cnt, { childList: true, characterData: true, subtree: true }); label();
+})();
 </script>
 </body>
 </html>

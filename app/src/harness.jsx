@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";
 import ProjectView from "./screens/ProjectView.jsx";
+import App from "./App.jsx";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -45,4 +46,5 @@ function Harness() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<Harness />);
+// ?app=1 mounts the whole app (title bar, project list, modals); feed it with window.__backend(event)
+ReactDOM.createRoot(document.getElementById("root")).render(params.get("app") ? <App /> : <Harness />);

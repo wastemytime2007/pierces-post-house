@@ -79,22 +79,16 @@ const SCREENS = [
   {
     key: "pitch",
     Icon: IconPitch,
-    title: "Welcome to PreCut",
+    title: "Welcome to Post House",
     body: (
       <>
         <p>
-          PreCut takes a folder of raw footage, figures out what&rsquo;s
-          <em> actually in it</em>, and suggests several different cuts you
-          could make from it.
-        </p>
-        <p>
-          Drop in a project folder, let it analyze, and you&rsquo;ll get
-          auto-assembled Premiere Pro sequences with a searchable b-roll
-          library — ready to drop into your edit.
+          Post House finds the pieces of your footage that tell a story,
+          then helps you finish them: captions, graphics, music, sound
+          effects and transitions, ready for Premiere.
         </p>
         <p className="welcome-body-muted">
-          Everything runs locally on your Mac. Your footage never leaves
-          your computer.
+          Everything runs on your Mac. Your footage never leaves it.
         </p>
       </>
     ),
@@ -102,24 +96,21 @@ const SCREENS = [
   {
     key: "workflow",
     Icon: IconWorkflow,
-    title: "Your workflow in 3 steps",
+    title: "How it works",
     body: (
       <>
         <ol className="welcome-numbered">
           <li>
-            <strong>Create a project</strong> and point it at a folder of
-            footage. PreCut indexes the clips — transcribing dialogue,
-            tagging content, and building a searchable library.
+            <strong>Project.</strong> Point it at your footage. Clips are
+            transcribed and indexed.
           </li>
           <li>
-            <strong>Analyze &amp; refine</strong> to generate cut ideas.
-            The AI producer reads through the transcripts and proposes
-            several different angles you could take.
+            <strong>Ideas.</strong> The AI proposes cuts from what was
+            said. Export the ones you like as one Premiere XML.
           </li>
           <li>
-            <strong>Export</strong> the ideas you like as Premiere XML.
-            Each one lands as its own timeline alongside the full b-roll
-            library — searchable by clip content.
+            <strong>Review.</strong> Trim in Premiere, bring the XML back,
+            press Get Creative, check the result, and open it in Premiere.
           </li>
         </ol>
       </>

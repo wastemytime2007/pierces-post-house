@@ -39,6 +39,7 @@ export default function IdeasTab({
   const [showBriefForm, setShowBriefForm] = useState(false);
   // 2026-09-04: the plan-first conversation panel.
   const [showPlanPanel, setShowPlanPanel] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [refineTarget, setRefineTarget] = useState(null);  // idea_id being refined
   const [producerBusy, setProducerBusy] = useState(false);
   // Drop 3: multi-select state for XML export
@@ -342,73 +343,26 @@ export default function IdeasTab({
             )
             : "Generate ideas"}
         </button>
-        <HelpTooltip>
-          Builds <strong>3 real story ideas</strong> from your footage. Each
-          one is a two-zone timeline: a tight, single-throughline cut on one
-          side, and a selects pool of everything else on-topic on the
-          other, separated by a gap — informed by <strong>live trend
-          research</strong> (real web search plus real trending videos
-          actually downloaded and watched, not read about). Expand a
-          card's <strong>Show research</strong> section to see the sources.
-          Needs an audience goal set on the Project tab and transcript
-          flagging to have already run.
-        </HelpTooltip>
         <div className="action-spacer" />
-        <details className="legacy-actions">
-          <summary className="btn btn-ghost legacy-actions-summary">Legacy tools</summary>
-          <div className="legacy-actions-body">
-            <button
-              className="btn"
-              onClick={hasAngles ? handleRequestMoreAngles : handleGenerateAngles}
-              disabled={transcriptCount === 0 || producerBusy}
-              title="PreCut's own original angle generator — one skimmed pass over the raw transcript, no audience-goal awareness, no live research, no tight-cut/pool split. Kept for direct comparison against the real 'Generate ideas' button above, not because it's better."
-            >
-              {producerBusy && (activeRun?.mode === "angles" || activeRun?.mode === "more")
-                ? "Generating…"
-                : hasAngles ? "Generate more (PreCut, legacy)" : "Generate ideas (PreCut, legacy)"}
-            </button>
-            <button
-              className="btn"
-              onClick={handleAnalyze}
-              disabled={transcriptCount === 0 || producerBusy}
-              title="Older 'Analyze & Recommend' flow — pitches 3-5 deliverable concepts"
-            >
-              Analyze & recommend
-            </button>
-            <button
-              className="btn"
-              onClick={() => setShowBriefForm(true)}
-              disabled={transcriptCount === 0 || producerBusy}
-              title="Older flow — user supplies preset + brief, the AI producer builds a full deliverable"
-            >
-              Create custom brief
-            </button>
-          </div>
-        </details>
-        {/* Drop 4.47.2: footage-only escape hatch. Always-visible button
-         * for users who have an API key but just want a Premiere project
-         * skeleton with their footage organized — no AI ideas, no API
-         * credits used. Mirrors the path the no-key empty state has used
-         * since 4.44, but available to ALL users. */}
-        <button
-          className="btn btn-ghost"
-          onClick={() => requestExport(true)}
-          disabled={producerBusy}
-          title="Skip ideas — export a Premiere project with just your indexed footage. No API credits used."
-        >
-          Skip ideas — export footage only
-        </button>
-        <HelpTooltip align="right">
-          Builds a Premiere XML containing your A-roll with synced audio,
-          your tagged B-roll library, and the standard bin tree —{" "}
-          <strong>without</strong> any AI-generated story sequences.
-          Useful when you just want a clean project skeleton to start
-          editing manually. Doesn&rsquo;t use any API credits.
-        </HelpTooltip>
         <div className="action-hint">
           {transcriptCount > 0
-            ? `Using ${transcriptCount} transcribed A-roll file${transcriptCount !== 1 ? "s" : ""}`
+            ? `${transcriptCount} transcribed A-roll file${transcriptCount !== 1 ? "s" : ""}`
             : "Transcribe A-roll first"}
+        </div>
+        <div className="rv-menu">
+          <button className="btn btn-icon" aria-haspopup="menu" aria-expanded={moreOpen} aria-label="More" title="More" onClick={() => setMoreOpen((x) => !x)}>⋯</button>
+          {moreOpen && (
+            <>
+              <div className="rv-menu-scrim" onMouseDown={() => setMoreOpen(false)} />
+              <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setMoreOpen(false); }}>
+                <button role="menuitem" disabled={producerBusy} onClick={() => { setMoreOpen(false); requestExport(true); }} title="Export a Premiere project with just your indexed footage. No API credits used.">Export footage only (skip ideas)</button>
+                <hr />
+                <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); (hasAngles ? handleRequestMoreAngles : handleGenerateAngles)(); }} title="PreCut's original angle generator: one quick pass over the transcript, no audience goal, no research.">{hasAngles ? "Generate more (original method)" : "Generate ideas (original method)"}</button>
+                <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); handleAnalyze(); }}>Analyze and recommend</button>
+                <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); setShowBriefForm(true); }}>Create custom brief…</button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -953,23 +907,17 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
           <span className="idea-card-meta-label">CTA:</span> {cta}
         </div>
       )}
-      {briefPath && (
-        <div className="idea-card-meta-row">
-          <span className="idea-card-meta-label">Brief file:</span>{" "}
-          <span className="idea-card-brief-path" title="Open this file to see the full pitch, sequence, and every sourced example link — for the editor cutting this timeline">
-            {briefPath}
-          </span>
-        </div>
-      )}
-
       <div className="idea-card-research">
         <button
           type="button"
           className="btn btn-link btn-sm"
           onClick={handleToggleResearch}
         >
-          {showResearch ? "Hide research" : "Show research"}
+          {showResearch ? "Hide research" : "Research"}
         </button>
+        {briefPath && (
+          <button type="button" className="btn btn-link btn-sm" title={briefPath} onClick={() => sendCommand({ type: "open_path", path: briefPath })}>Open brief</button>
+        )}
         {showResearch && (
           research === undefined ? (
             <div className="idea-card-research-body idea-card-research-loading">

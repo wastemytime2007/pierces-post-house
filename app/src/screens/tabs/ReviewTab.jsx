@@ -89,7 +89,9 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [menuOpen, setMenuOpen] = useState(false);                 // the More menu
   const keysRef = useRef({});                                      // the latest handlers for the keyboard shortcuts (set below, after they exist)
   useEffect(() => {
+    const shown = () => document.querySelector(".review-tab")?.offsetParent !== null;     // the tab stays mounted while another tab is showing
     const onKey = (e) => {
+      if (!shown()) return;
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       const k = keysRef.current;
       const fire = (fn) => { if (fn) { e.preventDefault(); fn(); } };
@@ -99,8 +101,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
       else if (e.key === "[") fire(k.older);
       else if (e.key === "]") fire(k.newer);
     };
+    const onMenu = (e) => {
+      if (!shown()) return;
+      const k = keysRef.current;
+      ({ open_xml: k.open, open_premiere: k.premiere, get_creative: k.creative, older_version: k.older, newer_version: k.newer }[e.detail] || (() => {}))();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("posthouse-menu", onMenu);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("posthouse-menu", onMenu); };
   }, []);
   const [finishOpts, setFinishOpts] = useState(() => {
     try { return { fillers: true, captions: true, music: true, bleep: true, graphics: true, sfx: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true, graphics: true, sfx: true }; }
@@ -137,7 +145,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
       : busy === "applying" ? "applying notes…"
       : incoming ? "new export ready"
       : versions.length ? `${versions[cur]?.label || "V1"} open`
-      : exportsList.length ? "cut ready" : "notes on a cut"
+      : exportsList.length ? "cut ready" : ""
     );
   }, [onStatus, busy, incoming, versions, cur, exportsList, making, auto.status]);
 

@@ -4882,3 +4882,39 @@ kbd {
 .pm-tab > h2 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
 .pm-tab-row > .pm-tab-field, .pm-tab-row > label { flex: 1; min-width: 0; }
 .pm-tab-submit { align-self: flex-start; min-height: var(--control-h); padding: 0 18px; }
+
+/* Shell (2026-10-21): title bar with one Settings menu; project navigation as a toolbar with a segmented control */
+.titlebar { padding: 0 var(--gutter); border-bottom: 1px solid var(--separator); background: var(--bg-0); }
+.titlebar-brand { font-size: var(--text-body); color: var(--fg-0); }
+.titlebar-status { -webkit-app-region: no-drag; }
+.app-menu-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.app-menu-btn.attention { color: var(--warn); }
+.app-menu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.rv-menu-note { color: var(--fg-1); font-size: var(--text-footnote); }
+.rv-menu-list button:hover:not(:disabled) .rv-menu-note { color: var(--on-accent); }
+.app-menu .rv-menu-list { min-width: 260px; }
+
+.project-nav { height: 48px; padding: 0 var(--gutter); gap: var(--space-3); border-bottom: 1px solid var(--separator); background: var(--bg-0); }
+.project-nav-back { font-size: var(--text-body); color: var(--accent); }
+.project-nav-tabs { margin: 0 auto 0 var(--space-3); display: inline-flex; gap: 2px; padding: 2px; background: var(--bg-2); border-radius: var(--radius-sm); }
+.project-tab { flex-direction: row; align-items: center; gap: 6px; padding: 0 14px; height: 24px; border: 0; border-radius: 5px; color: var(--fg-1); font: inherit; font-size: var(--text-body); }
+.project-tab:hover:not(:disabled):not(.active) { background: var(--bg-3); }
+.project-tab.active { background: var(--bg-4); color: var(--fg-0); border-bottom: 0; }
+.project-tab-label, .project-tab.active .project-tab-label { color: inherit; font-size: var(--text-body); font-weight: 500; }
+.project-tab-sub { color: var(--fg-1); font-size: var(--text-footnote); }
+.project-nav-spacer { display: none; }
+.project-main { grid-template-columns: 1fr 360px; }
+.project-sidebar { border-left: 1px solid var(--separator); }
+
+/* Names some older rules use without defining them: they take the same values as the text tokens */
+:root { --text-1: var(--fg-0); --text-2: var(--fg-1); --text-3: var(--fg-2); --font-base: var(--font-ui); }
+
+/* Ideas tab (2026-10-21): one primary action, quiet cards; orange is kept for attention */
+.ideas-actions { padding: 0 0 12px; margin-bottom: 0; border-bottom: 1px solid var(--separator); }
+.idea-card { border-color: var(--separator); }
+.idea-card.is-angle { border-color: var(--separator); background: var(--bg-1); }
+.idea-card.is-selected { border-color: var(--accent); }
+.idea-card-angle-badge { color: var(--fg-1); font-weight: 500; letter-spacing: 0; }
+.idea-card-kind { color: var(--fg-1); }
+.titlebar-wordmark { font-weight: 600; font-size: var(--text-title); color: var(--fg-0); letter-spacing: -0.01em; }
+.titlebar-sep { color: var(--fg-2); }

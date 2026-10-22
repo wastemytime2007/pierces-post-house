@@ -29,6 +29,7 @@
             return null;
           },
         };
+        window.__backend = (ev) => (window.__handlers["backend-event"] || []).forEach((id) => window["_" + id] && window["_" + id]({ event: "backend-event", id, payload: JSON.stringify(ev) }));
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
       })();
     </script>

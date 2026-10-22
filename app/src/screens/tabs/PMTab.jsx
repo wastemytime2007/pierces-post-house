@@ -442,7 +442,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         </select>
         {!audienceProfiles?.length && (
           <span className="form-hint">
-            None yet. Add one with “audiences &amp; goals” in the title bar.
+            None yet. Add one in Settings > Audiences and goals.
           </span>
         )}
         {/* 2026-09-11, Ryan: "I keep setting the audience and organizing to

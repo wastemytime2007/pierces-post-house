@@ -37,6 +37,12 @@ export default function ProjectView({
   // goals" button, not per-project.
   audienceProfiles,
 }) {
+  const [showNavMenu, setShowNavMenu] = useState(false);
+  useEffect(() => {
+    const onMenu = (e) => { if (e.detail === "toggle_activity") setShowLog((x) => !x); };
+    window.addEventListener("posthouse-menu", onMenu);
+    return () => window.removeEventListener("posthouse-menu", onMenu);
+  }, []);
   const [activeTab, setActiveTab] = useState("pm");
   const [reviewSub, setReviewSub] = useState("notes on a cut"); // the Review tab reports what it is doing ("building the cut…", "V2 open")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -281,46 +287,25 @@ export default function ProjectView({
         <button className="project-nav-back" onClick={onClose}>
           ‹ Projects
         </button>
-        <div className="project-nav-tabs">
-          <Tab
-            label="Project"
-            active={activeTab === "pm"}
-            onClick={() => setActiveTab("pm")}
-            sub={project.sources.length ? `${project.sources.length} source${project.sources.length !== 1 ? "s" : ""}` : "no sources yet"}
-          />
-          <Tab
-            label="Ideas"
-            active={activeTab === "ideas"}
-            onClick={() => setActiveTab("ideas")}
-            sub={ideas.length ? `${ideas.length} cards` : "none"}
-            disabled={transcriptCount === 0 && ideas.length === 0}
-          />
-          <Tab
-            label="Review"
-            active={activeTab === "review"}
-            onClick={() => setActiveTab("review")}
-            sub={reviewSub}
-          />
+        <div className="project-nav-tabs" role="tablist" aria-label="Project sections">
+          <Tab label="Project" active={activeTab === "pm"} onClick={() => setActiveTab("pm")} sub={project.sources.length ? `${project.sources.length}` : ""} />
+          <Tab label="Ideas" active={activeTab === "ideas"} onClick={() => setActiveTab("ideas")} sub={ideas.length ? `${ideas.length}` : ""} disabled={transcriptCount === 0 && ideas.length === 0} />
+          <Tab label="Review" active={activeTab === "review"} onClick={() => setActiveTab("review")} sub={reviewSub} />
         </div>
         <div className="project-nav-spacer" />
+        <button className="btn btn-sm" aria-pressed={showLog} onClick={() => setShowLog((x) => !x)} title="Show or hide the activity log">Activity</button>
         {onDelete && (
-          <button
-            className="project-nav-delete-icon"
-            title="Delete this project"
-            onClick={() => setShowDeleteConfirm(true)}
-            aria-label="Delete this project"
-          >
-            {/* Minimal trash icon, SVG keeps it crisp at any DPI */}
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M2.5 3.5h9m-7 0V2.5a1 1 0 011-1h3a1 1 0 011 1v1m-6 0v7a1 1 0 001 1h5a1 1 0 001-1v-7m-5 2v4m3-4v4"
-                stroke="currentColor"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
+          <div className="rv-menu">
+            <button className="btn btn-sm btn-icon" aria-haspopup="menu" aria-expanded={showNavMenu} aria-label="More" title="More" onClick={() => setShowNavMenu((x) => !x)}>⋯</button>
+            {showNavMenu && (
+              <>
+                <div className="rv-menu-scrim" onMouseDown={() => setShowNavMenu(false)} />
+                <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setShowNavMenu(false); }}>
+                  <button role="menuitem" className="danger" onClick={() => { setShowNavMenu(false); setShowDeleteConfirm(true); }}>Delete project…</button>
+                </div>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -375,14 +360,7 @@ export default function ProjectView({
             <LogView entries={log} onClear={onClearLog} />
           </aside>
         ) : (
-          <button
-            className="log-reveal-tab"
-            onClick={() => setShowLog(true)}
-            title="Show activity log"
-            aria-label="Show activity log"
-          >
-            ‹ Log
-          </button>
+          null
         )}
       </div>
     </div>
@@ -393,6 +371,8 @@ function Tab({ label, active, onClick, sub, disabled }) {
   return (
     <button
       className={`project-tab ${active ? "active" : ""} ${disabled ? "disabled" : ""}`}
+      role="tab"
+      aria-selected={!!active}
       onClick={onClick}
       disabled={disabled}
     >

@@ -626,6 +626,53 @@ fn setup_reset(app: AppHandle) -> Result<(), String> {
 // Entry point
 // ---------------------------------------------------------------------------
 
+fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
+    let item = |id: &str, label: &str, accel: &str| MenuItemBuilder::with_id(id, label).accelerator(accel).build(app);
+    let settings = item("settings", "Settings…", "CmdOrCtrl+,")?;
+    let app_menu = SubmenuBuilder::new(app, "Post House")
+        .about(None)
+        .separator()
+        .item(&settings)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+    let file = SubmenuBuilder::new(app, "File")
+        .item(&item("open_xml", "Open XML…", "CmdOrCtrl+O")?)
+        .item(&item("open_premiere", "Open in Premiere", "CmdOrCtrl+E")?)
+        .separator()
+        .close_window()
+        .build()?;
+    let edit = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+    let review = SubmenuBuilder::new(app, "Review")
+        .item(&item("get_creative", "Get Creative…", "CmdOrCtrl+G")?)
+        .separator()
+        .item(&item("older_version", "Previous Version", "CmdOrCtrl+[")?)
+        .item(&item("newer_version", "Next Version", "CmdOrCtrl+]")?)
+        .build()?;
+    let view = SubmenuBuilder::new(app, "View")
+        .item(&item("toggle_activity", "Show Activity Log", "CmdOrCtrl+Alt+L")?)
+        .separator()
+        .fullscreen()
+        .build()?;
+    let window = SubmenuBuilder::new(app, "Window").minimize().maximize().build()?;
+    MenuBuilder::new(app).items(&[&app_menu, &file, &edit, &review, &view, &window]).build()
+}
+
 fn main() {
     let backend: SharedBackend = Arc::new(Mutex::new(BackendHandle::new()));
     let setup_child: SharedSetupChild = Arc::new(Mutex::new(None));
@@ -636,6 +683,15 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .manage(backend)
         .manage(setup_child)
+        .menu(build_menu)
+        // Menu commands go to the page as one event; the page decides what each one means on the screen it is showing.
+        .on_menu_event(|app, event| {
+            let id = event.id().0.clone();
+            if !matches!(id.as_str(), "open_xml" | "open_premiere" | "get_creative" | "older_version" | "newer_version" | "settings" | "toggle_activity") {
+                return;
+            }
+            let _ = app.emit("menu-command", id);
+        })
         .invoke_handler(tauri::generate_handler![
             send_to_backend,
             backend_status,

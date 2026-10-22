@@ -506,6 +506,17 @@ export default function App() {
   const canCallLLM = !!settings
     && (settings.active_source !== "none" || settings.llm_via_cli);
 
+  const [showAppMenu, setShowAppMenu] = useState(false);
+  // Native menu bar commands (src-tauri/src/main.rs): Settings and the activity log belong to the shell, the rest to whichever screen is showing.
+  useEffect(() => {
+    let off;
+    listen("menu-command", (e) => {
+      if (e.payload === "settings") setShowSettings(true);
+      else window.dispatchEvent(new CustomEvent("posthouse-menu", { detail: e.payload }));
+    }).then((u) => { off = u; });
+    return () => { if (off) off(); };
+  }, []);
+
   const apiKeyBadgeText = settings
     ? settings.active_source === "settings"
       ? `key …${settings.key_suffix} (saved)`
@@ -546,11 +557,7 @@ export default function App() {
     <div className="app">
       <header className="titlebar">
         <div className="titlebar-brand">
-          <img
-            src={precutLogo}
-            alt="PreCut"
-            className="titlebar-logo"
-          />
+          <span className="titlebar-wordmark">Post House</span>
           {project && (
             <>
               &nbsp;&nbsp;<span className="titlebar-sep">/</span>
@@ -559,44 +566,31 @@ export default function App() {
           )}
         </div>
         <div className="titlebar-status">
-          {/* Drop 4.46: Default Includes button — opens the AutoIncludeModal
-              where users configure files/folders to silently add to every
-              export. Same titlebar slot as the API-key button so it's
-              equally discoverable. */}
-          <button
-            className="api-key-badge"
-            onClick={() => setShowAutoInclude(true)}
-            title="Files to auto-include in every export"
-            style={{ marginRight: 8 }}
-          >
-            default includes
-            {autoIncludeRules.length > 0 ? ` · ${autoIncludeRules.length}` : ""}
-          </button>
-          {/* Audience & content-goal profiles, authored once here and
-              picked from a dropdown at Project Manager intake (per Ryan,
-              2026-09-03) rather than retyped as free text per project. */}
-          <button
-            className="api-key-badge"
-            onClick={() => setShowAudienceProfiles(true)}
-            title="Audiences & content goals for Project Manager intake"
-            style={{ marginRight: 8 }}
-          >
-            audiences & goals
-            {audienceProfiles.length > 0 ? ` · ${audienceProfiles.length}` : ""}
-          </button>
-          {settings && (
-            <button
-              className={apiKeyBadgeClass}
-              onClick={() => setShowSettings(true)}
-              title="Manage API key"
-            >
-              {apiKeyBadgeText}
+          {!backendReady && <span className="titlebar-status-text" role="status">Starting…</span>}
+          <div className="rv-menu app-menu">
+            <button className={`btn btn-sm app-menu-btn ${settings && !canCallLLM ? "attention" : ""}`} aria-haspopup="menu" aria-expanded={showAppMenu} onClick={() => setShowAppMenu((x) => !x)}>
+              Settings
+              {settings && !canCallLLM && <span className="app-menu-dot" aria-label="API key needed" />}
             </button>
-          )}
-          <span className={`status-dot ${backendReady ? "live" : ""}`} />
-          <span className="titlebar-status-text">
-            {backendReady ? "backend connected" : "starting backend…"}
-          </span>
+            {showAppMenu && (
+              <>
+                <div className="rv-menu-scrim" onMouseDown={() => setShowAppMenu(false)} />
+                <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setShowAppMenu(false); }}>
+                  {settings && (
+                    <button role="menuitem" onClick={() => { setShowAppMenu(false); setShowSettings(true); }}>
+                      <span>API key…</span><span className="rv-menu-note">{apiKeyBadgeText}</span>
+                    </button>
+                  )}
+                  <button role="menuitem" onClick={() => { setShowAppMenu(false); setShowAudienceProfiles(true); }}>
+                    <span>Audiences and goals…</span>{audienceProfiles.length > 0 && <span className="rv-menu-note">{audienceProfiles.length}</span>}
+                  </button>
+                  <button role="menuitem" onClick={() => { setShowAppMenu(false); setShowAutoInclude(true); }}>
+                    <span>Default includes…</span>{autoIncludeRules.length > 0 && <span className="rv-menu-note">{autoIncludeRules.length}</span>}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
