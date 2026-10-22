@@ -32,6 +32,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const makingRef = useRef("");
   const [making, setMaking] = useState(""); // the cut is being made from the ideas picked on the Ideas tab ("Review this cut"): what it is doing now
   // One XML that holds many sequences (a Premiere SEQS bin exported in one go): listed here, each one opened is cut out into its own XML and reviewed like any single cut.
+  const [graphicCount, setGraphicCount] = useState(0);              // graphics moved or scaled on the page and not yet made into a version
   const [reading, setReading] = useState("");                      // the XML being read for its sequences
   const [creative, setCreative] = useState(null);                // Get Creative's batch: { running, state: { state, started, items: [{ xml, name, status, step, message, final_xml }] } }; the truth is on disk (get_creative.json), this is what the tab last heard
   const [creativeHidden, setCreativeHidden] = useState("");         // the started-stamp of a finished batch the person hid
@@ -254,6 +255,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           return next;
         });
         setNoteCount(0);
+        setGraphicCount(0);
         setExportResult(null);
         setShowLedger(true);
         if (ev.message) setInfo(ev.message);                                                              // e.g. the layers that were put back, or why they could not be
@@ -357,6 +359,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
         submitRef.current?.();
         return;
       }
+      if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:graphics") {
+        setGraphicCount(e.data.n || 0);
+        return;
+      }
       if (frameRef.current && e.source === frameRef.current.contentWindow && e.data?.type === "review:count") {
         setNoteCount(e.data.n || 0);
         readyRef.current = true;
@@ -439,6 +445,22 @@ export default function ReviewTab({ subscribe, onStatus }) {
   useEffect(() => {
     if (creativeKey) sendCommand({ type: "creative_status", xml: creativeKey }).catch(() => {});      // a batch left running, or finished while the tab was away
   }, [creativeKey]);
+
+  // Graphics moved or scaled on the page (drag the box, scale it) become the cut's next version: Basic Motion on each graphic's own clip, nothing redrawn.
+  const applyGraphics = async () => {
+    if (!version) return;
+    setError("");
+    setInfo("");
+    try {
+      const payload = await askNotes();
+      const edits = payload?.graphic_edits || [];
+      if (!edits.length) { setInfo("No graphic has been moved or scaled on the page."); return; }
+      await sendCommand({ type: "edit_graphics", xml: version.xml, edits, root: versionsRef.current[0].xml, label: `V${versionsRef.current.length + 1}` });
+    } catch (e) {
+      setBusy("");
+      setError(String(e.message || e));
+    }
+  };
 
   const startCreative = async (xmls) => {
     if (!xmls.length) return;
@@ -684,7 +706,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         <div className="ai-strip working" role="status" aria-live="polite">
           <span className="ai-dot" />
           <div className="ai-strip-main">
-            <div className="ai-strip-title">{CREATIVE_STAGE ? (busy === "applying" ? "Getting creative" : "Working") : auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
+            <div className="ai-strip-title">{CREATIVE_STAGE ? (busy === "applying" ? "Working on the cut" : "Working") : auto.status === "running" || busy === "applying" ? "The AI editor is working" : "Working"} <span className="ai-time">{secs}s on this step</span></div>
             <div className="ai-strip-sub">{what}</div>
             {!CREATIVE_STAGE && (auto.status === "running" || busy === "applying") && (
               <div className="ai-steps">
@@ -800,6 +822,12 @@ export default function ReviewTab({ subscribe, onStatus }) {
               : `Submit changes → V${versions.length + 1}`}
         </button>
         </>)}
+        {graphicCount > 0 && (
+          <button className="btn btn-primary" onClick={applyGraphics} disabled={!!busy || !!creative?.running}
+            title="Make the next version with the graphics where you put them. Nothing is redrawn; each graphic is moved or scaled on its own clip, and stays adjustable in Premiere.">
+            Apply {graphicCount} graphic change{graphicCount === 1 ? "" : "s"} → V{versions.length + 1}
+          </button>
+        )}
         <button className="btn btn-ghost" onClick={() => setFinishing((x) => !x)}
           title="Cut the ums and uhs, then add captions, a title card and name tag, music and the bleep, as new versions. Can run on every sequence you opened, in the background." disabled={!!busy || auto.status === "running" || !!creative?.running}>
           Get Creative…

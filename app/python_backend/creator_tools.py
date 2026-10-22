@@ -1194,6 +1194,52 @@ def _creative_one(xml: str, o: dict, emit, say, it: dict) -> str:
     return "; ".join(did) if did else "nothing was chosen to do"
 
 
+def edit_graphics(xml: str, edits: list[dict], out: str | None = None, height: int = 540, on_stage=None) -> dict:
+    """Move and scale on-screen graphics: the next version of a cut with each graphic in `edits` ({"id", "dx", "dy", "scale"}: the graphic's clip id, its move as fractions of the frame, its size in percent)
+    written as Basic Motion on its own clip (labs/review_loop/graphics_edit.py). Nothing is re-rendered and nothing else changes; the result is read back and the preview is rebuilt with the graphics where they now are.
+    Same shape as finish_cut's result so the Review tab opens it as the next version."""
+    src = Path(xml).expanduser()
+    if not src.is_file():
+        raise ToolError(f"that XML is not there: {src}")
+    if not edits:
+        raise ToolError("no graphic was moved or scaled")
+    use_labs()
+    import graphics_edit as ge
+    stage = on_stage or (lambda _s: None)
+    stage("Reading the graphics on this cut")
+    found = {g["id"]: g for g in ge.describe(src)}
+    unknown = [e.get("id") for e in edits if e.get("id") not in found]
+    if unknown:
+        raise ToolError(f"these graphics are not on this version of the cut: {unknown}")
+    W, H = found[edits[0]["id"]]["_size"]
+    centers = {i: ((g["box"][0] + g["box"][2]) / 2 * W, (g["box"][1] + g["box"][3]) / 2 * H) for i, g in found.items()}
+    folder, name = (Path(out).expanduser(), src.name) if out else free_version_folder(src)
+    folder.mkdir(parents=True, exist_ok=True)
+    dst = folder / name
+    try:
+        ge.apply(src, dst, edits, centers, W, H)
+    except ge.GraphicsError as exc:
+        raise ToolError(str(exc)) from exc
+    bad = [f"{n}: {d}" for n, ok, d in ge.check(src, dst, edits, centers, W, H) if not ok]
+    if bad:
+        raise ToolError("The edited cut did not pass its own checks, so it was not kept:\n" + "\n".join(bad))
+    stage("Building the review page")
+    from build_review import build
+    build(dst, folder, height=height)
+    items = []
+    for i, e in enumerate(edits, start=1):
+        g = found[e["id"]]
+        moved = []
+        if abs(float(e.get("dx", 0))) > 1e-6 or abs(float(e.get("dy", 0))) > 1e-6:
+            moved.append(f"moved {float(e.get('dx', 0)) * 100:+.1f}% across and {float(e.get('dy', 0)) * 100:+.1f}% down")
+        if abs(float(e.get("scale", 100)) - 100) > 1e-6:
+            moved.append(f"scaled to {float(e.get('scale', 100)):g}%")
+        items.append({"note": i, "note_time": 0, "note_text": "Graphic: " + g["label"], "op": "graphic", "applied": True, "failed": False,
+                      "summary": f"{g['label']}: " + (" and ".join(moved) if moved else "put back as it was made"), "why": ""})
+    return {"folder": str(folder), "items": items, "applied": len(items), "notes": len(items), "xml": str(dst), "page": str(folder / "review.html"),
+            "url": serve_review(folder), "qa": None, "message": ""}
+
+
 def idea_direction(xml: str | Path) -> str:
     """What the chosen idea says the cut is for, as the direction the AI reviewer judges the story by. A cut made from a generated idea carries the idea's id in its name (`<project> <last 8 of the id> <time>`);
     the idea (plans/idea_*<id>.json: title, thesis, hook, tone, call to action, and the story order with a label on each range) is read from the project folder. The person does not retype it. Empty when the cut

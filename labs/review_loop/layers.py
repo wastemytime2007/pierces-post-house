@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+from timeline import motion_of as timeline_motion_of  # noqa: E402
 from timeline import (LAYER_AUDIO_PREFIX, LAYER_VIDEO_PREFIX, TimelineError, _collect_file_defs, _decode_pathurl,
                       _effective_fps, _rate_of, _seq_for_cut)
 
@@ -31,6 +32,8 @@ class Layer:
     track: int
     src_in: float = 0.0  # where in the file this piece starts (a split layer has several pieces of one file)
     src_out: float = 0.0
+    cid: str = ""        # the clipitem's id in the XML, which names it for an edit
+    motion: tuple | None = None   # its Basic Motion (scale percent, center.horiz, center.vert), None when it has none
 
 
 def find_layers(xml: Path) -> list[Layer]:
@@ -58,7 +61,7 @@ def find_layers(xml: Path) -> list[Layer]:
                     raise TimelineError(f"layer file not found: {path}")
                 out.append(Layer(kind, ci.findtext("name") or Path(path).name, path,
                                  int(ci.findtext("start")) / fps, int(ci.findtext("end")) / fps, ti,
-                                 int(ci.findtext("in")) / fps, int(ci.findtext("out")) / fps))
+                                 int(ci.findtext("in")) / fps, int(ci.findtext("out")) / fps, ci.get("id") or "", timeline_motion_of(ci) if kind == "video" else None))
     return sorted(out, key=lambda l: (l.kind != "video", l.track, l.start))
 
 
@@ -162,7 +165,13 @@ def composite(base: Path, layers: list[Layer], out: Path) -> None:
         cmd += ["-i", l.path]
     graph, prev = [], "0:v"
     for i in range(1, len(vids) + 1):
-        graph.append(f"[{i}:v]scale={w}:{h},fps=30[l{i}];[{prev}][l{i}]overlay=eof_action=pass:format=auto[o{i}]")
+        m = vids[i - 1].motion                                    # a graphic moved or scaled (graphics_edit.py): Premiere scales a clip about its centre and `center` is where that centre lands
+        if m and (abs(m[0] - 100) > 1e-6 or abs(m[1]) > 1e-9 or abs(m[2]) > 1e-9):
+            s = m[0] / 100.0
+            graph.append(f"[{i}:v]scale={w}:{h},fps=30,scale={max(2, round(w * s))}:{max(2, round(h * s))}[l{i}];"
+                         f"[{prev}][l{i}]overlay=x={w * (0.5 + m[1] - s / 2):.2f}:y={h * (0.5 + m[2] - s / 2):.2f}:eof_action=pass:format=auto[o{i}]")
+        else:
+            graph.append(f"[{i}:v]scale={w}:{h},fps=30[l{i}];[{prev}][l{i}]overlay=eof_action=pass:format=auto[o{i}]")
         prev = f"o{i}"
     apart = []
     for j, l in enumerate(auds):

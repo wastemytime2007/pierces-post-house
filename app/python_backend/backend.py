@@ -1278,6 +1278,31 @@ def handle_finish_cut(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_edit_graphics(cmd: dict) -> None:
+    """Graphics moved or scaled on the review page become the cut's next version (Basic Motion on each graphic's own clip). Background job: the preview is rebuilt."""
+    xml, edits = cmd.get("xml"), cmd.get("edits") or []
+    if not xml or not edits:
+        err("edit_graphics needs an 'xml' and the 'edits'")
+        return
+    job_id = cmd.get("job_id") or f"graphics-{int(time.time())}"
+    emit({"type": "notes_started", "job_id": job_id, "xml": xml, "notes": "(moving graphics)"})
+
+    def worker():
+        import creator_tools
+        try:
+            result, printed = creator_tools.capture(creator_tools.edit_graphics, xml, edits, cmd.get("out"), int(cmd.get("height", 540)), lambda s: emit({"type": "notes_stage", "job_id": job_id, "stage": s}))
+            for row in printed:
+                log("info", row)
+            emit({"type": "notes_applied", "job_id": job_id, "root": cmd.get("root"), "label": cmd.get("label"), "auto": True, "graphics": True, **result})
+        except creator_tools.ToolError as exc:
+            emit({"type": "notes_failed", "job_id": job_id, "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", job_id=job_id, tb=traceback.format_exc())
+            emit({"type": "notes_failed", "job_id": job_id, "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
 def handle_ai_review(cmd: dict) -> None:
     """The AI review of a version of the cut: findings come back as notes the review page can carry. Background job (transcribes the cut and asks the local claude CLI)."""
     xml = cmd.get("xml")
@@ -1497,6 +1522,7 @@ HANDLERS = {
     "export_timelines": handle_export_timelines,
     "review_cut": handle_review_cut,
     # Creator-workflow tools (labs/)
+    "edit_graphics": handle_edit_graphics,
     "get_creative": handle_get_creative,
     "creative_status": handle_creative_status,
     "creative_stop": handle_creative_stop,

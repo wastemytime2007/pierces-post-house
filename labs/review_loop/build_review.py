@@ -96,6 +96,12 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
     if changes:
         data["changes"] = changes
     data["beatmap"] = beatmap(cut, layers, changes["items"] if changes else None, suspects)
+    try:                                              # the graphics on this cut as the page lets them be moved and scaled (graphics_edit.py); describing them must never fail a build
+        import graphics_edit
+        data["graphics"] = [{k: v for k, v in g.items() if not k.startswith("_")} for g in graphics_edit.describe(xml, out / "graphic_pictures")] if layers else []
+    except Exception as exc:
+        print(f"  [SKIP] GRAPHICS-LIST  could not describe the graphics: {type(exc).__name__}: {exc}")
+        data["graphics"] = []
     (out / "timeline.json").write_text(json.dumps(data, indent=2))
     html = (HERE / "review_template.html").read_text().replace(
         "/*__DATA__*/null", json.dumps(data).replace("</", "<\\/"))
