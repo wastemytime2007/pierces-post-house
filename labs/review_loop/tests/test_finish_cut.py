@@ -262,7 +262,18 @@ class FakeG(Fake):
         args = [str(a) for a in cmd[2:]]
         if script == "make_title.py":
             self.calls.append(script)
-            Path(args[args.index("--out") + 1]).mkdir(parents=True, exist_ok=True)
+            out = Path(args[args.index("--out") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            self.title_args = args
+            if "--split" in args:                                       # separate graphics: the overlay, the title lines, each name tag
+                spec = json.loads(Path(args[args.index("--spec") + 1]).read_text())
+                keys = (["overlay"] + (["title"] if any((spec.get("title") or {}).get(k) for k in ("small", "big", "joke")) else []) if spec.get("title") else []) + [f"tag-{i}" for i, _ in enumerate(spec.get("lower_thirds", []), 1)]
+                layers = []
+                for k in keys:
+                    folder = out.parent / f"{out.name}_{k}"
+                    folder.mkdir(parents=True, exist_ok=True)
+                    layers.append({"key": k, "name": f"Graphic - {k}.mov", "folder": str(folder), "start_sec": 0.0, "duration_sec": 1.0})
+                (out / "placement.json").write_text(json.dumps({"kind": "title_layers", "layers": layers, "plan": {}}))
             return subprocess.CompletedProcess(cmd, 0, "", "")
         if script == "make_audio.py":
             out = Path(args[args.index("--out") + 1])
@@ -290,7 +301,9 @@ def test_graphics_come_before_the_captions_and_the_captions_keep_clear_of_them(x
     r = fc.run(xml, tmp_path / "out", music=False, bleep=False, graphics=True, runner=f, bleep_fn=f.bleep, graphics_fn=plan_stub())
     assert [s["name"] for s in r["steps"] if s["name"] != "punch-in"] == ["graphics", "captions"]
     assert f.calls.index("make_title.py") < f.calls.index("make_captions.py")
-    assert "--avoid" in f.caption_args and str(tmp_path / "out" / "graphics") in f.caption_args
+    avoided = [a for i, a in enumerate(f.caption_args) if i and f.caption_args[i - 1] == "--avoid"]
+    assert "--split" in f.title_args, "the graphics are made as separate clips"
+    assert [Path(a).name for a in avoided] == ["graphics_overlay", "graphics_title", "graphics_tag-1", "graphics_tag-2"], avoided     # the captions keep clear of each graphic
     assert "Bob and Mitch" in r["steps"][1]["summary"] and "lower thirds" in r["steps"][1]["summary"]
 
 

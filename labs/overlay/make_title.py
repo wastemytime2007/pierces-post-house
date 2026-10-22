@@ -17,6 +17,8 @@ SOURCE frame, so after a revision the layer is rebuilt on the new cut (`--xml <n
 from __future__ import annotations
 
 import argparse
+import copy
+import re
 import html
 import json
 import math
@@ -102,7 +104,7 @@ def plan(spec: dict, timeline_d: dict, zone_end: float) -> dict:
             raise TitleError(f"lower third {i} ('{lt['name']}') would be on screen {off - t0:.2f}s, under {LT_MIN_SEC}s: too short to read")
         if off > zone_end + 1e-6:
             raise TitleError(f"lower third {i} would run past the end of the cut")
-        out["lower_thirds"].append({"anchor_time": round(t0, 4), "on": round(t0, 4), "off": off, "name": str(lt["name"]).strip(), "sub": str(lt.get("sub", "")).strip()})
+        out["lower_thirds"].append({"anchor_time": round(t0, 4), "on": round(t0, 4), "off": off, "name": str(lt["name"]).strip(), "sub": str(lt.get("sub", "")).strip(), "key": lt.get("key")})
     for lt_in, lt_out in zip(spec.get("lower_thirds", []), out["lower_thirds"]):          # a tag kept up past its clip stops where the next graphic comes on
         if lt_in.get("past_clip"):
             later = [o["on"] for o in out["lower_thirds"] if o["on"] > lt_out["on"] + 1e-6] + [lb["on"] for lb in out["labels"] if lb["on"] > lt_out["on"] + 1e-6]
@@ -152,8 +154,9 @@ def body_html(p: dict, g: dict) -> tuple[str, list[dict]]:
     dur = "__DUR__"
     if p["title"]:
         t = p["title"]
-        parts.append(f'      <div id="field" class="hf-field clip" data-start="0" data-duration="{dur}"></div>')
-        ev.append({"sel": "#field", "on": t["on"][0], "off": t["off"]})
+        if t.get("field", True):
+            parts.append(f'      <div id="field" class="hf-field clip" data-start="0" data-duration="{dur}"></div>')
+            ev.append({"sel": "#field", "on": t["on"][0], "off": t["off"]})
         for k, (key, cls, px, y) in enumerate((("small", "hf-small", g["small_px"], g["small_y"]), ("big", "hf-big", g["big_px"], g["big_y"]), ("joke", "hf-joke", g["joke_px"], g["joke_y"]))):
             if not t[key]:
                 continue
@@ -197,17 +200,72 @@ def anchors_of(spec: dict) -> list[dict]:
             + [{"what": f"lower third: {lt['name']}", **lt["anchor"]} for lt in spec.get("lower_thirds", [])])
 
 
-def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_spec) -> tuple[int, dict | None]:
-    validate_spec(spec)
-    seq = spec_of(xml)
-    cut = timeline.load_cut(xml)
-    p = plan(spec, cc.timeline_dict(cut), cut.zone_end)
-    total = round(cut.zone_end, 4)
+LAYER_PAD = 0.25            # seconds of empty frames before and after a graphic's own span in its clip: the verifier needs moments where nothing is due, and the wipes have room
+
+
+def split_plan(p: dict) -> list[tuple[str, str, dict]]:
+    """The plan cut into separate graphics, each to be its own clip (Ryan, 2026-10-21: "make the overlay and the title two separate graphics"): [(key, file name, plan)].
+
+    The navy field with its diagonals is the OVERLAY, the topic lines are the TITLE, each name tag or the call to action is its own graphic, and step labels (the wallpaper reel's) are one. All keep the
+    same layout, so laid on top of each other they look exactly as the single layer did, and each can be moved, scaled and trimmed on its own. A graphic whose element the plan does not have is not made."""
+    base = {k: v for k, v in p.items() if k not in ("title", "labels", "lower_thirds")}
+    out: list[tuple[str, str, dict]] = []
+    t = p.get("title")
+    if t:
+        out.append(("overlay", "Graphic - Overlay.mov", {**base, "title": {**t, "small": "", "big": "", "joke": "", "lines": False}, "labels": [], "lower_thirds": []}))
+        if any(t.get(k) for k in ("small", "big", "joke")):
+            out.append(("title", "Graphic - Title.mov", {**base, "title": {**t, "field": False}, "labels": [], "lower_thirds": []}))
+    if p.get("labels"):
+        out.append(("labels", "Graphic - Labels.mov", {**base, "title": None, "labels": p["labels"], "lower_thirds": []}))
+    used: set[str] = set()
+    for i, lt in enumerate(p.get("lower_thirds", []), 1):
+        what = "Call to action" if lt.get("key") == "cta" else "Tag " + re.sub(r"[^\w ]+", "", lt["name"]).strip()[:24]
+        name = f"Graphic - {what}.mov"
+        n = 2
+        while name in used:
+            name = f"Graphic - {what} {n}.mov"
+            n += 1
+        used.add(name)
+        out.append((f"tag-{i}", name, {**base, "title": None, "labels": [], "lower_thirds": [lt]}))
+    return out
+
+
+def layer_window(sp: dict, zone: float, fps: float) -> tuple[float, float]:
+    """The layer's own start and length, frame-aligned: its element's span with LAYER_PAD either side, inside the cut."""
+    spans = []
+    if sp.get("title"):
+        spans.append((sp["title"]["on"][0], sp["title"]["off"]))
+    spans += [(x["on"], x["off"]) for x in sp.get("labels", []) + sp.get("lower_thirds", [])]
+    lo, hi = min(a for a, _b in spans), max(b for _a, b in spans)
+    start_f = max(0, round((lo - LAYER_PAD) * fps))
+    end_f = min(round(zone * fps), round((hi + LAYER_PAD) * fps))
+    return start_f / fps, (end_f - start_f) / fps
+
+
+def shift_plan(sp: dict, start: float) -> dict:
+    """The plan with every time counted from the layer's own start (the way place_overlay and the captions read a layer that does not begin at 0)."""
+    s = copy.deepcopy(sp)
+    if s.get("title"):
+        s["title"]["on"] = [round(x - start, 4) for x in s["title"]["on"]]
+        s["title"]["off"] = round(s["title"]["off"] - start, 4)
+        s["title"]["anchor_time"] = round(s["title"]["anchor_time"] - start, 4)
+    for lb in s.get("labels", []):
+        lb["on"], lb["off"] = round(lb["on"] - start, 4), round(lb["off"] - start, 4)
+        lb["word_times"] = [round(x - start, 4) for x in lb["word_times"]]
+        lb["anchor_time"] = round(lb["anchor_time"] - start, 4)
+    for lt in s.get("lower_thirds", []):
+        lt["on"], lt["off"] = round(lt["on"] - start, 4), round(lt["off"] - start, 4)
+        lt["anchor_time"] = round(lt["anchor_time"] - start, 4)
+    return s
+
+
+def _build_layer(xml: Path, spec: dict, p: dict, seq: dict, out: Path, total: float, start: float, mov_name: str, what: str, render=None) -> tuple[int, dict | None]:
+    """One layer: its HyperFrames project, the render, its placement.json and its checks. `p` is the (possibly shifted) plan it draws; `start` where its clip begins on the timeline."""
     out.mkdir(parents=True, exist_ok=True)
-    proj, mov = out / "hyperframes_project", out / "title.mov"
+    proj, mov = out / "hyperframes_project", out / mov_name
     info = write_project(proj, p, seq["width"], seq["height"], total)
     n_labels = len(p["labels"])
-    print(f"title layer: {seq['width']}x{seq['height']}, {total:.2f}s, " + (f"title at {p['title']['on'][0]:.2f}s, " if p["title"] else "") + f"{n_labels} label(s), {len(p['lower_thirds'])} lower third(s)")
+    print(f"{what}: {seq['width']}x{seq['height']}, {total:.2f}s" + (f" from {start:.2f}s" if start else "") + ", " + (f"title at {p['title']['on'][0]:.2f}s, " if p["title"] else "") + f"{n_labels} label(s), {len(p['lower_thirds'])} lower third(s)")
     if render is None:
         chk = mo.hf(proj, "check")
         if "Check passed" not in chk.stdout:
@@ -223,7 +281,7 @@ def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_
             return 1, None
     else:
         render(proj, mov, seq, info)
-    placement = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": 0.0, "duration_sec": total, "overlay": mov.name, "overlay_path": str(mov.resolve()),
+    placement = {"kind": "title_layer", "place_overlay_on_timeline_at_sec": start, "duration_sec": total, "overlay": mov.name, "overlay_path": str(mov.resolve()),
                  "render": {"width": seq["width"], "height": seq["height"], "fps": seq["fps"], "fps_arg": seq["fps_arg"]},
                  "anchors": anchors_of(spec),
                  "plan": p, "layout": info["layout"], "events": info["events"], "hyperframes": mo.HF_VERSION, "gsap": mo.GSAP_VERSION}
@@ -234,8 +292,44 @@ def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_
         if v.returncode != 0:
             print(v.stderr, file=sys.stderr)
             return 1, placement
-    print(f"\nplace {mov.name} on V2 at 0 with place_overlay.py \"{xml.name}\" \"{out}\" --out <new.xml>")
     return 0, placement
+
+
+def build_layers(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_spec) -> tuple[int, dict | None]:
+    """The spec as SEPARATE graphics: one folder per graphic beside `out` ("<out>_overlay", "<out>_title", "<out>_tag-1", ...), each a short clip of only its own span, and `out` itself holds the
+    whole plan (placement.json, kind title_layers, with the list of layers in stacking order) for the tools that read what the finish made."""
+    validate_spec(spec)
+    seq = spec_of(xml)
+    cut = timeline.load_cut(xml)
+    p = plan(spec, cc.timeline_dict(cut), cut.zone_end)
+    zone = round(cut.zone_end, 4)
+    out.mkdir(parents=True, exist_ok=True)
+    layers = []
+    for key, fname, sp in split_plan(p):
+        start, total = layer_window(sp, zone, seq["fps"])
+        folder = out.parent / f"{out.name}_{key}"
+        code, placement = _build_layer(xml, spec, shift_plan(sp, start), seq, folder, total, start, fname, f"{key} layer", render)
+        if code != 0:
+            return code, None
+        layers.append({"key": key, "name": fname, "folder": str(folder), "start_sec": start, "duration_sec": total})
+    whole = {"kind": "title_layers", "layers": layers, "plan": p, "anchors": anchors_of(spec), "render": {"width": seq["width"], "height": seq["height"], "fps": seq["fps"], "fps_arg": seq["fps_arg"]},
+             "hyperframes": mo.HF_VERSION, "gsap": mo.GSAP_VERSION}
+    (out / "placement.json").write_text(json.dumps(whole, indent=2))
+    print(f"{len(layers)} separate graphic(s): " + ", ".join(l["name"].replace("Graphic - ", "").replace(".mov", "") for l in layers))
+    return 0, whole
+
+
+def build_title(xml: Path, spec: dict, out: Path, render=None, spec_of=sequence_spec) -> tuple[int, dict | None]:
+    """The spec as ONE layer the length of the cut (the original form; `build_layers` makes the separate graphics)."""
+    validate_spec(spec)
+    seq = spec_of(xml)
+    cut = timeline.load_cut(xml)
+    p = plan(spec, cc.timeline_dict(cut), cut.zone_end)
+    total = round(cut.zone_end, 4)
+    code, placement = _build_layer(xml, spec, p, seq, out, total, 0.0, "title.mov", "title layer", render)
+    if code == 0:
+        print(f"\nplace title.mov on V2 at 0 with place_overlay.py \"{xml.name}\" \"{out}\" --out <new.xml>")
+    return code, placement
 
 
 def main() -> int:
@@ -243,9 +337,10 @@ def main() -> int:
     ap.add_argument("--xml", type=Path, required=True)
     ap.add_argument("--spec", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--split", action="store_true", help="separate graphics (overlay, title, each name tag) as their own clips, in folders beside --out, instead of one layer")
     a = ap.parse_args()
     try:
-        code, _p = build_title(a.xml, json.loads(a.spec.read_text()), a.out)
+        code, _p = (build_layers if a.split else build_title)(a.xml, json.loads(a.spec.read_text()), a.out)
     except (TitleError, mo.OverlayError, timeline.TimelineError, OSError, json.JSONDecodeError) as e:
         print(f"REFUSING: {e}", file=sys.stderr)
         return 1

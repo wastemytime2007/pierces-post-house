@@ -83,7 +83,10 @@ def main() -> int:
         on, off = t["on"], t["off"]
         f1 = frame_at(mov, on[0] + 0.12, W, H)
         field = float((f1[..., 3] > 150).mean())
-        rows.append(("TITLE-FIELD", field > 0.7, f"the navy field covers {field * 100:.0f}% of the frame at {on[0] + 0.12:.2f}s" + ("" if field > 0.7 else " (wanted over 70%)")))
+        if t.get("field", True):                                           # the title lines may be their own graphic, with no field under them
+            rows.append(("TITLE-FIELD", field > 0.7, f"the navy field covers {field * 100:.0f}% of the frame at {on[0] + 0.12:.2f}s" + ("" if field > 0.7 else " (wanted over 70%)")))
+        else:
+            rows.append(("TITLE-NO-FIELD", field < 0.3, f"this graphic is the title lines only: the frame is {field * 100:.0f}% covered at {on[0] + 0.12:.2f}s (wanted under 30%)"))
         fb =[frame_at(mov, x + 0.12, W, H) for x in on]
         bands = {"small": (g["small_y"], g["small_px"]), "big": (g["big_y"], g["big_px"]), "joke": (g["joke_y"], g["joke_px"])}
 
@@ -97,7 +100,8 @@ def main() -> int:
         builds_ok &= small_now > 20 if t["small"] else small_now < 5
         builds_ok &= (big_before < 5 and big_now > 100) if t["big"] else big_now < 5
         builds_ok &= (joke_before < 5 and joke_now > 20) if t["joke"] else joke_now < 5
-        rows.append(("TITLE-BUILDS", builds_ok, f"white small line {small_now}px at build 1; orange big word {big_before}px before build 2 and {big_now}px after; orange joke {joke_before}px before build 3 and {joke_now}px after"))
+        if t.get("lines", True):                                           # an overlay-only graphic draws no lines, so there is nothing to build
+          rows.append(("TITLE-BUILDS", builds_ok, f"white small line {small_now}px at build 1; orange big word {big_before}px before build 2 and {big_now}px after; orange joke {joke_before}px before build 3 and {joke_now}px after"))
         after = off + 0.1
         if free(after):
             rows.append(("TITLE-CLEARS", coverage(frame_at(mov, after, W, H)) < 0.0005, f"fully transparent {after:.2f}s, just after the title clears at {off:.2f}s"))

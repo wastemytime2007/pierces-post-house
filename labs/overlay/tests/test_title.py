@@ -182,3 +182,73 @@ def test_a_second_line_longer_than_the_frame_wraps_and_the_box_grows_taller_insi
     p["lower_thirds"][0]["w"], p["lower_thirds"][0]["h"] = w, h
     body, _ev = mt.body_html(p, g)
     assert f"height:{h}px" in body and "white-space:normal" in body and f"max-width:{mt.lt_text_max(g)}px" in body
+
+
+# ------------------------------------------------------------------ separate graphics (Ryan, 2026-10-21: "make the overlay and the title two separate graphics")
+
+SPLIT_SPEC = {"title": {"anchor": {"source": "cam.mp4", "source_sec": 100.5}, "small": "If it is someone's home never cut corners", "big": "", "builds": [0.0, 0.2, 0.4], "hold": 2.4},
+              "lower_thirds": [{"anchor": {"source": "cam.mp4", "source_sec": 103.0}, "name": "Bob", "sub": "Builder / Founder", "until": 3.2},
+                               {"anchor": {"source": "cam.mp4", "source_sec": 200.5}, "name": "Call us for a free quote", "sub": "", "until": 3.0, "key": "cta"}]}
+
+
+def test_the_plan_splits_into_the_overlay_the_title_and_each_tag_each_with_only_its_own_element():
+    parts = mt.split_plan(mt.plan(SPLIT_SPEC, TL, 12.0))
+    assert [(k, n) for k, n, _ in parts] == [("overlay", "Graphic - Overlay.mov"), ("title", "Graphic - Title.mov"), ("tag-1", "Graphic - Tag Bob.mov"), ("tag-2", "Graphic - Call to action.mov")]
+    by = {k: sp for k, _n, sp in parts}
+    assert by["overlay"]["title"]["field"] if "field" in by["overlay"]["title"] else True
+    assert by["overlay"]["title"]["small"] == "" and by["overlay"]["title"]["lines"] is False and not by["overlay"]["lower_thirds"], "the overlay draws the field only"
+    assert by["title"]["title"]["field"] is False and by["title"]["title"]["small"].startswith("If it is") and not by["title"]["lower_thirds"], "the title draws its lines only"
+    assert by["tag-1"]["title"] is None and [x["name"] for x in by["tag-1"]["lower_thirds"]] == ["Bob"]
+    assert by["tag-2"]["lower_thirds"][0]["key"] == "cta", "the call to action keeps its key"
+
+
+def test_no_title_means_no_overlay_and_a_title_with_no_words_is_only_an_overlay():
+    p = mt.plan({"lower_thirds": SPLIT_SPEC["lower_thirds"]}, TL, 12.0)
+    assert [k for k, _n, _s in mt.split_plan(p)] == ["tag-1", "tag-2"]
+    t = {"title": {**SPLIT_SPEC["title"], "small": ""}}
+    assert [k for k, _n, _s in mt.split_plan(mt.plan(t, TL, 12.0))] == ["overlay"]
+
+
+def test_two_tags_with_the_same_name_get_different_file_names():
+    two = {"lower_thirds": [SPLIT_SPEC["lower_thirds"][0], {**SPLIT_SPEC["lower_thirds"][0], "anchor": {"source": "cam.mp4", "source_sec": 200.5}}]}
+    names = [n for _k, n, _s in mt.split_plan(mt.plan(two, TL, 12.0))]
+    assert names == ["Graphic - Tag Bob.mov", "Graphic - Tag Bob 2.mov"]
+
+
+def test_each_graphic_is_a_short_clip_of_its_own_span_with_a_margin_and_its_times_count_from_its_own_start():
+    fps = 29.97
+    p = mt.plan(SPLIT_SPEC, TL, 12.0)
+    tag = next(sp for k, _n, sp in mt.split_plan(p) if k == "tag-1")
+    start, total = mt.layer_window(tag, 12.0, fps)
+    on, off = tag["lower_thirds"][0]["on"], tag["lower_thirds"][0]["off"]
+    assert start == pytest.approx(on - mt.LAYER_PAD, abs=1 / fps) and start + total == pytest.approx(off + mt.LAYER_PAD, abs=1 / fps)
+    assert round(start * fps) == pytest.approx(start * fps, abs=1e-6) and round(total * fps) == pytest.approx(total * fps, abs=1e-6), "frame-aligned"
+    shifted = mt.shift_plan(tag, start)
+    assert shifted["lower_thirds"][0]["on"] == pytest.approx(on - start, abs=1e-3) and shifted["lower_thirds"][0]["on"] >= mt.LAYER_PAD - 1 / fps
+    assert tag["lower_thirds"][0]["on"] == on, "the original plan is not changed"
+
+
+def test_a_graphic_at_the_very_start_or_end_of_the_cut_is_kept_inside_it():
+    p = mt.plan(SPLIT_SPEC, TL, 12.0)
+    overlay = next(sp for k, _n, sp in mt.split_plan(p) if k == "overlay")
+    start, total = mt.layer_window(overlay, 3.0, 29.97)
+    assert start >= 0 and start + total <= 3.0 + 1 / 29.97
+
+
+def test_the_overlay_page_has_the_field_and_no_text_and_the_title_page_has_text_and_no_field(tmp_path, monkeypatch):
+    gs = tmp_path / "gsap.min.js"
+    gs.write_text("// gsap")
+    monkeypatch.setattr(mo, "gsap_file", lambda: gs)
+    parts = {k: sp for k, _n, sp in mt.split_plan(mt.plan(SPLIT_SPEC, TL, 12.0))}
+    over = mt.write_project(tmp_path / "o", mt.shift_plan(parts["overlay"], 0.25), 1080, 1920, 3.0)
+    title = mt.write_project(tmp_path / "t", mt.shift_plan(parts["title"], 0.25), 1080, 1920, 3.0)
+    assert [e["sel"] for e in over["events"]] == ["#field"]
+    assert "#field" not in [e["sel"] for e in title["events"]] and "#t_small" in [e["sel"] for e in title["events"]]
+    assert 'id="field"' in (tmp_path / "o" / "index.html").read_text() and 'id="field"' not in (tmp_path / "t" / "index.html").read_text()
+
+
+def test_the_timeline_map_puts_every_graphic_clip_in_one_graphics_lane_even_one_called_overlay():
+    sys.path.insert(0, str(HERE.parent / "review_loop"))
+    import layers
+    for name in ("Graphic - Overlay.mov", "Graphic - Title.mov", "Graphic - Tag Bob.mov", "Graphic - Call to action.mov"):
+        assert layers.lane_name(layers.Layer("video", name, "/x/" + name, 0.0, 1.0, 1)) == "Graphics", name

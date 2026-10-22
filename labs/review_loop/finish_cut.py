@@ -465,6 +465,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
     # 1a. graphics: a title card and name tags (made and placed before the captions, which then keep clear of them)
     sfx_times: list[float] = []
     graphics_folder: Path | None = None
+    graphics_folders: list[Path] = []
     sfx_name = ""
     cur_before = cur
     try:
@@ -484,10 +485,15 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
                 steps.append({"name": "graphics", "done": True, "summary": "no graphics: every one was taken out by your notes" + ("; " + "; ".join(gnotes) if gnotes else "")})
             else:
                 (out / "graphics_spec.json").write_text(json.dumps(spec, indent=1))
-                tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics")
-                nxt = out / "_step_graphics.xml"
-                tool("Placing the title card and lower thirds", "overlay/place_overlay.py", cur, out / "graphics", "--out", nxt)
-                cur, graphics_folder = nxt, out / "graphics"
+                tool("The title card and lower thirds", "overlay/make_title.py", "--xml", cur, "--spec", out / "graphics_spec.json", "--out", out / "graphics", "--split")
+                whole = json.loads((out / "graphics" / "placement.json").read_text())
+                graphics_folders = []
+                for k, lay in enumerate(whole["layers"], 1):                  # each graphic its own clip on its own track (overlay, title, each name tag), so each can be moved, scaled or trimmed alone
+                    nxt = out / f"_step_graphics_{k}.xml"
+                    tool(f"Placing {lay['name'].replace('Graphic - ', '').replace('.mov', '')}", "overlay/place_overlay.py", cur, lay["folder"], "--out", nxt)
+                    cur = nxt
+                    graphics_folders.append(Path(lay["folder"]))
+                graphics_folder = out / "graphics"
                 tags = [l["name"] for l in spec.get("lower_thirds", [])]
                 ctas = [l["name"] for l in spec.get("lower_thirds", []) if l.get("key") == "cta"]
                 tags = [t for t in tags if t not in ctas]
@@ -497,7 +503,7 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         if not keep_going:
             raise
         cur = cur_before
-        sfx_times, graphics_folder, sfx_name = [], None, ""
+        sfx_times, graphics_folder, graphics_folders, sfx_name = [], None, [], ""
         steps.append({"name": "graphics", "done": False, "failed": True, "summary": "not added: " + why(exc)})
 
     # 1. captions: what is said, on screen
@@ -508,8 +514,8 @@ def run(xml: str | Path, out: str | Path, captions: bool = True, music: bool = T
         elif captions:
             progress("Captions: listening to the cut and making what is said into on-screen text")
             cargs = ["--xml", cur, "--out", out / "captions", "--start", "0", "--end", f"{zone - 0.001:.3f}"]
-            if graphics_folder:
-                cargs += ["--avoid", graphics_folder]                          # the captions move clear of the title card and name tags
+            for gf in graphics_folders:
+                cargs += ["--avoid", gf]                                       # the captions move clear of the title card and name tags (each graphic is its own folder)
             if caption_fixes:
                 (out / "captions").mkdir(parents=True, exist_ok=True)
                 (out / "captions" / "fixes.json").write_text(json.dumps(caption_fixes, indent=2))
