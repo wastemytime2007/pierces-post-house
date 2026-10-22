@@ -2916,7 +2916,6 @@ kbd {
  * Three related UIs, all sharing the app's dark palette:
  *   1. WelcomeModal    — 4-screen first-launch intro
  *   2. ApiKeyHelp      — "Don't know what Claude is?" reference
- *   3. TourTooltip     — lightweight contextual hints
  *
  * All three piggyback on the existing .modal-overlay / .modal
  * conventions for consistency with SettingsModal and other modals.
@@ -3346,186 +3345,17 @@ kbd {
   color: var(--fg-1) !important;
 }
 
-/* ----- TourTooltip ------------------------------------------ */
 
-.tour-tooltip {
-  position: fixed;
-  z-index: 9000;
-  width: 280px;
-  padding: 16px 18px 14px;
-  background: var(--bg-1);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55),
-              0 0 0 4px rgba(var(--accent-rgb), 0.12);
-  /* start hidden until positioned — the component sets visibility
-     inline once position is computed. */
-}
 
-/* Little arrow that points at the target. Uses two stacked triangles:
- * one for the border, one for the fill — a classic CSS pattern that
- * avoids rendering a <svg> child. */
-.tour-tooltip::before,
-.tour-tooltip::after {
-  content: "";
-  position: absolute;
-  width: 0;
-  height: 0;
-}
-
-/* Bottom: arrow points UP */
-.tour-tooltip-bottom::before {
-  top: -8px;
-  left: 50%;
-  margin-left: -9px;
-  border-left: 9px solid transparent;
-  border-right: 9px solid transparent;
-  border-bottom: 9px solid var(--accent);
-}
-.tour-tooltip-bottom::after {
-  top: -7px;
-  left: 50%;
-  margin-left: -8px;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 8px solid var(--bg-1);
-}
 
 /* Top: arrow points DOWN */
-.tour-tooltip-top::before {
-  bottom: -8px;
-  left: 50%;
-  margin-left: -9px;
-  border-left: 9px solid transparent;
-  border-right: 9px solid transparent;
-  border-top: 9px solid var(--accent);
-}
-.tour-tooltip-top::after {
-  bottom: -7px;
-  left: 50%;
-  margin-left: -8px;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-top: 8px solid var(--bg-1);
-}
+
 
 /* Right: arrow points LEFT */
-.tour-tooltip-right::before {
-  left: -8px;
-  top: 50%;
-  margin-top: -9px;
-  border-top: 9px solid transparent;
-  border-bottom: 9px solid transparent;
-  border-right: 9px solid var(--accent);
-}
-.tour-tooltip-right::after {
-  left: -7px;
-  top: 50%;
-  margin-top: -8px;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-right: 8px solid var(--bg-1);
-}
+
 
 /* Left: arrow points RIGHT */
-.tour-tooltip-left::before {
-  right: -8px;
-  top: 50%;
-  margin-top: -9px;
-  border-top: 9px solid transparent;
-  border-bottom: 9px solid transparent;
-  border-left: 9px solid var(--accent);
-}
-.tour-tooltip-left::after {
-  right: -7px;
-  top: 50%;
-  margin-top: -8px;
-  border-top: 8px solid transparent;
-  border-bottom: 8px solid transparent;
-  border-left: 8px solid var(--bg-1);
-}
 
-.tour-tooltip-close {
-  position: absolute;
-  top: 6px;
-  right: 8px;
-  width: 20px;
-  height: 20px;
-  border: none;
-  background: transparent;
-  color: var(--fg-2);
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-  border-radius: var(--radius-sm);
-}
-.tour-tooltip-close:hover {
-  color: var(--fg-0);
-  background: var(--bg-2);
-}
-
-.tour-tooltip-step {
-  font-family: var(--font-ui);
-  font-size: var(--text-caption);
-  letter-spacing: 0;
-  color: var(--accent);
-  margin-bottom: 6px;
-}
-
-.tour-tooltip-title {
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fg-0);
-  margin-bottom: 6px;
-  padding-right: 18px; /* room for the close X */
-}
-
-.tour-tooltip-body {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--fg-1);
-}
-
-.tour-tooltip-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.tour-tooltip-skip {
-  background: none;
-  border: none;
-  color: var(--fg-2);
-  font-family: var(--font-ui);
-  font-size: 11px;
-  cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
-}
-.tour-tooltip-skip:hover {
-  color: var(--fg-1);
-  background: var(--bg-2);
-}
-
-.tour-tooltip-ok {
-  background: var(--accent-fill);
-  color: var(--on-accent);
-  border: none;
-  font-family: var(--font-ui);
-  font-size: 11px;
-  font-weight: 600;
-  padding: 5px 14px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.tour-tooltip-ok:hover {
-  background: var(--accent-dim);
-}
 
 /* ============================================================
  * Ingest tab: Next → Ideas CTA (Drop 4.44)

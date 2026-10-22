@@ -118,7 +118,7 @@ function FramePicker({ name, onClose }) {
   );
 }
 
-export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCreate, onDelete, subscribe, log, tourReady, onTourComplete, person }) {
+export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCreate, onDelete, subscribe, log, person }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
@@ -137,38 +137,10 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   //   2. openFromFolder — point at "Open from folder" for returning users
   const newProjectBtnRef = useRef(null);
   const openFromFolderBtnRef = useRef(null);
-  // The tour is gone: each room teaches itself the first time you are in it (PageHeader `tip`).
-  // An inert stand-in, so the code that still asks it questions gets a quiet "nothing to show".
-  const tour = { isDone: true, stepIndex: -1, totalSteps: 0, isActive: () => false, start: () => {}, next: () => {}, skip: () => {} };
+
 
   // Start the tour when the parent says it's time. We do it in an
   // effect rather than inline so the refs have settled. A small
-  // setTimeout gives the page a beat to lay out before the tooltip
-  // appears — without it, positioning math sometimes reads zero for
-  // element dimensions because the layout hasn't happened yet.
-  useEffect(() => {
-    if (!tourReady) return;
-    if (!tour.isDone && tour.stepIndex >= 0) return; // already running
-    const t = setTimeout(() => tour.start(), 250);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tourReady]);
-
-  // When the tour finishes (either by advancing past all steps or by
-  // user skipping), tell the parent to mark tour_seen so we don't
-  // show it again. `isDone` becomes true only once the user has
-  // actually seen at least one step, so this won't fire spuriously
-  // at mount before tourReady is true.
-  const tourStartedRef = useRef(false);
-  useEffect(() => {
-    if (tour.stepIndex >= 0) tourStartedRef.current = true;
-    if (tour.isDone && tourStartedRef.current && onTourComplete) {
-      tourStartedRef.current = false; // prevent repeat calls
-      onTourComplete();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tour.stepIndex, tour.isDone]);
-
   // Load project list once backend is ready, and refresh when projects change
   const refreshProjects = useCallback(async () => {
     if (!backendReady) return;

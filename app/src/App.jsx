@@ -797,24 +797,6 @@ export default function App() {
           /* Drop 4.44: onboarding tour on start-screen. We only start
              the tour if welcome has been seen AND tour hasn't, AND
              there's no pending modal competing for the user's attention. */
-          tourReady={
-            !!settings
-            && settings.welcome_seen
-            && !settings.tour_seen
-            && !showWelcome
-            && !showApiKeyHelp
-          }
-          onTourComplete={async () => {
-            try {
-              await sendCommand({
-                type: "set_onboarding_flag",
-                flag: "tour_seen",
-                value: true,
-              });
-            } catch (e) {
-              console.error("Failed to mark tour_seen:", e);
-            }
-          }}
         />
       ) : (
         <ProjectView
