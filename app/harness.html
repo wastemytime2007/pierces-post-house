@@ -13,6 +13,7 @@
     <div id="root"></div>
     <script>
       (function () {
+        const BRIDGE = new URLSearchParams(location.search).get("bridge") ? "http://127.0.0.1:" + (new URLSearchParams(location.search).get("bridge") === "1" ? "47950" : new URLSearchParams(location.search).get("bridge")) : null;
         window.__sent = [];                                       // every command the screen sent to the backend
         window.__handlers = {};
         let nextId = 1;
@@ -21,7 +22,11 @@
           transformCallback(cb) { const id = nextId++; window["_" + id] = cb; return id; },
           convertFileSrc(p) { return p; },
           async invoke(cmd, args) {
-            if (cmd === "send_to_backend") { try { window.__sent.push(JSON.parse(args.commandJson)); } catch (e) {} return null; }
+            if (cmd === "send_to_backend") {
+              try { window.__sent.push(JSON.parse(args.commandJson)); } catch (e) {}
+              if (BRIDGE) { try { await fetch(BRIDGE + "/cmd", { method: "POST", body: args.commandJson }); } catch (e) {} }   // the real backend (dev/bridge.cjs)
+              return null;
+            }
             if (cmd === "setup_check") return JSON.stringify(new URLSearchParams(location.search).get("setup") ? { all_ready: false, setup_complete_flag: false, python_ok: true, ffmpeg_ok: false, models_ok: false, steps: [] } : { all_ready: true, setup_complete_flag: true });
             if (cmd === "plugin:event|listen") { (window.__handlers[args.event] = window.__handlers[args.event] || []).push(args.handler); return nextId++; }
             if (cmd === "plugin:event|unlisten") return null;
@@ -30,6 +35,10 @@
           },
         };
         window.__backend = (ev) => (window.__handlers["backend-event"] || []).forEach((id) => window["_" + id] && window["_" + id]({ event: "backend-event", id, payload: JSON.stringify(ev) }));
+        if (BRIDGE) {                                             // real backend events reach the app as Tauri would deliver them
+          const es = new EventSource(BRIDGE + "/events");
+          es.onmessage = (m) => { try { window.__backend(JSON.parse(m.data)); } catch (e) {} };
+        }
         window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
       })();
     </script>

@@ -1522,7 +1522,7 @@ def handle_project_posters(cmd: dict) -> None:
 
 def handle_frame_thumbs(cmd: dict) -> None:
     """Stills for the page to show: {"id", "items": [{"key", "path", "t"}], "width"?}. Answers with `frame_thumbs` events: {"id", "thumbs": {key: data URI or null}}."""
-    items = cmd.get("items", [])[:60]
+    items = cmd.get("items", [])[:80]
     width = int(cmd.get("width") or 320)
     rid = cmd.get("id")
 

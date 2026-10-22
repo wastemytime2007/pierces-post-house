@@ -69,3 +69,5 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 63 | Home: a filter box appears once there are more than six projects; the count shows ("All projects (15)") | screenshot not taken for the filter; build |
 | 64 | Footage zones show a frame beside each source, cut from its first clip | screenshot dark (with stand-in frames) |
 | 65 | Review ribbon: a filmstrip lane (frames of the picture along the timeline, click to seek, playhead) built inside the page from the preview itself | screenshot; three page scripts pass (drive_page: its one known 40 s check) |
+| 66 | A bridge connects the browser test page to the REAL Python backend (`app/dev/bridge.cjs`) and an end-to-end script reads the real projects and a real 71-sequence XML through the real UI (`app/dev/e2e_real.cjs`; reads only) | ran: 15 projects, 13 covers from real footage, 71 sequences, 55 real frames in 15 s, no page errors |
+| 67 | Found by that run: a request for 71 frames was cut off at 60. Frames are now requested in chunks of 40 and the backend allows 80 per request | e2e run |

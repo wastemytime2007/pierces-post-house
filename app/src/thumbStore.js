@@ -26,7 +26,11 @@ export function requestFrames(items, width = 320) {
   const need = items.filter((i) => i.key && i.path && !map.has(i.key) && !asked.has(i.key));
   if (!need.length) return;
   need.forEach((i) => asked.add(i.key));
-  sendCommand({ type: "frame_thumbs", id: String(Math.random()), items: need, width }).catch(() => need.forEach((i) => asked.delete(i.key)));
+  // The backend answers up to 40 at a time, in order; a long list (71 sequences) goes as several requests so the first screenful fills first
+  for (let k = 0; k < need.length; k += 40) {
+    const chunk = need.slice(k, k + 40);
+    sendCommand({ type: "frame_thumbs", id: String(Math.random()), items: chunk, width }).catch(() => chunk.forEach((i) => asked.delete(i.key)));
+  }
 }
 
 export function requestPosters(projects) {
