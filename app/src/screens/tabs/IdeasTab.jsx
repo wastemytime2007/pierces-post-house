@@ -356,12 +356,12 @@ export default function IdeasTab({
       <div className="ideas-actions">
         {/* 2026-09-04: this is now THE "Generate ideas" button. Ryan's own
             words made clear he doesn't think of "generate from flagged
-            fragments" as a separate tool from "the generate ideas button" —
+            fragments" as a separate tool from "the generate ideas button",
             he expects the one button to behave the way he's been
             describing (3 tight-cut+pool ideas, live research, real
             citations). Confirmed a real confusion this caused: he reviewed
             output from the OLD button below (Post House's own generate_angles,
-            now demoted to Legacy tools) believing it came from this one —
+            now demoted to Legacy tools) believing it came from this one,
             identifiable after the fact only by its source_phrase_ids field,
             which story_architect never sets. Routing the primary button to
             story_architect removes that ambiguity going forward. */}
@@ -377,7 +377,7 @@ export default function IdeasTab({
           className="btn btn-primary"
           onClick={() => setShowPlanPanel(true)}
           disabled={transcriptCount === 0 || producerBusy}
-          title="Talk through what's in your footage and what to build with it — research and a proposed game plan first, ideas only once you agree"
+          title="Talk through what's in your footage and what to build with it: research and a proposed game plan first, ideas only once you agree"
         >
           <Icon name="sparkles" size={15} /> {planSession ? "Continue planning" : "Plan with AI"}
         </button>
@@ -385,7 +385,7 @@ export default function IdeasTab({
           className="btn"
           onClick={handleGenerateStoryArchitect}
           disabled={transcriptCount === 0 || producerBusy}
-          title="Builds 3 real story ideas from your footage, each with a tight one-throughline cut plus a selects pool of everything else on-topic, informed by live trend research (real web search, real trending videos actually watched) — requires an audience/content goal set on the Project tab, and the pipeline's transcript-flagging stage to have run"
+          title="Builds 3 real story ideas from your footage, each with a tight one-throughline cut plus a selects pool of everything else on-topic, informed by live trend research (real web search, real trending videos actually watched): requires an audience/content goal set on the Project tab, and the pipeline's transcript-flagging stage to have run"
         >
           {producerBusy && activeRun?.mode === "story_architect"
             ? (
@@ -537,7 +537,7 @@ export default function IdeasTab({
       )}
 
       {/* Drop 4.27: hide the floating trigger bar while the export modal
-          is open — otherwise the bar floats over the modal and its
+          is open, otherwise the bar floats over the modal and its
           "Export" button covers the modal's own "Export" button. */}
       {selectedExportable.length > 0 && !showExportModal && (
         <div className="floating-export-bar">
@@ -574,7 +574,7 @@ export default function IdeasTab({
       )}
 
       {/* Drop 4.47: first-export nudge for the Default Includes feature.
-          Shown ONCE — the moment the user first clicks Export — to surface
+          Shown ONCE, the moment the user first clicks Export, to surface
           a feature they're unlikely to discover on their own. After
           dismiss or "Set up now", the auto_include_nudge_seen flag is
           set so this never reappears. */}
@@ -966,7 +966,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
             </div>
           ) : research === null ? (
             <div className="idea-card-research-body idea-card-research-empty">
-              No research on file for this idea — it wasn't built by the
+              No research on file for this idea, it wasn't built by the
               story architect (probably one of Post House's own "Generate
               ideas" angles, which don't do live trend research).
             </div>
@@ -1023,13 +1023,13 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
                         {v.detected_cuts != null && (
                           <div className="idea-card-research-metric">
                             {v.detected_cuts} real detected cuts over {v.duration_sec}s
-                            {" "}({v.cuts_per_sec} cuts/sec) — measured, not estimated
+                            {" "}({v.cuts_per_sec} cuts/sec), measured, not estimated
                           </div>
                         )}
                         {(v.audio_track || v.audio_artist) && (
                           <div className="idea-card-research-metric">
                             {v.audio_track || "Unknown track"}
-                            {v.audio_artist ? ` — ${v.audio_artist}` : ""}
+                            {v.audio_artist ? `, ${v.audio_artist}` : ""}
                             {" "}(real audio credit from the video's own metadata)
                             {v.audio_listen_url && (
                               <>
@@ -1352,7 +1352,7 @@ function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeG
               </label>
               <div className="plan-hint">
                 Saying this up front points the trend research at your actual piece
-                instead of a generic sweep — cheaper, and the plan comes back closer
+                instead of a generic sweep, cheaper, and the plan comes back closer
                 to what you want. Leave it blank and it'll research your project's
                 audience goal and ask you first.
               </div>
@@ -1360,7 +1360,7 @@ function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeG
                 autoFocus
                 className="form-textarea"
                 rows={4}
-                placeholder="A quick how-to on removing wallpaper that makes us look like the experts — engaging, fun to watch."
+                placeholder="A quick how-to on removing wallpaper that makes us look like the experts, engaging, fun to watch."
                 value={intent}
                 onChange={(e) => setIntent(e.target.value)}
                 onKeyDown={(e) => handleKey(e, handleStart)}
@@ -1449,7 +1449,7 @@ function StoryPlanningPanel({ session, error, busy, progress, onClose, onBeforeG
               {/* 2026-09-08, Ryan: "I accidentally clicked 'generate from
                   this plan' because that button is bright and right next to
                   the send button with the chat in the planning section."
-                  The emphasis was backwards — Send is the frequent, safe,
+                  The emphasis was backwards. Send is the frequent, safe,
                   reversible action in a conversation, and Generate is the
                   expensive committing one that also closes the panel. So
                   Send is primary now, Generate is de-emphasised, pushed to
@@ -1615,7 +1615,7 @@ function BriefForm({ onClose }) {
           <textarea
             autoFocus
             className="form-textarea"
-            placeholder="Punchy moment about the founding story — hook in first 2 seconds, reveal the unexpected detail, close with her smiling about what she learned."
+            placeholder="Punchy moment about the founding story, hook in first 2 seconds, reveal the unexpected detail, close with her smiling about what she learned."
             rows={5}
             value={brief}
             onChange={(e) => setBrief(e.target.value)}

@@ -156,7 +156,7 @@ export default function SettingsModal({ settings, onSave, onSaveWorkspaceId, onC
             </summary>
             <div className="form-hint" style={{ marginTop: 6 }}>
               Only needed if your API key comes from an Anthropic organization/
-              team account with multiple workspaces — most people never need
+              team account with multiple workspaces, most people never need
               this. If Claude calls fail with an error mentioning
               "anthropic-workspace-id", find your workspace ID at{" "}
               <code>console.anthropic.com</code> → Settings → Workspaces, and

@@ -599,11 +599,11 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
               hint={
                 <>
                   Scores from Post House's own audio sync. Any pair it can't
-                  confidently sync on its own — subject left the room,
-                  came back, was on the phone elsewhere — gets checked
+                  confidently sync on its own, subject left the room,
+                  came back, was on the phone elsewhere, gets checked
                   automatically for a usable stretch as part of the same
                   step; no separate action needed. If you've added or
-                  changed footage, use <strong>Re-sync</strong> below —
+                  changed footage, use <strong>Re-sync</strong> below,
                   a plain "Run pipeline" click reuses the cached result
                   and won't recompute anything.
                 </>
@@ -717,7 +717,7 @@ function TranscriptRow({ row }) {
     statusLabel = "queued for transcription…";
     statusClass = "warn";
   } else if (proxyStatus === "failed") {
-    statusLabel = "proxy failed — cannot transcribe";
+    statusLabel = "proxy failed, cannot transcribe";
     statusClass = "error";
   } else {
     statusLabel = "awaiting proxy";
@@ -810,7 +810,7 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
     },
     {
       label: "Working copies only",
-      title: "Just encode proxies — useful for getting a lighter cut going",
+      title: "Just encode proxies, useful for getting a lighter cut going",
       apply: () => setFlags({
         run_proxies: true,
         run_transcription: false,

@@ -1954,11 +1954,11 @@ kbd {
   cursor: pointer;
 }
 .sync-cell.sync-cell-selectable:hover {
-  outline: 1px solid var(--accent, #0391d8);
+  outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
 .sync-cell.sync-cell-selected {
-  outline: 2px solid var(--accent, #0391d8);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -2099,7 +2099,7 @@ kbd {
 }
 
 .idea-card-research-list a {
-  color: var(--accent, #4a9eff);
+  color: var(--accent);
   word-break: break-all;
 }
 
@@ -3902,9 +3902,9 @@ kbd {
   padding: 10px 12px;
   margin-bottom: 12px;
   background: var(--accent-danger-bg, rgba(220, 80, 80, 0.1));
-  border: 1px solid var(--accent-danger, #cc4444);
+  border: 1px solid var(--accent-danger);
   border-radius: var(--radius-md);
-  color: var(--accent-danger, #cc4444);
+  color: var(--accent-danger);
   font-size: 12px;
 }
 
@@ -4028,7 +4028,7 @@ kbd {
  * (e.g., empty segments). Does NOT block save — backend will
  * just skip the rule at export time and log a warning. */
 .form-input.form-input-warn {
-  border-color: var(--accent-warn, #d4a634);
+  border-color: var(--accent-warn);
 }
 
 /* ----- Intro panel ------------------------------------------- */
@@ -4158,7 +4158,7 @@ kbd {
 }
 
 .auto-include-row-field-warn {
-  color: var(--accent-warn, #d4a634);
+  color: var(--accent-warn);
   font-weight: normal;
   text-transform: none;
   letter-spacing: 0;
@@ -4187,7 +4187,7 @@ kbd {
 .auto-include-empty-link {
   background: none;
   border: none;
-  color: var(--accent, #4d9eff);
+  color: var(--accent);
   cursor: pointer;
   padding: 0;
   font: inherit;
@@ -4283,7 +4283,7 @@ kbd {
   padding: 10px 12px;
   margin: 0 0 12px 0;
   background: var(--bg-1);
-  border: 1px solid var(--accent, #4d9eff);
+  border: 1px solid var(--accent);
   border-left-width: 3px;
   border-radius: var(--radius-sm, 4px);
   font-size: 12.5px;
@@ -4292,7 +4292,7 @@ kbd {
 }
 
 .auto-include-intro-scope-icon {
-  color: var(--accent, #4d9eff);
+  color: var(--accent);
   font-size: 14px;
   flex-shrink: 0;
   margin-top: 1px;
@@ -4303,7 +4303,7 @@ kbd {
 .empty-state-link {
   background: none;
   border: none;
-  color: var(--accent, #4d9eff);
+  color: var(--accent);
   cursor: pointer;
   padding: 0;
   font: inherit;
@@ -4382,7 +4382,7 @@ kbd {
 }
 
 .auto-include-row-warning-icon {
-  color: var(--accent-warn, #d4a634);
+  color: var(--accent-warn);
   font-size: 14px;
   flex-shrink: 0;
   line-height: 1;
@@ -5527,8 +5527,8 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .trim-version { display: inline-flex; align-items: center; gap: 8px; }
 
 .export-open-note { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--bg-2, var(--bg-1)); color: var(--fg-1); font-size: var(--text-body); }
-.export-open-plain { box-shadow: inset 3px 0 0 var(--warn, #f4690b); }
-.export-open-project { box-shadow: inset 3px 0 0 var(--ok, #30a46c); }
+.export-open-plain { box-shadow: inset 3px 0 0 var(--warn); }
+.export-open-project { box-shadow: inset 3px 0 0 var(--success); }
 
 /* The window's own title bar is off: macOS draws its three lights over ours, so the brand starts after them. The bar is the drag region; everything in it that can be clicked is not. */
 .app.has-traffic-lights .titlebar { padding-left: 78px; }
@@ -5549,12 +5549,12 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .set-row-control { display: flex; align-items: center; min-width: 180px; justify-content: flex-end; }
 .set-row-control input[type="password"] { width: 220px; }
 .set-static { color: var(--fg-2); font-size: var(--text-body); }
-.set-note { color: var(--good, #30a46c); font-size: var(--text-footnote); padding: 2px 0 8px; }
+.set-note { color: var(--success); font-size: var(--text-footnote); padding: 2px 0 8px; }
 
 /* A switch, the macOS shape */
 .switch { position: relative; display: inline-block; width: 38px; height: 22px; }
 .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--bg-3, #3a3a3c); transition: background 160ms; pointer-events: none; }
+.switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--bg-3); transition: background 160ms; pointer-events: none; }
 .switch span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.3); transition: transform 160ms; }
 .switch input:checked + span { background: var(--accent); }
 .switch input:checked + span::after { transform: translateX(16px); }
@@ -5585,7 +5585,7 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 
 /* Space on a tile: that frame, large */
 .sp-peek { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0,0,0,0.72); backdrop-filter: blur(12px); cursor: zoom-out; }
-.sp-peek-art { width: min(74vw, 1100px); aspect-ratio: 16 / 9; border-radius: 12px; background: var(--bg-2, #000) center / contain no-repeat; box-shadow: 0 24px 70px rgba(0,0,0,0.5); }
+.sp-peek-art { width: min(74vw, 1100px); aspect-ratio: 16 / 9; border-radius: 12px; background: var(--bg-2) center / contain no-repeat; box-shadow: 0 24px 70px rgba(0,0,0,0.5); }
 .sp-peek-name { color: #fff; font-size: var(--text-title); }
 .sp-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
@@ -5616,8 +5616,8 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 /* Whether Premiere, and its Post House panel, are there: the only way to know used to be to try */
 .trim-link { display: inline-flex; align-items: center; gap: 7px; color: var(--fg-2); font-size: var(--text-footnote); }
 .trim-link-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-3); }
-.trim-link.on .trim-link-dot { background: var(--good, #30a46c); }
-.trim-link.warn .trim-link-dot { background: var(--attention, #f4690b); }
+.trim-link.on .trim-link-dot { background: var(--success); }
+.trim-link.warn .trim-link-dot { background: var(--warn); }
 
 /* ---------------------------------------------------------------------------
    The few moments that are allowed to move (DIRECTION_2 § "Animation has a job";
@@ -5696,3 +5696,13 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .rv-merged span > span { display: block; }
 .rv-merged-file { margin-top: 3px; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-footnote); color: var(--fg-1); }
 .rv-merged-left { margin-top: 5px; color: var(--fg-2); font-size: var(--text-footnote); }
+
+/* The Get Creative rows: same as the footage zones. The icon says what the step adds; it is not a
+   badge in a tinted square on every row (EXPERIENCE.md names that as a tell). On, it takes the accent. */
+.rv-opt-icon { width: auto; height: auto; background: none; color: var(--fg-2); }
+.rv-opt.on .rv-opt-icon { background: none; color: var(--accent); }
+
+/* The sticky footer sat over the bottom row of the contact sheet, cutting off its last line ("10 clips, Shorts").
+   The grid keeps room for it, and the gradient behind the footer is tall enough to read against. */
+.sp-grid { padding-bottom: 54px; }        /* the height of the sticky footer, so the last row is never under it */
+.sp-foot { padding: 14px 4px 12px; background: linear-gradient(to top, var(--bg-0) 55%, transparent); }

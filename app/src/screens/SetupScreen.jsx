@@ -42,7 +42,7 @@ const COMPONENTS = [
     label: "Homebrew",
     subtitle: "Package manager. Needed to install ffmpeg and Python cleanly.",
     prereqs: ["xcode_clt"],
-    note: "Opens a Terminal window — you'll enter your Mac password there.",
+    note: "Opens a Terminal window, you'll enter your Mac password there.",
   },
   {
     key: "ffmpeg",
@@ -61,12 +61,12 @@ const COMPONENTS = [
     label: "Python packages",
     subtitle: "torch, whisper, open-clip, lancedb, anthropic, and friends. ~500MB download.",
     prereqs: ["python"],
-    note: "Longest step — expect 5-10 minutes. pip progress appears in the log below.",
+    note: "Longest step, expect 5-10 minutes. pip progress appears in the log below.",
   },
   {
     key: "premiere_extension",
     label: "Premiere Pro Extension",
-    subtitle: "Runs invisibly in Premiere and auto-applies Interpret Footage to B-roll frame-rate conforms — no manual steps in Premiere, ever.",
+    subtitle: "Runs invisibly in Premiere and auto-applies Interpret Footage to B-roll frame-rate conforms, no manual steps in Premiere, ever.",
     prereqs: [],
     note: "Optional if Premiere isn't installed on this Mac. Fully quit and reopen Premiere once after installing.",
   },
@@ -296,7 +296,7 @@ export default function SetupScreen({ onSetupComplete }) {
               className="btn btn-ghost"
               onClick={skip}
               disabled={installing !== null}
-              title="Don't block me — I'll fix any missing pieces myself."
+              title="Don't block me: I'll fix any missing pieces myself."
             >
               Skip for now
             </button>

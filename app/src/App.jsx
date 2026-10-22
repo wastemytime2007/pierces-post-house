@@ -213,7 +213,7 @@ export default function App() {
                         : ev.mode === "refine" ? "Refine"
                         : "Producer";
             logAppend({ level: "accent", message: `${label} started…` });
-            showToast(`${label} started — this takes 20-60s`, "info", 4500);
+            showToast(`${label} started, this takes 20-60s`, "info", 4500);
             break;
           }
           case "producer_idea":
@@ -430,7 +430,7 @@ export default function App() {
         type: "set_onboarding_flag",
         flag: "api_key_help_auto_shown",
         value: true,
-      }).catch(() => { /* non-fatal — worst case user sees it again */ });
+      }).catch(() => { /* non-fatal, worst case user sees it again */ });
     }
   }, [setupPhase, settings]);
 
@@ -496,7 +496,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     const base = "Post House";
-    const title = work && work.total ? `${work.what} ${work.done} of ${work.total} — ${base}` : project?.name ? `${project.name} — ${base}` : base;
+    const title = work && work.total ? `${work.what} ${work.done} of ${work.total}, ${base}` : project?.name ? `${project.name}, ${base}` : base;
     try { document.title = title; } catch (e) { /* not a document */ }
     invoke("set_progress", { done: work?.done ?? 0, total: work?.total ?? 0 }).catch(() => {});
   }, [work, project?.name]);
@@ -1013,7 +1013,7 @@ function _summarizeProducerError(msg) {
 
   // Malformed JSON — most common recoverable error. User should retry.
   if (/malformed JSON|Expecting[^:]*delimiter|JSONDecodeError/i.test(msg)) {
-    return "The AI reply wasn't valid JSON — try refining again.";
+    return "The AI reply wasn't valid JSON, try refining again.";
   }
   // API auth failures
   if (/401|authentication_error|invalid.*api.*key/i.test(msg)) {
@@ -1021,7 +1021,7 @@ function _summarizeProducerError(msg) {
   }
   // Rate limits
   if (/429|rate.limit/i.test(msg)) {
-    return "Anthropic rate limit hit — wait a minute and retry.";
+    return "Anthropic rate limit hit, wait a minute and retry.";
   }
   // Credit balance
   if (/credit.balance|insufficient/i.test(msg)) {

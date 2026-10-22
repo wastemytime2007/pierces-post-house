@@ -110,7 +110,7 @@ export default function SyncMatrix({ pairs, syncState, liveStatus, onSelectPair,
           <span className="sync-swatch sync-strong" />
           Strong (≥10)
         </span>
-        {/* Drop 4.47.4: cross-validated cells — weak score, but offset
+        {/* Drop 4.47.4: cross-validated cells, weak score, but offset
             confirmed by agreement with strong matches on other clips. */}
         <span
           className="sync-legend-item"

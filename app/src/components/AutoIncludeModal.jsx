@@ -189,7 +189,7 @@ export default function AutoIncludeModal({ rules, onSave, onClose, onOpenHelp })
                 type="button"
                 className="auto-include-header-help"
                 onClick={onOpenHelp}
-                title="What is this? — open the walkthrough"
+                title="What is this?: open the walkthrough"
                 aria-label="Open Default Includes walkthrough"
               >
                 ?

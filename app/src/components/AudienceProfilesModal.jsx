@@ -61,7 +61,7 @@ export default function AudienceProfilesModal({ profiles, onSave, onClose }) {
 
         <div className="modal-body">
           <div className="form-hint" style={{ marginBottom: 12 }}>
-            Define who your footage is for, once — a content funnel, a
+            Define who your footage is for, once, a content funnel, a
             campaign, a personal long-form goal, whatever fits how you
             work. These show up as a dropdown when setting up a new
             project on the Footage page, instead of retyping the same

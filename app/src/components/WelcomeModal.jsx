@@ -109,7 +109,7 @@ const SCREENS = [
         <p>
           Post House uses <strong>Claude</strong> (made by Anthropic) for the
           &ldquo;figure out good cuts&rdquo; part. To talk to Claude,
-          you&rsquo;ll need an <strong>API key</strong> — a short
+          you&rsquo;ll need an <strong>API key</strong>, a short
           one-time signup at{" "}
           <code>console.anthropic.com</code>.
         </p>
@@ -119,7 +119,7 @@ const SCREENS = [
           footage you&rsquo;re analyzing.
         </p>
         <p className="welcome-body-muted">
-          You can finish this later — Post House works fine for indexing
+          You can finish this later. Post House works fine for indexing
           without a key. You&rsquo;ll just need one before you can
           generate cut ideas.
         </p>
@@ -138,7 +138,7 @@ const SCREENS = [
           the project list. Create your first project to get started.
         </p>
         <p className="welcome-body-muted">
-          This welcome screen won&rsquo;t appear again — but you can get
+          This welcome screen won&rsquo;t appear again, but you can get
           API key help any time via the (?) button next to the key field
           in Settings.
         </p>
@@ -167,7 +167,7 @@ export default function WelcomeModal({ onComplete, onOpenApiKeyHelp }) {
 
   return (
     <div className="modal-overlay welcome-overlay">
-      {/* No onClick on overlay — the welcome modal should require an
+      {/* No onClick on overlay, the welcome modal should require an
           explicit Skip or Finish, not dismiss on click-outside. */}
       <div className="modal welcome-modal">
 

@@ -51,14 +51,14 @@ export default function ApiKeyHelp({ onClose }) {
 
         <div className="modal-body help-body">
 
-          {/* Section 1 — WHAT is this thing */}
+          {/* Section 1, WHAT is this thing */}
           <section className="help-section">
             <h3 className="help-heading">What is this?</h3>
             <p>
               Post House uses <strong>Claude</strong>, an AI model from
               Anthropic, to read through your footage transcripts and
               figure out which clips make the best story. To talk to
-              Claude, Post House needs an <strong>API key</strong> — a long
+              Claude, Post House needs an <strong>API key</strong>, a long
               string of characters that tells Anthropic which account
               to bill for the usage.
             </p>
@@ -70,7 +70,7 @@ export default function ApiKeyHelp({ onClose }) {
             </p>
           </section>
 
-          {/* Section 2 — how to sign up */}
+          {/* Section 2, how to sign up */}
           <section className="help-section">
             <h3 className="help-heading">Getting a key in 4 steps</h3>
             <ol className="help-steps">
@@ -82,7 +82,7 @@ export default function ApiKeyHelp({ onClose }) {
                 >
                   console.anthropic.com
                 </button>{" "}
-                and create an account. Use email, Google, or GitHub sign-in —
+                and create an account. Use email, Google, or GitHub sign-in,
                 whichever you prefer. This is a <em>developer</em> account,
                 separate from a Claude chat subscription (you don't need
                 a Claude Pro plan to use the API).
@@ -102,13 +102,13 @@ export default function ApiKeyHelp({ onClose }) {
               </li>
               <li>
                 Come back here, paste the key into the field below, and
-                click <strong>Save key</strong>. That's it — Post House will
+                click <strong>Save key</strong>. That's it. Post House will
                 start using Claude on the next project you analyze.
               </li>
             </ol>
           </section>
 
-          {/* Section 3 — cost breakdown */}
+          {/* Section 3, cost breakdown */}
           <section className="help-section">
             <h3 className="help-heading">What does it cost?</h3>
             <p>
@@ -170,7 +170,7 @@ export default function ApiKeyHelp({ onClose }) {
             </p>
           </section>
 
-          {/* Section 4 — safety / what-if */}
+          {/* Section 4, safety / what-if */}
           <section className="help-section">
             <h3 className="help-heading">Common questions</h3>
 
@@ -178,7 +178,7 @@ export default function ApiKeyHelp({ onClose }) {
               <summary>Is my footage sent to Anthropic?</summary>
               <p>
                 No. Post House sends <em>transcripts</em> and short
-                content tags — not the video files themselves. Anthropic
+                content tags, not the video files themselves. Anthropic
                 never receives your footage.
               </p>
             </details>
@@ -196,7 +196,7 @@ export default function ApiKeyHelp({ onClose }) {
             <details className="help-faq">
               <summary>Can I set a spending limit?</summary>
               <p>
-                Yes — in the Anthropic console under Settings → Billing
+                Yes, in the Anthropic console under Settings → Billing
                 you can set a monthly spend cap. Recommended if you're
                 nervous about runaway costs.
               </p>

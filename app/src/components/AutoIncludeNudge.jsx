@@ -20,20 +20,20 @@ import Icon from "./Icon.jsx";
  */
 export default function AutoIncludeNudge({
   onSetUp,        // user clicked "Set up now"
-  onSkip,         // user clicked "Maybe later" or × — proceed to export
+  onSkip,         // user clicked "Maybe later" or ×, proceed to export
 }) {
   return (
     <div className="modal-overlay" onClick={onSkip}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Wait — did you know?</h2>
+          <h2>Wait: did you know?</h2>
           <button className="modal-close" onClick={onSkip} aria-label="Close">×</button>
         </div>
 
         <div className="modal-body">
           <p style={{ marginTop: 0, fontSize: 14, lineHeight: 1.5 }}>
             You can set up files to include in <strong>every</strong> export
-            — like your stock SFX library, company logos, or LUTs.
+           , like your stock SFX library, company logos, or LUTs.
             Post House adds them to the right bins automatically, so you
             don't have to drag them in for every project.
           </p>

@@ -102,7 +102,7 @@ export default function AudioSyncPreview({ pair }) {
   if (!pair) {
     return (
       <div className="ae-preview-empty">
-        Click any pair in the matrix — reliable or not — to preview it
+        Click any pair in the matrix, reliable or not, to preview it
         here. Weak/unreliable pairs are also listed below with a
         one-click "Find usable stretches" option.
       </div>
@@ -113,7 +113,7 @@ export default function AudioSyncPreview({ pair }) {
     return (
       <div className="ae-preview-empty">
         This pair is missing a file path (aroll_proxy/aroll_file or
-        audio_file) — can't preview it. Check the saved audio_sync state.
+        audio_file), can't preview it. Check the saved audio_sync state.
       </div>
     );
   }
@@ -130,7 +130,7 @@ export default function AudioSyncPreview({ pair }) {
           className="ae-preview-video"
         />
       </div>
-      {/* The external audio file has no visual element — it just needs to
+      {/* The external audio file has no visual element, it just needs to
           play in lockstep with the video's picture. */}
       <audio ref={audioRef} src={audioSrc} onEnded={() => setPlaying(false)} />
 
@@ -162,7 +162,7 @@ export default function AudioSyncPreview({ pair }) {
         <div><strong>A-roll:</strong> {basename(pair.arollFull)}</div>
         <div><strong>Audio:</strong> {basename(pair.audioFull)}</div>
         <div><strong>Offset:</strong> {offsetSec >= 0 ? "+" : ""}{offsetSec.toFixed(2)}s
-          {" — "}{offsetSec >= 0
+          {", "}{offsetSec >= 0
             ? "audio starts this far into the A-roll"
             : "audio was already rolling before the A-roll started"}
         </div>

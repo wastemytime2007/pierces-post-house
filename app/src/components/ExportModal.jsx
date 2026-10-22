@@ -85,7 +85,7 @@ export default function ExportModal({
 
         switch (ev.type) {
           case "export_started":
-            addProgress(`Export started — ${ev.idea_count} timeline${ev.idea_count !== 1 ? "s" : ""}`, "accent");
+            addProgress(`Export started, ${ev.idea_count} timeline${ev.idea_count !== 1 ? "s" : ""}`, "accent");
             break;
           case "export_matching":
             addProgress(`Generating B-roll markers for "${ev.sequence_name}"…`);
@@ -399,7 +399,7 @@ function ConfigureView({
         checked={includeLibrary}
         onChange={setIncludeLibrary}
         label={`Include full B-roll library (${brollCount || "?"} clips)`}
-        hint="All your B-roll appears as a 'B-Roll Library' bin in Premiere — search by tag with Cmd+F"
+        hint="All your B-roll appears as a 'B-Roll Library' bin in Premiere, search by tag with Cmd+F"
       />
       <label className="export-option">
         <div className="export-option-text" style={{ width: "100%" }}>
@@ -450,7 +450,7 @@ function ConfigureView({
           checked={applyAutoIncludes}
           onChange={setApplyAutoIncludes}
           label={`Apply default includes (${autoIncludeRulesCount} rule${autoIncludeRulesCount !== 1 ? "s" : ""})`}
-          hint="When checked, files from your saved Default Includes rules are added to this export. Uncheck to skip them just for this one export — your saved rules aren't deleted."
+          hint="When checked, files from your saved Default Includes rules are added to this export. Uncheck to skip them just for this one export, your saved rules aren't deleted."
         />
       )}
 
