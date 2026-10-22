@@ -117,6 +117,7 @@ export default function ExportModal({
             setStage("done");
             break;
           case "export_error":
+          case "error":                                     // the backend refused before the export began: say so, never sit on "Starting..."
             setErrorMsg(ev.message || "Export failed");
             setStage("error");
             break;
