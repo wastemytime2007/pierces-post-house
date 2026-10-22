@@ -179,6 +179,21 @@ _YOUTUBE_VIDEO_RE = re.compile(
 
 MAX_STRATEGY_VIDEOS_TO_WATCH = 2
 
+def no_dashes(text: str) -> str:
+    """Em and en dashes out of anything a person will read on screen: a title, a hook, a tone note.
+
+    Ryan's standing rule, and the one most-recognised AI-writing tell. The model is told this in the prompt too, but a rule in a
+    prompt is a request; this is the guarantee. A dash between two clauses becomes the comma it was standing in for; a dash between
+    numbers (a range) becomes "to", because a caption reading "3-5" is right and "3, 5" is not.
+    """
+    import re
+    if not text:
+        return text
+    out = re.sub(r"(?<=\d)\s*[\u2014\u2013]\s*(?=\d)", " to ", text)        # 3–5 minutes
+    out = re.sub(r"\s*[\u2014\u2013]\s*", ", ", out)                          # a clause break
+    return re.sub(r",\s*,", ",", out).strip().strip(",").strip()
+
+
 TREND_TEXT_SEARCH_PROMPT = """Search the web for what's currently trending in short-form video \
 content for the real niche implied by this audience/content goal:
 
@@ -530,8 +545,8 @@ Return this exact JSON shape, in a fenced ```json block:
 
 {{
   "narrative_thesis": "the ONE concrete, narrow topic this piece is about, and why it's worth telling — not a broad theme",
-  "title": "short concept title",
-  "hook": "1-2 sentence opening hook/headline",
+  "title": "short concept title. NO em dashes or en dashes anywhere in it: use a comma, a colon or a full stop. This becomes on-screen text.",
+  "hook": "1-2 sentence opening hook/headline. Same rule: no em dashes or en dashes.",
   "why_it_works": "why this arc serves the thesis and the stated audience goal, citing which fragments (including any 'strange choice' ones and why they earn their place) and, if relevant, which real trend finding informed the framing",
   "editorial_qna": {{
     "bigger_story": "What is the bigger overall story being told in this video? (the arc as a whole, not just the thesis restated)",
@@ -2557,8 +2572,8 @@ def generate_story_angle(
     )
 
     brief = CreativeBrief(
-        title=str(data.get("title", ""))[:200],
-        hook=str(data.get("hook", ""))[:500],
+        title=no_dashes(str(data.get("title", "")))[:200],
+        hook=no_dashes(str(data.get("hook", "")))[:500],
         # Ryan, 2026-09-04: "The brief isn't in the Premiere project which
         # is what I'd asked for. I dont want to have to search deep into
         # the finder... to find an arbitrary .md file." An editor who only
@@ -2569,7 +2584,7 @@ def generate_story_angle(
         # inside the actual .prproj/XML, so the FULL brief goes here, not
         # a truncated summary — raised well past the earlier 3000-char cap.
         why_it_works=why_it_works[:12000],
-        tone=str(data.get("tone", ""))[:200],
+        tone=no_dashes(str(data.get("tone", "")))[:200],
         target_duration_sec=float(data.get("target_duration_sec", 0.0) or 0.0),
         target_audience=str(data.get("target_audience", ""))[:300],
         call_to_action=call_to_action[:300],
