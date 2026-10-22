@@ -310,15 +310,15 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         </div>
       </div>
 
-      {/* Small log strip at bottom so install-time errors are visible */}
-      <div className="start-log">
-        {log.slice(-3).map((entry, i) => (
-          <div key={i} className={`start-log-entry ${entry.level || ""}`}>
-            <span className="ts">{entry.ts}</span>
-            <span className="msg">{entry.message}</span>
+      {/* Only a real backend error shows here (an install or startup failure); routine log lines live in the project's Activity panel */}
+      {(() => {
+        const last = log[log.length - 1];
+        return last && last.level === "error" ? (
+          <div className="start-log" role="alert">
+            <div className="start-log-entry error"><span className="msg">{last.message}</span></div>
           </div>
-        ))}
-      </div>
+        ) : null;
+      })()}
 
       {deleteTarget && (
         <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>

@@ -37,6 +37,7 @@
     "resources": [
       "../python_backend/**/*.py",
       "../python_backend/**/*.png",
+      "../python_backend/posthouse/PRECUT_PIN",
       "../python_backend/labs/**/*.html",
       "../python_backend/labs/**/*.txt",
       "../python_backend/labs/**/*.json",
