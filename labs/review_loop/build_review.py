@@ -21,6 +21,32 @@ from render_preview import render_preview  # noqa: E402
 from timeline import TimelineError, load_cut  # noqa: E402
 
 
+def preview_envelope(preview: Path, hz: int = 100) -> list[int] | None:
+    """How loud the cut is, every 10 ms, read straight from the rendered preview, for the waveform lane under the picture.
+    Never fails a build: anything that goes wrong means no lane, which the page handles."""
+    import subprocess
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    if not Path(preview).is_file():
+        return None
+    sr = 8000                                          # a loudness line needs no more than this, and it keeps the page small
+    try:
+        raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(preview), "-map", "a:0?", "-ac", "1", "-ar", str(sr), "-f", "s16le", "-"],
+                             capture_output=True, timeout=180).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if len(raw) < sr:                                  # under a second of sound, or a silent cut: nothing worth drawing
+        return None
+    a = np.frombuffer(raw[:len(raw) // 2 * 2], dtype="<i2").astype("float32") / 32768.0
+    n = max(1, sr // hz)
+    a = a[:len(a) // n * n].reshape(-1, n)
+    rms = np.sqrt((a ** 2).mean(axis=1))
+    env = np.clip((20 * np.log10(np.maximum(rms, 1e-6)) + 60) / 55, 0, 1)      # the same decibel window the bleep close-up uses, so both read alike
+    return [int(round(x * 100)) for x in env]
+
+
 def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, suspects: list[dict] | None = None, editable_bleeps: bool = False, scan_json: Path | None = None) -> Path:
     cut = load_cut(xml)
     out.mkdir(parents=True, exist_ok=True)
@@ -102,6 +128,10 @@ def build(xml: Path, out: Path, height: int = 540, changes: dict | None = None, 
     except Exception as exc:
         print(f"  [SKIP] GRAPHICS-LIST  could not describe the graphics: {type(exc).__name__}: {exc}")
         data["graphics"] = []
+    if not data.get("envelope"):                      # every review gets the sound drawn under the picture, not only the ones that were bleeped
+        env = preview_envelope(out / "preview.mp4")
+        if env:
+            data.update({"envelope": env, "envelope_hz": 100})
     (out / "timeline.json").write_text(json.dumps(data, indent=2))
     html = (HERE / "review_template.html").read_text().replace(
         "/*__DATA__*/null", json.dumps(data).replace("</", "<\\/"))
