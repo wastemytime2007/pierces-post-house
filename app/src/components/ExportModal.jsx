@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { sendCommand } from "../App.jsx";
@@ -33,6 +33,9 @@ export default function ExportModal({
   onClose,
   onExported,
   libraryOnly = false,
+  // Start the build the moment it opens (the Trim step's button), and open the result in this Premiere (an install path; none = the system's choice)
+  autoStart = false,
+  premiereApp = "",
 }) {
   const [stage, setStage] = useState("configure");
   const [savePath, setSavePath] = useState("");
@@ -112,7 +115,7 @@ export default function ExportModal({
           case "export_complete":
             setWrittenPath(ev.xml_path);
             // The point of the export is to be in Premiere: open it as soon as it is written (the library-only file is a bin, not a cut)
-            if (ev.xml_path && !libraryOnly) sendCommand({ type: "open_xml", path: ev.xml_path }).catch((e) => console.error("open_xml failed:", e));
+            if (ev.xml_path && !libraryOnly) sendCommand({ type: "open_xml", path: ev.xml_path, ...(premiereApp ? { app: premiereApp } : {}) }).catch((e) => console.error("open_xml failed:", e));
             addProgress(`Wrote ${ev.sequences} sequence${ev.sequences !== 1 ? "s" : ""} + library of ${ev.broll_library_size} clips`, "accent");
             setStage("done");
             break;
@@ -180,6 +183,11 @@ export default function ExportModal({
       setStage("error");
     }
   };
+
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (autoStart && !startedRef.current) { startedRef.current = true; handleExport(); }
+  }, []);                                                                   // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReveal = async () => {
     if (!writtenPath) return;
@@ -271,10 +279,8 @@ export default function ExportModal({
             <>
               <button className="btn btn-ghost" onClick={onExported}>Close</button>
               <button className="btn" onClick={handleReveal}>Show in Finder</button>
-              {!libraryOnly && writtenPath && <button className="btn" onClick={() => sendCommand({ type: "open_xml", path: writtenPath }).catch((e) => console.error("open_xml failed:", e))}>Open in Premiere again</button>}
-              <button className="btn btn-primary" onClick={() => { onExported(); window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: "trim" } })); }}>
-                Next: trim in Premiere
-              </button>
+              {!libraryOnly && writtenPath && <button className="btn" onClick={() => sendCommand({ type: "open_xml", path: writtenPath, ...(premiereApp ? { app: premiereApp } : {}) }).catch((e) => console.error("open_xml failed:", e))}>Open in Premiere again</button>}
+              <button className="btn btn-primary" onClick={onExported}>Done</button>
             </>
           )}
           {stage === "error" && (

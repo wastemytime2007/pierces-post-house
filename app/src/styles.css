@@ -5514,3 +5514,14 @@ label:has(input), .rv-opt, .rv-check { cursor: pointer; }
 select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 
 .sp-hint { color: var(--fg-3); }
+
+/* Trim step 1 is the same tile, as a button */
+.trim-steps li.trim-act { padding: 0; }
+.trim-act-btn { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 3px; width: 100%; height: 100%; padding: 0 14px 14px; border-radius: 12px; cursor: pointer; }
+.trim-act-btn b { font-weight: 600; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; }
+.trim-act-btn span { color: var(--fg-2); }
+.trim-steps li.trim-act:hover { box-shadow: var(--shadow-2, var(--shadow-1)); background: var(--bg-2, var(--bg-1)); }
+.trim-act-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.trim-steps li.trim-act::before { margin: 14px 0 8px 14px; flex: none; align-self: flex-start; }
+.trim-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -16px 0 28px; color: var(--fg-2); font-size: var(--text-body); }
+.trim-version { display: inline-flex; align-items: center; gap: 8px; }

@@ -38,6 +38,10 @@ export default function IdeasTab({
   autoIncludeRulesCount,
   // Review the selected cuts without exporting an XML first: the backend makes them in the project's own folder and the Review tab takes over.
   onGoToReview,
+  // The stories chosen to work on (kept by the project view, so the Trim step knows them), and the way to the Trim step
+  chosen = [],
+  onChoose,
+  onGoToTrim,
 }) {
   const [showBriefForm, setShowBriefForm] = useState(false);
   // 2026-09-04: the plan-first conversation panel.
@@ -46,7 +50,8 @@ export default function IdeasTab({
   const [refineTarget, setRefineTarget] = useState(null);  // idea_id being refined
   const [producerBusy, setProducerBusy] = useState(false);
   // Drop 3: multi-select state for XML export
-  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectedIds, setSelectedIds] = useState(() => new Set(chosen));
+  useEffect(() => { if (onChoose) onChoose([...selectedIds]); }, [selectedIds]);          // eslint-disable-line react-hooks/exhaustive-deps
   const [showExportModal, setShowExportModal] = useState(false);
   // Drop 4.44: if true, the ExportModal opens in "library only" mode —
   // no ideas selected, backend skips the matcher, output is just the
@@ -520,10 +525,10 @@ export default function IdeasTab({
           </button>
           <button
             className="btn btn-primary"
-            title="Build one Premiere project with a sequence for each chosen story, and open it in Premiere"
-            onClick={() => requestExport(false)}
+            title="Go on to Trim: there the chosen stories are built into one Premiere project and opened in Premiere"
+            onClick={() => { if (onChoose) onChoose([...selectedIds]); if (onGoToTrim) onGoToTrim(); else requestExport(false); }}
           >
-            Open in Premiere <Icon name="arrowUpRight" size={14} />
+            Next: Trim <Icon name="arrowRight" size={14} />
           </button>
         </div>
       )}

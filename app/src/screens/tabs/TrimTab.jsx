@@ -1,5 +1,7 @@
 // Step 3: the part that happens in Premiere. The app does not edit here; it waits, says exactly what to do, and takes the trimmed XML back (drop it anywhere, or choose it).
+import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import ExportModal from "../../components/ExportModal.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import Icon from "../../components/Icon.jsx";
 import { sendCommand } from "../../App.jsx";
@@ -14,7 +16,27 @@ function when(mtime) {
   return new Date(mtime * 1000).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-export default function TrimTab({ exportsList, onGoTo }) {
+const shortName = (a) => a.name.replace(/^Adobe /, "");
+
+export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], project, subscribe, autoIncludeRulesCount = 0 }) {
+  // The stories chosen on the Stories step
+  const stories = ideas.filter((i) => chosen.includes(i.idea_id) && (i.kind === "deliverable" || i.kind === "story_angle"));
+  const titleOf = (i) => (i.kind === "story_angle" ? i.data?.brief?.title : i.data?.concept) || "Untitled";
+
+  // Which Premiere: every install is listed by the backend; the choice is remembered (the Finish step reads the same one)
+  const [apps, setApps] = useState([]);
+  const [choice, setChoice] = useState(() => { try { return localStorage.getItem("review.premiere") || ""; } catch (e) { return ""; } });
+  useEffect(() => {
+    const off = subscribe ? subscribe((ev) => { if (ev.type === "premiere_apps") setApps(ev.apps || []); }) : null;
+    sendCommand({ type: "premiere_apps" }).catch(() => {});
+    return () => { if (off) off(); };
+  }, []);                                                                   // eslint-disable-line react-hooks/exhaustive-deps
+  const app = apps.find((a) => a.path === choice) || apps[0] || null;
+  const pickApp = (path) => { setChoice(path); try { localStorage.setItem("review.premiere", path); } catch (e) { /* not kept */ } };
+
+  // The build: "start" runs it at once with the usual options; "options" shows them first
+  const [build, setBuild] = useState(null);
+
   const bringBack = (path) => window.dispatchEvent(new CustomEvent("posthouse-open-xml", { detail: { path } }));
   const choose = async () => {
     try {
@@ -33,10 +55,37 @@ export default function TrimTab({ exportsList, onGoTo }) {
       />
 
       <ol className="trim-steps">
-        <li><b>Open the XML in Premiere</b><span>Each story is its own sequence, in order, with its audio synced.</span></li>
+        <li className="trim-act">
+          {stories.length === 0 ? (
+            <button className="trim-act-btn" onClick={() => onGoTo("ideas")}>
+              <b>Open the XML in Premiere <Icon name="arrowRight" size={14} /></b>
+              <span>Choose your stories first, then open them here.</span>
+            </button>
+          ) : (
+            <button className="trim-act-btn" onClick={() => setBuild("start")}>
+              <b>Open the XML in {app && apps.length > 1 ? shortName(app) : "Premiere"} <Icon name="arrowUpRight" size={14} /></b>
+              <span>{stories.length === 1 ? "1 story" : `${stories.length} stories`}, each its own sequence in order, with its audio synced.</span>
+            </button>
+          )}
+        </li>
         <li><b>Trim it your way</b><span>Cut the storyline, tighten the delivery, change what you like. Nothing here edits it.</span></li>
         <li><b>Export the XML back</b><span>File, Export, Final Cut Pro XML. One sequence or many in the same file is fine.</span></li>
       </ol>
+      {stories.length > 0 && (
+        <div className="trim-tools">
+          {apps.length > 1 && (
+            <label className="trim-version">
+              <span>Premiere version</span>
+              <select value={app ? app.path : ""} onChange={(e) => pickApp(e.target.value)}>
+                {apps.map((a) => <option key={a.path} value={a.path}>{shortName(a)}</option>)}
+              </select>
+            </label>
+          )}
+          <button className="btn btn-sm btn-ghost" onClick={() => setBuild("options")}>Options…</button>
+          <button className="btn btn-sm btn-ghost" onClick={() => onGoTo("ideas")}>Change stories</button>
+          {apps.length === 0 && <span>Premiere Pro was not found in Applications: the XML opens with whatever your Mac uses.</span>}
+        </div>
+      )}
 
       <div className="trim-cols">
         <section className="trim-sent" aria-labelledby="trim-sent-h">
@@ -70,6 +119,19 @@ export default function TrimTab({ exportsList, onGoTo }) {
           <button className="btn btn-primary" onClick={choose}><Icon name="folderOpen" size={15} /> Choose XML…</button>
         </section>
       </div>
+      {build && (
+        <ExportModal
+          key={build}
+          selectedIdeas={stories}
+          projectName={project?.name || "project"}
+          brollCount={project?.broll_clip_count || 0}
+          autoIncludeRulesCount={autoIncludeRulesCount}
+          autoStart={build === "start"}
+          premiereApp={app ? app.path : ""}
+          onClose={() => setBuild(null)}
+          onExported={() => setBuild(null)}
+        />
+      )}
     </div>
   );
 }

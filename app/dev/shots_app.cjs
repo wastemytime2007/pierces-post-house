@@ -139,8 +139,15 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await boxes.nth(0).check({ force: true });
   await boxes.nth(1).check({ force: true });
   await shot("15c_ideas_chosen");
-  await page.getByRole("button", { name: /Open in Premiere/ }).click().catch(() => {});
-  await shot("15d_export_dialog");
+  await page.getByRole("button", { name: /Next: Trim/ }).click().catch(() => {});
+  await page.waitForTimeout(400);
+  await shot("15d_trim_with_stories");
+  await page.getByRole("button", { name: /Open the XML in/ }).first().click().catch(() => {});
+  await page.waitForTimeout(400);
+  await shot("15e_trim_building");
+  await page.evaluate(() => window.__backend({ type: "error", message: "Stand-in backend error: the dialog must say so" }));   // the old backend's reply: the dialog shows it instead of waiting
+  await page.waitForTimeout(300);
+  await shot("15f_trim_error_shown");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.getByRole("button", { name: "Activity" }).click();

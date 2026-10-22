@@ -70,6 +70,10 @@ export default function ProjectView({
   // Keyed by job_id. Each entry tracks per-stage progress.
   const [jobs, setJobs] = useState({});
   const [ideas, setIdeas] = useState([]);
+  // The stories chosen on the Stories step, per project, so Trim builds exactly those (and a restart keeps them)
+  const chosenKey = `ph.chosen.${project?.name || ""}`;
+  const [chosenIds, setChosenIds] = useState(() => { try { return JSON.parse(localStorage.getItem(chosenKey) || "[]"); } catch (e) { return []; } });
+  const chooseStories = (ids) => { setChosenIds(ids); try { localStorage.setItem(chosenKey, JSON.stringify(ids)); } catch (e) { /* not kept */ } };
   // 2026-09-03: sourced trend-research audit trail behind a story_architect
   // angle, keyed by idea_id — fetched on demand (get_story_research), not
   // preloaded with the idea list, since most ideas (PreCut's own
@@ -367,10 +371,13 @@ export default function ProjectView({
               onOpenAutoIncludeModal={onOpenAutoIncludeModal}
               autoIncludeRulesCount={autoIncludeRulesCount}
               onGoToReview={() => setActiveTab("review")}
+              chosen={chosenIds}
+              onChoose={chooseStories}
+              onGoToTrim={() => setActiveTab("trim")}
             />
           </ErrorBoundary>
           )}
-          {activeTab === "trim" && <ErrorBoundary><TrimTab exportsList={exportsList} onGoTo={setActiveTab} /></ErrorBoundary>}
+          {activeTab === "trim" && <ErrorBoundary><TrimTab exportsList={exportsList} onGoTo={setActiveTab} ideas={ideas} chosen={chosenIds} project={project} subscribe={subscribe} autoIncludeRulesCount={autoIncludeRulesCount} /></ErrorBoundary>}
           {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}
           <div className="review-host" style={{ display: activeTab === "review" ? "flex" : "none" }}>
             <ErrorBoundary><ReviewTab subscribe={subscribe} onStatus={setReviewSub} /></ErrorBoundary>
