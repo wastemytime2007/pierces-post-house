@@ -6,6 +6,7 @@ import PageHeader from "../../components/PageHeader.jsx";
 import Icon from "../../components/Icon.jsx";
 import { sendCommand } from "../../App.jsx";
 import { useThumb, requestFrames } from "../../thumbStore.js";
+import { dragProps } from "../../dragOut.js";
 
 const dirOf = (p) => String(p).replace(/\/[^/]*$/, "");
 
@@ -42,11 +43,14 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
 
   // Which Premiere: every install is listed by the backend; the choice is remembered (the Finish step reads the same one)
   const [apps, setApps] = useState([]);
+  const [link, setLink] = useState(null);                   // { panel, running }: whether Premiere is open and whether its Post House panel is answering
   const [choice, setChoice] = useState(() => { try { return localStorage.getItem("review.premiere") || ""; } catch (e) { return ""; } });
   useEffect(() => {
-    const off = subscribe ? subscribe((ev) => { if (ev.type === "premiere_apps") setApps(ev.apps || []); }) : null;
-    sendCommand({ type: "premiere_apps" }).catch(() => {});
-    return () => { if (off) off(); };
+    const off = subscribe ? subscribe((ev) => { if (ev.type === "premiere_apps") { setApps(ev.apps || []); setLink({ panel: !!ev.panel, running: !!ev.running }); } }) : null;
+    const ask = () => sendCommand({ type: "premiere_apps" }).catch(() => {});
+    ask();
+    const id = setInterval(ask, 8000);                      // Premiere can be opened or closed while this page is showing
+    return () => { clearInterval(id); if (off) off(); };
   }, []);                                                                   // eslint-disable-line react-hooks/exhaustive-deps
   const app = apps.find((a) => a.path === choice) || apps[0] || null;
   const pickApp = (path) => { setChoice(path); try { localStorage.setItem("review.premiere", path); } catch (e) { /* not kept */ } };
@@ -105,6 +109,14 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
               </select>
             </label>
           )}
+          {link && (
+            <span className={`trim-link ${link.panel ? "on" : link.running ? "warn" : ""}`} title={link.panel
+              ? "Post House can name the Premiere project and save it beside the XML"
+              : link.running ? "Premiere is open but its Post House panel is not answering. A panel loads when Premiere starts, so quit Premiere and open it again." : "Premiere will be started when you open a cut"}>
+              <span className="trim-link-dot" aria-hidden="true" />
+              {link.panel ? "Premiere connected" : link.running ? "Premiere open, panel not loaded" : "Premiere not running"}
+            </span>
+          )}
           <button className="btn btn-sm btn-ghost" onClick={() => setBuild("options")}>Options…</button>
           <button className="btn btn-sm btn-ghost" onClick={() => onGoTo("ideas")}>Change stories</button>
           {apps.length === 0 && <span>Premiere Pro was not found in Applications: the XML opens with whatever your Mac uses.</span>}
@@ -122,7 +134,7 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
           ) : (
             <ul className="trim-list">
               {recent.map((x) => (
-                <li key={x.path} className="trim-row">
+                <li key={x.path} className="trim-row" {...dragProps(x.path)}>
                   <ExportStrip xml={x.path} frames={xmlFrames[x.path]?.frames} />
                   <span className="trim-row-main">
                     <span className="trim-row-name">{x.name}</span>

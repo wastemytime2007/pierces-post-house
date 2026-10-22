@@ -1541,7 +1541,9 @@ def handle_open_xml(cmd: dict) -> None:
 def handle_premiere_apps(cmd: dict) -> None:
     """Which Premiere Pro versions are installed (stable and Beta), so the Review tab can ask which to open an XML in when there is more than one."""
     import creator_tools
-    emit({"type": "premiere_apps", "apps": creator_tools.premiere_apps()})
+    emit({"type": "premiere_apps", "apps": creator_tools.premiere_apps(),
+          "panel": creator_tools.premiere_link_alive(),           # is the Post House panel answering in Premiere right now (it is what names the project)
+          "running": creator_tools.premiere_running()})
 
 
 def handle_list_exports(cmd: dict) -> None:

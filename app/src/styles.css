@@ -5603,3 +5603,14 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 
 /* The Finish toolbar's menus sit above the review frame: an iframe later in the page was painting over them, so a menu item could be seen but not clicked */
 .rv-toolbar { position: relative; z-index: 50; }
+
+/* Something that can be dragged out of the app */
+.rv-dragout { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-sm); background: var(--bg-2, var(--bg-1)); color: var(--fg-1); font-size: var(--text-footnote); cursor: grab; }
+.rv-dragout:active { cursor: grabbing; }
+.trim-row[draggable="true"] { cursor: grab; }
+
+/* Whether Premiere, and its Post House panel, are there: the only way to know used to be to try */
+.trim-link { display: inline-flex; align-items: center; gap: 7px; color: var(--fg-2); font-size: var(--text-footnote); }
+.trim-link-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-3); }
+.trim-link.on .trim-link-dot { background: var(--good, #30a46c); }
+.trim-link.warn .trim-link-dot { background: var(--attention, #f4690b); }

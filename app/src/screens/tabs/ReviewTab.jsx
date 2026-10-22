@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "../../components/Icon.jsx";
 import { useThumb, requestFrames, cutFrameItem, setFallback, hintFrame, takeHint } from "../../thumbStore.js";
+import { dragProps } from "../../dragOut.js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { sendCommand } from "../../App.jsx";
@@ -1029,6 +1030,7 @@ function SeqBoard() {
               {fileName(merged.xml)}
               {merged.excluded.length > 0 && <> Left out, because they did not pass the export check: {merged.excluded.map((x) => `${pretty(x.name)} (${x.failed.join(", ")})`).join("; ")}.</>}
             </span>
+            <span className="rv-dragout" {...dragProps(merged.xml)}><Icon name="doc" size={14} /> Drag to Premiere</span>
             <button className="btn btn-sm btn-primary" onClick={() => sendCommand({ type: "open_xml", path: merged.xml, ...(premiereApp ? { app: premiereApp } : {}) })}>Open in Premiere</button>
             <button className="btn btn-sm" onClick={() => sendCommand({ type: "open_path", path: dirName(merged.xml) })}>Show in Finder</button>
             <button className="btn btn-ghost btn-sm" onClick={() => setMerged(null)}>Dismiss</button>

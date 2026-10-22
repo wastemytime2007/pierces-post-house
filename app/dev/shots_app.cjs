@@ -141,6 +141,8 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await shot("15c_ideas_chosen");
   await page.getByRole("button", { name: /Next: Trim/ }).click().catch(() => {});
   await page.waitForTimeout(400);
+  await page.evaluate(() => window.__backend({ type: "premiere_apps", apps: [{ path: "/Applications/Adobe Premiere Pro 2026/Adobe Premiere Pro 2026.app", name: "Adobe Premiere Pro 2026", beta: false }, { path: "/Applications/Adobe Premiere Pro (Beta)/Adobe Premiere Pro (Beta).app", name: "Adobe Premiere Pro (Beta)", beta: true }], panel: true, running: true }));
+  await page.waitForTimeout(250);
   await shot("15d_trim_with_stories");
   await page.getByRole("button", { name: /Open the XML in/ }).first().click().catch(() => {});
   await page.waitForTimeout(400);

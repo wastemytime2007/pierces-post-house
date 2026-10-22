@@ -803,6 +803,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_drag::init())            // a finished XML can be dragged out of the app into Finder or Premiere's project panel
         .manage(backend)
         .manage(setup_child)
         .menu(build_menu)
