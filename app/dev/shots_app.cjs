@@ -71,6 +71,12 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.getByRole("button", { name: /Process again/ }).click().catch(() => {});
   await shot("12c_process_dialog");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
+  await page.getByRole("button", { name: "Activity" }).hover();
+  await page.waitForTimeout(900);
+  await shot("12g_tooltip");
+  const tipOk = await page.evaluate(() => ({ shown: !!document.querySelector(".tooltip"), text: document.querySelector(".tooltip")?.textContent, titleLeft: document.querySelectorAll("[title]").length }));
+  console.log("tooltip:", JSON.stringify(tipOk));
+  await page.mouse.move(600, 500);
   await page.keyboard.press("Meta+k");
   await shot("12d_palette");
   await page.keyboard.type("cre");

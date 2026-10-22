@@ -23,3 +23,8 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 17 | The sequence picker is a contact sheet: each sequence by its own frame, check marks, sticky "Open N sequences" | screenshot dark and light |
 | 18 | Duration chips read 0:28, not "0 min" | screenshot |
 | 19 | While choosing, the sheet has the whole screen (no intro above it) | screenshot |
+| 20 | Board: every open sequence as a tile with its own (finished) frame and a status chip; one click opens it | screenshot dark |
+| 21 | The board opens by itself when a Get Creative batch ends | build; needs a real batch to see |
+| 22 | When every sequence is finished the heading's check draws itself, once (the one celebratory moment) | build; CSS animation, not seen mid-draw |
+| 23 | A macOS notification when a batch ends ("All 8 sequences finished. Ready for review.") | `test_creative_notify.py` (6); a real notification not sent tonight |
+| 24 | One tooltip for the whole app (delayed first, instant between neighbors, keeps accessible names), replacing the browser's | screenshot dark; confirmed the title moves to data-tip |

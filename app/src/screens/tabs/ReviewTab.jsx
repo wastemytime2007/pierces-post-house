@@ -101,12 +101,20 @@ export default function ReviewTab({ subscribe, onStatus }) {
   });
   const [choosing, setChoosing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const wasRunning = useRef(false);
+  useEffect(() => {
+    // A batch that was running has ended: show everything together
+    const running = !!creative?.running;
+    if (wasRunning.current && !running && (creative?.state?.items || []).some((i) => i.status === "done")) setBoard(true);
+    wasRunning.current = running;
+  }, [creative?.running]);
   useEffect(() => {
     if (picker?.rows?.length) requestFrames(picker.rows.filter((r) => r.first_frame).map((r) => ({ key: `seq:${picker.xml}:${r.id}`, path: r.first_frame.path, t: r.first_frame.t })), 320);
   }, [picker?.xml, picker?.rows]);
   useEffect(() => { if (seqSet?.items?.length) requestFrames(seqSet.items.map((sq) => cutFrameItem(sq.xml)), 200); }, [seqSet]);
   useEffect(() => { if (exportsList?.length) requestFrames(exportsList.slice(0, 8).map((x) => cutFrameItem(x.path)), 420); }, [exportsList]);
-  const [scopeAll, setScopeAll] = useState(true);                  // Get Creative: every sequence opened, or only this one
+  const [scopeAll, setScopeAll] = useState(true);
+  const [board, setBoard] = useState(false);                      // all the open sequences at a glance, over the review                  // Get Creative: every sequence opened, or only this one
   const [menuOpen, setMenuOpen] = useState(false);                 // the More menu
   const keysRef = useRef({});                                      // the latest handlers for the keyboard shortcuts (set below, after they exist)
   useEffect(() => {
@@ -815,14 +823,17 @@ export default function ReviewTab({ subscribe, onStatus }) {
     const busyNow = !!busy || auto.status === "running";
     return (
       <nav className="rv-side" aria-label="Sequences">
-        <div className="rv-side-head">Sequences <span className="rv-count">{seqSet.items.length}</span></div>
+        <button className={`rv-side-head ${board ? "on" : ""}`} aria-pressed={board} onClick={() => setBoard((b) => !b)} title="Show all the sequences together">
+          <span>Sequences <span className="rv-count">{seqSet.items.length}</span></span>
+          <span className="rv-side-board"><Icon name="list" size={13} /> Board</span>
+        </button>
         <ul className="rv-side-list">
           {seqSet.items.map((sq) => {
             const it = byXml[sq.xml];
             const on = versionsRef.current[0]?.xml === sq.xml;
             return (
               <li key={sq.xml}>
-                <button className={`rv-seq ${on ? "on" : ""} ${it?.status || ""}`} disabled={busyNow} title={it?.message || sq.xml} aria-current={on ? "true" : undefined} onClick={() => openReview(sq.xml)}>
+                <button className={`rv-seq ${on ? "on" : ""} ${it?.status || ""}`} disabled={busyNow} title={it?.message || sq.xml} aria-current={on ? "true" : undefined} onClick={() => { setBoard(false); openReview(sq.xml); }}>
                   <CutThumb xml={sq.xml} />
                   <span className="rv-seq-name">{pretty(sq.name)}</span>
                   <span className={`rv-glyph ${it?.status || ""}`} aria-hidden="true">{glyph[it?.status] || ""}</span>
@@ -850,6 +861,42 @@ export default function ReviewTab({ subscribe, onStatus }) {
           </div>
         )}
       </nav>
+    );
+  }
+
+  // Every open sequence as a tile: its own frame (the finished version's when there is one), where it stands, one click to open it.
+  function SeqBoard() {
+    if (!board || !seqSet || seqSet.items.length < 2) return null;
+    const byXml = Object.fromEntries((creative?.state?.items || []).map((i) => [i.xml, i]));
+    const label = { done: "Finished", running: "Working", waiting: "Waiting", failed: "Needs a look", skipped: "Left as it was" };
+    const finished = seqSet.items.filter((sq) => ["done", "skipped"].includes(byXml[sq.xml]?.status)).length;
+    const current = versionsRef.current[0]?.xml;
+    return (
+      <section className="rv-board" aria-label="All sequences">
+        <header className="sp-head">
+          <div>
+            <h2>{finished === seqSet.items.length && <svg className="done-mark" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M7.5 12.5l3 3 6-6.5" /></svg>}All sequences</h2>
+            <p>{finished === seqSet.items.length ? `All ${finished} finished.` : `${finished} of ${seqSet.items.length} finished.`} Choose one to review it, or send what is ready to Premiere.</p>
+          </div>
+          <div className="sp-tools">
+            <button className="btn" onClick={() => setFinishing(true)} disabled={toolsBusy}><Icon name="sparkles" size={15} /> Get Creative…</button>
+            <button className="btn btn-ghost" onClick={() => setBoard(false)}>Back to review</button>
+          </div>
+        </header>
+        <div className="sp-grid">
+          {seqSet.items.map((sq) => {
+            const st = byXml[sq.xml]?.status;
+            return (
+              <button key={sq.xml} className={`sp-tile ${sq.xml === current ? "on" : ""}`} disabled={!!busy || auto.status === "running"} onClick={() => { setBoard(false); openReview(sq.xml); }} title={byXml[sq.xml]?.message || sq.xml}>
+                <CutThumb xml={sq.xml} className="board" />
+                {st && <span className={`board-chip ${st}`}>{st === "running" && <span className="setup-spinner" />}{label[st] || st}</span>}
+                <span className="sp-name">{pretty(sq.name)}</span>
+                <span className="sp-meta">{byXml[sq.xml]?.status === "running" ? (byXml[sq.xml].step || "starting") : sq.xml === current ? "Open now" : "Review"}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
     );
   }
 
@@ -1084,6 +1131,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
           />
         </div>
 
+      {SeqBoard()}
       {CreativeSheet()}
       {choosing && (
         <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setChoosing(false); }}>

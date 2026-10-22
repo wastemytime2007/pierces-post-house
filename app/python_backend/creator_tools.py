@@ -1822,6 +1822,30 @@ def _auto_summary_base(o: dict) -> str:
     }.get(o["status"], f"Finished: {best}.")
 
 
+def notify(title: str, text: str) -> bool:
+    """A macOS notification (the batch ran while the person was elsewhere). Quiet failure: it is a courtesy, never a reason for a step to fail. True when it was sent."""
+    if sys.platform != "darwin":
+        return False
+    try:
+        script = f"display notification {json.dumps(str(text))} with title {json.dumps(str(title))}"
+        return subprocess.run(["osascript", "-e", script], check=False, timeout=10, capture_output=True).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def finished_message(state: dict | None) -> tuple[str, str]:
+    """The title and line for the notification after a Get Creative batch, from the batch's own record."""
+    items = (state or {}).get("items") or []
+    done = sum(1 for i in items if i.get("status") in ("done", "skipped"))
+    failed = sum(1 for i in items if i.get("status") == "failed")
+    left = sum(1 for i in items if i.get("status") in ("waiting", "running"))
+    if left:
+        return "Get Creative stopped", f"{done} of {len(items)} finished. The rest are waiting for you."
+    if failed:
+        return "Get Creative finished", f"{done} of {len(items)} finished, {failed} need a look."
+    return "Get Creative finished", f"All {len(items)} sequence{'' if len(items) == 1 else 's'} finished. Ready for review."
+
+
 def reveal(path: str) -> None:
     """Open a file in its default app (the review page opens in the browser) or a folder in Finder."""
     p = Path(path).expanduser()

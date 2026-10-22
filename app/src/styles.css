@@ -5348,3 +5348,30 @@ select { height: 28px; }
 
 .rv-empty.picking { padding-top: 22px; }
 .rv-empty.picking .rv-empty-card { width: min(1180px, 100%); }
+
+/* Board: every open sequence as a tile, over the review */
+.rv-board { position: absolute; inset: 0; z-index: 6; overflow-y: auto; padding: 18px var(--gutter) 24px; background: var(--bg-0); animation: stage-in 220ms var(--ease) backwards; }
+.rv-board .sp-grid { margin-top: 16px; }
+.rv-side-head { display: flex; justify-content: space-between; align-items: center; width: calc(100% - 16px); margin: 8px 8px 4px; padding: 5px 8px; border: 0; border-radius: 8px; background: none; color: var(--fg-1); font: inherit; font-size: var(--text-footnote); font-weight: 600; cursor: pointer; }
+.rv-side-head:hover, .rv-side-head.on { background: var(--fill); color: var(--fg-0); }
+.rv-side-board { display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: var(--accent); }
+.cut-thumb.board { width: 100%; height: auto; aspect-ratio: 4 / 5; border-radius: 12px; box-shadow: var(--shadow-1); transition: box-shadow 160ms var(--ease), transform 160ms var(--ease); }
+.sp-tile:hover:not(:disabled) .cut-thumb.board { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.sp-tile.on .cut-thumb.board { box-shadow: 0 0 0 2.5px var(--accent), var(--shadow-2); }
+.board-chip { position: absolute; left: 8px; top: 8px; display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 99px; font-size: var(--text-caption); font-weight: 600; color: #fff; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.board-chip.done { background: rgba(27, 140, 70, 0.85); }
+.board-chip.failed { background: rgba(190, 70, 20, 0.88); }
+.board-chip.running { background: rgba(3, 105, 163, 0.88); }
+.board-chip .setup-spinner { width: 10px; height: 10px; border-width: 1.5px; }
+
+/* The one celebratory moment: when every sequence is finished the check draws itself, once */
+.sp-head h2 { display: flex; align-items: center; gap: 10px; }
+.done-mark { flex: none; }
+.done-mark circle { fill: none; stroke: var(--success); stroke-width: 1.8; stroke-dasharray: 63; stroke-dashoffset: 63; animation: draw-ring 520ms var(--ease) 80ms forwards; }
+.done-mark path { fill: none; stroke: var(--success); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 16; stroke-dashoffset: 16; animation: draw-ring 320ms var(--ease) 460ms forwards; }
+@keyframes draw-ring { to { stroke-dashoffset: 0; } }
+
+/* The one tooltip */
+.tooltip { position: fixed; z-index: 400; max-width: 280px; padding: 6px 10px; border-radius: 8px; font-size: var(--text-footnote); line-height: 1.35; color: var(--fg-0); pointer-events: none;
+  background: color-mix(in srgb, var(--bg-2) 94%, transparent); -webkit-backdrop-filter: blur(16px) saturate(180%); backdrop-filter: blur(16px) saturate(180%); box-shadow: var(--shadow-2); animation: tip-in 110ms var(--ease) both; }
+@keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }

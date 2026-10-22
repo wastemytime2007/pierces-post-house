@@ -1119,6 +1119,7 @@ def handle_get_creative(cmd: dict) -> None:
         import creator_tools
         try:
             creator_tools.get_creative(xmls, cmd.get("opts"), emit, _creative_stop.is_set)         # each step captures its own printing; wrapping the whole batch would redirect stdout for hours
+            creator_tools.notify(*creator_tools.finished_message(creator_tools.read_creative(xmls[0])))
         except creator_tools.ToolError as exc:
             emit({"type": "creative_failed", "xml": xmls[0], "message": str(exc)})
         except Exception as exc:

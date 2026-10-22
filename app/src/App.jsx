@@ -13,6 +13,7 @@ import WelcomeModal from "./components/WelcomeModal.jsx";
 import ApiKeyHelp from "./components/ApiKeyHelp.jsx";
 import ToastStack from "./components/ToastStack.jsx";
 import Mark from "./components/Mark.jsx";
+import Tooltips from "./components/Tooltips.jsx";
 import CommandPalette from "./components/CommandPalette.jsx";
 import ShortcutsSheet from "./components/ShortcutsSheet.jsx";
 import Icon from "./components/Icon.jsx";
@@ -865,6 +866,7 @@ export default function App() {
         </div>
       )}
 
+      <Tooltips />
       {paletteOpen && <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} />}
       {shortcutsOpen && <ShortcutsSheet onClose={() => setShortcutsOpen(false)} />}
       {xmlOver && (

@@ -98,6 +98,11 @@ async function counts(page, label) {
   await page.screenshot({ path: path.join(out, "05_batch_running.png"), fullPage: true });
   await counts(page, "05_batch_running");
 
+  // 6. the board: every sequence together
+  await page.getByRole("button", { name: /Board/ }).click();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(out, "06_board.png") });
+  await counts(page, "06_board");
   console.log("page errors:", JSON.stringify(errors));
   await browser.close();
 })().catch((e) => { console.error("FAILED:", e); process.exit(1); });
