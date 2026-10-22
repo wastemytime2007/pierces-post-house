@@ -5428,3 +5428,52 @@ select { height: 28px; }
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%); mask-image: linear-gradient(to bottom, #000 0%, transparent 100%); }
 @media (prefers-color-scheme: light) { .ambient { opacity: 0.16; } }
 .project-nav { background: color-mix(in srgb, var(--bg-0) 55%, transparent); }
+
+/* ===========================================================
+ * Round batch (2026-10-22 night): easing, fallbacks, activity panel
+ * =========================================================== */
+
+/* Sheets, dialogs and the palette arrive with a short, soft scale (under 200 ms); nothing else moves on its own */
+@keyframes sheet-in { from { opacity: 0; transform: translateY(8px) scale(0.975); } to { opacity: 1; transform: none; } }
+.rv-sheet, .modal { animation: sheet-in 190ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+.rv-scrim, .modal-overlay { animation: veil-in 160ms var(--ease) both; }
+
+/* People who ask for less transparency get solid surfaces; people who ask for more contrast get firmer lines and text */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --material: var(--bg-0); }
+  .titlebar, .project-nav, .rv-toolbar, .rv-menu-list, .cp, .tooltip, .toast, .floating-export-bar, .drop-veil, .cover-delete, .cover-next, .sp-check, .sp-dur, .board-chip, .storyboard-chip {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .rv-menu-list, .cp, .tooltip, .toast, .floating-export-bar { background: var(--bg-2); }
+  .cover-delete, .cover-next, .sp-check, .sp-dur, .board-chip, .storyboard-chip { background: rgba(0, 0, 0, 0.78); }
+  .ambient-wrap { display: none; }
+}
+@media (prefers-contrast: more) {
+  :root { --separator: rgba(128, 128, 140, 0.55); --fill: rgba(128, 128, 140, 0.28); --fg-1: var(--fg-0); --fg-2: var(--fg-1); }
+  .btn, .jstep, .rv-opt, .idea-card, .cover, .sp-art, .trim-row, .trim-steps li { box-shadow: 0 0 0 1px var(--separator); }
+  .ambient-wrap { display: none; }
+}
+
+/* Cursors: a pointer only where something happens */
+button:disabled, [aria-disabled="true"] { cursor: default; }
+.cover-art, .cover-shade, .cover-info, .cover-next { cursor: pointer; }
+label, h1, h2, h3, p, .page-header { cursor: default; }
+label:has(input), .rv-opt, .rv-check { cursor: pointer; }
+
+/* Activity panel: a quiet column of time and message; problems carry the attention color and nothing else shouts */
+.log-pane { background: var(--bg-1); }
+.log-header { padding: 14px 16px 10px; border-bottom: 0.5px solid var(--separator); }
+.log-title { font-size: var(--text-body); font-weight: 600; color: var(--fg-0); letter-spacing: -0.005em; }
+.log-clear { font-size: var(--text-footnote); color: var(--fg-1); }
+.log-clear:disabled { opacity: 0.4; }
+.log-entries { padding: 8px 8px 16px; }
+.log-entry { gap: 10px; padding: 5px 8px; border-radius: 6px; font-size: var(--text-footnote); line-height: 1.45; }
+.log-entry:hover { background: var(--fill); }
+.log-entry .timestamp { color: var(--fg-2); font-variant-numeric: tabular-nums; flex: none; }
+.log-entry .message { color: var(--fg-1); word-break: break-word; }
+.log-entry.error .message { color: var(--error); }
+.log-entry.warn .message { color: var(--warn); }
+.log-entry.accent .message { color: var(--accent); }
+.log-empty { display: flex; flex-direction: column; gap: 4px; padding: 28px 22px; color: var(--fg-1); font-size: var(--text-body); line-height: 1.45; }
+.log-empty b { color: var(--fg-0); font-weight: 600; }
+.log-empty span { font-size: var(--text-footnote); }

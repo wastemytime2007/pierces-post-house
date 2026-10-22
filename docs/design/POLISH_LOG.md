@@ -54,3 +54,10 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 48 | The title bar shows the open project by its own frame and name | screenshot dark |
 | 49 | The wordmark is the way back to all projects | build |
 | 50 | Ambient: a soft glow from the open project's own frame behind each page (decoration only, hidden from assistive tech) | screenshot dark and light |
+| 51 | Sheets, dialogs and the palette arrive with a short soft scale (190 ms); reduced motion turns it off | build |
+| 52 | Reduced transparency: solid surfaces replace the blur, and the ambient glow is hidden | CSS only; the media query was not testable in headless Chrome |
+| 53 | Increased contrast: firmer separators and one step stronger text, glow hidden | CSS only; not testable in headless Chrome |
+| 54 | Cursors: pointer only where something happens | build |
+| 55 | Activity panel: a quiet column of time and message, problems in the attention color, an empty state that explains itself, Clear disabled when empty | screenshot |
+| 56 | A crash in one step (Footage, Stories, Trim, Finish) shows a message inside that step with the navigation intact | build; forced crash not tested |
+| 57 | The wordmark button's accessible name contains its visible text | axe: no serious or critical findings, both appearances, both drivers |

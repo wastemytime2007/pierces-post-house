@@ -640,7 +640,7 @@ export default function App() {
     <div className="app">
       <header className="titlebar">
         <div className="titlebar-brand">
-          <button className="titlebar-home" onClick={() => project && closeProject()} disabled={!project} aria-label={project ? "All projects" : "Post House"} title={project ? "All projects" : undefined}>
+          <button className="titlebar-home" onClick={() => project && closeProject()} disabled={!project} aria-label={project ? "Post House, all projects" : "Post House"} title={project ? "All projects" : undefined}>
             <Mark size={20} /><span className="titlebar-wordmark">Post House</span>
           </button>
           {project && (

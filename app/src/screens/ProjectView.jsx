@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useThumb } from "../thumbStore.js";
 import Journey from "../components/Journey.jsx";
 import TrimTab from "./tabs/TrimTab.jsx";
@@ -337,6 +338,7 @@ export default function ProjectView({
       <div className={`project-main ${showLog ? "log-visible" : "log-hidden"}`}>
         <section role="main" className={`project-stage ${activeTab === "review" ? "is-review" : ""}`}>
           {activeTab === "pm" && (
+            <ErrorBoundary>
             <PMTab
               subscribe={subscribe}
               project={project}
@@ -345,8 +347,10 @@ export default function ProjectView({
               onGoToIdeas={() => setActiveTab("ideas")}
               audienceProfiles={audienceProfiles}
             />
+          </ErrorBoundary>
           )}
           {activeTab === "ideas" && (
+            <ErrorBoundary>
             <IdeasTab
               project={project}
               ideas={ideas}
@@ -364,11 +368,12 @@ export default function ProjectView({
               autoIncludeRulesCount={autoIncludeRulesCount}
               onGoToReview={() => setActiveTab("review")}
             />
+          </ErrorBoundary>
           )}
-          {activeTab === "trim" && <TrimTab exportsList={exportsList} onGoTo={setActiveTab} />}
+          {activeTab === "trim" && <ErrorBoundary><TrimTab exportsList={exportsList} onGoTo={setActiveTab} /></ErrorBoundary>}
           {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}
           <div className="review-host" style={{ display: activeTab === "review" ? "flex" : "none" }}>
-            <ReviewTab subscribe={subscribe} onStatus={setReviewSub} />
+            <ErrorBoundary><ReviewTab subscribe={subscribe} onStatus={setReviewSub} /></ErrorBoundary>
           </div>
         </section>
         {showLog ? (

@@ -25,7 +25,7 @@ export default function LogView({ entries, onClear }) {
     <div className="log-pane">
       <div className="log-header">
         <span className="log-title">Activity</span>
-        <button className="log-clear" onClick={onClear}>Clear</button>
+        <button className="log-clear" onClick={onClear} disabled={entries.length === 0}>Clear</button>
       </div>
       <div
         className="log-entries"
@@ -33,8 +33,9 @@ export default function LogView({ entries, onClear }) {
         onScroll={handleScroll}
       >
         {entries.length === 0 ? (
-          <div className="empty-state" style={{ padding: 0 }}>
-            Live activity will appear here once you start a job.
+          <div className="log-empty">
+            <b>Nothing yet.</b>
+            <span>Progress, and anything that goes wrong, shows up here while a job runs.</span>
           </div>
         ) : (
           entries.map((entry, idx) => (
