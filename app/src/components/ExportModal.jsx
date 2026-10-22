@@ -268,8 +268,9 @@ export default function ExportModal({
           {stage === "done" && (
             <>
               <button className="btn btn-ghost" onClick={onExported}>Close</button>
-              <button className="btn btn-primary" onClick={handleReveal}>
-                Reveal in Finder →
+              <button className="btn" onClick={handleReveal}>Show in Finder</button>
+              <button className="btn btn-primary" onClick={() => { onExported(); window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: "trim" } })); }}>
+                Next: trim in Premiere
               </button>
             </>
           )}
@@ -468,12 +469,11 @@ function DoneView({ writtenPath, projectName }) {
     <div className="export-done">
       <div className="export-done-icon">✓</div>
       <div className="export-done-msg">
-        Your XML is ready. Click Reveal in Finder, then double-click the file to open it in Premiere.
+        Your XML is ready. Open it in Premiere, trim each story your way, then bring the XML back to Finish.
       </div>
       <div className="export-done-path">{writtenPath}</div>
       <div className="form-hint" style={{ marginTop: 14 }}>
-        After Premiere opens: right-click any clip → Proxy → Attach Proxies → point at your
-        proxies folder. This links all clips to their proxies in one step.
+        In Premiere: right-click any clip, choose Proxy, then Attach Proxies, and point at your proxies folder. That links every clip to its proxy in one step.
       </div>
     </div>
   );

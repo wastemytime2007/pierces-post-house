@@ -28,3 +28,9 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 22 | When every sequence is finished the heading's check draws itself, once (the one celebratory moment) | build; CSS animation, not seen mid-draw |
 | 23 | A macOS notification when a batch ends ("All 8 sequences finished. Ready for review.") | `test_creative_notify.py` (6); a real notification not sent tonight |
 | 24 | One tooltip for the whole app (delayed first, instant between neighbors, keeps accessible names), replacing the browser's | screenshot dark; confirmed the title moves to data-tip |
+| 25 | Right-click a project on the home screen: Open, Show in Finder, Delete | screenshot dark |
+| 26 | Stories empty state with the next action (Plan with AI, Find stories), and a note when interviews are not transcribed yet | screenshot |
+| 27 | The no-API-key state in plain words ("Stories need an API key") with two clear actions | screenshot light |
+| 28 | The "N stories chosen" bar is a floating translucent pill | build |
+| 29 | Export XML is the primary action on Stories; the in-app preview is secondary | build |
+| 30 | A finished export hands off: "Next: trim in Premiere" goes to the Trim step | build |

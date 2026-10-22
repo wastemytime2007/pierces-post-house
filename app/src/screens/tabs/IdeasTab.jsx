@@ -416,45 +416,26 @@ export default function IdeasTab({
           // startup — in that case default to the standard message.
           (settings && settings.active_source === "none"
             && !settings.llm_via_cli) ? (
-            <div className="ideas-nokey-empty">
-              <div className="ideas-nokey-title">
-                No API key — you can&rsquo;t generate ideas yet
-              </div>
-              <div className="ideas-nokey-body">
-                Post House uses an AI producer to read your transcripts and propose
-                cut ideas — that part needs an API key. You can still export
-                your indexed footage (all A-roll with synced audio + tagged
-                B-roll library) as a Premiere XML right now, without a key.
-              </div>
-              <div className="ideas-nokey-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => requestExport(true)}
-                >
-                  Export library only →
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => onOpenApiKeyHelp && onOpenApiKeyHelp()}
-                >
-                  Help me set up a key
-                </button>
+            <div className="stories-empty">
+              <div className="start-empty-frames" aria-hidden="true"><span /><span /><span /></div>
+              <h2>Stories need an API key.</h2>
+              <p>Finding stories uses Claude, made by Anthropic. Add a key once and it works across every project. Until then you can still send your footage to Premiere as a project skeleton, with the interviews synced and the B-roll described.</p>
+              <div className="rv-empty-actions">
+                <button className="btn btn-primary" onClick={() => onOpenApiKeyHelp && onOpenApiKeyHelp()}>Add an API key</button>
+                <button className="btn" onClick={() => requestExport(true)}>Export the footage only</button>
               </div>
             </div>
           ) : (
-            <div className="empty-state empty-state-with-action">
-              <div>No stories yet. Choose <strong>Find stories</strong>, or <strong>Plan with AI</strong> to talk it through first.</div>
-              <div style={{ marginTop: 14, fontSize: 12, color: "var(--fg-2)" }}>
-                Or skip the AI step entirely and{" "}
-                <button
-                  type="button"
-                  className="empty-state-link"
-                  onClick={() => requestExport(true)}
-                  disabled={producerBusy}
-                >
-                  export your footage as a project skeleton →
-                </button>
+            <div className="stories-empty">
+              <div className="start-empty-frames" aria-hidden="true"><span /><span /><span /></div>
+              <h2>No stories yet.</h2>
+              <p>Post House reads what your people said and finds the moments that make a story. Talk it through first for sharper ones, or let it look straight away.</p>
+              <div className="rv-empty-actions">
+                <button className="btn btn-primary" onClick={() => setShowPlanPanel(true)} disabled={transcriptCount === 0 || producerBusy}><Icon name="sparkles" size={15} /> Plan with AI</button>
+                <button className="btn" onClick={handleGenerateStoryArchitect} disabled={transcriptCount === 0 || producerBusy}>Find stories</button>
               </div>
+              {transcriptCount === 0 && <p className="stories-empty-note">The interviews need to be transcribed first. That happens on the Footage step.</p>}
+              <button type="button" className="empty-state-link" onClick={() => requestExport(true)} disabled={producerBusy}>Skip stories and export the footage as a project skeleton</button>
             </div>
           )
         ) : (
@@ -517,14 +498,14 @@ export default function IdeasTab({
         <div className="floating-export-bar">
           <div className="floating-export-count">
             <span className="floating-export-badge">{selectedExportable.length}</span>
-            {selectedExportable.length === 1 ? "timeline" : "timelines"} selected
+            {selectedExportable.length === 1 ? "story" : "stories"} chosen
           </div>
           <button className="btn btn-ghost" onClick={() => setSelectedIds(new Set())}>
             Clear
           </button>
           <button
-            className="btn btn-primary"
-            title="Make the cut and open it on the review page. Nothing to save or download."
+            className="btn btn-ghost"
+            title="Make a quick cut of these in the app to look at. The finished edit still happens in Premiere."
             onClick={async () => {
               const ids = selectedExportable.map((i) => i.idea_id);
               if (onGoToReview) onGoToReview();
@@ -535,14 +516,14 @@ export default function IdeasTab({
               }
             }}
           >
-            Review {selectedExportable.length === 1 ? "this cut" : "these cuts"} →
+            Preview {selectedExportable.length === 1 ? "this cut" : "these cuts"}
           </button>
           <button
-            className="btn btn-ghost"
-            title="Save a Premiere XML to a place you choose"
+            className="btn btn-primary"
+            title="Save one Premiere XML with a sequence for each chosen story"
             onClick={() => requestExport(false)}
           >
-            Export XML…
+            Export XML… <Icon name="arrowUpRight" size={14} />
           </button>
         </div>
       )}

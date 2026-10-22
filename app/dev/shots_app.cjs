@@ -49,6 +49,10 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
     }
   }
   await shot("10_start");
+  await page.locator(".cover").first().click({ button: "right" });
+  await shot("10b_cover_menu");
+  await page.keyboard.press("Escape");
+  await page.mouse.click(5, 400);
   await page.getByRole("button", { name: /New project/i }).first().click().catch(() => {});
   await shot("11_new_project");
   await page.keyboard.press("Escape");
@@ -91,6 +95,9 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await shot("14_api_key_modal");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
+  await page.getByRole("tab", { name: /Stories/ }).click();
+  await page.evaluate(() => window.__backend({ type: "ideas_list", ideas: [] }));
+  await shot("15a_stories_empty");
   await page.evaluate((a) => window.__backend({ type: "ideas_list", ideas: a }), ANGLES);
   await page.evaluate(() => window.__backend({ type: "exports_listed", exports: [
     { name: "Runnells Weekend - 3 stories.xml", path: "/x/exports/Runnells Weekend - 3 stories.xml", mtime: Date.now() / 1000 - 1500, session: null },

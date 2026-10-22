@@ -35,11 +35,11 @@ function greeting() {
 }
 
 // A project is its own footage: one frame from its interviews as the cover, the name over a soft shade. No footage yet: a color tile from the brand's blues.
-function Cover({ p, featured, onOpen, onDelete, index }) {
+function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   const poster = useThumb(`poster:${p.name}`);
   const [c1, c2] = tileColors(p.name);
   return (
-    <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }}>
+    <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }} onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
       <button className="cover-open" onClick={() => onOpen(p.name)} aria-label={`Open ${p.name}`}>
         <span className="cover-art" style={poster ? { backgroundImage: `url(${poster})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
         <span className="cover-shade" />
@@ -59,6 +59,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   const [showNewProject, setShowNewProject] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState(null);
+  const [ctx, setCtx] = useState(null);                       // right-click menu on a project: { x, y, p }
   const [deleteTarget, setDeleteTarget] = useState(null);  // project name pending delete
   // Drop 4.16: optional custom save location for new projects (portability)
   const [customRootDir, setCustomRootDir] = useState("");
@@ -325,10 +326,10 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         ) : (
           <>
             <h2 className="section-head">Continue</h2>
-            <Cover p={projects[0]} featured index={0} onOpen={onOpen} onDelete={setDeleteTarget} />
+            <Cover p={projects[0]} featured index={0} onOpen={onOpen} onDelete={setDeleteTarget} onContext={(x, y, p) => setCtx({ x, y, p })} />
             {projects.length > 1 && <h2 className="section-head">All projects</h2>}
             <div className="cover-grid">
-              {projects.slice(1).map((p, i) => <Cover key={p.name} p={p} index={i + 1} onOpen={onOpen} onDelete={setDeleteTarget} />)}
+              {projects.slice(1).map((p, i) => <Cover key={p.name} p={p} index={i + 1} onOpen={onOpen} onDelete={setDeleteTarget} onContext={(x, y, p) => setCtx({ x, y, p })} />)}
             </div>
           </>
         )}
@@ -343,6 +344,18 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
           </div>
         ) : null;
       })()}
+
+      {ctx && (
+        <>
+          <div className="rv-menu-scrim" onMouseDown={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />
+          <div className="rv-menu-list" role="menu" style={{ position: "fixed", right: "auto", left: Math.min(ctx.x, window.innerWidth - 240), top: Math.min(ctx.y, window.innerHeight - 140) }} onKeyDown={(e) => { if (e.key === "Escape") setCtx(null); }}>
+            <button role="menuitem" onClick={() => { const n = ctx.p.name; setCtx(null); onOpen(n); }}>Open</button>
+            {ctx.p.dir && <button role="menuitem" onClick={() => { const d = ctx.p.dir; setCtx(null); sendCommand({ type: "open_path", path: d }); }}>Show in Finder</button>}
+            <hr />
+            <button role="menuitem" className="danger" onClick={() => { const n = ctx.p.name; setCtx(null); setDeleteTarget(n); }}>Delete project…</button>
+          </div>
+        </>
+      )}
 
       {deleteTarget && (
         <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
