@@ -209,6 +209,16 @@
   .tick { position: absolute; bottom: 0; width: 1px; height: 8px; background: rgba(255,255,255,.32); pointer-events: none; }
   .tick span { position: absolute; bottom: 12px; left: 0; transform: translateX(-50%); font-size: 11px; line-height: 1; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .tick:first-child span { transform: none; }
+
+  /* Notes (2026-10-21): drawing tools appear when drawing is chosen; copy and download are quiet */
+  #tools { gap: 4px; }
+  #tools.off { opacity: 1; }
+  #tools.off > :not(#drawToggle) { display: none; }
+  #tools button { min-height: 26px; padding: 0 9px; font-size: 12px; }
+  #tools [data-tool].on { background: rgba(76,179,238,.2); color: #4cb3ee; box-shadow: none; }
+  #copy, #dl { background: transparent; color: var(--dim); min-height: 26px; font-size: 12px; }
+  #copy:hover, #dl:hover { background: rgba(128,128,140,.22); color: var(--text); }
+  #count { font-size: 13px; }
   @media (max-width: 900px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
 </style>

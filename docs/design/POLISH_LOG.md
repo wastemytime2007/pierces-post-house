@@ -45,3 +45,5 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 39 | Result: no serious or critical findings left on any screen in either appearance; remaining are "region" notes on dialogs and the tooltip | axe, dark and light, both drivers |
 | 40 | Review ribbon: one calm palette (muted blue, green, gold, violet) instead of saturated neon lanes | screenshot |
 | 41 | Review ribbon: a real time ruler (0s, 2s, 4s... or 0:30, 1:00) replaces the empty gray bar | screenshot; both page scripts pass |
+| 42 | Notes: drawing tools (pen, circle, arrow, box, colors) appear only after choosing Draw on frame | screenshot; drive_page.js 9/10 (the one failure is a 40 s seek on an 11 s clip, same as before) |
+| 43 | Notes: copy and download are quiet text buttons; tool buttons smaller | screenshot |
