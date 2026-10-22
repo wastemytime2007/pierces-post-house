@@ -221,6 +221,11 @@
   #count { font-size: 13px; }
 
   /* Filmstrip: frames of the picture along the ribbon, like an editing app. Made in the page from the preview itself. */
+  #gguides { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+  #gguides i { position: absolute; background: #00ade1; box-shadow: 0 0 0 .5px rgba(0,0,0,.45); opacity: .9; }
+  #gguides i.v { top: 0; bottom: 0; width: 1px; }
+  #gguides i.h { left: 0; right: 0; height: 1px; }
+  #gguides i.safe { background: rgba(255,255,255,.55); }
   #wave { position: relative; height: 30px; margin: 0 0 6px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.04); cursor: pointer; }
   #wave canvas { display: block; width: 100%; height: 100%; }
   #wave .fph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.5); pointer-events: none; }
@@ -414,6 +419,7 @@ const BEATS = [];
         if (e.shiftKey) { v.currentTime = Math.max(0, it.start - (tick ? 1 : 0.3)); return; }
         const onCut = (tick && (L.name === 'Cuts' || L.name === 'Edits') && typeof CUTS !== 'undefined') ? CUTS.find(c => Math.abs(c.sec - it.start) < 0.15) : null;
         if (onCut) { e.stopPropagation(); openCutMenu(onCut.sec, e); return; }          /* a cut: the menu (Add transition...), not a note */
+        if (/caption/i.test(L.name) && editCaptionAt(it.start)) { e.stopPropagation(); return; }   /* a caption: edit the words, where you saw them */
         openElementNote(L.name, tick, it, el, e);
       };
       lane.appendChild(el);
@@ -936,6 +942,26 @@ function updateEditorAt() {
     : 'Note at ' + fmt(pending.t) + ' · ' + where(pending.t).text;
 }
 /* A click on a timeline box leaves a note on the entire element. timeline_sec is set inside the element (its middle), so nothing depends on the playhead. */
+/* The caption line that is on screen at this second, opened for typing in the Graphics tab. Returns false when there is no such line, so the ordinary note still happens. */
+function editCaptionAt(sec) {
+  const g = (DATA.graphics || []).find(x => x.lines && x.lines.some(l => Math.abs(l.start - sec) < 0.35));
+  if (!g) return false;
+  const i = g.lines.findIndex(l => Math.abs(l.start - sec) < 0.35);
+  if (i < 0) return false;
+  v.pause();
+  v.currentTime = Math.max(0, g.lines[i].start + 0.05);
+  if (window.showTab) window.showTab('graphics');          /* the inspector tab that holds the words */
+  gSelect(g.id);
+  setTimeout(() => {
+    const inp = document.querySelector('#glines input[data-line="' + i + '"]');
+    if (!inp) return;
+    inp.scrollIntoView({ block: 'nearest' });
+    inp.focus();
+    inp.select();
+  }, 40);
+  return true;
+}
+
 function openElementNote(lane, tick, it, el, ev) {
   v.pause(); layoutCanvas();
   /* "here" = where along the box you clicked (a real mouse click); a scripted click has no position, so it uses the middle */
@@ -1003,6 +1029,25 @@ let GE = {};
 try { GE = JSON.parse(localStorage.getItem(GKEY) || '{}'); } catch (e) { GE = {}; }
 let gsel = null, gpick = false;
 const gedit = document.getElementById('gedit'), gbox = document.getElementById('gbox'), gghost = document.getElementById('gghost');
+/* Where a graphic likes to sit: the middle, the title-safe margins, and the eye line a third of the way down (Ryan's framing rulings, 2026-10-21).
+   A guide only appears when the thing being dragged is already on it, so the picture stays clean. */
+const GUIDES = { x: [0.5, 0.1, 0.9], y: [0.5, 0.1, 0.9, 1 / 3] };
+const SNAP = 0.012;                               /* about a centimetre on screen: close enough to mean it */
+const gguides = (() => {
+  const el = document.createElement('div');
+  el.id = 'gguides';
+  gedit.appendChild(el);
+  return el;
+})();
+function gShowGuides(lines) {
+  gguides.innerHTML = '';
+  lines.forEach(([axis, at, safe]) => {
+    const i = document.createElement('i');
+    i.className = (axis === 'x' ? 'v' : 'h') + (safe ? ' safe' : '');
+    if (axis === 'x') i.style.left = (at * 100) + '%'; else i.style.top = (at * 100) + '%';
+    gguides.appendChild(i);
+  });
+}
 const gState = g => GE[g.id] || { dx: g.dx, dy: g.dy, scale: g.scale };
 const gTextChanged = g => !!(GE[g.id] && GE[g.id].text && g.fields && Object.keys(GE[g.id].text).some(k => (GE[g.id].text[k] || '').trim() !== (g.fields[k] || '')));
 const gLinesChanged = g => !!(GE[g.id] && GE[g.id].lines && g.lines && Object.keys(GE[g.id].lines).some(i => g.lines[i] && (GE[g.id].lines[i].text !== g.lines[i].text || GE[g.id].lines[i].pos !== g.lines[i].pos)));
@@ -1063,7 +1108,7 @@ function gWords() {
   if (g.fields) {
     Object.keys(g.fields).forEach(k => {
       const lab = document.createElement('label'), inp = document.createElement('input');
-      lab.innerHTML = '<span>' + FIELD_NAMES[k] + '</span>'; inp.type = 'text'; inp.value = (GE[g.id] && GE[g.id].text && GE[g.id].text[k] !== undefined) ? GE[g.id].text[k] : g.fields[k]; inp.dataset.field = k;
+      lab.innerHTML = '<span>' + (FIELD_NAMES[k] || k) + '</span>';   /* a field this page has no name for keeps its own, rather than saying "undefined" */ inp.type = 'text'; inp.value = (GE[g.id] && GE[g.id].text && GE[g.id].text[k] !== undefined) ? GE[g.id].text[k] : g.fields[k]; inp.dataset.field = k;
       inp.oninput = () => { const st = gState(g); const text = Object.assign({}, st.text || {}); text[k] = inp.value; gSet(g, { text }); lab.classList.toggle('ch', inp.value.trim() !== g.fields[k]); };
       lab.classList.toggle('ch', inp.value.trim() !== g.fields[k]); lab.appendChild(inp); el.appendChild(lab);
     });
@@ -1109,9 +1154,24 @@ if (GR.length) {
   gbox.addEventListener('pointermove', e => {
     if (!drag) return;
     const [w, h] = gFrame();
-    gSet(drag.g, { dx: drag.s.dx + (e.clientX - drag.x) / w, dy: drag.s.dy + (e.clientY - drag.y) / h });
+    let dx = drag.s.dx + (e.clientX - drag.x) / w, dy = drag.s.dy + (e.clientY - drag.y) / h;
+    const shown = [];
+    if (!e.altKey) {                                /* holding Option puts it exactly where you let go */
+      const b = drag.g.box, f = gState(drag.g).scale / 100;
+      const halfW = (b[2] - b[0]) * f / 2, halfH = (b[3] - b[1]) * f / 2;
+      const cx = (b[0] + b[2]) / 2 + dx, cy = (b[1] + b[3]) / 2 + dy;
+      /* the middle of the graphic, and each of its edges, can land on a guide */
+      [[cx, 0], [cx - halfW, halfW], [cx + halfW, -halfW]].forEach(([at, back]) => {
+        GUIDES.x.forEach(gx => { if (Math.abs(at - gx) < SNAP) { dx += gx - at; shown.push(['x', gx, gx !== 0.5]); } });
+      });
+      [[cy, 0], [cy - halfH, halfH], [cy + halfH, -halfH]].forEach(([at]) => {
+        GUIDES.y.forEach(gy => { if (Math.abs(at - gy) < SNAP) { dy += gy - at; shown.push(['y', gy, gy !== 0.5]); } });
+      });
+    }
+    gShowGuides(shown);
+    gSet(drag.g, { dx, dy });
   });
-  const gend = () => { drag = null; };
+  const gend = () => { drag = null; gShowGuides([]); };
   gbox.addEventListener('pointerup', gend); gbox.addEventListener('pointercancel', gend);
   gbox.addEventListener('wheel', e => { const g = GR.find(x => x.id === gsel); if (!g) return; e.preventDefault(); gSet(g, { scale: Math.max(25, Math.min(300, gState(g).scale + (e.deltaY < 0 ? 2 : -2))) }); }, { passive: false });
   document.getElementById('gscale').oninput = e => { const g = GR.find(x => x.id === gsel); if (g) gSet(g, { scale: +e.target.value }); };
@@ -1179,6 +1239,7 @@ tellHost({ type: 'review:count', n: notes.length });
   const right = document.getElementById('right'), tabs = [...right.querySelectorAll('.tabs [role=tab]')];
   const hasG = () => !!(DATA.graphics && DATA.graphics.length) || getComputedStyle(document.getElementById('gpanel')).display !== 'none';
   const show = t => { right.dataset.tab = t; tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.t === t))); };
+  window.showTab = show;                                  /* the ribbon opens the Graphics tab when a caption is clicked */
   tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.t)));
   right.classList.toggle('nographics', !hasG());
   document.getElementById('tabGraphics').style.display = hasG() ? '' : 'none';
