@@ -5552,3 +5552,217 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 /* The app is newer than the piece behind it: one quiet line, out of the way of the work, never a dialog */
 .stale-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 900; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; background: var(--material); backdrop-filter: blur(20px); box-shadow: var(--shadow-2); color: var(--fg-1); font-size: var(--text-body); }
 .stale-bar svg { color: var(--warn); flex: none; }
+
+/* ===========================================================================
+   Dimension (Ryan, 2026-10-22: "add texture overlays... dropshadow would help,
+   maybe some reflections. Just make all of the pages feel like they have more
+   dimension").
+
+   Four things, in order of how much work they do:
+
+   1. An elevation scale. A real shadow is two shadows: a tight key shadow that
+      says how high something is, and a wide ambient one that says there is a
+      room around it. One flat blur reads as a sticker.
+   2. Surfaces lit from above. A hairline of light along the top edge of a
+      raised thing is what makes it read as a surface rather than a rectangle.
+   3. Grain. A post house's own texture, from the medium: a fine film grain over
+      the chrome, far too quiet to see on purpose, enough that a large flat
+      panel stops looking like paint. Never over the picture itself.
+   4. Reflections on the footage. A cover is a glossy thing; it catches a little
+      light across its top and leaves a soft fall under it.
+
+   All of it goes away under reduced transparency and increased contrast, where
+   a flat, firm surface is the point.
+   =========================================================================== */
+
+:root {
+  /* key + ambient + hairline, in four steps */
+  --elev-1: 0 1px 1px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.10), 0 0 0 0.5px var(--separator);
+  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.18), 0 4px 10px -2px rgba(0, 0, 0, 0.16), 0 0 0 0.5px var(--separator);
+  --elev-3: 0 2px 4px rgba(0, 0, 0, 0.20), 0 10px 24px -4px rgba(0, 0, 0, 0.26), 0 0 0 0.5px var(--separator);
+  --elev-4: 0 4px 8px rgba(0, 0, 0, 0.24), 0 22px 48px -8px rgba(0, 0, 0, 0.36), 0 0 0 0.5px var(--separator);
+  /* the light that falls on the top edge of a raised surface */
+  --lit: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  --lit-strong: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --grain-opacity: 0.035;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    /* In light, depth is carried by a crisper shadow rather than a lit edge: a pale surface on a pale
+       ground has almost no edge of its own, so the fall underneath is what says how high it sits. */
+    --elev-1: 0 1px 1px rgba(16, 24, 32, 0.07), 0 2px 5px -1px rgba(16, 24, 32, 0.09), 0 0 0 0.5px var(--separator);
+    --elev-2: 0 1px 2px rgba(16, 24, 32, 0.09), 0 6px 14px -3px rgba(16, 24, 32, 0.13), 0 0 0 0.5px var(--separator);
+    --elev-3: 0 3px 6px rgba(16, 24, 32, 0.11), 0 14px 30px -6px rgba(16, 24, 32, 0.18), 0 0 0 0.5px var(--separator);
+    --elev-4: 0 6px 12px rgba(16, 24, 32, 0.13), 0 28px 60px -10px rgba(16, 24, 32, 0.24), 0 0 0 0.5px var(--separator);
+    --lit: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    --lit-strong: inset 0 1px 0 rgba(255, 255, 255, 1);
+    --grain-opacity: 0.022;
+  }
+}
+:root[data-theme="dark"] {
+  --elev-1: 0 1px 1px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.10), 0 0 0 0.5px var(--separator);
+  --lit: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+}
+
+/* ---- 3. Grain -------------------------------------------------------------
+   One fixed layer over the whole window, under every control and over the flat
+   grounds. It never takes a click, and it is excluded from the picture, the
+   covers' own frames and anything showing footage. */
+.app::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* ---- 1 and 2. Raised surfaces ---------------------------------------------
+   Everything that is a thing on the page, rather than the page itself. */
+.cover,
+.idea-card,
+.trim-steps li,
+.sp-tile,
+.trim-row,
+.dropzone,
+.rv-opt,
+.frame-pick-tile,
+.set-row-control select,
+.modal,
+.rv-sheet,
+.cp,
+.rv-menu-list,
+.activity-panel {
+  box-shadow: var(--elev-2), var(--lit);
+}
+
+/* the things that came forward over everything else sit higher */
+.modal, .rv-sheet, .cp { box-shadow: var(--elev-4), var(--lit-strong); }
+.rv-menu-list { box-shadow: var(--elev-3), var(--lit); }
+
+/* something being pointed at rises a little */
+.cover:hover, .sp-tile:hover:not([disabled]), .trim-row:hover, .frame-pick-tile:hover:not(:disabled) {
+  box-shadow: var(--elev-3), var(--lit-strong);
+}
+
+/* the picture itself sits above the page, and is never grained */
+.rv-frame iframe, .rv-compare-one, .sp-peek-art {
+  box-shadow: var(--elev-4);
+}
+
+/* ---- 4. Reflections on the footage ----------------------------------------
+   A cover catches light across its top, and leaves a soft fall beneath it. */
+.cover { position: relative; }
+.cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(176deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 18%, rgba(255, 255, 255, 0) 42%);
+}
+.cover.featured::after {
+  background: linear-gradient(176deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.035) 22%, rgba(255, 255, 255, 0) 48%);
+}
+.sp-tile .sp-art::after,
+.cut-thumb::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(174deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0) 38%);
+}
+.sp-tile .sp-art, .cut-thumb { position: relative; }
+
+/* ---- The page itself has a little depth ----------------------------------- */
+.project-stage, .start-screen {
+  background-image:
+    radial-gradient(130% 80% at 50% -10%, rgba(var(--accent-rgb), 0.07) 0%, rgba(var(--accent-rgb), 0) 55%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0) 160px);
+}
+
+/* ---- Where all of it is wrong --------------------------------------------- */
+@media (prefers-reduced-transparency: reduce) {
+  .app::after { display: none; }
+  .cover::after, .sp-tile .sp-art::after, .cut-thumb::after { display: none; }
+  .project-stage, .start-screen { background-image: none; }
+}
+@media (prefers-contrast: more) {
+  .app::after { display: none; }
+  .cover::after, .sp-tile .sp-art::after, .cut-thumb::after { display: none; }
+  .project-stage, .start-screen { background-image: none; }
+  .cover, .idea-card, .trim-steps li, .sp-tile, .trim-row, .dropzone, .rv-opt, .frame-pick-tile, .modal, .rv-sheet, .cp, .rv-menu-list {
+    box-shadow: 0 0 0 1px var(--separator);
+  }
+}
+
+/* ---- The other half of depth: things that are cut INTO the page ------------
+   A raised thing casts a shadow; a well has one inside it. Without both, half
+   the page is floating and the other half is painted on. */
+:root {
+  --inset-1: inset 0 1px 2px rgba(0, 0, 0, 0.22), inset 0 0 0 0.5px var(--separator);
+  --inset-2: inset 0 2px 5px rgba(0, 0, 0, 0.28), inset 0 0 0 0.5px var(--separator);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --inset-1: inset 0 1px 2px rgba(16, 24, 32, 0.08), inset 0 0 0 0.5px var(--separator);
+    --inset-2: inset 0 2px 5px rgba(16, 24, 32, 0.10), inset 0 0 0 0.5px var(--separator);
+  }
+}
+
+input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="number"], textarea,
+.export-save-path, .pm-path-field, .set-row-control input {
+  box-shadow: var(--inset-1);
+}
+input[type="text"]:focus, input[type="search"]:focus, input[type="password"]:focus, textarea:focus {
+  box-shadow: var(--inset-1), 0 0 0 3px rgba(var(--accent-rgb), 0.28);
+}
+
+/* a trough that something fills: the activity bar, a progress bar, the filmstrip's ground */
+progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
+
+/* ---- Bars: the content goes under them, so they need an edge that says so --- */
+.titlebar { box-shadow: 0 1px 0 var(--separator), 0 2px 10px -4px rgba(0, 0, 0, 0.30); }
+.project-nav { box-shadow: 0 1px 0 var(--separator), 0 4px 14px -6px rgba(0, 0, 0, 0.28); }
+.rv-toolbar { box-shadow: 0 1px 0 var(--separator), 0 4px 14px -8px rgba(0, 0, 0, 0.26); }
+.rv-side { box-shadow: 1px 0 0 var(--separator), 6px 0 18px -10px rgba(0, 0, 0, 0.28); }
+
+/* the one line that teaches a room sits on the page, not in it */
+.page-tip { box-shadow: var(--elev-1), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+
+@media (prefers-contrast: more) {
+  input[type="text"], input[type="search"], input[type="password"], textarea, .export-save-path { box-shadow: inset 0 0 0 1px var(--separator); }
+  .titlebar, .project-nav, .rv-toolbar, .rv-side, .page-tip { box-shadow: 0 0 0 1px var(--separator); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .titlebar, .project-nav, .rv-toolbar, .rv-side { box-shadow: 0 1px 0 var(--separator); }
+}
+
+/* The one reflection in the app: the project you are coming back to leaves a little of itself on the
+   surface it is standing on. Flipped, faded almost immediately, and gone under reduced transparency. */
+.cover.featured { overflow: visible; }
+.cover-reflect {
+  position: absolute;
+  left: 2%;
+  right: 2%;
+  top: 100%;
+  height: 76px;
+  z-index: 0;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center top;
+  transform: scaleY(-1);
+  filter: blur(1px) saturate(0.9);
+  opacity: 0.30;
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .cover-reflect { opacity: 0.22; } }
+@media (prefers-reduced-transparency: reduce) { .cover-reflect { display: none; } }
+@media (prefers-contrast: more) { .cover-reflect { display: none; } }

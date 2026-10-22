@@ -179,6 +179,62 @@
   textarea, input[type=text] { border: .5px solid rgba(255,255,255,.14) !important; border-radius: 8px !important; }
   video { border-radius: 10px; }
 
+  /* ---- Dimension (Ryan, 2026-10-22: "make all of the pages feel like they have more dimension") ----
+     The same idea as the app around it: raised things cast two shadows and catch a hairline of light
+     along the top; wells have the shadow inside them; a fine grain over the chrome, never over the
+     picture. The picture is the one thing that stays exactly as it is. */
+  :root {
+    --elev-1: 0 1px 1px rgba(0,0,0,.22), 0 1px 3px rgba(0,0,0,.16);
+    --elev-2: 0 1px 2px rgba(0,0,0,.28), 0 6px 16px -3px rgba(0,0,0,.26);
+    --elev-3: 0 3px 6px rgba(0,0,0,.30), 0 16px 34px -6px rgba(0,0,0,.40);
+    --lit: inset 0 1px 0 rgba(255,255,255,.07);
+    --well: inset 0 1px 3px rgba(0,0,0,.38);
+  }
+
+  /* the picture sits above everything, with its own fall */
+  video { box-shadow: var(--elev-3); }
+
+  /* the inspector and the things in it */
+  #gpanel, #editor, #changes, .note { box-shadow: var(--elev-2), var(--lit); }
+  .grow { box-shadow: var(--elev-1), var(--lit); }
+  .grow.sel { box-shadow: var(--elev-2), inset 0 0 0 1.5px #ffd400; }
+  .tabs { box-shadow: var(--well); }
+  .tabs button[aria-selected=true] { box-shadow: var(--elev-1), var(--lit); }
+
+  /* the ribbon: the lanes are cut into the page, the blocks sit in them */
+  .bar, .lane, #filmstrip, #wave { box-shadow: var(--well); }
+  .blk { box-shadow: 0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.14); }
+  .tk { box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+
+  /* fields are wells too */
+  textarea, input[type=text] { box-shadow: var(--well); }
+  textarea:focus, input[type=text]:focus { box-shadow: var(--well), 0 0 0 3px rgba(3,145,216,.3); }
+
+  /* buttons are raised, and press in */
+  button { box-shadow: var(--elev-1), var(--lit); }
+  button:active { box-shadow: var(--well); }
+  button.primary { box-shadow: var(--elev-2), inset 0 1px 0 rgba(255,255,255,.18); }
+  button.on { box-shadow: var(--elev-1), inset 0 0 0 1.5px var(--pin); }
+
+  /* the grain, over the chrome only: the stage holds the picture, so it is left out */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: .04;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+  }
+  #stage { position: relative; z-index: 2; }        /* the picture is above the grain, never under it */
+
+  @media (prefers-contrast: more) {
+    body::after { display: none; }
+    #gpanel, #editor, #changes, .note, .grow, button, .tabs, .bar, .lane { box-shadow: 0 0 0 1px var(--line); }
+  }
+  @media (prefers-reduced-transparency: reduce) { body::after { display: none; } }
+
   /* Transport and details (2026-10-21): the picture's controls are quiet; the technical lines live under Details */
   #left .now { display: none; }
   #nowCopy b { color: var(--text); font-weight: 600; }

@@ -76,7 +76,7 @@ export default function ShortcutsSheet({ onClose }) {
     <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="rv-sheet sc-sheet" role="dialog" aria-modal="true" aria-labelledby="sc-title" onKeyDown={(e) => { if (e.key === "Escape") onClose(); }} tabIndex={-1} ref={(el) => el && el.focus()}>
         <h2 id="sc-title">Keyboard shortcuts</h2>
-        <div className="sc-cols">
+        <div className="sc-cols" tabIndex={0} role="group" aria-label="Shortcuts, scrollable">
           {GROUPS.map((g) => (
             <fieldset key={g.title}>
               <legend>{g.title}</legend>

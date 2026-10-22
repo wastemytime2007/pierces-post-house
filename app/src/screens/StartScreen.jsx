@@ -72,6 +72,7 @@ function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
       onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
       <button className="cover-open" onClick={() => { try { sessionStorage.setItem("ph.tab", nextStep(p).tab); } catch (e) { /* private window */ } onOpen(p.name); }}>
         <span className={`cover-art ${arrived ? "ph-arrived" : ""}`} style={art ? { backgroundImage: `url(${art})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
+        {featured && <span className="cover-reflect" aria-hidden="true" style={art ? { backgroundImage: `url(${art})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />}
         {frame >= 0 && strip.some(Boolean) && (
           <span className="cover-ticks" aria-hidden="true">
             {strip.map((_, i) => <span key={i} className={i === frame ? "on" : ""} />)}
