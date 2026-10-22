@@ -16,6 +16,7 @@ const PATHS = {
   chevronRight: <path d="M9.5 5l7 7-7 7" />,
   chevronLeft: <path d="M14.5 5l-7 7 7 7" />,
   ellipsis: <><circle cx="5.5" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18.5" cy="12" r="1.2" /></>,
+  refresh: <path d="M20 11a8 8 0 10-2.3 6.3M20 6v5h-5" />,
   arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
   arrowUpRight: <path d="M7 17L17 7M9 7h8v8" />,
   check: <path d="M5 12.5l4.5 4.5L19 7.5" />,

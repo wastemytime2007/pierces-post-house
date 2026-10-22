@@ -5548,3 +5548,7 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 @keyframes ph-found { 0% { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.55); } 100% { box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0); } }
 .idea-card.ph-found { animation: ph-found 1400ms ease-out; }
 @media (prefers-reduced-motion: reduce) { .idea-card.ph-found { animation: none; box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.45); } }
+
+/* The app is newer than the piece behind it: one quiet line, out of the way of the work, never a dialog */
+.stale-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 900; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; background: var(--material); backdrop-filter: blur(20px); box-shadow: var(--shadow-2); color: var(--fg-1); font-size: var(--text-body); }
+.stale-bar svg { color: var(--warn); flex: none; }

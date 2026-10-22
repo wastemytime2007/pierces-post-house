@@ -128,7 +128,7 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
       )}
 
       <div className="trim-cols">
-        <section className="trim-sent" aria-labelledby="trim-sent-h">
+        <section aria-labelledby="trim-sent-h">
           <h2 id="trim-sent-h">Sent to Premiere</h2>
           {recent.length === 0 ? (
             <div className="trim-empty">
