@@ -5403,3 +5403,6 @@ select { height: 28px; }
 
 .rv-side-board { color: var(--fg-1); }
 .rv-side-head:hover .rv-side-board, .rv-side-head.on .rv-side-board { color: var(--fg-0); }
+
+.rv-board .sp-head { margin-bottom: 14px; }
+.rv-board .rv-notice { margin-bottom: 4px; }

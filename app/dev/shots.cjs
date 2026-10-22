@@ -108,6 +108,15 @@ async function counts(page, label) {
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(out, "06_board.png") });
   await counts(page, "06_board");
+  // 7. everything finished: send them to Premiere as one XML
+  const doneItems = NAMES.map((n) => ({ xml: `${WK}/${n}.xml`, name: n, status: "done", step: "", message: "added captions, graphics, music, bleep", final_xml: `${WK}/${n}_v2 - revised/${n}_v2.xml` }));
+  await page.evaluate((it) => window.__emit({ type: "creative_status", xml: it[0].xml, running: false, state: { state: "done", started: 1, items: it } }), doneItems);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(out, "07a_board_all_done.png") });
+  await page.evaluate((it) => window.__emit({ type: "merged_finished", xml: "/x/wk - seqs/All finished (2026-10-22 0100).xml", included: it.length - 1, sequences: it.map((i) => i.name), excluded: [{ name: it[6].name, failed: ["AUDIO-ENABLED"] }] }), doneItems);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(out, "07b_board_sent.png") });
+  await counts(page, "07b_board_sent");
   console.log("page errors:", JSON.stringify(errors));
   await browser.close();
 })().catch((e) => { console.error("FAILED:", e); process.exit(1); });

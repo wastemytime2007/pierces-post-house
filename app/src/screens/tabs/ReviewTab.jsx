@@ -114,7 +114,9 @@ export default function ReviewTab({ subscribe, onStatus }) {
   useEffect(() => { if (seqSet?.items?.length) requestFrames(seqSet.items.map((sq) => cutFrameItem(sq.xml)), 200); }, [seqSet]);
   useEffect(() => { if (exportsList?.length) requestFrames(exportsList.slice(0, 8).map((x) => cutFrameItem(x.path)), 420); }, [exportsList]);
   const [scopeAll, setScopeAll] = useState(true);
-  const [board, setBoard] = useState(false);                      // all the open sequences at a glance, over the review                  // Get Creative: every sequence opened, or only this one
+  const [board, setBoard] = useState(false);
+  const [merging, setMerging] = useState(false);                  // the finished sequences are being put into one XML
+  const [merged, setMerged] = useState(null);                      // { xml, included, sequences, excluded } once they are                      // all the open sequences at a glance, over the review                  // Get Creative: every sequence opened, or only this one
   const [menuOpen, setMenuOpen] = useState(false);                 // the More menu
   const keysRef = useRef({});                                      // the latest handlers for the keyboard shortcuts (set below, after they exist)
   useEffect(() => {
@@ -188,6 +190,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
       if (ev.batch) return;                                                  // Get Creative's own events (another sequence's review and versions): not the review on screen; its sessions are on disk
       if (ev.type === "premiere_apps") {
         setPremiereApps(ev.apps || []);
+      } else if (ev.type === "merged_finished") {
+        setMerging(false);
+        setMerged({ xml: ev.xml, included: ev.included, sequences: ev.sequences, excluded: ev.excluded || [] });
+      } else if (ev.type === "merge_failed") {
+        setMerging(false);
+        setError(ev.message || "Could not put the sequences into one XML.");
+      } else if (ev.type === "xml_opened") {
+        setInfo(ev.opened ? `Opened in ${ev.app || "the default app"}: ${fileName(ev.xml)}` : "");
       } else if (ev.type === "exports_listed") {
         setExportsList(ev.exports || []);
         if (!openedRef.current && !versionsRef.current.length && !busyRef.current && !makingRef.current) {
@@ -871,6 +881,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
     const label = { done: "Finished", running: "Working", waiting: "Waiting", failed: "Needs a look", skipped: "Left as it was" };
     const finished = seqSet.items.filter((sq) => ["done", "skipped"].includes(byXml[sq.xml]?.status)).length;
     const current = versionsRef.current[0]?.xml;
+    const readyXmls = seqSet.items.filter((sq) => ["done", "skipped"].includes(byXml[sq.xml]?.status)).map((sq) => byXml[sq.xml].final_xml || sq.xml);
+    const sendAll = () => {
+      setError("");
+      setMerged(null);
+      setMerging(true);
+      sendCommand({ type: "merge_finished", xmls: readyXmls, name: `${fileName(seqSet.source || "Finished").replace(/\.xml$/i, "")} finished` }).catch((e) => { setMerging(false); setError(String(e.message || e)); });
+    };
+    const premiereApp = chosenApp ? chosenApp.path : premiereApps.length ? premiereApps[0].path : null;
     return (
       <section className="rv-board" aria-label="All sequences">
         <header className="sp-head">
@@ -880,9 +898,26 @@ export default function ReviewTab({ subscribe, onStatus }) {
           </div>
           <div className="sp-tools">
             <button className="btn" onClick={() => setFinishing(true)} disabled={toolsBusy}><Icon name="sparkles" size={15} /> Get Creative…</button>
+            <button className="btn btn-primary" disabled={!readyXmls.length || merging || toolsBusy} onClick={sendAll}
+              title="Checks each finished sequence, then writes them into one XML you open in Premiere in a single import">
+              {merging ? <><span className="setup-spinner" /> Checking…</> : <>Send {readyXmls.length || ""} to Premiere <Icon name="arrowUpRight" size={14} /></>}
+            </button>
             <button className="btn btn-ghost" onClick={() => setBoard(false)}>Back to review</button>
           </div>
         </header>
+        {merged && (
+          <div className="rv-notice ok" role="status">
+            <span>
+              <strong>{merged.included} sequence{merged.included === 1 ? "" : "s"} checked and written into one XML.</strong>{" "}
+              {fileName(merged.xml)}
+              {merged.excluded.length > 0 && <> Left out, because they did not pass the export check: {merged.excluded.map((x) => `${pretty(x.name)} (${x.failed.join(", ")})`).join("; ")}.</>}
+            </span>
+            <button className="btn btn-sm btn-primary" onClick={() => sendCommand({ type: "open_xml", path: merged.xml, ...(premiereApp ? { app: premiereApp } : {}) })}>Open in Premiere</button>
+            <button className="btn btn-sm" onClick={() => sendCommand({ type: "open_path", path: dirName(merged.xml) })}>Show in Finder</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setMerged(null)}>Dismiss</button>
+          </div>
+        )}
+        {error && <div className="rv-notice bad" role="alert"><span style={{ whiteSpace: "pre-wrap" }}>{error}</span><button className="btn btn-ghost btn-sm" onClick={() => setError("")}>Dismiss</button></div>}
         <div className="sp-grid">
           {seqSet.items.map((sq) => {
             const st = byXml[sq.xml]?.status;

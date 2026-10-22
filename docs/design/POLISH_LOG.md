@@ -47,3 +47,5 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 41 | Review ribbon: a real time ruler (0s, 2s, 4s... or 0:30, 1:00) replaces the empty gray bar | screenshot; both page scripts pass |
 | 42 | Notes: drawing tools (pen, circle, arrow, box, colors) appear only after choosing Draw on frame | screenshot; drive_page.js 9/10 (the one failure is a 40 s seek on an 11 s clip, same as before) |
 | 43 | Notes: copy and download are quiet text buttons; tool buttons smaller | screenshot |
+| 44 | Send all finished sequences back to Premiere as ONE XML: each is export-checked first, only those that pass are merged (the rest named with why), every id namespaced per source, output read back and checked, a new file beside the sequences (never over one) | `test_merge_sequences.py` (7), `test_merge_finished.py` (4); run on the real 11 finished sequences: 11 of 11 pass the export check, merged file has 11 sequences, every clip's timing and footage identical to its own file; not yet opened in Premiere |
+| 45 | The board has "Send N to Premiere" and a result card with Open in Premiere and Show in Finder | screenshot dark |

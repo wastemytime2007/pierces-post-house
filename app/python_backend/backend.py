@@ -1433,6 +1433,35 @@ def handle_export_xml(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_merge_finished(cmd: dict) -> None:
+    """The finished sequences as one XML (each is export-checked first; only those that pass are merged). In the background: reading eleven sequences and checking each takes a few seconds."""
+    xmls = cmd.get("xmls") or []
+    if not xmls:
+        err("merge_finished needs 'xmls'")
+        return
+
+    def worker():
+        import creator_tools
+        try:
+            emit({"type": "merged_finished", **creator_tools.merge_finished(xmls, cmd.get("out"), cmd.get("name"))})
+        except creator_tools.ToolError as exc:
+            emit({"type": "merge_failed", "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "merge_failed", "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
+def handle_open_xml(cmd: dict) -> None:
+    """Open an XML in Premiere (the chosen install)."""
+    import creator_tools
+    try:
+        emit({"type": "xml_opened", **creator_tools.open_xml(cmd.get("path", ""), cmd.get("app"))})
+    except creator_tools.ToolError as exc:
+        emit({"type": "merge_failed", "message": str(exc)})
+
+
 def handle_premiere_apps(cmd: dict) -> None:
     """Which Premiere Pro versions are installed (stable and Beta), so the Review tab can ask which to open an XML in when there is more than one."""
     import creator_tools
@@ -1519,6 +1548,8 @@ def handle_frame_thumbs(cmd: dict) -> None:
 # ---------------------------------------------------------------------------
 
 HANDLERS = {
+    "merge_finished": handle_merge_finished,
+    "open_xml": handle_open_xml,
     "hello": handle_hello,
     "project_posters": handle_project_posters,
     "frame_thumbs": handle_frame_thumbs,

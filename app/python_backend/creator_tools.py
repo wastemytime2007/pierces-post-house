@@ -1822,6 +1822,52 @@ def _auto_summary_base(o: dict) -> str:
     }.get(o["status"], f"Finished: {best}.")
 
 
+def merge_finished(xmls: list[str], out: str | None = None, name: str | None = None) -> dict:
+    """The finished sequences as ONE XML for Premiere. Each one goes through the export check first (never hand over an export that has not been verified); only those that pass are merged, and the ones left out are named
+    with why. The output is a new file next to the sequences' folder (never over one of them), read back and checked before it is reported. Returns {"xml", "sequences", "included", "excluded": [{"name", "failed"}]}."""
+    use_labs()
+    import time
+    import merge_sequences as ms
+    good: list[Path] = []
+    excluded: list[dict] = []
+    for x in xmls:
+        p = Path(x).expanduser()
+        try:
+            res = export_xml(str(p), open_in_premiere=False)
+        except ToolError as exc:
+            excluded.append({"name": p.stem, "failed": [str(exc)]})
+            continue
+        if res["verified"]:
+            good.append(p)
+        else:
+            excluded.append({"name": p.stem, "failed": res["failed"]})
+    if not good:
+        raise ToolError("none of the sequences passed the export check, so there is nothing to send to Premiere" + (f" ({excluded[0]['name']}: {', '.join(excluded[0]['failed'])})" if excluded else ""))
+    dest = Path(out).expanduser() if out else good[0].parent.parent / f"All finished ({time.strftime('%Y-%m-%d %H%M')}).xml"
+    try:
+        res = ms.merge(good, dest, name)
+    except ms.MergeError as exc:
+        raise ToolError(str(exc)) from exc
+    bad = [(n, d) for n, ok, d in ms.check(Path(res["xml"]), len(res["sequences"])) if not ok]
+    if bad:
+        Path(res["xml"]).unlink(missing_ok=True)
+        raise ToolError("the merged XML did not read back correctly, so it was not kept: " + "; ".join(f"{n} ({d})" for n, d in bad))
+    return {"xml": res["xml"], "sequences": res["sequences"], "included": len(good), "excluded": excluded}
+
+
+def open_xml(path: str, app: str | None = None) -> dict:
+    """Open an XML in the chosen Premiere (a path that is not a detected install is ignored, so nothing else can be launched through this)."""
+    import os
+    p = Path(path).expanduser()
+    if not p.is_file() or p.suffix.lower() != ".xml":
+        raise ToolError(f"that XML is not there: {p}")
+    chosen = premiere_app(app)
+    if os.environ.get("POSTHOUSE_NO_OPEN"):
+        return {"xml": str(p), "app": Path(chosen).stem if chosen else None, "opened": False}
+    subprocess.run(["open", "-a", chosen, str(p)] if chosen else ["open", str(p)], check=False)
+    return {"xml": str(p), "app": Path(chosen).stem if chosen else None, "opened": True}
+
+
 def notify(title: str, text: str) -> bool:
     """A macOS notification (the batch ran while the person was elsewhere). Quiet failure: it is a courtesy, never a reason for a step to fail. True when it was sent."""
     if sys.platform != "darwin":
