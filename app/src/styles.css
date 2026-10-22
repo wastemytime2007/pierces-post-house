@@ -5040,7 +5040,7 @@ h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em;
 @media (max-width: 900px) { .cover-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 .cover { position: relative; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-1); aspect-ratio: 16 / 10; background: var(--bg-2);
-  animation: cover-in 460ms var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); transition: box-shadow 200ms var(--ease), transform 200ms var(--ease); }
+  animation: cover-in 460ms var(--ease) backwards; animation-delay: calc(var(--i, 0) * 45ms); transition: box-shadow 200ms var(--ease), transform 200ms var(--ease); }
 .cover.featured { aspect-ratio: 21 / 8; border-radius: 16px; }
 .cover:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); }
 .cover-open { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; border-radius: inherit; display: block; }
@@ -5180,7 +5180,7 @@ h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em;
 @keyframes sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 
 /* Changing screen: the new one eases in; the review screen stays mounted and does not replay it */
-.project-stage > :not(.review-host) { animation: stage-in 260ms var(--ease) both; }
+.project-stage > :not(.review-host) { animation: stage-in 260ms var(--ease) backwards; }
 @keyframes stage-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* Small things that add up: buttons and rows answer the pointer, text selects in the accent */
@@ -5216,3 +5216,27 @@ h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em;
 .progress-bar { height: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
 .progress-bar-fill { border-radius: 3px; background: var(--accent-fill); transition: width 300ms var(--ease); }
 .progress-current { font-family: var(--font-ui); font-size: var(--text-footnote); color: var(--fg-1); }
+
+/* Dialog sections: sentence-case headings, preset choices as a segmented row */
+.run-pipeline-section-label { font-size: var(--text-footnote); font-weight: 600; color: var(--fg-1); letter-spacing: 0; text-transform: none; margin-bottom: 6px; }
+.run-pipeline-presets { display: flex; gap: 2px; padding: 2px; background: var(--fill); border-radius: 8px; width: fit-content; }
+.run-pipeline-preset { border-radius: 6px; }
+.export-angle-badge { display: none; }
+
+/* Full-window overlays are never part of the centered page column */
+.project-main.log-hidden .project-stage > .modal-overlay,
+.project-main .project-stage > .modal-overlay { max-width: none; width: auto; align-self: auto; animation: none; }
+.project-stage > .modal-overlay { position: fixed; inset: 0; }
+
+/* Checkboxes: rounded, accent when on, a white tick (the switches in Get Creative have their own style) */
+input[type="checkbox"]:not(.rv-switch):not(.idea-card-checkbox input) {
+  appearance: none; -webkit-appearance: none; flex: none; width: 16px; height: 16px; margin: 0; border-radius: 4.5px;
+  border: 1px solid var(--fg-3); background: var(--bg-2); display: inline-block; vertical-align: -3px; cursor: pointer;
+  transition: background 120ms var(--ease), border-color 120ms var(--ease);
+}
+input[type="checkbox"]:not(.rv-switch):not(.idea-card-checkbox input):checked {
+  background: var(--accent-fill) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.4l3 3 6-6.4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px no-repeat;
+  border-color: var(--accent-fill);
+}
+input[type="checkbox"]:not(.rv-switch):not(.idea-card-checkbox input):disabled { opacity: 0.4; cursor: default; }
+select { height: 28px; }

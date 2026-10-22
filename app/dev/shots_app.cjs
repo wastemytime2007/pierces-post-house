@@ -67,6 +67,10 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   });
   await page.waitForTimeout(400);
   await shot("12b_processing");
+  await page.evaluate(() => window.__backend({ type: "pipeline_complete", job_id: "j1" }));
+  await page.getByRole("button", { name: /Process again/ }).click().catch(() => {});
+  await shot("12c_process_dialog");
+  await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.getByRole("button", { name: "Settings" }).click();
   await shot("13_settings_menu");
   await page.getByRole("menuitem", { name: /API key/ }).click();
@@ -82,6 +86,20 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
     await page.evaluate((x) => window.__backend({ type: "frame_thumbs", thumbs: x }), th);
   }
   await shot("15_ideas");
+  // the planning panel
+  await page.getByRole("button", { name: /Plan with AI/ }).click();
+  await shot("15b_plan_panel");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
+  // choose two ideas, then the export dialog
+  const boxes = page.locator(".storyboard-check input");
+  await boxes.nth(0).check({ force: true });
+  await boxes.nth(1).check({ force: true });
+  await shot("15c_ideas_chosen");
+  await page.getByRole("button", { name: /Export XML/ }).click().catch(() => {});
+  await shot("15d_export_dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.getByRole("button", { name: "Activity" }).click();
   await shot("16_activity_open");
   await page.getByRole("button", { name: /Hide activity log/ }).click();

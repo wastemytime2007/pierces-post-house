@@ -341,7 +341,7 @@ function ConfigureView({
                     ? `${d.total_target_duration.toFixed(0)}s` : "?s");
               return (
                 <li key={idea.idea_id}>
-                  {isAngle && <span className="export-angle-badge">★ </span>}
+                  
                   <strong>{title}</strong>
                   <span className="export-idea-meta"> · {preset} · {dur}</span>
                 </li>

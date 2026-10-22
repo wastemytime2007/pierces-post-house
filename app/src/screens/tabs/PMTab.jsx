@@ -560,7 +560,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
 
         {activePipelineJobs.length === 0 ? (
           <div className="empty-state">
-            Drop footage above, then Organize (or Run pipeline) to process it.
+            Add footage above, then choose Organize to process it.
             <br />
             A-roll proxies + transcription and B-roll proxies + tagging run in parallel.
           </div>
@@ -796,7 +796,7 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
       }),
     },
     {
-      label: "Proxies only",
+      label: "Working copies only",
       title: "Just encode proxies — useful for getting a lighter cut going",
       apply: () => setFlags({
         run_proxies: true,
@@ -813,13 +813,13 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal run-pipeline-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Run pipeline</h2>
+          <h2>Process footage</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">×</button>
         </div>
 
         <div className="modal-body">
           <div className="run-pipeline-section">
-            <div className="run-pipeline-section-label">PRESETS</div>
+            <div className="run-pipeline-section-label">Quick choices</div>
             <div className="run-pipeline-presets">
               {presets.map(p => (
                 <button
@@ -835,46 +835,46 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
           </div>
 
           <div className="run-pipeline-section">
-            <div className="run-pipeline-section-label">STAGES</div>
+            <div className="run-pipeline-section-label">What to run</div>
             <StageCheckbox
               checked={flags.run_transcription}
               onChange={() => toggle("run_transcription")}
-              label="Transcription"
-              sub="Whisper transcribes A-roll. Proxies are created automatically if needed."
+              label="Transcribe the interviews"
+              sub="Turns what was said into text, so ideas can be found in it."
               disabled={!hasAroll}
-              disabledReason="Needs A-roll sources"
+              disabledReason="Needs interview footage"
             />
             <StageCheckbox
               checked={flags.run_tagging}
               onChange={() => toggle("run_tagging")}
-              label="B-roll tagging"
-              sub="AI tags each B-roll clip (including dual-use A-roll) with searchable keywords. Proxies are created automatically if needed."
+              label="Describe the B-roll"
+              sub="Gives each B-roll clip searchable keywords."
               disabled={!hasBroll}
-              disabledReason="Needs B-roll sources (or A-roll flagged dual-use)"
+              disabledReason="Needs B-roll (or interviews also used as B-roll)"
             />
             <StageCheckbox
               checked={flags.run_audio_index}
               onChange={() => toggle("run_audio_index")}
-              label="Audio index"
-              sub="ffprobe metadata for lav audio files (fast)."
+              label="Read the recorder audio"
+              sub="A quick look at each audio file. Fast."
               disabled={!hasAudio}
-              disabledReason="Needs audio sources"
+              disabledReason="Needs recorder audio"
             />
             <StageCheckbox
               checked={flags.run_audio_sync}
               onChange={() => toggle("run_audio_sync")}
-              label="Audio sync"
-              sub="Cross-correlate A-roll camera audio with lav recordings."
+              label="Sync recorder audio to the picture"
+              sub="Lines up the camera sound with the lav and recorder files."
               disabled={!hasAroll || !hasAudio}
-              disabledReason="Needs both A-roll and audio sources"
+              disabledReason="Needs interviews and recorder audio"
             />
             <StageCheckbox
               checked={flags.run_transcript_flagging}
               onChange={() => toggle("run_transcript_flagging")}
-              label="Transcript flagging"
-              sub="Exhaustively finds storyline-worthy moments and scores them against this project's audience/content goal. No-op if none is set."
+              label="Find the strong moments"
+              sub="Marks moments worth a story and scores them against the audience goal. Skipped if no goal is set."
               disabled={!hasAroll}
-              disabledReason="Needs A-roll sources (and a transcript)"
+              disabledReason="Needs interview footage and its transcript"
             />
           </div>
         </div>
