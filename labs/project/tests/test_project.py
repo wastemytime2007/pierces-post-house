@@ -1,4 +1,5 @@
 """Hermetic tests for the project index: folders are classified from the records the tools leave, nothing is moved."""
+import importlib.util
 import json
 import os
 import subprocess
@@ -8,8 +9,11 @@ from pathlib import Path
 import pytest
 
 HERE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(HERE))
-import project as pj  # noqa: E402
+# Loaded by path: other tests put PreCut's module, also named `project`, on the path, and a plain import would find that one
+_spec = importlib.util.spec_from_file_location("labs_project_index", HERE / "project.py")
+pj = importlib.util.module_from_spec(_spec)
+sys.modules["labs_project_index"] = pj
+_spec.loader.exec_module(pj)
 
 
 def _w(p: Path, data) -> None:
