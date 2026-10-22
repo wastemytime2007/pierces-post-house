@@ -14,7 +14,6 @@ import ApiKeyHelp from "./components/ApiKeyHelp.jsx";
 import ToastStack from "./components/ToastStack.jsx";
 import Mark from "./components/Mark.jsx";
 import { ingest as ingestThumb } from "./thumbStore.js";
-import precutLogo from "./assets/precut-logo.png";
 
 // ---------------------------------------------------------------------------
 // IPC helpers
@@ -543,7 +542,7 @@ export default function App() {
   if (setupPhase === null) {
     return (
       <div className="setup-splash">
-        <img src={precutLogo} alt="PreCut" className="setup-splash-logo" />
+        <Mark size={56} />
         <div className="setup-splash-spinner" />
         <div className="setup-splash-label">Checking dependencies…</div>
       </div>

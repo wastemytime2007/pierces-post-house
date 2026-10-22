@@ -55,17 +55,17 @@ export default function ApiKeyHelp({ onClose }) {
           <section className="help-section">
             <h3 className="help-heading">What is this?</h3>
             <p>
-              PreCut uses <strong>Claude</strong>, an AI model from
+              Post House uses <strong>Claude</strong>, an AI model from
               Anthropic, to read through your footage transcripts and
               figure out which clips make the best story. To talk to
-              Claude, PreCut needs an <strong>API key</strong> — a long
+              Claude, Post House needs an <strong>API key</strong> — a long
               string of characters that tells Anthropic which account
               to bill for the usage.
             </p>
             <p>
               The key is stored only on your Mac (at
-              <code> ~/Library/Application Support/PreCut/settings.json</code>{" "}
-              with owner-only permissions). PreCut never sends it anywhere
+              <code> ~/Library/Application Support/Post House/settings.json</code>{" "}
+              with owner-only permissions). Post House never sends it anywhere
               except directly to Anthropic.
             </p>
           </section>
@@ -91,18 +91,18 @@ export default function ApiKeyHelp({ onClose }) {
                 Verify your email, then add <strong>$5 of credit</strong>{" "}
                 under Settings → Billing → Buy credits. This is the minimum
                 Anthropic accepts, and it lasts most users through many
-                PreCut projects (see pricing below).
+                Post House projects (see pricing below).
               </li>
               <li>
                 Go to Settings → <strong>API Keys</strong> and click{" "}
                 <strong>Create Key</strong>. Give it any name
-                (&ldquo;PreCut&rdquo; is fine). Copy the key —{" "}
+                (&ldquo;Post House&rdquo; is fine). Copy the key —{" "}
                 <em>you won't be able to see it again</em>, so paste it
                 somewhere safe before closing the dialog.
               </li>
               <li>
                 Come back here, paste the key into the field below, and
-                click <strong>Save key</strong>. That's it — PreCut will
+                click <strong>Save key</strong>. That's it — Post House will
                 start using Claude on the next project you analyze.
               </li>
             </ol>
@@ -113,7 +113,7 @@ export default function ApiKeyHelp({ onClose }) {
             <h3 className="help-heading">What does it cost?</h3>
             <p>
               Anthropic charges by <strong>tokens</strong> (roughly, syllables
-              of text). PreCut defaults to <strong>Claude Sonnet 4.6</strong>,
+              of text). Post House defaults to <strong>Claude Sonnet 4.6</strong>,
               which sits in the middle of the cost/quality curve. A typical
               10-minute footage project uses about 50,000–200,000 input tokens
               plus 10,000–50,000 output tokens, landing between{" "}
@@ -146,7 +146,7 @@ export default function ApiKeyHelp({ onClose }) {
                     </td>
                     <td>$3</td>
                     <td>$15</td>
-                    <td>Balanced. What PreCut uses unless you change it.</td>
+                    <td>Balanced. What Post House uses unless you change it.</td>
                   </tr>
                   <tr>
                     <td><strong>Opus 4.7</strong></td>
@@ -177,7 +177,7 @@ export default function ApiKeyHelp({ onClose }) {
             <details className="help-faq">
               <summary>Is my footage sent to Anthropic?</summary>
               <p>
-                No. PreCut sends <em>transcripts</em> and short
+                No. Post House sends <em>transcripts</em> and short
                 content tags — not the video files themselves. Anthropic
                 never receives your footage.
               </p>

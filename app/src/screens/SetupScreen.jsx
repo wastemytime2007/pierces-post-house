@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import Icon from "../components/Icon.jsx";
+import Mark from "../components/Mark.jsx";
 import { invoke } from "@tauri-apps/api/core";
-import precutLogo from "../assets/precut-logo.png";
 
 /**
  * SetupScreen
@@ -197,11 +198,10 @@ export default function SetupScreen({ onSetupComplete }) {
     <div className="setup-screen">
       <div className="setup-scroll">
         <header className="setup-header">
-          <img src={precutLogo} alt="PreCut" className="setup-logo" />
-          <h1 className="setup-title">First-time setup</h1>
+          <Mark size={44} />
+          <h1 className="setup-title">Set up Post House</h1>
           <p className="setup-subtitle">
-            PreCut uses a local Python backend for indexing and transcription.
-            This screen installs its dependencies — you only need to do this once.
+            Post House runs on your Mac and needs a few tools installed once. Each row says what it is for. Your footage never leaves this computer.
           </p>
         </header>
 
@@ -212,7 +212,7 @@ export default function SetupScreen({ onSetupComplete }) {
         )}
 
         {checking && !report ? (
-          <div className="setup-loading">Checking dependencies…</div>
+          <div className="setup-loading">Checking what is already installed…</div>
         ) : (
           <div className="setup-components">
             {COMPONENTS.map((def) => {
@@ -227,10 +227,10 @@ export default function SetupScreen({ onSetupComplete }) {
                   className={`setup-component setup-component-${state}${isInstalling ? " installing" : ""}`}
                 >
                   <div className="setup-component-icon">
-                    {state === "ok" ? "✓"
+                    {state === "ok" ? <Icon name="check" size={14} />
                       : isInstalling ? <Spinner />
-                      : state === "missing" ? "○"
-                      : "·"}
+                      : state === "missing" ? <span className="setup-ring" />
+                      : <span className="setup-dot" />}
                   </div>
                   <div className="setup-component-body">
                     <div className="setup-component-title">{def.label}</div>
@@ -249,7 +249,7 @@ export default function SetupScreen({ onSetupComplete }) {
                       <span className="setup-component-tag installing">installing…</span>
                     ) : (
                       <button
-                        className="setup-install-btn"
+                        className="btn btn-sm"
                         disabled={!prereqsOk || installing !== null}
                         onClick={() => startInstall(def.key)}
                         title={!prereqsOk ? `Install ${def.prereqs.join(", ")} first` : "Install"}
@@ -285,7 +285,7 @@ export default function SetupScreen({ onSetupComplete }) {
 
         <div className="setup-actions">
           <button
-            className="setup-btn-secondary"
+            className="btn"
             onClick={runCheck}
             disabled={checking || installing !== null}
           >
@@ -293,7 +293,7 @@ export default function SetupScreen({ onSetupComplete }) {
           </button>
           <div className="setup-actions-right">
             <button
-              className="setup-btn-skip"
+              className="btn btn-ghost"
               onClick={skip}
               disabled={installing !== null}
               title="Don't block me — I'll fix any missing pieces myself."
@@ -301,11 +301,11 @@ export default function SetupScreen({ onSetupComplete }) {
               Skip for now
             </button>
             <button
-              className="setup-btn-primary"
+              className="btn btn-primary"
               onClick={finish}
               disabled={!allReady || installing !== null}
             >
-              {allReady ? "Finish setup →" : "Waiting for deps…"}
+              {allReady ? "Finish setup" : "Finish when everything is installed"}
             </button>
           </div>
         </div>

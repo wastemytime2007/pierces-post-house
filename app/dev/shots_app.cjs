@@ -54,6 +54,19 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.keyboard.press("Escape");
   await page.evaluate((p) => window.__backend({ type: "project_loaded", project: p }), PROJECT);
   await shot("12_project_tab");
+  // processing running: proxies done, transcription partway, audio sync pairs
+  await page.evaluate(() => {
+    const e = (ev) => window.__backend(ev);
+    e({ type: "pipeline_started", job_id: "j1" });
+    e({ type: "stage_started", job_id: "j1", stage: "proxies", total: 3 });
+    ["wknd_Bob_01.mp4", "wknd_Mitch_01.mp4", "DJI_0021.mp4"].forEach((f, i) => e({ type: "file_done", job_id: "j1", stage: "proxies", file: f, status: "ok", completed: i + 1, total: 3, elapsed_sec: 12 }));
+    e({ type: "stage_complete", job_id: "j1", stage: "proxies", success: 3, failed: 0, skipped: 0 });
+    e({ type: "stage_started", job_id: "j1", stage: "transcribe", total: 2 });
+    e({ type: "file_done", job_id: "j1", stage: "transcribe", file: "wknd_Bob_01.mp4", status: "ok", completed: 1, total: 2, elapsed_sec: 94 });
+    e({ type: "audio_sync_pair", job_id: "j1", i: 1, total: 2, aroll: "wknd_Bob_01.mp4", audio: "Bob_lav.WAV", score: 31.2, offset: 4.82, reliable: true });
+  });
+  await page.waitForTimeout(400);
+  await shot("12b_processing");
   await page.getByRole("button", { name: "Settings" }).click();
   await shot("13_settings_menu");
   await page.getByRole("menuitem", { name: /API key/ }).click();
@@ -71,6 +84,20 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await shot("15_ideas");
   await page.getByRole("button", { name: "Activity" }).click();
   await shot("16_activity_open");
+  await page.getByRole("button", { name: /Hide activity log/ }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("menuitem", { name: /Audiences/ }).click();
+  await shot("17_audiences_dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("menuitem", { name: /Default includes/ }).click();
+  await shot("18_includes_dialog");
+  await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
+  // the first-run setup screen
+  await page.goto(`http://localhost:${port}/harness.html?app=1&setup=1`);
+  await page.waitForTimeout(1500);
+  await shot("19_setup");
   console.log("page errors:", JSON.stringify(errors));
   await browser.close();
 })().catch((e) => { console.error("FAILED:", e); process.exit(1); });

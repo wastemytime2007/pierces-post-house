@@ -1,3 +1,4 @@
+import Icon from "./Icon.jsx";
 /**
  * AutoIncludeNudge
  * ----------------
@@ -33,13 +34,13 @@ export default function AutoIncludeNudge({
           <p style={{ marginTop: 0, fontSize: 14, lineHeight: 1.5 }}>
             You can set up files to include in <strong>every</strong> export
             — like your stock SFX library, company logos, or LUTs.
-            PreCut adds them to the right bins automatically, so you
+            Post House adds them to the right bins automatically, so you
             don't have to drag them in for every project.
           </p>
 
           <div className="auto-include-nudge-examples">
             <div className="auto-include-nudge-example">
-              <span className="auto-include-nudge-example-icon">📁</span>
+              <span className="auto-include-nudge-example-icon"><Icon name="folder" size={16} /></span>
               <span className="auto-include-nudge-example-from">
                 Stock SFX folder
               </span>
@@ -49,7 +50,7 @@ export default function AutoIncludeNudge({
               </code>
             </div>
             <div className="auto-include-nudge-example">
-              <span className="auto-include-nudge-example-icon">📄</span>
+              <span className="auto-include-nudge-example-icon"><Icon name="doc" size={16} /></span>
               <span className="auto-include-nudge-example-from">
                 Company logo
               </span>
@@ -59,7 +60,7 @@ export default function AutoIncludeNudge({
               </code>
             </div>
             <div className="auto-include-nudge-example">
-              <span className="auto-include-nudge-example-icon">📁</span>
+              <span className="auto-include-nudge-example-icon"><Icon name="folder" size={16} /></span>
               <span className="auto-include-nudge-example-from">
                 Music library
               </span>

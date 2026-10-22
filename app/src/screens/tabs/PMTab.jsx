@@ -537,25 +537,16 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
 
       {/* ---- Processing, absorbed from IngestTab ---- */}
       <div className="pm-tab-pipeline">
-        <div className="action-bar">
-          <button
-            className="btn btn-primary"
-            onClick={() => setShowRunModal(true)}
-            disabled={totalSources === 0 || hasRunning}
-          >
-            {hasRunning ? "Processing…" : "Run pipeline"}
-          </button>
-          {hasRunning && (
-            <button className="btn btn-danger" onClick={handleCancel}>
-              Cancel
-            </button>
-          )}
+        <div className="pm-section-head">
+          <h2>{hasRunning ? "Processing your footage" : "Processing"}</h2>
           <div className="action-spacer" />
-          <div className="action-hint">
-            Organize starts this automatically. Use this button to re-run
-            (e.g. more footage added, or to skip a stage on purpose).
-          </div>
+          {hasRunning ? (
+            <button className="btn" onClick={handleCancel}>Stop</button>
+          ) : (
+            <button className="btn" onClick={() => setShowRunModal(true)} disabled={totalSources === 0}>Process again…</button>
+          )}
         </div>
+        <p className="pm-section-lead">Organize starts processing by itself. Use Process again after adding footage, or to skip a step on purpose.</p>
 
         {showRunModal && (
           <RunPipelineModal
@@ -594,7 +585,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
               title="Sync results"
               hint={
                 <>
-                  Scores from PreCut's own audio sync. Any pair it can't
+                  Scores from Post House's own audio sync. Any pair it can't
                   confidently sync on its own — subject left the room,
                   came back, was on the phone elsewhere — gets checked
                   automatically for a usable stretch as part of the same

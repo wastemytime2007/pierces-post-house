@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import Icon from "./Icon.jsx";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import HelpTooltip from "./HelpTooltip.jsx";
@@ -255,9 +256,8 @@ function IntroPanel() {
   return (
     <div className="auto-include-intro">
       <p className="auto-include-intro-text">
-        Files added here are included in every Premiere export, dropped
-        into the bin you choose. Pick a destination for each rule from
-        the dropdown — or use a custom path to create your own bin.
+        Files added here go into every Premiere export, in the bin you choose.
+        Pick a bin for each one, or type a path to make your own.
       </p>
       {/* Drop 4.47.2: explicit callout about scope. Users were unsure
        * whether rules were per-project or global; this clarifies. */}
@@ -265,8 +265,7 @@ function IntroPanel() {
         <span className="auto-include-intro-scope-icon" aria-hidden="true">ⓘ</span>
         <span>
           Rules apply to <strong>every project</strong> on this Mac, on
-          every export, until you remove them. Set up once, save time
-          forever.
+          every export, until you remove them.
         </span>
       </div>
       <div className="auto-include-intro-tree">
@@ -281,7 +280,7 @@ function IntroPanel() {
             >
               <span className="auto-include-intro-tree-name">
                 {row.kind === "header" ? (
-                  <>📁 {row.text}</>
+                  <><Icon name="folder" size={14} /> {row.text}</>
                 ) : (
                   <>
                     <span className="auto-include-intro-tree-bullet">└</span>
@@ -314,15 +313,15 @@ function EmptyState({ onOpenHelp }) {
         </p>
         <ul className="auto-include-empty-list">
           <li>
-            <span className="auto-include-empty-icon">📁</span>
+            <span className="auto-include-empty-icon"><Icon name="folder" size={18} /></span>
             Stock SFX folder &rarr; <code>Audio / SFX</code>
           </li>
           <li>
-            <span className="auto-include-empty-icon">📄</span>
+            <span className="auto-include-empty-icon"><Icon name="doc" size={18} /></span>
             Company logo &rarr; <code>Files / Colors</code>
           </li>
           <li>
-            <span className="auto-include-empty-icon">📁</span>
+            <span className="auto-include-empty-icon"><Icon name="folder" size={18} /></span>
             Royalty-free music folder &rarr; <code>Audio / Music</code>
           </li>
         </ul>
@@ -423,7 +422,7 @@ function RuleRow({ rule, onChange, onDelete, disabled }) {
     <div className="auto-include-row">
       <div className="auto-include-row-main">
         <div className="auto-include-row-icon" aria-hidden="true">
-          {rule.type === "folder" ? "📁" : "📄"}
+          <Icon name={rule.type === "folder" ? "folder" : "doc"} size={16} />
         </div>
         <div className="auto-include-row-source">
           <div className="auto-include-row-source-label">
@@ -509,7 +508,7 @@ function RuleRow({ rule, onChange, onDelete, disabled }) {
                 Limit which files in the folder get included. Use{" "}
                 <code>*.wav</code> for only WAV files, or{" "}
                 <code>*.{"{wav,mp3}"}</code> for WAVs and MP3s. Leave
-                empty and PreCut will include any audio, video, or
+                empty and Post House will include any audio, video, or
                 image file it recognizes.
               </HelpTooltip>
               <span className="auto-include-row-field-hint"> (optional)</span>

@@ -315,7 +315,7 @@ export default function IdeasTab({
             he expects the one button to behave the way he's been
             describing (3 tight-cut+pool ideas, live research, real
             citations). Confirmed a real confusion this caused: he reviewed
-            output from the OLD button below (PreCut's own generate_angles,
+            output from the OLD button below (Post House's own generate_angles,
             now demoted to Legacy tools) believing it came from this one —
             identifiable after the fact only by its source_phrase_ids field,
             which story_architect never sets. Routing the primary button to
@@ -365,7 +365,7 @@ export default function IdeasTab({
               <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setMoreOpen(false); }}>
                 <button role="menuitem" disabled={producerBusy} onClick={() => { setMoreOpen(false); requestExport(true); }} title="Export a Premiere project with just your indexed footage. No API credits used.">Export footage only (skip ideas)</button>
                 <hr />
-                <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); (hasAngles ? handleRequestMoreAngles : handleGenerateAngles)(); }} title="PreCut's original angle generator: one quick pass over the transcript, no audience goal, no research.">{hasAngles ? "Generate more (original method)" : "Generate ideas (original method)"}</button>
+                <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); (hasAngles ? handleRequestMoreAngles : handleGenerateAngles)(); }} title="Post House's original angle generator: one quick pass over the transcript, no audience goal, no research.">{hasAngles ? "Generate more (original method)" : "Generate ideas (original method)"}</button>
                 <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); handleAnalyze(); }}>Analyze and recommend</button>
                 <button role="menuitem" disabled={transcriptCount === 0 || producerBusy} onClick={() => { setMoreOpen(false); setShowBriefForm(true); }}>Create custom brief…</button>
               </div>
@@ -421,7 +421,7 @@ export default function IdeasTab({
                 No API key — you can&rsquo;t generate ideas yet
               </div>
               <div className="ideas-nokey-body">
-                PreCut uses an AI producer to read your transcripts and propose
+                Post House uses an AI producer to read your transcripts and propose
                 cut ideas — that part needs an API key. You can still export
                 your indexed footage (all A-roll with synced audio + tagged
                 B-roll library) as a Premiere XML right now, without a key.
@@ -941,7 +941,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
           ) : research === null ? (
             <div className="idea-card-research-body idea-card-research-empty">
               No research on file for this idea — it wasn't built by the
-              story architect (probably one of PreCut's own "Generate
+              story architect (probably one of Post House's own "Generate
               ideas" angles, which don't do live trend research).
             </div>
           ) : (
@@ -975,7 +975,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
                             {t.listen_url && (
                               <>
                                 {" · "}
-                                <a href={t.listen_url} target="_blank" rel="noreferrer">🎵 listen/download</a>
+                                <a href={t.listen_url} target="_blank" rel="noreferrer">listen/download</a>
                               </>
                             )}
                           </div>
@@ -1002,7 +1002,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
                         )}
                         {(v.audio_track || v.audio_artist) && (
                           <div className="idea-card-research-metric">
-                            🎵 {v.audio_track || "Unknown track"}
+                            {v.audio_track || "Unknown track"}
                             {v.audio_artist ? ` — ${v.audio_artist}` : ""}
                             {" "}(real audio credit from the video's own metadata)
                             {v.audio_listen_url && (

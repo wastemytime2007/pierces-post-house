@@ -36,7 +36,7 @@ export default function AutoIncludeHelp({ onClose }) {
               <strong>music library</strong>, an{" "}
               <strong>outro template</strong>. The{" "}
               <strong>Default Includes</strong> feature lets you tell
-              PreCut about those files{" "}
+              Post House about those files{" "}
               <em>once</em>, and then they're silently added to every
               Premiere export — already organized into the right bins
               for you when you import.
@@ -71,7 +71,7 @@ export default function AutoIncludeHelp({ onClose }) {
               For folders, you can add a{" "}
               <strong>file filter</strong> like <code>*.wav</code> to
               limit which files get pulled in. Skip the filter and
-              PreCut will include any media file (audio, video, image)
+              Post House will include any media file (audio, video, image)
               it recognizes.
             </p>
           </section>
@@ -80,21 +80,21 @@ export default function AutoIncludeHelp({ onClose }) {
             <h3 className="help-heading">Where things go (destinations)</h3>
             <p>
               Every rule has a <strong>destination</strong> — the bin
-              in Premiere's project panel where the files land. PreCut
+              in Premiere's project panel where the files land. Post House
               creates a standard bin tree on every export:
             </p>
             <pre className="help-pre">
-{`📁 Seq
+{`▸ Seq
    └ v1              (your sequences live here)
    └ Final           (← drop outros / finals here)
-📁 Footage
+▸ Footage
    └ A-Roll          (your interview footage)
    └ B-Roll          (← drop stock footage here)
-📁 Audio
+▸ Audio
    └ Source Audio    (your lavs / boom mics — auto-managed)
    └ Music           (← drop royalty-free music here)
    └ SFX             (← drop your SFX library here)
-📁 Files
+▸ Files
    └ Overlays        (safe-zone PNGs — auto-managed)
    └ Colors          (← drop LUTs / color references here)
    └ Nested Seqs     (← drop reusable sub-sequences here)`}
@@ -116,7 +116,7 @@ export default function AutoIncludeHelp({ onClose }) {
               child bins.
             </p>
             <p>
-              PreCut will create any missing bins on import. Existing
+              Post House will create any missing bins on import. Existing
               bins (matched case-insensitively) are reused.
             </p>
           </section>
@@ -139,7 +139,7 @@ export default function AutoIncludeHelp({ onClose }) {
                 <code>Files / Colors</code>. (Note: actual{" "}
                 <code>.cube</code> LUTs can&rsquo;t be imported via
                 Premiere XML — save them as Lumetri presets in Premiere
-                instead. PreCut will warn if you try to add one.)
+                instead. Post House will warn if you try to add one.)
               </li>
               <li>
                 <strong>Outro / company stinger</strong> — Add File for
@@ -153,17 +153,17 @@ export default function AutoIncludeHelp({ onClose }) {
             <ul className="help-steps">
               <li>
                 Rules are saved per-user, not per-project. They apply to{" "}
-                <em>every</em> export from <em>every</em> PreCut
+                <em>every</em> export from <em>every</em> Post House
                 project on this Mac.
               </li>
               <li>
                 Files are referenced from their original location on
-                disk — PreCut doesn't copy them. If you move a file,
+                disk — Post House doesn't copy them. If you move a file,
                 update the rule.
               </li>
               <li>
                 If a file goes missing between the time you set up the
-                rule and when you export, PreCut just skips it and
+                rule and when you export, Post House just skips it and
                 logs a warning. Your export still completes.
               </li>
               <li>

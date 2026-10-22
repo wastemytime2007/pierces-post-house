@@ -367,7 +367,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
           targetRef={newProjectBtnRef}
           side="bottom"
           title="Start here"
-          body="Click here to create your first project. You'll point it at a folder of footage, and PreCut will index everything for you."
+          body="Click here to create your first project. You'll point it at a folder of footage, and Post House will index everything for you."
           onDismiss={tour.next}
           onSkipAll={tour.skip}
           stepNumber={1}

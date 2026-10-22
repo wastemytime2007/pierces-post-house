@@ -5186,3 +5186,33 @@ h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em;
 /* Small things that add up: buttons and rows answer the pointer, text selects in the accent */
 .rv-seq, .project-tab, .btn, .cover, .rv-poster, .rv-opt, .idea-card { -webkit-tap-highlight-color: transparent; }
 .rv-seq:active:not(:disabled) { background: rgba(var(--accent-rgb), 0.28); }
+
+/* Setup (first run): a short checklist, each row says what it is for */
+.setup-header { gap: 6px; margin-bottom: 8px; }
+.setup-header > svg { margin-bottom: 14px; box-shadow: 0 8px 22px rgba(3, 52, 89, 0.4); border-radius: 12px; }
+.setup-title { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; }
+.setup-subtitle { font-size: 15px; line-height: 1.5; color: var(--fg-1); max-width: 520px; }
+.setup-component { border: 0; box-shadow: var(--shadow-1); background: var(--bg-1); border-radius: 12px; }
+.setup-component-ok { opacity: 0.9; }
+.setup-component-icon { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; flex: none; color: var(--fg-2); }
+.setup-component-ok .setup-component-icon { background: rgba(76, 203, 122, 0.18); color: var(--success); }
+.setup-ring { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--fg-2); display: block; }
+.setup-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--bg-4); display: block; }
+.setup-component-title { font-weight: 600; font-size: var(--text-body); }
+.setup-component-subtitle { font-size: var(--text-footnote); color: var(--fg-1); }
+.setup-component-note { color: var(--warn); font-size: var(--text-footnote); }
+.setup-actions { gap: 8px; }
+.setup-component-tag.ok { color: var(--success); }
+
+/* Processing: plain stage names, a quiet section head, rounded bars */
+.pm-section-head { display: flex; align-items: center; gap: 12px; margin: 28px 0 4px; }
+.pm-section-head h2 { margin: 0; font-size: var(--text-large); font-weight: 650; letter-spacing: -0.02em; }
+.pm-section-lead { margin: 0 0 14px; font-size: var(--text-footnote); color: var(--fg-1); max-width: 560px; }
+.pm-tab-pipeline { border-top: 0; }
+.progress-group { border-radius: 12px; box-shadow: var(--shadow-1); background: var(--bg-1); }
+.progress-label { font-size: var(--text-body); font-weight: 600; color: var(--fg-0); letter-spacing: 0; display: inline-flex; align-items: center; gap: 6px; }
+.progress-check { color: var(--success); display: inline-grid; place-items: center; }
+.progress-stats { font-size: var(--text-footnote); color: var(--fg-1); font-variant-numeric: tabular-nums; }
+.progress-bar { height: 6px; border-radius: 3px; background: var(--bg-3); overflow: hidden; }
+.progress-bar-fill { border-radius: 3px; background: var(--accent-fill); transition: width 300ms var(--ease); }
+.progress-current { font-family: var(--font-ui); font-size: var(--text-footnote); color: var(--fg-1); }

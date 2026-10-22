@@ -64,7 +64,7 @@ export default function AudienceProfilesModal({ profiles, onSave, onClose }) {
             Define who your footage is for, once — a content funnel, a
             campaign, a personal long-form goal, whatever fits how you
             work. These show up as a dropdown when setting up a new
-            project in Project Manager, instead of retyping the same
+            project on the Footage page, instead of retyping the same
             description every time.
           </div>
 

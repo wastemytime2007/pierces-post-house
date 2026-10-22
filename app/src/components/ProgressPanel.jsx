@@ -62,10 +62,10 @@ export default function ProgressPanel({ jobs }) {
 
 function kindLabel(kind) {
   return ({
-    aroll: "A-ROLL PROXIES",
-    broll: "B-ROLL PROXIES",
-    audio: "SOURCE AUDIO",
-  })[kind] || kind.toUpperCase();
+    aroll: "Preparing the interviews",
+    broll: "Preparing the B-roll",
+    audio: "Reading recorder audio",
+  })[kind] || kind;
 }
 
 function truncate(s, n) {

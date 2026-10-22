@@ -98,7 +98,7 @@ export default function SettingsModal({ settings, onSave, onSaveWorkspaceId, onC
                 <span className="settings-key-label">No API key set</span>
                 <div className="settings-key-hint">
                   Paste your Anthropic API key below. It will be stored at{" "}
-                  <code>~/Library/Application Support/PreCut/settings.json</code>{" "}
+                  <code>~/Library/Application Support/Post House/settings.json</code>{" "}
                   with 0600 permissions (owner-only).
                 </div>
               </div>

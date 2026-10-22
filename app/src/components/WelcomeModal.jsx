@@ -123,7 +123,7 @@ const SCREENS = [
     body: (
       <>
         <p>
-          PreCut uses <strong>Claude</strong> (made by Anthropic) for the
+          Post House uses <strong>Claude</strong> (made by Anthropic) for the
           &ldquo;figure out good cuts&rdquo; part. To talk to Claude,
           you&rsquo;ll need an <strong>API key</strong> — a short
           one-time signup at{" "}
@@ -131,11 +131,11 @@ const SCREENS = [
         </p>
         <p>
           The minimum credit purchase is <strong>$5</strong>, which
-          typically lasts 5–25 PreCut projects depending on how much
+          typically lasts 5–25 Post House projects depending on how much
           footage you&rsquo;re analyzing.
         </p>
         <p className="welcome-body-muted">
-          You can finish this later — PreCut works fine for indexing
+          You can finish this later — Post House works fine for indexing
           without a key. You&rsquo;ll just need one before you can
           generate cut ideas.
         </p>
