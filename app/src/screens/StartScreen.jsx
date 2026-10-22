@@ -389,9 +389,9 @@ function formatRelativeTime(unixSeconds) {
   if (!unixSeconds) return "";
   const diff = Date.now() / 1000 - unixSeconds;
   if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} hr ago`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} days ago`;
+  if (diff < 3600) { const n = Math.floor(diff / 60); return `${n} min ago`; }
+  if (diff < 86400) { const n = Math.floor(diff / 3600); return `${n} hr ago`; }
+  if (diff < 86400 * 7) { const n = Math.floor(diff / 86400); return n === 1 ? "yesterday" : `${n} days ago`; }
   const d = new Date(unixSeconds * 1000);
   return d.toLocaleDateString();
 }

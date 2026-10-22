@@ -23,6 +23,9 @@ const isAutoSave = (bin) => /auto-?save/i.test(bin || "");
 const fileName = (p) => (p || "").split("/").pop();
 const dirName = (p) => (p || "").split("/").slice(0, -1).join("/");
 
+// File names read as words: underscores become spaces and a split contraction is put back (someone_s -> someone's)
+const pretty = (n) => String(n).replace(/_/g, " ").replace(/(\w) (s|t|re|ve|ll|d)(?= |$)/g, "$1'$2");
+
 export default function ReviewTab({ subscribe, onStatus }) {
   const frameRef = useRef(null);
   const versionsRef = useRef([]);
@@ -782,7 +785,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
               <li key={sq.xml}>
                 <button className={`rv-seq ${on ? "on" : ""} ${it?.status || ""}`} disabled={busyNow} title={it?.message || sq.xml} aria-current={on ? "true" : undefined} onClick={() => openReview(sq.xml)}>
                   <span className={`rv-glyph ${it?.status || ""}`} aria-hidden="true">{glyph[it?.status] || ""}</span>
-                  <span className="rv-seq-name">{sq.name.replace(/_/g, " ")}</span>
+                  <span className="rv-seq-name">{pretty(sq.name)}</span>
                   <span className="rv-sr">{it?.status ? `, ${it.status}` : ""}</span>
                 </button>
               </li>
@@ -938,7 +941,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
       <div className="rv-main">
         <header className="rv-toolbar">
           <div className="rv-title">
-            <h1 title={version.xml}>{seqName.replace(/_/g, " ")}</h1>
+            <h1 title={version.xml}>{pretty(seqName)}</h1>
             {versions.length > 1 ? (
               <label className="rv-version">
                 <span className="rv-sr">Version</span>

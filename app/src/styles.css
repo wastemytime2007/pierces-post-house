@@ -10,18 +10,18 @@
   color-scheme: dark light;
 
   /* Surfaces */
-  --bg-0: #14181d;              /* window */
-  --bg-1: #191f27;              /* sidebar, panels */
-  --bg-2: #212934;              /* raised: fields, cards */
-  --bg-3: #2a3441;              /* hover */
-  --bg-4: #3a4553;              /* borders, dividers */
+  --bg-0: #1c1c1e;              /* window */
+  --bg-1: #232326;              /* sidebar, panels */
+  --bg-2: #2c2c2e;              /* raised: fields, cards */
+  --bg-3: #3a3a3c;              /* hover */
+  --bg-4: #48484a;              /* borders, dividers */
   --separator: rgba(255, 255, 255, 0.10);
 
   /* Text */
-  --fg-0: #f2f5f8;              /* primary */
-  --fg-1: #aab5c1;              /* secondary */
-  --fg-2: #8996a4;              /* tertiary (not on hover surfaces) */
-  --fg-3: #6f7c8a;              /* placeholder: not for essential text */
+  --fg-0: #f5f5f7;              /* primary */
+  --fg-1: #b1b1b8;              /* secondary */
+  --fg-2: #9c9ca3;              /* tertiary (not on hover surfaces) */
+  --fg-3: #7c7c82;              /* placeholder: not for essential text */
 
   /* The one accent: text, lines and the focus ring; the fill for a primary button is separate so white text on it reads */
   --accent: #4cb3ee;
@@ -74,16 +74,16 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --bg-0: #f4f6f8;
-    --bg-1: #eaedf1;
+    --bg-0: #f5f5f7;
+    --bg-1: #ececf0;
     --bg-2: #ffffff;
-    --bg-3: #e2e7ed;
-    --bg-4: #c8d0d9;
+    --bg-3: #e3e3e8;
+    --bg-4: #c9c9ce;
     --separator: rgba(0, 0, 0, 0.12);
-    --fg-0: #141b22;
-    --fg-1: #4a5865;
-    --fg-2: #5b6774;
-    --fg-3: #7a8693;
+    --fg-0: #1d1d1f;
+    --fg-1: #515157;
+    --fg-2: #646469;
+    --fg-3: #85858a;
     --accent: #0369a3;
     --accent-rgb: 3, 105, 163;
     --accent-fill: #0369a3;
@@ -4918,3 +4918,106 @@ kbd {
 .idea-card-kind { color: var(--fg-1); }
 .titlebar-wordmark { font-weight: 600; font-size: var(--text-title); color: var(--fg-0); letter-spacing: -0.01em; }
 .titlebar-sep { color: var(--fg-2); }
+
+/* ===========================================================
+ * Polish layer (2026-10-21): material, depth and restraint
+ * Toolbars are translucent; controls are quiet fills, not outlines; one soft shadow scale; thin scrollbars; type tightened at larger sizes.
+ * =========================================================== */
+:root {
+  --fill: rgba(128, 128, 140, 0.16);
+  --fill-hover: rgba(128, 128, 140, 0.26);
+  --fill-press: rgba(128, 128, 140, 0.34);
+  --material: color-mix(in srgb, var(--bg-0) 78%, transparent);
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 0.5px var(--separator);
+  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.22), 0 0 0 0.5px var(--separator);
+  --ring: 0 0 0 3px rgba(var(--accent-rgb), 0.38);
+}
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+::selection { background: rgba(var(--accent-rgb), 0.35); }
+
+/* Toolbars and the title bar are a material: content passes under them softly */
+.titlebar, .project-nav, .rv-toolbar {
+  background: var(--material);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  border-bottom: 0.5px solid var(--separator);
+}
+.titlebar { position: relative; z-index: 30; }
+.project-nav { position: relative; z-index: 20; }
+
+/* Buttons: quiet fills, a lit primary, 7 px corners, no tracking */
+.btn { border-radius: 7px; letter-spacing: 0; font-weight: 500; padding: 0 14px; min-height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: var(--fill); color: var(--fg-0); transition: background 120ms var(--ease), box-shadow 120ms var(--ease), transform 120ms var(--ease); }
+.btn:hover:not(:disabled) { background: var(--fill-hover); }
+.btn:active:not(:disabled) { background: var(--fill-press); transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; }
+.btn-primary { background: var(--accent-fill); color: var(--on-accent); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 1px 2px rgba(0, 0, 0, 0.25); }
+.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-fill) 88%, white); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 3px rgba(0, 0, 0, 0.3); }
+.btn-primary:active:not(:disabled) { background: var(--accent-fill-pressed); }
+.btn-ghost { background: transparent; color: var(--fg-1); }
+.btn-ghost:hover:not(:disabled) { background: var(--fill); color: var(--fg-0); }
+.btn-tinted { background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
+.btn-sm { min-height: 24px; padding: 0 10px; border-radius: 6px; }
+.btn-icon { padding: 0; }
+.btn-link { background: transparent; color: var(--accent); padding: 0 6px; }
+.btn-link:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+.pm-tab-submit { border-radius: 8px; }
+
+/* Fields */
+input[type="text"], input[type="search"], input[type="number"], input:not([type]), textarea, select {
+  background: var(--bg-2); color: var(--fg-0); border: 0.5px solid var(--separator); border-radius: 7px;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.06); transition: box-shadow 120ms var(--ease), border-color 120ms var(--ease);
+}
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+
+/* Segmented control and tabs */
+.project-nav-tabs, .rv-seg { background: var(--fill); border-radius: 8px; }
+.project-tab.active, .rv-seg button.on { background: var(--bg-2); color: var(--fg-0); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 0.5px var(--separator); }
+.project-tab:hover:not(:disabled):not(.active) { background: var(--fill); }
+.project-tab { border-radius: 6px; transition: background 120ms var(--ease); }
+
+/* Cards and panels sit on a soft shadow instead of a hard outline */
+.idea-card, .drop-zone, .pm-tab-dualuse, .run-pipeline-section, .project-row {
+  border: 0; box-shadow: var(--shadow-1); border-radius: 12px; background: var(--bg-1);
+}
+.idea-card:hover { box-shadow: var(--shadow-2); }
+.rv-notice { border-radius: 9px; border-left-width: 0; box-shadow: var(--shadow-1); }
+.rv-notice.ok { box-shadow: inset 3px 0 0 var(--success), var(--shadow-1); }
+.rv-notice.bad { box-shadow: inset 3px 0 0 var(--warn), var(--shadow-1); }
+
+/* Menus and sheets float: larger radius, deeper shadow, the scrim blurs what is behind */
+.rv-menu-list { border-radius: 10px; padding: 5px; background: color-mix(in srgb, var(--bg-2) 92%, transparent); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); box-shadow: var(--shadow-2); }
+.rv-menu-list button { border-radius: 6px; }
+.rv-scrim, .modal-overlay { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.rv-sheet, .modal { border-radius: 14px; box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4), 0 0 0 0.5px var(--separator); }
+
+/* The sidebar is a source list: a hairline, a rounded selection */
+.rv-side { border-right: 0.5px solid var(--separator); background: var(--bg-1); }
+.rv-seq { border-radius: 7px; }
+.rv-seq.on { background: rgba(var(--accent-rgb), 0.2); }
+
+/* The review page's frame: a picture in a window, not a boxed widget */
+.rv-frame iframe { border: 0; border-radius: 12px; box-shadow: var(--shadow-2); }
+
+/* Type: tighter at display sizes */
+h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em; }
+.rv-empty-card h1, .pm-tab > h2 { font-size: 26px; font-weight: 650; }
+
+/* Thin overlay-style scrollbars */
+* { scrollbar-width: thin; scrollbar-color: rgba(128, 128, 140, 0.45) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(128, 128, 140, 0.4); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(128, 128, 140, 0.6); background-clip: padding-box; border: 3px solid transparent; }
+
+/* One scroll on the review screen: the frame fills the window and the only scrolling is the inspector inside the page */
+.rv-main { overflow: hidden; }
+.rv-frame { min-height: 0; margin: 10px var(--gutter) var(--gutter); }
+.rv-frame iframe { min-height: 0; }
+
+/* Start screen */
+.start-title { font-size: 28px; font-weight: 650; letter-spacing: -0.025em; }
+.project-list { gap: 8px; }
+.project-row { padding: 14px 18px; transition: box-shadow 120ms var(--ease), transform 120ms var(--ease); }
+.project-row:hover { box-shadow: var(--shadow-2); transform: translateY(-1px); }
+.project-row-name { font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; }
+.project-row-meta { font-family: var(--font-ui); font-size: var(--text-footnote); color: var(--fg-1); }
