@@ -29,6 +29,11 @@ async function counts(page, label) {
   });
   console.log(label, JSON.stringify({ controls: c.controls, under28: c.under28, primary: c.primary, textUnder11px: c.textUnder11px, textSizes: c.textSizes }));
   fs.writeFileSync(path.join(out, label + ".controls.json"), JSON.stringify(c, null, 1));
+  if (process.env.AXE) {
+    if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js") });
+    const v = await page.evaluate(async () => (await window.axe.run(document, { resultTypes: ["violations"] })).violations.map((x) => ({ id: x.id, impact: x.impact, n: x.nodes.length, ex: x.nodes[0].target.join(" ").slice(0, 70) })));
+    for (const x of v) console.log("   AXE", x.impact, x.id, "x" + x.n, x.ex);
+  }
 }
 
 (async () => {

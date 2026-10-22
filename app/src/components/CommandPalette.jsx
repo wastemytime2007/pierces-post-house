@@ -49,7 +49,7 @@ export default function CommandPalette({ items, onClose }) {
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Go anywhere, or do anything" aria-label="Search commands" spellCheck={false} />
           <kbd>esc</kbd>
         </div>
-        <div className="cp-list" ref={listRef} role="listbox">
+        <div className="cp-list" ref={listRef} role="listbox" aria-label="Commands">
           {results.length === 0 && <div className="cp-empty">Nothing matches “{q}”.</div>}
           {results.map((it, i) => {
             const head = it.group !== lastGroup ? it.group : null;

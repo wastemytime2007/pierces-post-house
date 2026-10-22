@@ -11,7 +11,7 @@ const STEPS = [
 
 export default function Journey({ active, onSelect, status }) {
   return (
-    <nav className="journey" role="tablist" aria-label="Project steps">
+    <div className="journey" role="tablist" aria-label="Project steps">
       {STEPS.map((s, i) => {
         const st = status[s.id] || {};
         return (
@@ -34,6 +34,6 @@ export default function Journey({ active, onSelect, status }) {
           </Fragment>
         );
       })}
-    </nav>
+    </div>
   );
 }

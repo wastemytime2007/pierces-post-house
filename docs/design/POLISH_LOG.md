@@ -37,3 +37,9 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 31 | Display type: page titles and the greeting in the brand's geometric voice (Futura now, Avant Garde if installed); body stays system | screenshot dark |
 | 32 | Title-bar wordmark in the same display face | build |
 | 33 | Second research pass (Things, Pixelmator, Superhuman, type), written up with what was applied and what was not | doc |
+| 34 | Accessibility checker (axe) wired into both screenshot drivers (`AXE=1`), run on every screen in dark and light | first run: 4 serious kinds found |
+| 35 | The faintest text color (`--fg-3`) raised until it passes 4.5:1 on all surfaces in both appearances, and added to the contrast test | `design_tokens.test.mjs` 7 pass |
+| 36 | Landmarks (main, nav) on the home, project and setup screens; project cover buttons are named by what they show | axe |
+| 37 | Idea card titles are second-level headings (no skipped level) | axe |
+| 38 | Names for the command list, the progress bar and the welcome dots; the Get Creative sheet is a dialog containing a form (valid roles) | axe |
+| 39 | Result: no serious or critical findings left on any screen in either appearance; remaining are "region" notes on dialogs and the tooltip | axe, dark and light, both drivers |

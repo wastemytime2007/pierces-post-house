@@ -195,7 +195,7 @@ export default function SetupScreen({ onSetupComplete }) {
   const allReady = report?.all_ready === true;
 
   return (
-    <div className="setup-screen">
+    <main className="setup-screen">
       <div className="setup-scroll">
         <header className="setup-header">
           <Mark size={44} />
@@ -310,7 +310,7 @@ export default function SetupScreen({ onSetupComplete }) {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

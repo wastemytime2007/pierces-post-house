@@ -306,7 +306,7 @@ export default function ProjectView({
 
   return (
     <div className="project-view">
-      <div className="project-nav">
+      <nav className="project-nav" aria-label="Project">
         <button className="project-nav-back" onClick={onClose}>
           ‹ Projects
         </button>
@@ -326,10 +326,10 @@ export default function ProjectView({
             )}
           </div>
         )}
-      </div>
+      </nav>
 
       <div className={`project-main ${showLog ? "log-visible" : "log-hidden"}`}>
-        <section className={`project-stage ${activeTab === "review" ? "is-review" : ""}`}>
+        <section role="main" className={`project-stage ${activeTab === "review" ? "is-review" : ""}`}>
           {activeTab === "pm" && (
             <PMTab
               subscribe={subscribe}
@@ -371,10 +371,9 @@ export default function ProjectView({
               <button
                 className="log-toggle"
                 onClick={() => setShowLog(false)}
-                title="Hide activity log"
-                aria-label="Hide activity log"
+                title="Hide the activity log"
               >
-                Hide log ›
+                Hide activity ›
               </button>
             </div>
             <LogView entries={log} onClear={onClearLog} />

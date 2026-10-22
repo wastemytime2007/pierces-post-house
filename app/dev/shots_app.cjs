@@ -30,6 +30,11 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
       return { controls: ctl.length, under24: ctl.filter((c) => c.getBoundingClientRect().height < 24).length, primary: ctl.filter((c) => /btn-primary|pm-tab-submit/.test(c.className)).length };
     });
     console.log(name, JSON.stringify(m));
+    if (process.env.AXE) {
+      if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js") });
+      const v = await page.evaluate(async () => (await window.axe.run(document, { resultTypes: ["violations"] })).violations.map((x) => ({ id: x.id, impact: x.impact, n: x.nodes.length, ex: x.nodes[0].target.join(" ").slice(0, 70) })));
+      for (const x of v) console.log("   AXE", x.impact, x.id, "x" + x.n, x.ex);
+    }
   };
   await page.goto(`http://localhost:${port}/harness.html?app=1`);
   await page.waitForTimeout(1200);
@@ -128,7 +133,7 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.getByRole("button", { name: "Activity" }).click();
   await shot("16_activity_open");
-  await page.getByRole("button", { name: /Hide activity log/ }).click();
+  await page.getByRole("button", { name: /Hide activity/ }).click();
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("menuitem", { name: /Audiences/ }).click();
   await shot("17_audiences_dialog");

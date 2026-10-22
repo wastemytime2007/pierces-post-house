@@ -192,7 +192,7 @@ export default function WelcomeModal({ onComplete, onOpenApiKeyHelp }) {
       <div className="modal welcome-modal">
 
         {/* Progress dots at the top */}
-        <div className="welcome-progress" aria-label="progress">
+        <div className="welcome-progress" role="img" aria-label="Step progress">
           {SCREENS.map((s, i) => (
             <span
               key={s.key}

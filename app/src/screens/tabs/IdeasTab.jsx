@@ -703,7 +703,7 @@ function IdeaCard({ idea, projectDir, research, onFetchResearch, onRefine, onDis
         </div>
       </div>
 
-      <h3 className="idea-card-title">{title}</h3>
+      <h2 className="idea-card-title">{title}</h2>
       {tone && <div className="idea-card-tone">{tone}</div>}
       <p className="idea-card-pitch">{pitch}</p>
 
@@ -889,7 +889,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
         chip={`${useRanges ? `${sourceRanges.length} moment${sourceRanges.length !== 1 ? "s" : ""}` : `${(d.phrase_ids || []).length} phrase${(d.phrase_ids || []).length !== 1 ? "s" : ""}`}${duration ? ` · ${duration}` : ""}`}
       />
 
-      <h3 className="idea-card-title">{title}</h3>
+      <h2 className="idea-card-title">{title}</h2>
       {tone && <div className="idea-card-tone">{tone}</div>}
       {hook && <p className="idea-card-hook">“{hook}”</p>}
       {why && <p className="idea-card-pitch">{why}</p>}

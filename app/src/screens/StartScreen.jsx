@@ -40,7 +40,7 @@ function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   const [c1, c2] = tileColors(p.name);
   return (
     <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }} onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
-      <button className="cover-open" onClick={() => onOpen(p.name)} aria-label={`Open ${p.name}`}>
+      <button className="cover-open" onClick={() => onOpen(p.name)}>
         <span className="cover-art" style={poster ? { backgroundImage: `url(${poster})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
         <span className="cover-shade" />
         <span className="cover-info">
@@ -206,7 +206,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   };
 
   return (
-    <div className="start-screen">
+    <main className="start-screen">
       <div className="start-panel">
         <div className="start-hero">
           <div className="start-hero-text">
@@ -313,7 +313,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         )}
 
         {loading ? (
-          <div className="cover-grid" aria-busy="true" aria-label="Loading projects">
+          <div className="cover-grid" role="status" aria-busy="true" aria-label="Loading projects">
             {[0, 1, 2].map((i) => <div key={i} className="cover-skeleton" style={{ animationDelay: `${i * 120}ms` }} />)}
           </div>
         ) : projects.length === 0 ? (
@@ -418,7 +418,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
           totalSteps={tour.totalSteps}
         />
       )}
-    </div>
+    </main>
   );
 }
 

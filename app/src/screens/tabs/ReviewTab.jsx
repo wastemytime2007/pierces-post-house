@@ -848,7 +848,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
             <div className="rv-side-foot-title">
               {creative.running ? `Getting creative, ${finished} of ${total}` : st.state === "done" ? "Get Creative finished" : st.state === "stopped" ? "Get Creative stopped" : "Get Creative was interrupted"}
             </div>
-            <div className="rv-progress" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}><span style={{ width: `${Math.round((100 * finished) / total)}%` }} /></div>
+            <div className="rv-progress" role="progressbar" aria-label="Get Creative progress" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}><span style={{ width: `${Math.round((100 * finished) / total)}%` }} /></div>
             {creative.running && current?.step && <div className="rv-side-foot-sub">{current.name}: {current.step}</div>}
             <div className="rv-side-foot-row">
               {creative.running
@@ -915,7 +915,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
     );
     return (
       <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setFinishing(false); }}>
-        <form className="rv-sheet" role="dialog" aria-modal="true" aria-labelledby="rv-gc-title" onSubmit={go} onKeyDown={(e) => { if (e.key === "Escape") setFinishing(false); }}>
+        <div className="rv-sheet" role="dialog" aria-modal="true" aria-labelledby="rv-gc-title" onKeyDown={(e) => { if (e.key === "Escape") setFinishing(false); }}>
+        <form className="rv-form" onSubmit={go}>
           <h2 id="rv-gc-title">Get Creative</h2>
           <p className="rv-sheet-sub">Choose what to add. It runs in the background, one sequence after another, and your trimmed cut is never changed: each sequence gets new versions. Allow a few minutes per sequence.</p>
           <fieldset>
@@ -948,6 +949,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
             <button type="submit" className="btn btn-primary" disabled={nothing} autoFocus>Get Creative</button>
           </div>
         </form>
+        </div>
       </div>
     );
   }
