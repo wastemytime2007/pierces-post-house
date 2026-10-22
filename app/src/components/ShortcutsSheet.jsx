@@ -1,6 +1,7 @@
 // Every shortcut in one place. Opens with ? (outside a text field) or from the command palette.
 const GROUPS = [
   { title: "Anywhere", rows: [["⌘K", "Command palette"], ["⌘,", "Settings"], ["?", "This list"], ["⌘⌥L", "Show or hide the activity log"]] },
+  { title: "Steps", rows: [["⌘1", "Footage"], ["⌘2", "Stories"], ["⌘3", "Trim"], ["⌘4", "Finish"]] },
   { title: "Finish", rows: [["⌘O", "Choose an XML"], ["⌘G", "Get Creative"], ["⌘E", "Open in Premiere"], ["⌘[", "Previous version"], ["⌘]", "Next version"]] },
   { title: "On the review page", rows: [["Space", "Play or pause"], ["n", "Add a note at this moment"], ["d", "Draw on the frame"], ["Esc", "Cancel a note"]] },
 ];

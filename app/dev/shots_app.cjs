@@ -18,7 +18,7 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
     source_ranges: [{ source_path: "/Volumes/Runnells/Interviews/wknd_Bob_01.mp4", source_start_sec: 120, source_end_sec: 140 }, { source_path: "/Volumes/Runnells/Interviews/wknd_Bob_01.mp4", source_start_sec: 300, source_end_sec: 318 }] } }));
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: parseInt(process.env.H || "800", 10) }, colorScheme: process.env.SCHEME || "light" })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: parseInt(process.env.W || "1280", 10), height: parseInt(process.env.H || "800", 10) }, colorScheme: process.env.SCHEME || "light" })).newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const shot = async (name) => {
@@ -27,7 +27,8 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
     const m = await page.evaluate(() => {
       const vis = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.display !== "none" && s.visibility !== "hidden"; };
       const ctl = [...document.querySelectorAll("button, input, select, textarea, a[href]")].filter(vis);
-      return { controls: ctl.length, under24: ctl.filter((c) => c.getBoundingClientRect().height < 24).length, primary: ctl.filter((c) => /btn-primary|pm-tab-submit/.test(c.className)).length };
+      const overflowX = document.documentElement.scrollWidth > window.innerWidth + 1 ? document.documentElement.scrollWidth : 0;
+      return { overflowX, controls: ctl.length, under24: ctl.filter((c) => c.getBoundingClientRect().height < 24).length, primary: ctl.filter((c) => /btn-primary|pm-tab-submit/.test(c.className)).length };
     });
     console.log(name, JSON.stringify(m));
     if (process.env.AXE) {

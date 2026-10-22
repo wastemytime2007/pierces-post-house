@@ -25,9 +25,10 @@ async function counts(page, label) {
     document.querySelectorAll("body *").forEach((el) => { if (el.children.length === 0 && el.textContent.trim() && vis(el)) { const px = parseFloat(getComputedStyle(el).fontSize); fonts[px] = (fonts[px] || 0) + 1; } });
     const tiny = Object.entries(fonts).filter(([px]) => parseFloat(px) < 11).reduce((a, [, n]) => a + n, 0);
     const prominent = btns.filter((b) => /btn-primary|primary/.test(b.className)).length;
-    return { controls: btns.length, under28: small.length, primary: prominent, textSizes: fonts, textUnder11px: tiny, labels: btns.map((b) => (b.textContent || b.getAttribute("aria-label") || b.title || b.type).trim().slice(0, 34)) };
+    const overflowX = document.documentElement.scrollWidth > window.innerWidth + 1 ? document.documentElement.scrollWidth : 0;
+    return { overflowX, controls: btns.length, under28: small.length, primary: prominent, textSizes: fonts, textUnder11px: tiny, labels: btns.map((b) => (b.textContent || b.getAttribute("aria-label") || b.title || b.type).trim().slice(0, 34)) };
   });
-  console.log(label, JSON.stringify({ controls: c.controls, under28: c.under28, primary: c.primary, textUnder11px: c.textUnder11px, textSizes: c.textSizes }));
+  console.log(label, JSON.stringify({ overflowX: c.overflowX, controls: c.controls, under28: c.under28, primary: c.primary, textUnder11px: c.textUnder11px, textSizes: c.textSizes }));
   fs.writeFileSync(path.join(out, label + ".controls.json"), JSON.stringify(c, null, 1));
   if (process.env.AXE) {
     if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: require.resolve("axe-core/axe.min.js") });
@@ -38,7 +39,7 @@ async function counts(page, label) {
 
 (async () => {
   const browser = await chromium.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true });
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: parseInt(process.env.H || "800", 10) }, deviceScaleFactor: 1, colorScheme: process.env.SCHEME || "light" })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: parseInt(process.env.W || "1280", 10), height: parseInt(process.env.H || "800", 10) }, deviceScaleFactor: 1, colorScheme: process.env.SCHEME || "light" })).newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.addInitScript((items) => { localStorage.setItem("review.seqSet", JSON.stringify({ source: "/x/wk.xml", items })); },

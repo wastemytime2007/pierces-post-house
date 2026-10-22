@@ -219,7 +219,8 @@
   #copy, #dl { background: transparent; color: var(--dim); min-height: 26px; font-size: 12px; }
   #copy:hover, #dl:hover { background: rgba(128,128,140,.22); color: var(--text); }
   #count { font-size: 13px; }
-  @media (max-width: 900px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
+  @media (max-width: 900px) and (min-width: 681px) { main { grid-template-columns: minmax(0, 1fr) 270px; gap: 8px 12px; padding: 10px; } }
+  @media (max-width: 680px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
 </style>
 </head>

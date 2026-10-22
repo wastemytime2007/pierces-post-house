@@ -664,13 +664,24 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .item(&item("older_version", "Previous Version", "CmdOrCtrl+[")?)
         .item(&item("newer_version", "Next Version", "CmdOrCtrl+]")?)
         .build()?;
+    let go = SubmenuBuilder::new(app, "Go")
+        .item(&item("go_pm", "Footage", "CmdOrCtrl+1")?)
+        .item(&item("go_ideas", "Stories", "CmdOrCtrl+2")?)
+        .item(&item("go_trim", "Trim", "CmdOrCtrl+3")?)
+        .item(&item("go_review", "Finish", "CmdOrCtrl+4")?)
+        .separator()
+        .item(&item("palette", "Command Palette…", "CmdOrCtrl+K")?)
+        .build()?;
     let view = SubmenuBuilder::new(app, "View")
         .item(&item("toggle_activity", "Show Activity Log", "CmdOrCtrl+Alt+L")?)
         .separator()
         .fullscreen()
         .build()?;
+    let help = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("shortcuts", "Keyboard Shortcuts").build(app)?)
+        .build()?;
     let window = SubmenuBuilder::new(app, "Window").minimize().maximize().build()?;
-    MenuBuilder::new(app).items(&[&app_menu, &file, &edit, &review, &view, &window]).build()
+    MenuBuilder::new(app).items(&[&app_menu, &file, &edit, &review, &go, &view, &window, &help]).build()
 }
 
 fn main() {
@@ -687,7 +698,7 @@ fn main() {
         // Menu commands go to the page as one event; the page decides what each one means on the screen it is showing.
         .on_menu_event(|app, event| {
             let id = event.id().0.clone();
-            if !matches!(id.as_str(), "open_xml" | "open_premiere" | "get_creative" | "older_version" | "newer_version" | "settings" | "toggle_activity") {
+            if !matches!(id.as_str(), "open_xml" | "open_premiere" | "get_creative" | "older_version" | "newer_version" | "settings" | "toggle_activity" | "palette" | "shortcuts" | "go_pm" | "go_ideas" | "go_trim" | "go_review") {
                 return;
             }
             let _ = app.emit("menu-command", id);

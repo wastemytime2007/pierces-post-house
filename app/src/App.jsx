@@ -544,10 +544,15 @@ export default function App() {
       const tag = (e.target?.tagName || "").toLowerCase();
       const typing = tag === "input" || tag === "textarea" || tag === "select" || e.target?.isContentEditable;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen((x) => !x); }
+      else if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && ["1", "2", "3", "4"].includes(e.key) && projectRef.current) { e.preventDefault(); window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: ["pm", "ideas", "trim", "review"][Number(e.key) - 1] } })); }
       else if (e.key === "?" && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); setShortcutsOpen(true); }
     };
+    const openPalette = () => setPaletteOpen(true);
+    const openShortcuts = () => setShortcutsOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("posthouse-palette", openPalette);
+    window.addEventListener("posthouse-shortcuts", openShortcuts);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("posthouse-palette", openPalette); window.removeEventListener("posthouse-shortcuts", openShortcuts); };
   }, []);
   useEffect(() => { if (paletteOpen && backendReady) sendCommand({ type: "list_projects" }).catch(() => {}); }, [paletteOpen, backendReady]);
   const goTo = (tab) => window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab } }));
@@ -595,6 +600,9 @@ export default function App() {
     let off;
     listen("menu-command", (e) => {
       if (e.payload === "settings") setShowSettings(true);
+      else if (e.payload === "palette") window.dispatchEvent(new CustomEvent("posthouse-palette"));
+      else if (e.payload === "shortcuts") window.dispatchEvent(new CustomEvent("posthouse-shortcuts"));
+      else if (String(e.payload).startsWith("go_")) window.dispatchEvent(new CustomEvent("posthouse-go", { detail: { tab: String(e.payload).slice(3) } }));
       else window.dispatchEvent(new CustomEvent("posthouse-menu", { detail: e.payload }));
     }).then((u) => { off = u; });
     return () => { if (off) off(); };

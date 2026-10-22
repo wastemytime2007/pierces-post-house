@@ -61,3 +61,6 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 55 | Activity panel: a quiet column of time and message, problems in the attention color, an empty state that explains itself, Clear disabled when empty | screenshot |
 | 56 | A crash in one step (Footage, Stories, Trim, Finish) shows a message inside that step with the navigation intact | build; forced crash not tested |
 | 57 | The wordmark button's accessible name contains its visible text | axe: no serious or critical findings, both appearances, both drivers |
+| 58 | The review page keeps its side-by-side layout down to the smallest window (1000 by 700) and stacks only below 680 px; checked no sideways overflow on any screen at 1000 wide | screenshots at 1000 by 700, overflow measured on 31 states |
+| 59 | ⌘1, ⌘2, ⌘3, ⌘4 jump between the four steps | tested in the browser harness (all four) |
+| 60 | A Go menu (the four steps and the command palette) and a Help menu (keyboard shortcuts) in the native menu bar | `cargo check`; menu not clicked in the running app |
