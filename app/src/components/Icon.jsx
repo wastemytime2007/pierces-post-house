@@ -12,6 +12,7 @@ const PATHS = {
   bleep: <path d="M4 10v4M8 6.5v11M12 9v6M16 4.5v15M20 9.5v5" />,
   cut: <><circle cx="6" cy="7" r="2.5" /><circle cx="6" cy="17" r="2.5" /><path d="M8 8.6L20 18M8 15.4L20 6" /></>,
   transition: <><rect x="3" y="6" width="12" height="12" rx="2.5" /><path d="M9 6h9.5A2.5 2.5 0 0121 8.5v7a2.5 2.5 0 01-2.5 2.5H15" /></>,
+  pause: <><rect x="7" y="5" width="3.5" height="14" rx="1" /><rect x="13.5" y="5" width="3.5" height="14" rx="1" /></>,
   play: <path d="M8 5.5v13l11-6.5-11-6.5z" />,
   chevronRight: <path d="M9.5 5l7 7-7 7" />,
   chevronLeft: <path d="M14.5 5l-7 7 7 7" />,

@@ -55,6 +55,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [creativeHidden, setCreativeHidden] = useState("");         // the started-stamp of a finished batch the person hid
   const [picker, setPicker] = useState(null);                      // { xml, rows, selected: [ids], filter, hideAuto }
   const [peek, setPeek] = useState(null);                          // one sequence looked at large, on Space (Quick Look)
+  const [comparing, setComparing] = useState(false);               // two versions on one scrubber
   const [seqSet, setSeqSet] = useState(() => {                   // the sequences opened from one XML survive leaving the tab and coming back
     try { return JSON.parse(localStorage.getItem("review.seqSet") || "null"); } catch (e) { return null; }
   });
@@ -917,7 +918,75 @@ export default function ReviewTab({ subscribe, onStatus }) {
   }
 
   // Every open sequence as a tile: its own frame (the finished version's when there is one), where it stands, one click to open it.
-  // One frame of the contact sheet, large, the way Space does it in Finder
+  // Two versions side by side on one scrubber, because the fastest way to judge what the creative pass changed is to see both at the same moment.
+// The previews sit beside each version's own page, so nothing new is rendered.
+function Compare({ a, b, onClose }) {
+  const left = useRef(null);
+  const right = useRef(null);
+  const [t, setT] = useState(0);
+  const [dur, setDur] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const srcOf = (v) => String(v.url || "").replace(/review\.html(\?.*)?$/, "preview_full.mp4");
+  const fallbackOf = (v) => String(v.url || "").replace(/review\.html(\?.*)?$/, "preview.mp4");
+
+  const both = (f) => { [left.current, right.current].forEach((el) => { if (el) f(el); }); };
+  const seek = (sec) => { both((el) => { el.currentTime = sec; }); setT(sec); };
+  const toggle = () => {
+    if (playing) { both((el) => el.pause()); setPlaying(false); }
+    else { both((el) => el.play().catch(() => {})); setPlaying(true); }
+  };
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (/^(INPUT|TEXTAREA)$/.test(e.target?.tagName)) return;
+      if (e.key === "Escape") { e.preventDefault(); onClose(); }
+      else if (e.key === " ") { e.preventDefault(); toggle(); }
+      else if (e.key === ",") { e.preventDefault(); seek(Math.max(0, t - 1 / 30)); }
+      else if (e.key === ".") { e.preventDefault(); seek(Math.min(dur, t + 1 / 30)); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });                                                                  // no dep list: it closes over the current time
+
+  // The left one leads; the right one is pulled back to it whenever they drift (two videos never play in perfect step on their own)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const l = left.current, r = right.current;
+      if (!l || !r) return;
+      setT(l.currentTime);
+      if (Math.abs(r.currentTime - l.currentTime) > 0.08) r.currentTime = l.currentTime;
+    }, 120);
+    return () => clearInterval(id);
+  }, []);
+
+  const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, "0")}`;
+  return (
+    <div className="rv-compare" role="dialog" aria-label={`${a.label} against ${b.label}`}>
+      <div className="rv-compare-pair">
+        {[["a", a, left], ["b", b, right]].map(([k, v, ref]) => (
+          <div className="rv-compare-one" key={k}>
+            <span className="rv-compare-label">{v.label}</span>
+            <video ref={ref} src={srcOf(v)} muted={k === "b"} playsInline preload="auto"
+              onLoadedMetadata={(e) => { if (k === "a") setDur(e.currentTarget.duration || 0); }}
+              onError={(e) => { if (e.currentTarget.src !== fallbackOf(v)) e.currentTarget.src = fallbackOf(v); }} />
+          </div>
+        ))}
+      </div>
+      <div className="rv-compare-bar">
+        <button className="btn btn-sm" onClick={toggle} aria-label={playing ? "Pause both" : "Play both"}>
+          <Icon name={playing ? "pause" : "play"} size={14} />
+        </button>
+        <input type="range" min={0} max={dur || 0} step={0.01} value={t} aria-label="Position in both versions"
+          onChange={(e) => { both((el) => el.pause()); setPlaying(false); seek(parseFloat(e.target.value)); }} />
+        <span className="rv-compare-time">{mmss(t)} / {mmss(dur)}</span>
+        <button className="btn btn-sm btn-ghost" onClick={onClose}>Done</button>
+      </div>
+      <p className="rv-compare-hint">Space plays both, comma and period step a frame. Only {a.label} has sound.</p>
+    </div>
+  );
+}
+
+// One frame of the contact sheet, large, the way Space does it in Finder
 function PeekFrame({ row, xml }) {
   const uri = useThumb(`seq:${xml}:${row.id}`);
   return <span className="sp-peek-art" style={uri ? { backgroundImage: `url(${uri})` } : undefined} />;
@@ -1149,6 +1218,7 @@ function SeqBoard() {
                   <div className="rv-menu-scrim" onMouseDown={() => setMenuOpen(false)} />
                   <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); }}>
                     <button role="menuitem" onClick={closeMenu(() => sendCommand({ type: "open_path", path: dirName(version.xml) }))} disabled={!!busy}>Show in Finder</button>
+                    {versions.length > 1 && <button role="menuitem" onClick={closeMenu(() => setComparing(true))} disabled={!!busy}>Compare with the version before…</button>}
                     {premiereApps.length > 1 && <button role="menuitem" onClick={closeMenu(() => setChoosing(true))} disabled={!!busy}>Premiere version…</button>}
                     <button role="menuitem" onClick={closeMenu(browse)} disabled={!!busy}><span>Choose another XML…</span><kbd>⌘O</kbd></button>
                     <hr />
@@ -1215,6 +1285,10 @@ function SeqBoard() {
             onLoad={() => { if (CREATIVE_STAGE) frameRef.current?.contentWindow?.postMessage({ type: "review:mode", submit: false }, "*"); }}
           />
         </div>
+
+      {comparing && versions.length > 1 && cur < versions.length && (
+        <Compare a={versions[cur]} b={versions[cur === 0 ? 1 : cur - 1]} onClose={() => setComparing(false)} />
+      )}
 
       {SeqBoard()}
       {CreativeSheet()}
