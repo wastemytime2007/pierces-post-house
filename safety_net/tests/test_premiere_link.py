@@ -104,7 +104,7 @@ def test_a_running_panel_makes_the_named_project(tmp_path):
 def test_no_panel_means_a_plain_open_and_the_person_is_told(tmp_path, _no_real_premiere):
     tools = _tools()
     x = _xml(tmp_path)
-    out = tools.open_in_new_project(str(x), jobs_dir=tmp_path / "jobs", start_wait=0.2, job_wait=1)
+    out = tools.open_in_new_project(str(x), jobs_dir=tmp_path / "jobs", start_wait=0.2, job_wait=1, running_wait=0.2)
     assert out["mode"] == "plain" and "did not answer" in out["message"]
     assert not list((tmp_path / "jobs").glob("*.job"))                           # no job left to run on its own later
     assert any(str(x) in c for c in _no_real_premiere)                           # the plain open happened
@@ -141,3 +141,29 @@ def test_only_an_xml_that_exists_is_accepted(tmp_path):
     notxml.write_text("x")
     with pytest.raises(tools.ToolError):
         tools.open_in_new_project(str(notxml), jobs_dir=tmp_path / "jobs")
+
+
+def test_premiere_already_running_without_a_panel_gives_up_in_seconds_not_minutes(tmp_path, monkeypatch):
+    # A panel loads when Premiere starts: if Premiere was already running, waiting the long start-up time would only leave the person staring at "Opening..."
+    tools = _tools()
+    monkeypatch.setattr(tools, "premiere_running", lambda: True)
+    x = _xml(tmp_path)
+    t0 = time.time()
+    out = tools.open_in_new_project(str(x), jobs_dir=tmp_path / "jobs", start_wait=60, job_wait=1, running_wait=0.5)
+    assert out["mode"] == "plain" and time.time() - t0 < 10
+
+
+def test_premiere_not_running_is_given_the_long_wait_to_load_its_panel(tmp_path, monkeypatch):
+    tools = _tools()
+    monkeypatch.setattr(tools, "premiere_running", lambda: False)
+    jobs = tmp_path / "jobs"
+    x = _xml(tmp_path)
+
+    def premiere_starts_and_its_panel_reports_in():
+        time.sleep(1.5)
+        _heartbeat(jobs)
+        _panel(jobs, "ok=1\nproject={project}\n", [])
+
+    threading.Thread(target=premiere_starts_and_its_panel_reports_in, daemon=True).start()
+    out = tools.open_in_new_project(str(x), jobs_dir=jobs, start_wait=20, job_wait=10, running_wait=0.2)
+    assert out["mode"] == "project"

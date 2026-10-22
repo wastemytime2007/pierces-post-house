@@ -1901,6 +1901,14 @@ def premiere_link_alive(jobs_dir: Path | None = None, max_age: float = 15.0, now
         return False
 
 
+def premiere_running() -> bool:
+    """True when any Adobe Premiere Pro is running now."""
+    try:
+        return subprocess.run(["pgrep", "-f", "Adobe Premiere Pro.*/Contents/MacOS/"], capture_output=True, check=False).returncode == 0
+    except OSError:
+        return False
+
+
 def project_path_for(xml: str | Path) -> Path:
     """The new project's path: next to the XML, named after it, never over an existing project."""
     xml = Path(xml)
@@ -1936,7 +1944,7 @@ def wait_premiere_result(jid: str, jobs_dir: Path | None = None, timeout: float 
     return {"ok": False, "error": "no answer"}
 
 
-def open_in_new_project(xml: str, app: str | None = None, jobs_dir: Path | None = None, start_wait: float = 120.0, job_wait: float = 180.0) -> dict:
+def open_in_new_project(xml: str, app: str | None = None, jobs_dir: Path | None = None, start_wait: float = 120.0, job_wait: float = 180.0, running_wait: float = 6.0) -> dict:
     """Open an XML in a NEW Premiere project that is named after it and saved beside it. Needs the panel to be running in Premiere: when Premiere is not open it is started and given
     start_wait seconds for the panel to report in. If the panel never does (not installed, or an older one), the XML is opened plainly, as before, and the answer says so, so
     the person is told rather than left waiting. Returns {"xml", "mode": "project"|"plain", "project"?, "message"}."""
@@ -1948,8 +1956,11 @@ def open_in_new_project(xml: str, app: str | None = None, jobs_dir: Path | None 
     if os.environ.get("POSTHOUSE_NO_OPEN"):
         return {"xml": str(p), "mode": "plain", "message": "not opened (POSTHOUSE_NO_OPEN)"}
     if not premiere_link_alive(jobs):
-        subprocess.run(["open", "-a", chosen] if chosen else ["open", "-a", "Adobe Premiere Pro"], check=False)      # panels load when Premiere starts; wait for this one to report in
-        end = time.time() + start_wait
+        # A panel loads when Premiere STARTS. If Premiere is already running and no panel has reported in, it was started before the panel was there (or without it): waiting
+        # will not help, so only a few seconds of grace; if Premiere is not running, it is started here and given time to load.
+        already = premiere_running()
+        subprocess.run(["open", "-a", chosen] if chosen else ["open", "-a", "Adobe Premiere Pro"], check=False)
+        end = time.time() + (running_wait if already else start_wait)
         while time.time() < end and not premiere_link_alive(jobs):
             time.sleep(1.0)
     if not premiere_link_alive(jobs):
