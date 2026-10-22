@@ -1189,6 +1189,24 @@ def handle_creative_stop(cmd: dict) -> None:
     _creative_stop.set()
 
 
+def handle_xml_frames(cmd: dict) -> None:
+    """The first frames of the first few sequences in each XML, so an export can be shown as the cuts it holds instead of a document icon: {"xmls": [path]}."""
+    xmls = [x for x in cmd.get("xmls", []) if x][:12]
+
+    def worker() -> None:
+        import creator_tools
+        for x in xmls:
+            try:
+                res, _ = creator_tools.capture(creator_tools.list_sequences, x)
+                rows = (res or {}).get("sequences", [])
+                frames = [r["first_frame"] for r in rows if r.get("first_frame")][:5]
+                emit({"type": "xml_frames", "xml": x, "frames": frames, "sequences": len(rows)})
+            except Exception:
+                emit({"type": "xml_frames", "xml": x, "frames": [], "sequences": 0})
+
+    _executor.submit(worker)
+
+
 def handle_list_sequences(cmd: dict) -> None:
     """The sequences in an XML (for the picker when it holds more than one cut). Reading a 46 MB project takes a few seconds, so it runs in the background."""
     xml = cmd.get("xml")
@@ -1573,7 +1591,8 @@ def handle_project_posters(cmd: dict) -> None:
     def worker() -> None:
         import thumbs
         for p in items:
-            emit({"type": "project_poster", "name": p.get("name"), "poster": thumbs.project_poster(p["dir"])})
+            emit({"type": "project_poster", "name": p.get("name"), "poster": thumbs.project_poster(p["dir"]),
+                  "footage": thumbs.project_footage(p["dir"])})                         # the page cuts a few more frames of this for the cover's hover scrub
 
     threading.Thread(target=worker, name="project-posters", daemon=True).start()
 
@@ -1666,6 +1685,7 @@ HANDLERS = {
     "creative_status": handle_creative_status,
     "creative_stop": handle_creative_stop,
     "list_sequences": handle_list_sequences,
+    "xml_frames": handle_xml_frames,
     "extract_sequences": handle_extract_sequences,
     "build_review": handle_build_review,
     "open_review": handle_open_review,

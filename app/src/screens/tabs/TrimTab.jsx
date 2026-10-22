@@ -5,6 +5,7 @@ import ExportModal from "../../components/ExportModal.jsx";
 import PageHeader from "../../components/PageHeader.jsx";
 import Icon from "../../components/Icon.jsx";
 import { sendCommand } from "../../App.jsx";
+import { useThumb, requestFrames } from "../../thumbStore.js";
 
 const dirOf = (p) => String(p).replace(/\/[^/]*$/, "");
 
@@ -17,6 +18,22 @@ function when(mtime) {
 }
 
 const shortName = (a) => a.name.replace(/^Adobe /, "");
+
+// An export is the cuts inside it: the first frame of each of its first few sequences, not a document icon.
+function ExportStrip({ xml, frames }) {
+  const keys = (frames || []).map((f, i) => `xf:${xml}:${i}`);
+  const thumbs = [useThumb(keys[0]), useThumb(keys[1]), useThumb(keys[2]), useThumb(keys[3]), useThumb(keys[4])];
+  useEffect(() => {
+    if (frames && frames.length) requestFrames(frames.map((f, i) => ({ key: `xf:${xml}:${i}`, path: f.path, t: f.t })), 240);
+  }, [xml, frames]);                                                     // eslint-disable-line react-hooks/exhaustive-deps
+  const shown = thumbs.filter(Boolean);
+  if (!shown.length) return <span className="trim-row-icon"><Icon name="doc" size={18} /></span>;
+  return (
+    <span className="trim-strip" aria-hidden="true">
+      {shown.map((u, i) => <span key={i} style={{ backgroundImage: `url(${u})` }} />)}
+    </span>
+  );
+}
 
 export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], project, subscribe, autoIncludeRulesCount = 0 }) {
   // The stories chosen on the Stories step
@@ -45,6 +62,13 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
     } catch (e) { /* dialog closed */ }
   };
   const recent = (exportsList || []).slice(0, 5);
+  // The frames inside each export, asked for once the list is known
+  const [xmlFrames, setXmlFrames] = useState({});
+  useEffect(() => {
+    const off = subscribe ? subscribe((ev) => { if (ev.type === "xml_frames") setXmlFrames((m) => ({ ...m, [ev.xml]: ev })); }) : null;
+    if (recent.length) sendCommand({ type: "xml_frames", xmls: recent.map((x) => x.path) }).catch(() => {});
+    return () => { if (off) off(); };
+  }, [recent.map((x) => x.path).join("|")]);                             // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="trim">
@@ -99,10 +123,10 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
             <ul className="trim-list">
               {recent.map((x) => (
                 <li key={x.path} className="trim-row">
-                  <span className="trim-row-icon"><Icon name="doc" size={18} /></span>
+                  <ExportStrip xml={x.path} frames={xmlFrames[x.path]?.frames} />
                   <span className="trim-row-main">
                     <span className="trim-row-name">{x.name}</span>
-                    <span className="trim-row-meta">{when(x.mtime)}{x.session ? ` · opened in Finish, ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}` : ""}</span>
+                    <span className="trim-row-meta">{xmlFrames[x.path]?.sequences ? `${xmlFrames[x.path].sequences} sequence${xmlFrames[x.path].sequences === 1 ? "" : "s"} · ` : ""}{when(x.mtime)}{x.session ? ` · opened in Finish, ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}` : ""}</span>
                   </span>
                   <button className="btn btn-sm btn-ghost" onClick={() => sendCommand({ type: "open_path", path: x.path })} title="Open the XML with its default app (Premiere)">Open</button>
                   <button className="btn btn-sm btn-ghost" onClick={() => sendCommand({ type: "open_path", path: dirOf(x.path) })} title="Show the folder in Finder">Show in Finder</button>

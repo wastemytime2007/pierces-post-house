@@ -96,6 +96,26 @@ def frame_data_uri(path: str | Path, t: float = 1.0, width: int = 480) -> str | 
         return None
 
 
+def project_footage(project_dir: str | Path) -> str | None:
+    """The file a project's poster comes from: its first interview, else its first B-roll, preferring the small proxy. Used to cut more frames of the same footage for the covers."""
+    try:
+        d = json.loads((Path(project_dir) / "project.json").read_text())
+    except (OSError, ValueError):
+        return None
+    ordered = sorted(d.get("sources", []), key=lambda s: {"aroll": 0, "broll": 1}.get(s.get("kind"), 2))
+    for src in ordered:
+        if src.get("kind") == "audio":
+            continue
+        for fpath, info in sorted((src.get("files") or {}).items()):
+            for cand in (info.get("proxy_path"), fpath):
+                if cand and Path(cand).is_file():
+                    return str(cand)
+        root = Path(src.get("root_path", ""))
+        if root.is_file():
+            return str(root)
+    return None
+
+
 def project_poster(project_dir: str | Path, width: int = 640) -> str | None:
     """A frame that stands for a project: from its interview footage first, then its B-roll. Prefers the small proxy (local and quick) over the original (often on a drive)."""
     try:

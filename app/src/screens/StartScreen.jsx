@@ -17,7 +17,7 @@ import TourTooltip from "../components/TourTooltip.jsx";
  */
 import Icon from "../components/Icon.jsx";
 import Mark from "../components/Mark.jsx";
-import { useThumb, requestPosters, tileColors } from "../thumbStore.js";
+import { useThumb, requestPosters, tileColors, requestStrip, projectFootage, setCover } from "../thumbStore.js";
 
 // The step a project is waiting at, so opening it lands there
 function nextStep(p) {
@@ -46,13 +46,32 @@ function greeting(person) {
 }
 
 // A project is its own footage: one frame from its interviews as the cover, the name over a soft shade. No footage yet: a color tile from the brand's blues.
+// Moving across a cover steps through five frames of the same interview, so the shoot shows itself without a video player (Apple TV and Frame.io do the same with a hover scrub).
 function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   const poster = useThumb(`poster:${p.name}`);
   const [c1, c2] = tileColors(p.name);
+  const [frame, setFrame] = useState(-1);                                   // -1 is the poster
+  const strip = [useThumb(`strip:${p.name}:0`), useThumb(`strip:${p.name}:1`), useThumb(`strip:${p.name}:2`), useThumb(`strip:${p.name}:3`), useThumb(`strip:${p.name}:4`)];
+  const hoverArt = frame >= 0 ? strip[frame] : null;
+  const art = hoverArt || poster;
+  const onMove = (e) => {
+    if (!projectFootage(p.name)) return;
+    requestStrip(p.name);                                                   // cut on the first hover only, then cached
+    const r = e.currentTarget.getBoundingClientRect();
+    const i = Math.min(strip.length - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * strip.length)));
+    setFrame(i);
+  };
   return (
-    <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }} onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
+    <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }}
+      onMouseMove={onMove} onMouseLeave={() => setFrame(-1)}
+      onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
       <button className="cover-open" onClick={() => { try { sessionStorage.setItem("ph.tab", nextStep(p).tab); } catch (e) { /* private window */ } onOpen(p.name); }}>
-        <span className="cover-art" style={poster ? { backgroundImage: `url(${poster})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
+        <span className="cover-art" style={art ? { backgroundImage: `url(${art})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
+        {frame >= 0 && strip.some(Boolean) && (
+          <span className="cover-ticks" aria-hidden="true">
+            {strip.map((_, i) => <span key={i} className={i === frame ? "on" : ""} />)}
+          </span>
+        )}
         <span className="cover-shade" />
         <span className="cover-info">
           <span className="cover-name">{p.name}</span>
@@ -65,6 +84,35 @@ function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   );
 }
 
+// Which frame stands for a project. Six moments through its first interview; the chosen one is remembered per project and used as the cover everywhere (title bar, ambient glow).
+function FramePicker({ name, onClose }) {
+  const SECONDS = [8, 40, 90, 150, 220, 300];
+  useEffect(() => { requestStrip(name, SECONDS); }, [name]);        // eslint-disable-line react-hooks/exhaustive-deps
+  const frames = SECONDS.map((t, i) => useThumb(`strip:${name}:${i}`));   // eslint-disable-line react-hooks/rules-of-hooks
+  const choose = (i) => {
+    const uri = frames[i];
+    if (!uri) return;
+    try { localStorage.setItem(`ph.cover.${name}`, uri); } catch (e) { /* too big for storage: the default frame stays */ }
+    setCover(name, uri);
+    onClose();
+  };
+  return (
+    <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal frame-pick" role="dialog" aria-label={`Cover frame for ${name}`}>
+        <div className="modal-header"><h2>Choose the cover frame</h2><button className="modal-close" onClick={onClose}>×</button></div>
+        <div className="frame-pick-grid">
+          {frames.map((u, i) => (
+            <button key={i} className="frame-pick-tile" onClick={() => choose(i)} disabled={!u} aria-label={`Frame at ${SECONDS[i]} seconds`}>
+              {u ? <span style={{ backgroundImage: `url(${u})` }} /> : <span className="frame-pick-wait" />}
+            </button>
+          ))}
+        </div>
+        <div className="modal-actions"><button className="btn btn-ghost" onClick={onClose}>Cancel</button></div>
+      </div>
+    </div>
+  );
+}
+
 export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCreate, onDelete, subscribe, log, tourReady, onTourComplete, person }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +121,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   const [createError, setCreateError] = useState(null);
   const [query, setQuery] = useState("");                     // a quick filter once there are many projects
   const [ctx, setCtx] = useState(null);                       // right-click menu on a project: { x, y, p }
+  const [pickFrame, setPickFrame] = useState(null);           // a project whose cover frame is being chosen: its name
   const [deleteTarget, setDeleteTarget] = useState(null);  // project name pending delete
   // Drop 4.16: optional custom save location for new projects (portability)
   const [customRootDir, setCustomRootDir] = useState("");
@@ -366,11 +415,14 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         ) : null;
       })()}
 
+      {pickFrame && <FramePicker name={pickFrame} onClose={() => setPickFrame(null)} />}
+
       {ctx && (
         <>
           <div className="rv-menu-scrim" onMouseDown={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }} />
           <div className="rv-menu-list" role="menu" style={{ position: "fixed", right: "auto", left: Math.min(ctx.x, window.innerWidth - 240), top: Math.min(ctx.y, window.innerHeight - 140) }} onKeyDown={(e) => { if (e.key === "Escape") setCtx(null); }}>
             <button role="menuitem" onClick={() => { const n = ctx.p.name; setCtx(null); onOpen(n); }}>Open</button>
+            <button role="menuitem" onClick={() => { const n = ctx.p.name; setCtx(null); setPickFrame(n); }}>Choose cover frame…</button>
             {ctx.p.dir && <button role="menuitem" onClick={() => { const d = ctx.p.dir; setCtx(null); sendCommand({ type: "open_path", path: d }); }}>Show in Finder</button>}
             <hr />
             <button role="menuitem" className="danger" onClick={() => { const n = ctx.p.name; setCtx(null); setDeleteTarget(n); }}>Delete project…</button>

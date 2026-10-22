@@ -5560,3 +5560,22 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .switch input:checked + span::after { transform: translateX(16px); }
 .switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .switch span, .switch span::after { transition: none; } }
+
+/* A cover scrubs: which of its frames you are on */
+.cover-ticks { position: absolute; left: 12px; right: 12px; bottom: 8px; display: flex; gap: 3px; z-index: 2; pointer-events: none; }
+.cover-ticks span { flex: 1; height: 2px; border-radius: 1px; background: rgba(255,255,255,0.3); }
+.cover-ticks span.on { background: rgba(255,255,255,0.9); }
+.cover-art { transition: background-image 90ms linear; }
+
+/* Choosing the frame that stands for a project */
+.frame-pick { width: 640px; }
+.frame-pick-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 4px 0 8px; }
+.frame-pick-tile { padding: 0; border: 2px solid transparent; border-radius: 10px; background: var(--bg-2, var(--bg-1)); cursor: pointer; overflow: hidden; }
+.frame-pick-tile:hover:not(:disabled) { border-color: var(--accent); }
+.frame-pick-tile:disabled { cursor: default; }
+.frame-pick-tile > span { display: block; aspect-ratio: 16 / 9; background-size: cover; background-position: center; }
+.frame-pick-wait { background: var(--bg-3, var(--bg-2)); }
+
+/* An export, shown as the cuts it holds */
+.trim-strip { display: inline-flex; gap: 2px; flex: none; }
+.trim-strip span { width: 34px; height: 22px; border-radius: 3px; background-size: cover; background-position: center; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.12); }

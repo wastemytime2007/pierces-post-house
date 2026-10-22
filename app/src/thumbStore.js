@@ -7,8 +7,24 @@ const map = new Map();
 const asked = new Set();
 const subs = new Set();
 
+const footage = new Map();                 // project name -> the file its poster came from, for the hover strip
+export function projectFootage(name) { return footage.get(name); }
+
+/** The frame the person chose for a project, which wins over the one the backend picked. */
+export function setCover(name, uri) { map.set(`poster:${name}`, uri); chosen.add(name); subs.forEach((f) => f()); }
+const chosen = new Set();
+try {
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("ph.cover.")) { map.set(`poster:${k.slice(9)}`, localStorage.getItem(k)); chosen.add(k.slice(9)); }
+  }
+} catch (e) { /* private window: the backend's own choice is used */ }
+
 export function ingest(ev) {
-  if (ev.type === "project_poster") map.set(`poster:${ev.name}`, ev.poster || null);
+  if (ev.type === "project_poster") {
+    if (!chosen.has(ev.name)) map.set(`poster:${ev.name}`, ev.poster || null);
+    if (ev.footage) footage.set(ev.name, ev.footage);
+  }
   else if (ev.type === "frame_thumbs") for (const [k, v] of Object.entries(ev.thumbs || {})) map.set(k, v || null);
   else return;
   subs.forEach((f) => f());
@@ -31,6 +47,13 @@ export function requestFrames(items, width = 320) {
     const chunk = need.slice(k, k + 40);
     sendCommand({ type: "frame_thumbs", id: String(Math.random()), items: chunk, width }).catch(() => chunk.forEach((i) => asked.delete(i.key)));
   }
+}
+
+/** The strip behind a cover's hover scrub: a few seconds apart through the same interview. Keys are `strip:<name>:<i>`. */
+export function requestStrip(name, seconds = [20, 48, 96, 160, 240]) {
+  const path = footage.get(name);
+  if (!path) return;
+  requestFrames(seconds.map((t, i) => ({ key: `strip:${name}:${i}`, path, t })), 480);
 }
 
 export function requestPosters(projects) {

@@ -288,6 +288,17 @@ export default function IdeasTab({
     });
   }, [ideas]);
 
+  // Every story's frames are cut as soon as the stories arrive, so the page fills at once instead of card by card as each scrolls into view
+  useEffect(() => {
+    const want = [];
+    for (const i of ideas) {
+      for (const r of (i.data?.source_ranges || []).slice(0, 4)) {
+        if (r.source_path) want.push({ key: `f:${r.source_path}:${Math.round(r.source_start_sec || 0)}`, path: r.source_path, t: (r.source_start_sec || 0) + 1.5 });
+      }
+    }
+    if (want.length) requestFrames(want, 360);
+  }, [ideas]);
+
   const selectedExportable = ideas.filter(
     (i) => selectedIds.has(i.idea_id) &&
            (i.kind === "deliverable" || i.kind === "story_angle")
