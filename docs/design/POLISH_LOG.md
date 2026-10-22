@@ -64,3 +64,5 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 58 | The review page keeps its side-by-side layout down to the smallest window (1000 by 700) and stacks only below 680 px; checked no sideways overflow on any screen at 1000 wide | screenshots at 1000 by 700, overflow measured on 31 states |
 | 59 | ⌘1, ⌘2, ⌘3, ⌘4 jump between the four steps | tested in the browser harness (all four) |
 | 60 | A Go menu (the four steps and the command palette) and a Help menu (keyboard shortcuts) in the native menu bar | `cargo check`; menu not clicked in the running app |
+| 61 | Welcome: the mark with a glow and a display-type title on the first screen; the second screen drops the graphic that repeated the list | screenshots dark |
+| 62 | Footage: project details (folder, names, type, audience) fold into one line once the project is set up, so the footage zones lead; they stay open for a new project | screenshot dark |

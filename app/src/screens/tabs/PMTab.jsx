@@ -422,6 +422,13 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         next="Next: Stories, once the interviews are transcribed"
       />
 
+      {/* The details of the project: needed once, then rarely touched. Open for a new project, folded for one that is set up so the footage zones lead. */}
+      <details className="pm-details" open={!(project && project.resolved_dir) || project.sources.length === 0}>
+        <summary>
+          <span className="pm-details-title">Project details</span>
+          <span className="pm-details-sum">{[projectName || "Untitled", projectType, savedAudienceGoal ? "audience goal set" : "no audience goal"].filter(Boolean).join(" · ")}</span>
+        </summary>
+        <div className="pm-details-body">
       <FolderField
         label="Project folder"
         value={rootDir}
@@ -462,6 +469,9 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         </span>
       </label>
       </div>
+
+        </div>
+      </details>
 
       {notice && (
         <div className="pm-tab-notice">

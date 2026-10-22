@@ -41,6 +41,12 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.waitForTimeout(1200);
   await page.evaluate(() => window.__backend({ type: "ready", version: "1.0", settings: { has_env: false, active_source: "none", llm_via_cli: false } }));
   await shot("09_welcome");
+  await page.getByRole("button", { name: "Next" }).click();
+  await shot("09b_welcome_rooms");
+  await page.getByRole("button", { name: "Next" }).click();
+  await shot("09c_welcome_key");
+  await page.getByRole("button", { name: "Next" }).click();
+  await shot("09d_welcome_ready");
   await page.getByRole("button", { name: "Skip" }).first().click().catch(() => {});
   await page.evaluate(() => window.__backend({ type: "settings", settings: { has_env: false, active_source: "none", llm_via_cli: false, welcome_seen: true, tour_seen: true, auto_include_nudge_seen: true } }));
   // Real frames: dev/frames/*.jpg if present (cut from your own footage with thumbs.py), else the posters stay as brand-color tiles

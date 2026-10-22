@@ -5477,3 +5477,29 @@ label:has(input), .rv-opt, .rv-check { cursor: pointer; }
 .log-empty { display: flex; flex-direction: column; gap: 4px; padding: 28px 22px; color: var(--fg-1); font-size: var(--text-body); line-height: 1.45; }
 .log-empty b { color: var(--fg-0); font-weight: 600; }
 .log-empty span { font-size: var(--text-footnote); }
+
+/* Welcome: the mark, then the four rooms; display type for the titles; more air */
+.welcome-modal { width: min(560px, 92vw); }
+.welcome-icon { min-height: 110px; display: grid; place-items: center; color: inherit; }
+.welcome-mark svg { border-radius: 19px; box-shadow: 0 14px 36px rgba(3, 52, 89, 0.55); }
+.welcome-title { font-family: var(--font-display); font-weight: 600; font-size: 28px; letter-spacing: -0.02em; margin: 10px 0 8px; }
+.welcome-text { font-size: 15px; line-height: 1.55; }
+.welcome-text p { color: var(--fg-1); }
+.welcome-rooms { display: flex; align-items: center; gap: 6px; }
+.welcome-room { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px 8px 9px; border-radius: 12px; background: var(--bg-2); box-shadow: var(--shadow-1); font-size: var(--text-body); font-weight: 600; color: var(--fg-0); }
+.welcome-room-dot { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: var(--text-footnote); color: var(--accent); background: rgba(var(--accent-rgb), 0.16); }
+.welcome-room:not(:last-child)::after { content: ""; width: 10px; height: 1.5px; margin-left: 6px; margin-right: -14px; background: var(--bg-4); }
+.welcome-numbered { text-align: left; }
+.welcome-dot.active { background: var(--accent-fill); }
+
+.welcome-icon:empty { display: none; }
+
+/* Project details: folded once the project is set up, so the footage zones lead */
+.pm-details { margin: 0 0 18px; max-width: 720px; border-radius: 12px; background: var(--bg-1); box-shadow: var(--shadow-1); }
+.pm-details > summary { display: flex; align-items: baseline; gap: 12px; padding: 12px 16px; cursor: pointer; list-style: none; border-radius: 12px; }
+.pm-details > summary::-webkit-details-marker { display: none; }
+.pm-details > summary::before { content: ""; width: 7px; height: 7px; margin-right: 2px; border-right: 1.5px solid var(--fg-1); border-bottom: 1.5px solid var(--fg-1); transform: rotate(-45deg); transition: transform 140ms var(--ease); align-self: center; }
+.pm-details[open] > summary::before { transform: rotate(45deg); }
+.pm-details-title { font-weight: 600; font-size: var(--text-body); }
+.pm-details-sum { color: var(--fg-1); font-size: var(--text-footnote); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-details-body { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px; }

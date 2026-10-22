@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Mark from "./Mark.jsx";
 
 /**
  * WelcomeModal
@@ -25,29 +26,15 @@ import { useState } from "react";
 // above the text. Using inline SVG avoids yet another PNG asset and
 // keeps the illustrations crisp at any size.
 function IconPitch() {
-  return (
-    <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
-      <rect x="8" y="14" width="56" height="36" rx="4"
-            stroke="currentColor" strokeWidth="2" />
-      <path d="M28 26 L28 38 L40 32 Z" fill="currentColor" />
-      <path d="M16 56 L56 56" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" />
-      <path d="M20 60 L52 60" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" opacity="0.5" />
-    </svg>
-  );
+  return <span className="welcome-mark"><Mark size={84} /></span>;
 }
 function IconWorkflow() {
   return (
-    <svg width="72" height="72" viewBox="0 0 72 72" fill="none">
-      <circle cx="16" cy="36" r="8" stroke="currentColor" strokeWidth="2" />
-      <circle cx="36" cy="36" r="8" stroke="currentColor" strokeWidth="2" />
-      <circle cx="56" cy="36" r="8" stroke="currentColor" strokeWidth="2" />
-      <path d="M24 36 L28 36" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" />
-      <path d="M44 36 L48 36" stroke="currentColor" strokeWidth="2"
-            strokeLinecap="round" />
-    </svg>
+    <span className="welcome-rooms" aria-hidden="true">
+      {["Footage", "Stories", "Trim", "Finish"].map((n, i) => (
+        <span key={n} className="welcome-room"><span className="welcome-room-dot">{i + 1}</span><span>{n}</span></span>
+      ))}
+    </span>
   );
 }
 function IconKey() {
@@ -95,7 +82,7 @@ const SCREENS = [
   },
   {
     key: "workflow",
-    Icon: IconWorkflow,
+    Icon: () => null,
     title: "How it works",
     body: (
       <>
