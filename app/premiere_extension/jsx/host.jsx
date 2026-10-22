@@ -185,3 +185,125 @@ function scanAndColorMarkers() {
 
     return JSON.stringify(result);
 }
+
+
+/* ------------------------------------------------------------------
+ * Post House job inbox (Ryan, 2026-10-22: "make the xml open in a new
+ * premiere project file that it names and places in the folder with the
+ * other files it creates").
+ *
+ * The app cannot name Premiere's project from outside (an imported XML
+ * lands in "Untitled"), so it leaves a small job file and this does it:
+ * make the new project at the path the app chose, import the XML into
+ * it, save. Jobs are plain "key=value" lines, parsed by hand and never
+ * evaluated, because anything that can write a file there could
+ * otherwise run code inside Premiere.
+ *
+ *   <Application Support>/Post House/premiere_jobs/<id>.job      (the request)
+ *   <Application Support>/Post House/premiere_jobs/<id>.result   (ok=1 / error=...)
+ *   <Application Support>/Post House/premiere_jobs/link.txt      (heartbeat the app reads)
+ * ------------------------------------------------------------------ */
+
+var LINK_VERSION = 2;
+var JOBS_DIR = Folder.userData.fsName + "/Post House/premiere_jobs";
+var _tick = 0;
+
+function _writeText(path, text) {
+    var f = new File(path);
+    f.encoding = "UTF-8";
+    if (!f.open("w")) return false;
+    f.write(text);
+    f.close();
+    return true;
+}
+
+function _readText(path) {
+    var f = new File(path);
+    f.encoding = "UTF-8";
+    if (!f.open("r")) return "";
+    var t = f.read();
+    f.close();
+    return t;
+}
+
+/** "key=value" lines into an object. A value is everything after the first "=". */
+function parseJob(text) {
+    var out = {};
+    var lines = String(text).split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+        var at = lines[i].indexOf("=");
+        if (at > 0) out[lines[i].substring(0, at)] = lines[i].substring(at + 1);
+    }
+    return out;
+}
+
+function _endsWith(s, tail) {
+    s = String(s).toLowerCase();
+    return s.length >= tail.length && s.substring(s.length - tail.length) === tail;
+}
+
+/**
+ * One job: a new project at job.project, the XML imported into it, saved.
+ * Returns "" on success, else why it did not work.
+ */
+function runPostHouseJob(job) {
+    if (!job.xml || !_endsWith(job.xml, ".xml")) return "the job has no XML";
+    if (!job.project || !_endsWith(job.project, ".prproj")) return "the job has no project path ending in .prproj";
+    if (!new File(job.xml).exists) return "the XML is not there: " + job.xml;
+    if (new File(job.project).exists) return "a project already exists at " + job.project + " (not overwritten)";
+
+    var made;
+    try {
+        made = app.newProject(job.project);
+    } catch (e) {
+        return "Premiere would not make the project: " + e.toString();
+    }
+    if (made === false) return "Premiere would not make the project";
+
+    var imported;
+    try {
+        imported = app.project.importFiles([job.xml], true, app.project.rootItem, false);
+    } catch (e2) {
+        return "the project was made but the XML did not import: " + e2.toString();
+    }
+    if (imported === false) return "the project was made but the XML did not import";
+
+    try {
+        app.project.save();
+    } catch (e3) {
+        return "imported, but Premiere would not save the project: " + e3.toString();
+    }
+    return "";
+}
+
+/**
+ * Called about once a second by index.js: keeps the heartbeat fresh and runs
+ * any waiting job. Returns how many jobs it handled (so the caller can poll fast while busy).
+ */
+function postHouseTick() {
+    var handled = 0;
+    try {
+        var dir = new Folder(JOBS_DIR);
+        if (!dir.exists) dir.create();
+        _tick += 1;
+        if (_tick % 3 === 1) {
+            _writeText(JOBS_DIR + "/link.txt", "v=" + LINK_VERSION + "\nt=" + (new Date()).getTime() + "\napp=" + app.version + "\n");
+        }
+        var jobs = dir.getFiles("*.job");
+        for (var i = 0; i < jobs.length; i++) {
+            var jobFile = jobs[i];
+            var id = decodeURI(jobFile.name).replace(/\.job$/, "");
+            var running = new File(JOBS_DIR + "/" + id + ".running");
+            if (!jobFile.rename(running.name)) continue;          // another tick (or Premiere) already took it
+            var job = parseJob(_readText(running.fsName));
+            var why = runPostHouseJob(job);
+            _writeText(JOBS_DIR + "/" + id + ".result", why === "" ? "ok=1\nproject=" + job.project + "\n" : "error=" + why + "\n");
+            writeLog("job " + id + (why === "" ? " ok: " + job.project : " failed: " + why));
+            running.remove();
+            handled += 1;
+        }
+    } catch (e) {
+        writeLog("ERROR in postHouseTick: " + e.toString());
+    }
+    return handled;
+}

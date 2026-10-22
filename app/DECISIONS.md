@@ -9,9 +9,12 @@ file in the same commit.
 **Premiere FCP7 XML is the delivery mechanism.** PreCut writes one XML;
 the editor imports it. This is settled as of August 2026.
 
-A Premiere panel plugin (CEP/UXP) was explored separately and has been
-**abandoned**. Do not add plugin, extension, ExtendScript, or panel code
-to this repo. If you find a reference to `premiere_exporter.py`,
+A Premiere panel that exports or builds the edit (CEP/UXP) was explored
+separately and has been **abandoned**. Do not add panel code that builds
+sequences or places clips: the XML does that. **One exception, 2026-10-22
+(Ryan, ROADMAP Decision Log):** the small panel in `app/premiere_extension`
+may also make and save the named Premiere project an XML is imported into,
+through the job inbox in `jsx/host.jsx`. Nothing else. If you find a reference to `premiere_exporter.py`,
 `export_to_premiere`, or `premiere_export_ready`, it belongs to that dead
 branch and should not be reintroduced. (Note: `export_to_premiere_xml` in
 `precut_pipeline/exporter.py` is the *XML* path and is correct.)

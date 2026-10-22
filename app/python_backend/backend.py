@@ -1456,6 +1456,23 @@ def handle_merge_finished(cmd: dict) -> None:
     _executor.submit(worker)
 
 
+def handle_open_in_premiere_project(cmd: dict) -> None:
+    """Open an XML in a new, named Premiere project saved beside it (the panel in Premiere does the naming; falls back to a plain open and says so). In the background: Premiere may need starting."""
+    path = cmd.get("path", "")
+
+    def worker():
+        import creator_tools
+        try:
+            emit({"type": "premiere_project", **creator_tools.open_in_new_project(path, cmd.get("app"))})
+        except creator_tools.ToolError as exc:
+            emit({"type": "premiere_project", "xml": path, "mode": "failed", "message": str(exc)})
+        except Exception as exc:
+            err(f"{type(exc).__name__}: {exc}", tb=traceback.format_exc())
+            emit({"type": "premiere_project", "xml": path, "mode": "failed", "message": f"{type(exc).__name__}: {exc}"})
+
+    _executor.submit(worker)
+
+
 def handle_open_xml(cmd: dict) -> None:
     """Open an XML in Premiere (the chosen install)."""
     import creator_tools
@@ -1554,6 +1571,7 @@ def handle_frame_thumbs(cmd: dict) -> None:
 HANDLERS = {
     "merge_finished": handle_merge_finished,
     "open_xml": handle_open_xml,
+    "open_in_premiere_project": handle_open_in_premiere_project,
     "hello": handle_hello,
     "project_posters": handle_project_posters,
     "frame_thumbs": handle_frame_thumbs,

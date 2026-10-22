@@ -8,9 +8,11 @@ Nothing here reimplements a tool. Each function is the tool's own entry point pl
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -1880,6 +1882,91 @@ def open_xml(path: str, app: str | None = None) -> dict:
         return {"xml": str(p), "app": Path(chosen).stem if chosen else None, "opened": False}
     subprocess.run(["open", "-a", chosen, str(p)] if chosen else ["open", str(p)], check=False)
     return {"xml": str(p), "app": Path(chosen).stem if chosen else None, "opened": True}
+
+
+# ---- the Premiere link: a new, named Premiere project for an XML -------------------------------------------------------------------------------------------------
+# Premiere cannot be told from outside to name the project an XML lands in ("Untitled"). The panel installed in Premiere (app/premiere_extension, reversed from "abandoned" by Ryan
+# 2026-10-22) watches a jobs folder, makes the project at the path chosen here, imports the XML and saves it. Plain key=value job files, a heartbeat the panel keeps fresh.
+PREMIERE_JOBS = Path.home() / "Library" / "Application Support" / "Post House" / "premiere_jobs"
+LINK_VERSION = 2                      # the panel's own version; an older panel (no job inbox) never writes a heartbeat at this version
+
+
+def premiere_link_alive(jobs_dir: Path | None = None, max_age: float = 15.0, now: float | None = None) -> bool:
+    """True when a panel of this version is running in some Premiere right now (its heartbeat is fresh)."""
+    f = Path(jobs_dir or PREMIERE_JOBS) / "link.txt"
+    try:
+        kv = dict(line.split("=", 1) for line in f.read_text().splitlines() if "=" in line)
+        return int(kv.get("v", 0)) >= LINK_VERSION and ((now if now is not None else time.time()) - int(kv["t"]) / 1000.0) <= max_age
+    except (OSError, ValueError, KeyError):
+        return False
+
+
+def project_path_for(xml: str | Path) -> Path:
+    """The new project's path: next to the XML, named after it, never over an existing project."""
+    xml = Path(xml)
+    out, n = xml.with_suffix(".prproj"), 2
+    while out.exists():
+        out = xml.with_name(f"{xml.stem} {n}.prproj")
+        n += 1
+    return out
+
+
+def write_premiere_job(xml: str | Path, project: str | Path, jobs_dir: Path | None = None) -> str:
+    """Leave a job for the panel; returns its id. Written under a temporary name and renamed, so the panel never reads half a file."""
+    import uuid
+    d = Path(jobs_dir or PREMIERE_JOBS)
+    d.mkdir(parents=True, exist_ok=True)
+    jid = uuid.uuid4().hex[:12]
+    tmp = d / f"{jid}.tmp"
+    tmp.write_text(f"xml={xml}\nproject={project}\n", encoding="utf-8")
+    tmp.rename(d / f"{jid}.job")
+    return jid
+
+
+def wait_premiere_result(jid: str, jobs_dir: Path | None = None, timeout: float = 180.0, poll: float = 0.5) -> dict:
+    """The panel's answer to a job: {"ok": True, "project"} or {"ok": False, "error"}; ok False with error "no answer" when it never came."""
+    f = Path(jobs_dir or PREMIERE_JOBS) / f"{jid}.result"
+    end = time.time() + timeout
+    while time.time() < end:
+        if f.exists():
+            kv = dict(line.split("=", 1) for line in f.read_text(encoding="utf-8").splitlines() if "=" in line)
+            f.unlink(missing_ok=True)
+            return {"ok": True, "project": kv.get("project", "")} if kv.get("ok") == "1" else {"ok": False, "error": kv.get("error", "unknown")}
+        time.sleep(poll)
+    return {"ok": False, "error": "no answer"}
+
+
+def open_in_new_project(xml: str, app: str | None = None, jobs_dir: Path | None = None, start_wait: float = 120.0, job_wait: float = 180.0) -> dict:
+    """Open an XML in a NEW Premiere project that is named after it and saved beside it. Needs the panel to be running in Premiere: when Premiere is not open it is started and given
+    start_wait seconds for the panel to report in. If the panel never does (not installed, or an older one), the XML is opened plainly, as before, and the answer says so, so
+    the person is told rather than left waiting. Returns {"xml", "mode": "project"|"plain", "project"?, "message"}."""
+    p = Path(xml).expanduser()
+    if not p.is_file() or p.suffix.lower() != ".xml":
+        raise ToolError(f"that XML is not there: {p}")
+    chosen = premiere_app(app)
+    jobs = Path(jobs_dir or PREMIERE_JOBS)
+    if os.environ.get("POSTHOUSE_NO_OPEN"):
+        return {"xml": str(p), "mode": "plain", "message": "not opened (POSTHOUSE_NO_OPEN)"}
+    if not premiere_link_alive(jobs):
+        subprocess.run(["open", "-a", chosen] if chosen else ["open", "-a", "Adobe Premiere Pro"], check=False)      # panels load when Premiere starts; wait for this one to report in
+        end = time.time() + start_wait
+        while time.time() < end and not premiere_link_alive(jobs):
+            time.sleep(1.0)
+    if not premiere_link_alive(jobs):
+        r = open_xml(str(p), app)
+        return {"xml": str(p), "mode": "plain", "app": r.get("app"),
+                "message": "Opened the XML in Premiere, but not in a named project: the Post House panel did not answer in Premiere (it loads when Premiere starts, so restart Premiere once). Save the project yourself this time."}
+    project = project_path_for(p)
+    jid = write_premiere_job(p, project, jobs)
+    if chosen:
+        subprocess.run(["open", "-a", chosen], check=False)                                                          # bring that Premiere forward while it works
+    res = wait_premiere_result(jid, jobs, job_wait)
+    if res["ok"]:
+        return {"xml": str(p), "mode": "project", "project": res["project"], "message": f"Opened in a new Premiere project: {Path(res['project']).name}"}
+    (jobs / f"{jid}.job").unlink(missing_ok=True)                                                                    # a job nobody took must not run later, on its own
+    r = open_xml(str(p), app)
+    return {"xml": str(p), "mode": "plain", "app": r.get("app"),
+            "message": f"Opened the XML plainly: Premiere could not make the named project ({res['error']}). Save the project yourself this time."}
 
 
 def notify(title: str, text: str) -> bool:

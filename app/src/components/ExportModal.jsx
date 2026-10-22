@@ -58,6 +58,12 @@ export default function ExportModal({
   const [progressLog, setProgressLog] = useState([]);
   const [jobId, setJobId] = useState(null);
   const [writtenPath, setWrittenPath] = useState(null);
+  const writtenPathRef = useRef(null);
+  const [openNote, setOpenNote] = useState(null);                 // { mode: "project" | "plain" | "failed", message }
+  const openInPremiere = (path) => {
+    setOpenNote({ mode: "working", message: "Opening in Premiere..." });
+    sendCommand({ type: "open_in_premiere_project", path, ...(premiereApp ? { app: premiereApp } : {}) }).catch((e) => console.error("open_in_premiere_project failed:", e));
+  };
   const [errorMsg, setErrorMsg] = useState(null);
 
   const addProgress = useCallback((msg, level = "info") => {
@@ -67,7 +73,7 @@ export default function ExportModal({
   // Subscribe to backend-event via the global tauri listener. We filter
   // by job_id once we have one.
   useEffect(() => {
-    if (stage !== "running" || !jobId) return;
+    if ((stage !== "running" && stage !== "done") || !jobId) return;
 
     let unlisten;
     (async () => {
@@ -114,10 +120,14 @@ export default function ExportModal({
             break;
           case "export_complete":
             setWrittenPath(ev.xml_path);
+            writtenPathRef.current = ev.xml_path;
             // The point of the export is to be in Premiere: open it as soon as it is written (the library-only file is a bin, not a cut)
-            if (ev.xml_path && !libraryOnly) sendCommand({ type: "open_xml", path: ev.xml_path, ...(premiereApp ? { app: premiereApp } : {}) }).catch((e) => console.error("open_xml failed:", e));
+            if (ev.xml_path && !libraryOnly) openInPremiere(ev.xml_path);
             addProgress(`Wrote ${ev.sequences} sequence${ev.sequences !== 1 ? "s" : ""} + library of ${ev.broll_library_size} clips`, "accent");
             setStage("done");
+            break;
+          case "premiere_project":                          // the answer to "open in a new named project" (a plain open says why it was plain)
+            if (ev.xml === writtenPathRef.current) setOpenNote({ mode: ev.mode, message: ev.message });
             break;
           case "export_error":
           case "error":                                     // the backend refused before the export began: say so, never sit on "Starting..."
@@ -206,7 +216,7 @@ export default function ExportModal({
       <div className="modal" onClick={(e) => e.stopPropagation()} style={{ width: 580 }}>
         <div className="modal-header">
           <h2>
-            {stage === "done" ? (libraryOnly ? "Library saved" : "Opening in Premiere")
+            {stage === "done" ? (libraryOnly ? "Library saved" : openNote?.mode === "project" ? "Opened in a new project" : openNote?.mode === "plain" ? "Opened in Premiere" : "Opening in Premiere")
               : stage === "error" ? "Could not build the project"
               : stage === "running" ? "Building…"
               : libraryOnly ? "Save the clip library only"
@@ -247,7 +257,7 @@ export default function ExportModal({
           )}
 
           {stage === "done" && (
-            <DoneView writtenPath={writtenPath} projectName={projectName} />
+            <DoneView writtenPath={writtenPath} projectName={projectName} openNote={openNote} libraryOnly={libraryOnly} />
           )}
 
           {stage === "error" && (
@@ -279,7 +289,7 @@ export default function ExportModal({
             <>
               <button className="btn btn-ghost" onClick={onExported}>Close</button>
               <button className="btn" onClick={handleReveal}>Show in Finder</button>
-              {!libraryOnly && writtenPath && <button className="btn" onClick={() => sendCommand({ type: "open_xml", path: writtenPath, ...(premiereApp ? { app: premiereApp } : {}) }).catch((e) => console.error("open_xml failed:", e))}>Open in Premiere again</button>}
+              {!libraryOnly && writtenPath && <button className="btn" onClick={() => openInPremiere(writtenPath)}>Open in Premiere again</button>}
               <button className="btn btn-primary" onClick={onExported}>Done</button>
             </>
           )}
@@ -464,13 +474,16 @@ function ProgressView({ progressLog }) {
   );
 }
 
-function DoneView({ writtenPath, projectName }) {
+function DoneView({ writtenPath, projectName, openNote, libraryOnly }) {
   return (
     <div className="export-done">
       <div className="export-done-icon">✓</div>
       <div className="export-done-msg">
-        Your XML is ready. Open it in Premiere, trim each story your way, then bring the XML back to Finish.
+        {libraryOnly ? "The clip library is saved." : "Your XML is ready. Trim each story your way in Premiere, then bring the XML back to Finish."}
       </div>
+      {!libraryOnly && openNote && (
+        <div className={`export-open-note export-open-${openNote.mode}`} role="status">{openNote.message}</div>
+      )}
       <div className="export-done-path">{writtenPath}</div>
       <div className="form-hint" style={{ marginTop: 14 }}>
         In Premiere: right-click any clip, choose Proxy, then Attach Proxies, and point at your proxies folder. That links every clip to its proxy in one step.

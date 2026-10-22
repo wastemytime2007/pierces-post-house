@@ -148,6 +148,14 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.evaluate(() => window.__backend({ type: "error", message: "Stand-in backend error: the dialog must say so" }));   // the old backend's reply: the dialog shows it instead of waiting
   await page.waitForTimeout(300);
   await shot("15f_trim_error_shown");
+  await page.getByRole("button", { name: "Try again" }).click();                  // back to the options, then run it again for the done screen
+  await page.getByRole("button", { name: /Open 2 sequences in Premiere/ }).click();
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.__backend({ type: "export_complete", xml_path: "/x/exports/Runnells - 2 stories.xml", sequences: 2, broll_library_size: 4 }));
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.__backend({ type: "premiere_project", xml: "/x/exports/Runnells - 2 stories.xml", mode: "plain", message: "Opened the XML in Premiere, but not in a named project: the Post House panel did not answer in Premiere (it loads when Premiere starts, so restart Premiere once). Save the project yourself this time." }));
+  await page.waitForTimeout(300);
+  await shot("15g_trim_done_plain");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.getByRole("button", { name: "Activity" }).click();

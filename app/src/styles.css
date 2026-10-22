@@ -5525,3 +5525,7 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .trim-steps li.trim-act::before { margin: 14px 0 8px 14px; flex: none; align-self: flex-start; }
 .trim-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -16px 0 28px; color: var(--fg-2); font-size: var(--text-body); }
 .trim-version { display: inline-flex; align-items: center; gap: 8px; }
+
+.export-open-note { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: var(--bg-2, var(--bg-1)); color: var(--fg-1); font-size: var(--text-body); }
+.export-open-plain { box-shadow: inset 3px 0 0 var(--warn, #f4690b); }
+.export-open-project { box-shadow: inset 3px 0 0 var(--ok, #30a46c); }

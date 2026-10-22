@@ -2594,3 +2594,13 @@ with Ryan touching only the intake and the checkpoints.
   `safety_net/tests/test_labs_sync.py` fails on drift, same as the posthouse copy (rule 9). The backend reaches a tool through `app/python_backend/creator_tools.py` (the tool's own entry
   point, its printed check rows caught and sent as log events because stdout is the event channel); the UI gets one tab per workflow. Nothing is reimplemented. The 2026-09-29
   rule that new capability is built standalone first, and the sign-off bar, are unchanged.
+
+- **2026-10-22 — The Premiere panel is back, for one job: making the named project. This reverses the "no plugin, extension or ExtendScript" line in `app/DECISIONS.md`
+  (2026-08/09), for that job only.** Ryan asked for the XML to "open in a new premiere project file that it names and places in the folder with the other files it creates".
+  Premiere makes an untitled project for an imported XML and cannot be told its name from outside, so the one way to do it is to run a little script inside Premiere. Offered the
+  alternatives (drive the Save As window with macOS UI scripting; put the name on the clipboard and let him press Save), Ryan chose to reverse the decision. What was NOT reversed:
+  the XML stays the delivery path and everything in it (bins, sequences, clips) stays in the XML; the panel does not import, build or place anything itself beyond importing that one XML
+  into the project it makes (`app/premiere_extension`, the panel already installed on his Mac for Interpret Footage and marker colors, gets a job inbox). The protocol is plain
+  `key=value` job files in `~/Library/Application Support/Post House/premiere_jobs/`, never evaluated; a heartbeat file tells the app whether the panel is running; with no panel the app
+  opens the XML plainly and says so. The panel loads when Premiere starts, so Premiere needs one restart after this lands. Not yet checked against a real Premiere: that
+  `app.newProject`, `importFiles` of an XML and `save` behave as the Adobe docs describe on Premiere 2026 (see `docs/STATUS.md` § In progress).

@@ -33,5 +33,9 @@
     });
   }
 
+  // The Post House job inbox: once a second (the scan above backs off to 20 s when idle, far too slow for a person waiting on a project).
+  // Keeps the heartbeat the app reads and makes the named project for any job the app left. See postHouseTick() in jsx/host.jsx.
+  setInterval(function () { csInterface.evalScript("postHouseTick()"); }, 1000);
+
   poll();
 })();
