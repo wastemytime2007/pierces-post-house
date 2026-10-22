@@ -5614,3 +5614,31 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .trim-link-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-3); }
 .trim-link.on .trim-link-dot { background: var(--good, #30a46c); }
 .trim-link.warn .trim-link-dot { background: var(--attention, #f4690b); }
+
+/* ---------------------------------------------------------------------------
+   The few moments that are allowed to move (DIRECTION_2 § "Animation has a job";
+   Emil Kowalski: under 300 ms, never on something done often, kept for rare moments).
+   Everything here is off under reduced motion.
+   --------------------------------------------------------------------------- */
+
+/* A cover's own frame arriving over the colour it started as */
+@keyframes ph-frame-in { from { opacity: 0; } to { opacity: 1; } }
+.cover-art.ph-arrived { animation: ph-frame-in 260ms ease-out; }
+
+/* Stories appearing one after another as the backend finds them, instead of all at once at the end */
+@keyframes ph-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.idea-card.ph-new { animation: ph-rise 240ms cubic-bezier(0.2, 0, 0, 1) backwards; animation-delay: calc(var(--n, 0) * 55ms); }
+
+/* A sequence landing on the board, one at a time */
+.board-tile.ph-new { animation: ph-rise 220ms cubic-bezier(0.2, 0, 0, 1) backwards; animation-delay: calc(var(--n, 0) * 45ms); }
+
+/* The XML going out: the Trim tile settles once, so the handover is felt */
+@keyframes ph-settle { 0% { transform: none; } 40% { transform: translateY(-3px); } 100% { transform: none; } }
+.trim-act.ph-sent { animation: ph-settle 260ms ease-out; }
+
+/* Sent to Premiere: the result card arrives */
+.rv-merged.ph-new { animation: ph-rise 240ms cubic-bezier(0.2, 0, 0, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cover-art.ph-arrived, .idea-card.ph-new, .board-tile.ph-new, .trim-act.ph-sent, .rv-merged.ph-new { animation: none; }
+}

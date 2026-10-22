@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect , useRef } from "react";
 import PageHeader from "../../components/PageHeader.jsx";
 import Icon from "../../components/Icon.jsx";
 import { useThumb, requestFrames } from "../../thumbStore.js";
@@ -290,6 +290,14 @@ export default function IdeasTab({
     });
   }, [ideas]);
 
+  // Which stories are new since the last render, so each can arrive in its turn rather than the whole page appearing at once
+  const seenIdeas = useRef(new Set());
+  const marked = ideas.map((i, n) => {
+    const fresh = !seenIdeas.current.has(i.idea_id);
+    return fresh ? { ...i, _fresh: true, _n: n } : i;
+  });
+  useEffect(() => { ideas.forEach((i) => seenIdeas.current.add(i.idea_id)); }, [ideas]);
+
   // The palette can reach a story by its own title
   useEffect(() => {
     const titleOf = (i) => (i.kind === "story_angle" ? i.data?.brief?.title : i.data?.concept) || "Untitled";
@@ -476,7 +484,7 @@ export default function IdeasTab({
                 compact
               />
             )}
-            {ideas.map((idea) => (
+            {marked.map((idea) => (
               <IdeaCard
                 key={idea.idea_id}
                 idea={idea}
@@ -907,7 +915,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
   };
 
   return (
-    <div className={`idea-card is-angle ${selected ? "is-selected" : ""}`}>
+    <div className={`idea-card is-angle ${selected ? "is-selected" : ""} ${idea._fresh ? "ph-new" : ""}`} style={idea._fresh ? { "--n": idea._n || 0 } : undefined}>
       <Storyboard
         ranges={sourceRanges}
         selected={selected}

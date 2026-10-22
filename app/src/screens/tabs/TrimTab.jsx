@@ -57,6 +57,7 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
 
   // The build: "start" runs it at once with the usual options; "options" shows them first
   const [build, setBuild] = useState(null);
+  const [sent, setSent] = useState(false);                  // the XML has just gone to Premiere: the tile settles once
 
   const bringBack = (path) => window.dispatchEvent(new CustomEvent("posthouse-open-xml", { detail: { path } }));
   const choose = async () => {
@@ -83,7 +84,7 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
       />
 
       <ol className="trim-steps">
-        <li className="trim-act">
+        <li className={`trim-act ${sent ? "ph-sent" : ""}`}>
           {stories.length === 0 ? (
             <button className="trim-act-btn" onClick={() => onGoTo("ideas")}>
               <b>Open the XML in Premiere <Icon name="arrowRight" size={14} /></b>
@@ -165,7 +166,7 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
           autoStart={build === "start"}
           premiereApp={app ? app.path : ""}
           onClose={() => setBuild(null)}
-          onExported={() => setBuild(null)}
+          onExported={() => { setBuild(null); setSent(true); setTimeout(() => setSent(false), 320); }}
         />
       )}
     </div>

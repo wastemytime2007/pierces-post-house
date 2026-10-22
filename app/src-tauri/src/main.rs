@@ -785,6 +785,22 @@ fn set_dock_badge(app: AppHandle, count: u32) {
     }
 }
 
+/// Work that takes a while, shown on the Dock icon, so the app can be left and still be watched.
+#[tauri::command]
+fn set_progress(app: AppHandle, done: u32, total: u32) {
+    if let Some(win) = app.get_webview_window("main") {
+        let state = if total == 0 {
+            tauri::window::ProgressBarState { status: Some(tauri::window::ProgressBarStatus::None), progress: Some(0) }
+        } else {
+            tauri::window::ProgressBarState {
+                status: Some(tauri::window::ProgressBarStatus::Normal),
+                progress: Some(((done as f64 / total as f64) * 100.0).round() as u64),
+            }
+        };
+        let _ = win.set_progress_bar(state);
+    }
+}
+
 /// The window comes forward when the person acts on a notification.
 #[tauri::command]
 fn focus_main(app: AppHandle) {
@@ -841,6 +857,7 @@ fn main() {
             setup_reset,
             open_settings_window,
             set_dock_badge,
+            set_progress,
             focus_main,
         ])
         .run(tauri::generate_context!())

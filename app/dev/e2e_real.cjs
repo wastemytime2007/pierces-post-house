@@ -21,8 +21,11 @@ fs.mkdirSync(out, { recursive: true });
   page.on("pageerror", (e) => errors.push(e.message));
   const report = {};
   try {
+    // A budget, kept honest by measuring it: the home screen must be usable quickly, and moving between rooms must feel like nothing happened.
+    const t_nav = Date.now();
     await page.goto(`http://localhost:${port}/harness.html?app=1&bridge=1`);
     await page.waitForFunction(() => document.querySelectorAll(".cover").length > 0, null, { timeout: 40000 });
+    report.homeMs = Date.now() - t_nav;
     await page.waitForTimeout(6000);                                                  // posters arrive one by one
     report.projects = await page.evaluate(() => document.querySelectorAll(".cover").length);
     report.postersShown = await page.evaluate(() => [...document.querySelectorAll(".cover-art")].filter((e) => /url\(["']?data:image/.test(e.style.backgroundImage)).length);
@@ -30,6 +33,16 @@ fs.mkdirSync(out, { recursive: true });
 
     // a project open (UI only: the backend is not asked to load or change anything), then Finish, then a real XML dropped on the window
     await page.evaluate(() => window.__backend({ type: "project_loaded", project: { name: "E2E", resolved_dir: "/x", sources: [] } }));
+    await page.waitForTimeout(300);
+    const roomMs = [];
+    for (const k of ["Meta+1", "Meta+2", "Meta+3", "Meta+4", "Meta+1"]) {
+      const t0 = Date.now();
+      await page.keyboard.press(k);
+      await page.waitForFunction(() => !!document.querySelector(".project-stage > *"), null, { timeout: 5000 });
+      roomMs.push(Date.now() - t0);
+    }
+    report.roomMs = roomMs;
+    report.roomWorst = Math.max(...roomMs);
     await page.keyboard.press("Meta+4");
     await page.waitForTimeout(500);
     await page.evaluate((x) => window.dispatchEvent(new CustomEvent("posthouse-open-xml", { detail: { path: x } })), XML);
@@ -59,9 +72,15 @@ fs.mkdirSync(out, { recursive: true });
     report.failed = String(e.message || e).split("\n")[0];
     await page.screenshot({ path: path.join(out, "e_failed.png") }).catch(() => {});
   }
+  // The budget. A run that breaks it fails, so a slow change is noticed the day it lands, not months later.
+  report.budget = {
+    home: { ms: report.homeMs, limit: 2500, ok: report.homeMs <= 2500 },
+    room: { ms: report.roomWorst, limit: 400, ok: (report.roomWorst ?? 0) <= 400 },
+  };
+  report.budgetKept = Object.values(report.budget).every((b) => b.ok !== false);
   report.pageErrors = errors;
   console.log(JSON.stringify(report));
   await browser.close();
   bridge.kill();
-  process.exit(report.failed || errors.length ? 1 : 0);
+  process.exit(report.failed || errors.length || !report.budgetKept ? 1 : 0);
 })();

@@ -485,6 +485,20 @@ export default function App() {
     setShowApiKeyHelp(false);
   }, []);
 
+  // Work that takes a while is carried where it can be seen from anywhere: the window title and the Dock
+  const [work, setWork] = useState(null);                 // { done, total, what }
+  useEffect(() => {
+    const onWork = (e) => setWork(e.detail || null);
+    window.addEventListener("posthouse-work", onWork);
+    return () => window.removeEventListener("posthouse-work", onWork);
+  }, []);
+  useEffect(() => {
+    const base = "Post House";
+    const title = work && work.total ? `${work.what} ${work.done} of ${work.total} — ${base}` : project?.name ? `${project.name} — ${base}` : base;
+    try { document.title = title; } catch (e) { /* not a document */ }
+    invoke("set_progress", { done: work?.done ?? 0, total: work?.total ?? 0 }).catch(() => {});
+  }, [work, project?.name]);
+
   // Looking at the app clears what the Dock was holding
   useEffect(() => {
     const clear = () => { invoke("set_dock_badge", { count: 0 }).catch(() => {}); };

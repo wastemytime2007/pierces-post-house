@@ -123,6 +123,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
     if (wasRunning.current && !running && (creative?.state?.items || []).some((i) => i.status === "done")) setBoard(true);
     wasRunning.current = running;
   }, [creative?.running]);
+
+  // A batch in progress is carried on the window title and the Dock, so the app can be left and still watched
+  useEffect(() => {
+    const items = creative?.state?.items || [];
+    if (!creative?.running || !items.length) { window.dispatchEvent(new CustomEvent("posthouse-work", { detail: null })); return; }
+    const done = items.filter((i) => ["done", "skipped", "failed"].includes(i.status)).length;
+    window.dispatchEvent(new CustomEvent("posthouse-work", { detail: { done, total: items.length, what: "Getting creative" } }));
+  }, [creative?.running, creative?.state]);
   useEffect(() => {
     if (picker?.rows?.length) requestFrames(picker.rows.filter((r) => r.first_frame).map((r) => ({ key: `seq:${picker.xml}:${r.id}`, path: r.first_frame.path, t: r.first_frame.t })), 320);
   }, [picker?.xml, picker?.rows]);
@@ -1024,7 +1032,7 @@ function SeqBoard() {
           </div>
         </header>
         {merged && (
-          <div className="rv-notice ok" role="status">
+          <div className="rv-notice ok rv-merged ph-new" role="status">
             <span>
               <strong>{merged.included} sequence{merged.included === 1 ? "" : "s"} checked and written into one XML.</strong>{" "}
               {fileName(merged.xml)}
@@ -1038,10 +1046,10 @@ function SeqBoard() {
         )}
         {error && <div className="rv-notice bad" role="alert"><span style={{ whiteSpace: "pre-wrap" }}>{error}</span><button className="btn btn-ghost btn-sm" onClick={() => setError("")}>Dismiss</button></div>}
         <div className="sp-grid">
-          {seqSet.items.map((sq) => {
+          {seqSet.items.map((sq, n) => {
             const st = byXml[sq.xml]?.status;
             return (
-              <button key={sq.xml} className={`sp-tile ${sq.xml === current ? "on" : ""}`} disabled={!!busy || auto.status === "running"} onClick={() => { setBoard(false); openReview(sq.xml); }} title={byXml[sq.xml]?.message || sq.xml}>
+              <button key={sq.xml} style={{ "--n": n }} className={`sp-tile board-tile ph-new ${sq.xml === current ? "on" : ""}`} disabled={!!busy || auto.status === "running"} onClick={() => { setBoard(false); openReview(sq.xml); }} title={byXml[sq.xml]?.message || sq.xml}>
                 <CutThumb xml={sq.xml} className="board" />
                 {st && <span className={`board-chip ${st}`}>{st === "running" && <span className="setup-spinner" />}{label[st] || st}</span>}
                 <span className="sp-name">{pretty(sq.name)}</span>

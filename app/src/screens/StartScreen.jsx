@@ -50,6 +50,13 @@ function greeting(person) {
 function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   const poster = useThumb(`poster:${p.name}`);
   const [c1, c2] = tileColors(p.name);
+  // The first time this project's own frame arrives, it fades in over the colour it started as
+  const had = useRef(false);
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (poster && !had.current) { had.current = true; setArrived(true); const t = setTimeout(() => setArrived(false), 320); return () => clearTimeout(t); }
+    return undefined;
+  }, [poster]);
   const [frame, setFrame] = useState(-1);                                   // -1 is the poster
   const strip = [useThumb(`strip:${p.name}:0`), useThumb(`strip:${p.name}:1`), useThumb(`strip:${p.name}:2`), useThumb(`strip:${p.name}:3`), useThumb(`strip:${p.name}:4`)];
   const hoverArt = frame >= 0 ? strip[frame] : null;
@@ -66,7 +73,7 @@ function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
       onMouseMove={onMove} onMouseLeave={() => setFrame(-1)}
       onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
       <button className="cover-open" onClick={() => { try { sessionStorage.setItem("ph.tab", nextStep(p).tab); } catch (e) { /* private window */ } onOpen(p.name); }}>
-        <span className="cover-art" style={art ? { backgroundImage: `url(${art})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
+        <span className={`cover-art ${arrived ? "ph-arrived" : ""}`} style={art ? { backgroundImage: `url(${art})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
         {frame >= 0 && strip.some(Boolean) && (
           <span className="cover-ticks" aria-hidden="true">
             {strip.map((_, i) => <span key={i} className={i === frame ? "on" : ""} />)}
