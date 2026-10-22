@@ -5766,3 +5766,200 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) .cover-reflect { opacity: 0.22; } }
 @media (prefers-reduced-transparency: reduce) { .cover-reflect { display: none; } }
 @media (prefers-contrast: more) { .cover-reflect { display: none; } }
+
+/* ===========================================================================
+   TEXTURE (Ryan, 2026-10-22, after the first attempt: "I asked for texture, an
+   overlay over certain elements to make them feel more dimensional. All you did
+   was add a little drop shadow.")
+
+   He is right. A shadow says where a thing is; it says nothing about what the
+   thing is MADE of. This gives the surfaces a material:
+
+   - no flat fills. Every panel is a gradient, lighter at the top where the
+     light falls, darker at the bottom.
+   - a visible grain ON the panels (not a 3% whisper over the window), so a
+     large surface reads as coated rather than painted.
+   - a specular sweep across the top of cards and bars, like light across glass.
+   - a vignette on footage, so a frame sits in its tile instead of on it.
+   =========================================================================== */
+
+:root {
+  /* the light falls from above: every surface is brighter at its top edge */
+  --sheen-card: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.035) 38%, rgba(0, 0, 0, 0.12) 100%);
+  --sheen-bar: linear-gradient(180deg, rgba(255, 255, 255, 0.11) 0%, rgba(255, 255, 255, 0.02) 55%, rgba(0, 0, 0, 0.14) 100%);
+  --sheen-sunk: linear-gradient(180deg, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.02) 60%, rgba(255, 255, 255, 0.03) 100%);
+  /* a specular band, swept across the top of a surface */
+  --spec: linear-gradient(104deg, transparent 0%, rgba(255, 255, 255, 0.055) 34%, rgba(255, 255, 255, 0.085) 42%, rgba(255, 255, 255, 0.02) 52%, transparent 70%);
+  /* white speckle on transparent: the turbulence's own luminance becomes the alpha, so it lies on any ground */
+  --grain-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 -0.38'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain-dark-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0.62'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  --grain-on-panel: 0.26;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --sheen-card: linear-gradient(180deg, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.45) 36%, rgba(16, 24, 32, 0.075) 100%);
+    --sheen-bar: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.2) 55%, rgba(16, 24, 32, 0.05) 100%);
+    --sheen-sunk: linear-gradient(180deg, rgba(16, 24, 32, 0.07) 0%, rgba(16, 24, 32, 0.012) 60%, rgba(255, 255, 255, 0.6) 100%);
+    --spec: linear-gradient(104deg, transparent 0%, rgba(255, 255, 255, 0.55) 34%, rgba(255, 255, 255, 0.75) 42%, rgba(255, 255, 255, 0.25) 52%, transparent 70%);
+    --grain-on-panel: 0.2;
+  }
+}
+
+/* ---- The material itself ---------------------------------------------------
+   A surface gets its own gradient and its own grain, layered over whatever
+   background it already had. `background-blend-mode` keeps the colour underneath. */
+.idea-card,
+.trim-steps li,
+.dropzone,
+.trim-row,
+.rv-opt,
+.modal,
+.rv-sheet,
+.cp,
+.set-row-control select,
+.activity-panel,
+.rv-menu-list,
+.page-tip,
+.trim-drop,
+.rv-notice {
+  position: relative;
+  background-image: var(--grain-url), var(--sheen-card);
+  background-size: 140px 140px, auto;
+  background-blend-mode: soft-light, normal;
+}
+
+/* the grain needs to be visible, so it rides its own layer at a real opacity */
+.idea-card::before,
+.trim-steps li::before,
+.dropzone::before,
+.rv-opt::before,
+.modal::before,
+.rv-sheet::before,
+.cp::before,
+.activity-panel::before,
+.trim-drop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: var(--grain-on-panel);
+  background-image: var(--grain-url);
+  background-size: 140px 140px;
+  mix-blend-mode: soft-light;
+}
+/* the numbered Trim tiles already use ::before for their number, so they get the grain on ::after */
+.trim-steps li::before { content: counter(ts); opacity: 1; background: rgba(var(--accent-rgb), 0.14); mix-blend-mode: normal; }
+.trim-steps li::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: var(--grain-on-panel);
+  background-image: var(--grain-url);
+  background-size: 140px 140px;
+  mix-blend-mode: soft-light;
+}
+.trim-steps li { position: relative; }
+.trim-steps li > * { position: relative; z-index: 1; }
+.idea-card > *, .dropzone > *, .rv-opt > *, .modal > *, .rv-sheet > *, .cp > *, .activity-panel > *, .trim-drop > * { position: relative; z-index: 1; }
+
+/* ---- A specular sweep across the top of the big surfaces ------------------- */
+.cover::before,
+.modal::after,
+.rv-sheet::after,
+.trim-drop::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 58%;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  background: var(--spec);
+}
+
+/* ---- Bars are brushed, not painted ----------------------------------------- */
+.titlebar, .project-nav, .rv-toolbar, .set-toolbar {
+  background-image: var(--grain-url), var(--sheen-bar);
+  background-size: 140px 140px, auto;
+  background-blend-mode: soft-light, normal;
+}
+
+/* ---- Things cut into the page get the opposite gradient -------------------- */
+input[type="text"], input[type="search"], input[type="password"], textarea,
+.export-save-path, .lane, .bar {
+  background-image: var(--sheen-sunk);
+}
+
+/* ---- Footage sits IN its tile: a vignette, so a frame has an edge ----------- */
+.cover-art::after,
+.sp-art::after,
+.cut-thumb::after,
+.frame-pick-tile > span::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(120% 95% at 50% 42%, rgba(0, 0, 0, 0) 52%, rgba(0, 0, 0, 0.26) 100%);
+}
+.cover-art, .sp-art, .cut-thumb, .frame-pick-tile > span { position: relative; }
+
+/* ---- None of it where a flat, firm surface is the point -------------------- */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .idea-card, .trim-steps li, .dropzone, .trim-row, .rv-opt, .modal, .rv-sheet, .cp,
+  .set-row-control select, .activity-panel, .rv-menu-list, .page-tip, .trim-drop, .rv-notice,
+  .titlebar, .project-nav, .rv-toolbar, .set-toolbar,
+  input[type="text"], input[type="search"], input[type="password"], textarea, .export-save-path, .lane, .bar { background-image: none; }
+  .idea-card::before, .dropzone::before, .rv-opt::before, .modal::before, .rv-sheet::before, .cp::before,
+  .activity-panel::before, .trim-drop::before, .trim-steps li::after,
+  .cover::before, .modal::after, .rv-sheet::after, .trim-drop::after,
+  .cover-art::after, .sp-art::after, .cut-thumb::after, .frame-pick-tile > span::after { display: none; }
+}
+
+/* An empty zone is the same material as a full one: it was reading as a different surface entirely,
+   because it is transparent over the page while a full one has its own ground. */
+.dropzone:not(.has-items) { background-color: var(--bg-1); }
+
+/* The tip line is a tinted panel, not a textured one: grain over a colour reads as noise */
+.page-tip { background-image: none; }
+.page-tip::before { display: none; }
+
+/* The grain layer: light speckle and dark speckle together, laid on normally. `soft-light` and
+   `overlay` both vanish on a dark ground, which is why the first two attempts read as nothing. */
+.idea-card::before,
+.trim-steps li::after,
+.dropzone::before,
+.rv-opt::before,
+.modal::before,
+.rv-sheet::before,
+.cp::before,
+.activity-panel::before,
+.trim-drop::before {
+  mix-blend-mode: normal;
+  background-image: var(--grain-url), var(--grain-dark-url);
+  background-size: 140px 140px, 140px 140px;
+  background-position: 0 0, 70px 40px;
+}
+
+/* The bars keep the sheen but NOT the grain: they are thin strips that are mostly text, and grain on
+   them reads as a dirty screen and eats the labels. Texture belongs on the big surfaces. */
+.titlebar, .project-nav, .rv-toolbar, .set-toolbar {
+  background-image: var(--sheen-bar);
+  background-size: auto;
+  background-blend-mode: normal;
+}
+
+/* a card's own surface no longer needs the blended copy: the layer above carries the grain */
+.idea-card, .trim-steps li, .dropzone, .trim-row, .rv-opt, .modal, .rv-sheet, .cp,
+.set-row-control select, .activity-panel, .rv-menu-list, .trim-drop, .rv-notice {
+  background-image: var(--sheen-card);
+  background-blend-mode: normal;
+}

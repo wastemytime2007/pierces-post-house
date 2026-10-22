@@ -216,24 +216,40 @@
   button.primary { box-shadow: var(--elev-2), inset 0 1px 0 rgba(255,255,255,.18); }
   button.on { box-shadow: var(--elev-1), inset 0 0 0 1.5px var(--pin); }
 
-  /* the grain, over the chrome only: the stage holds the picture, so it is left out */
-  body::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 1;
-    pointer-events: none;
-    opacity: .04;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 160px 160px;
+  /* Texture on the panels, not a wash over the window. White speckle and dark speckle together, laid on
+     normally: a greyscale noise under `soft-light` disappears on a dark ground, which is what the first
+     attempt did. The picture never gets any of it. */
+  :root {
+    --grain-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 -0.38'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+    --grain-dark-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0.62'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+    --sheen-panel: linear-gradient(180deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.03) 38%, rgba(0,0,0,.12) 100%);
   }
-  #stage { position: relative; z-index: 2; }        /* the picture is above the grain, never under it */
+  #gpanel, #editor, #changes, .note, #right .pane > div:not(#glines) {
+    position: relative;
+    background-image: var(--sheen-panel);
+  }
+  #gpanel::after, #editor::after, #changes::after, .note::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: .26;
+    background-image: var(--grain-url), var(--grain-dark-url);
+    background-size: 140px 140px, 140px 140px;
+    background-position: 0 0, 70px 40px;
+  }
+  #gpanel > *, #editor > *, #changes > *, .note > * { position: relative; z-index: 1; }
+  .grow { background-image: var(--sheen-panel); }
+  .tabs { background-image: linear-gradient(180deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.02) 70%, rgba(255,255,255,.03) 100%); }
+  #stage { position: relative; z-index: 2; }        /* the picture is above everything, never under it */
 
   @media (prefers-contrast: more) {
-    body::after { display: none; }
+    #gpanel::after, #editor::after, #changes::after, .note::after { display: none; }
     #gpanel, #editor, #changes, .note, .grow, button, .tabs, .bar, .lane { box-shadow: 0 0 0 1px var(--line); }
   }
-  @media (prefers-reduced-transparency: reduce) { body::after { display: none; } }
+  @media (prefers-reduced-transparency: reduce) { #gpanel::after, #editor::after, #changes::after, .note::after { display: none; } }
 
   /* Transport and details (2026-10-21): the picture's controls are quiet; the technical lines live under Details */
   #left .now { display: none; }
