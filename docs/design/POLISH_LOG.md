@@ -34,3 +34,6 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 28 | The "N stories chosen" bar is a floating translucent pill | build |
 | 29 | Export XML is the primary action on Stories; the in-app preview is secondary | build |
 | 30 | A finished export hands off: "Next: trim in Premiere" goes to the Trim step | build |
+| 31 | Display type: page titles and the greeting in the brand's geometric voice (Futura now, Avant Garde if installed); body stays system | screenshot dark |
+| 32 | Title-bar wordmark in the same display face | build |
+| 33 | Second research pass (Things, Pixelmator, Superhuman, type), written up with what was applied and what was not | doc |

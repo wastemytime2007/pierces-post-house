@@ -37,3 +37,12 @@ Names say what the person does (Footage, Stories, Trim, Finish). The house-with-
 ## How I will work tonight
 
 A backlog of small rounds (`docs/design/POLISH_LOG.md`), each: change, check (build, tests, a screenshot when it is visual), log. The log states what was verified and what was not. I will report the true number of rounds.
+
+## Research, second pass (what it changed)
+
+Sources, with their limits: a third-party design study of Things 3 (blakecrosley.com; secondhand), MacStories/9to5Mac launch coverage of Things 3, Pixelmator's own launch posts and press (no design interview exists in what I found), First Round Review's Superhuman onboarding piece, and 2026 vendor font guides (VP0, fontalternatives; weak, vendor-written). I found nothing primary on Arc's empty states.
+
+- **Things: about 95% of the interface is neutral; color appears only where it carries information; finishing a task is rewarded with a small animation (and a sound).** Applied: the interface stays neutral, brand blue marks the primary action and the current step, green only means finished, orange only means attention. The finish check draws itself (round 22). I did not add a sound: it would play at 3 a.m. while someone sleeps, and the notification already carries the news.
+- **Pixelmator Pro: one dark window, controls revealed when you pick a tool.** Applied: Get Creative's options sit in one sheet, the original-version redo is folded away, the Finish toolbar shows one primary action.
+- **Superhuman: onboarding that is a person, then in-product guidance with sample data.** Not applied yet: a sample project would let a new user feel the app before they have footage. Noted as a future round.
+- **Type: system font for what you read and click, a custom face for display only** (the pattern the font guides and Apple's own `branding.md` describe). Applied: headings and the wordmark use Futura (macOS ships it; it is the closest installed cousin of SoldFast's ITC Avant Garde Gothic, which is not installed). If Avant Garde is installed on a machine, the stack picks it first.
