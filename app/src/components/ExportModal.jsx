@@ -147,7 +147,6 @@ export default function ExportModal({
   };
 
   const handleExport = async () => {
-    if (!savePath.trim()) return;
     const newJobId = `export-${Date.now()}`;
     setJobId(newJobId);
     setProgressLog([]);
@@ -158,7 +157,7 @@ export default function ExportModal({
       await sendCommand({
         type: "export_timelines",
         job_id: newJobId,
-        output_path: savePath.trim(),
+        output_path: savePath.trim(),                 // empty: the backend puts it in the project's exports folder
         // In library_only mode the backend ignores idea_ids — we send
         // an empty array rather than the selectedIdeas map (which
         // should be empty in library_only mode anyway, but be explicit).
@@ -254,7 +253,7 @@ export default function ExportModal({
               <button
                 className="btn btn-primary"
                 onClick={handleExport}
-                disabled={!savePath.trim() || (!libraryOnly && selectedIdeas.length === 0)}
+                disabled={!libraryOnly && selectedIdeas.length === 0}
               >
                 {libraryOnly
                   ? "Export library"
@@ -355,21 +354,12 @@ function ConfigureView({
         </div>
       )}
 
-      <div className="form-label" style={{ marginTop: 18 }}>
-        Save location
-        <HelpTooltip>
-          Where the <strong>.xml</strong> files will be written. Each
-          selected idea becomes one XML file; if the B-roll library option
-          below is on, you'll also get a{" "}
-          <strong>_library.xml</strong> for the searchable clip bin.
-        </HelpTooltip>
-      </div>
       <div className="export-save-row">
         <div className="export-save-path">
-          {savePath || <em className="export-save-placeholder">No location chosen yet</em>}
+          {savePath ? savePath : <>Saves in this project's <strong>exports</strong> folder</>}
         </div>
-        <button className="btn btn-ghost" onClick={onPickSave}>
-          {savePath ? "Change…" : "Choose…"}
+        <button className="btn btn-ghost" onClick={savePath ? () => setSavePath("") : onPickSave}>
+          {savePath ? "Use the project folder" : "Somewhere else…"}
         </button>
       </div>
 

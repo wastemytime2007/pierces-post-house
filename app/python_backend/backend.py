@@ -1035,12 +1035,15 @@ def handle_export_timelines(cmd: dict) -> None:
     output_path = cmd.get("output_path", "").strip()
     idea_ids = cmd.get("idea_ids", [])
     library_only = bool(cmd.get("library_only", False))
-    if not output_path:
-        err("output_path is required")
-        return
     if not idea_ids and not library_only:
         err("At least one idea_id must be selected (or pass library_only=true)")
         return
+    if not output_path:
+        # No place chosen: the project's own exports folder (the project's place was chosen when it was made)
+        import creator_tools
+        exports = proj.exports_dir()
+        exports.mkdir(parents=True, exist_ok=True)
+        output_path = str(creator_tools.default_export_path(exports, proj.name, len(idea_ids) or 1))
 
     # Drop 4.46: load user-configured auto-include rules from settings.
     # Empty list if none. The exporter will silently skip missing files

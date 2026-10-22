@@ -1855,6 +1855,20 @@ def merge_finished(xmls: list[str], out: str | None = None, name: str | None = N
     return {"xml": res["xml"], "sequences": res["sequences"], "included": len(good), "excluded": excluded}
 
 
+def default_export_path(exports_dir, project_name: str, count: int, when=None) -> Path:
+    """Where an export goes when nobody chose a place: the project's own exports folder, a name that says what and when, never over an earlier export."""
+    import re
+    from datetime import datetime
+    when = when or datetime.now()
+    safe = re.sub(r"[^A-Za-z0-9_-]+", "_", project_name or "export").strip("_") or "export"
+    base = Path(exports_dir) / f"{safe}_{count}seq_{when:%Y-%m-%d_%H%M}"
+    out, n = base.with_suffix(".xml"), 2
+    while out.exists():
+        out = Path(f"{base}_{n}.xml")
+        n += 1
+    return out
+
+
 def open_xml(path: str, app: str | None = None) -> dict:
     """Open an XML in the chosen Premiere (a path that is not a detected install is ignored, so nothing else can be launched through this)."""
     import os
