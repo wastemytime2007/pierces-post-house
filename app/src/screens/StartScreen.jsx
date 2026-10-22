@@ -1,8 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { sendCommand } from "../App.jsx";
-import { useTour } from "../hooks/useTour.js";
-import TourTooltip from "../components/TourTooltip.jsx";
 
 /**
  * StartScreen shows:
@@ -139,7 +137,9 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   //   2. openFromFolder — point at "Open from folder" for returning users
   const newProjectBtnRef = useRef(null);
   const openFromFolderBtnRef = useRef(null);
-  const tour = useTour(["newProject", "openFromFolder"]);
+  // The tour is gone: each room teaches itself the first time you are in it (PageHeader `tip`).
+  // An inert stand-in, so the code that still asks it questions gets a quiet "nothing to show".
+  const tour = { isDone: true, stepIndex: -1, totalSteps: 0, isActive: () => false, start: () => {}, next: () => {}, skip: () => {} };
 
   // Start the tour when the parent says it's time. We do it in an
   // effect rather than inline so the refs have settled. A small
@@ -474,30 +474,6 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
       {/* Drop 4.44: tour tooltips. Each one points at a target ref
           above. They render absolutely-positioned via TourTooltip's
           own math, so order in the tree doesn't matter for layout. */}
-      {tour.isActive("newProject") && (
-        <TourTooltip
-          targetRef={newProjectBtnRef}
-          side="bottom"
-          title="Start here"
-          body="Click here to create your first project. You'll point it at a folder of footage, and Post House will index everything for you."
-          onDismiss={tour.next}
-          onSkipAll={tour.skip}
-          stepNumber={1}
-          totalSteps={tour.totalSteps}
-        />
-      )}
-      {tour.isActive("openFromFolder") && (
-        <TourTooltip
-          targetRef={openFromFolderBtnRef}
-          side="bottom"
-          title="Open existing projects"
-          body="Projects save to disk, so you can re-open one any time — or pick up a project that's been moved between computers."
-          onDismiss={tour.next}
-          onSkipAll={tour.skip}
-          stepNumber={2}
-          totalSteps={tour.totalSteps}
-        />
-      )}
     </main>
   );
 }

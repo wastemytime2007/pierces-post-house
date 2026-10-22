@@ -83,27 +83,20 @@ const SCREENS = [
   {
     key: "workflow",
     Icon: () => null,
-    title: "How it works",
+    title: "You still do the editing",
     body: (
       <>
-        <ol className="welcome-numbered">
-          <li>
-            <strong>Footage.</strong> Point it at your shoot. Interviews are
-            transcribed, B-roll described, recorder audio synced.
-          </li>
-          <li>
-            <strong>Stories.</strong> It finds stories in what was said. You
-            choose the ones to cut and export one XML.
-          </li>
-          <li>
-            <strong>Trim.</strong> In Premiere, you edit the storyline and the
-            delivery your way, then export the XML back.
-          </li>
-          <li>
-            <strong>Finish.</strong> Drop that XML here. Captions, graphics,
-            music and sound go on, and it goes back to Premiere.
-          </li>
-        </ol>
+        <p>
+          Post House reads everything that was said and finds the pieces worth
+          cutting. You take them into Premiere and shape the story your way.
+        </p>
+        <p>
+          Bring the XML back and it does the finishing: captions, graphics,
+          music, sound and transitions, then hands it to Premiere again.
+        </p>
+        <p className="welcome-body-muted">
+          Each room says what to do when you get there. Nothing to learn first.
+        </p>
       </>
     ),
   },

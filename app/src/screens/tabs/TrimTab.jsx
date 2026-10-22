@@ -81,6 +81,9 @@ export default function TrimTab({ exportsList, onGoTo, ideas = [], chosen = [], 
         title="Trim"
         lead="This part happens in Premiere. Edit each story's storyline and delivery the way you want it, then export the XML and bring it back here."
         next="Next: Finish, with the XML you export from Premiere"
+      
+        tip="When Premiere is done, drop the XML anywhere in this window. It opens in Finish on its own frames."
+        tipKey="trim"
       />
 
       <ol className="trim-steps">

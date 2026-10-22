@@ -341,6 +341,9 @@ export default function IdeasTab({
         title="Stories"
         lead="Stories found in what your people actually said. Choose the ones worth cutting and open them in Premiere to trim."
         next="Next: Finish, with your trimmed XML"
+      
+        tip="Tick the stories worth cutting, then Next: Trim. Nothing is cut until you say so."
+        tipKey="stories"
       />
       <div className="ideas-actions">
         {/* 2026-09-04: this is now THE "Generate ideas" button. Ryan's own

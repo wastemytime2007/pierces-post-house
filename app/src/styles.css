@@ -5663,3 +5663,8 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 .empty-state strong { font-weight: 600; color: var(--fg-0); }
 .empty-state span { color: var(--fg-2); max-width: 62ch; }
 .trim-empty p { margin: 0 0 6px; }
+
+/* Said once, in the room it is about */
+.page-tip { display: flex; align-items: center; gap: 9px; margin-top: 12px; padding: 9px 12px 9px 11px; border-radius: var(--radius-card); background: rgba(var(--accent-rgb), 0.09); color: var(--fg-1); font-size: var(--text-body); max-width: 72ch; }
+.page-tip svg { color: var(--accent); flex: none; }
+.page-tip span { flex: 1; }

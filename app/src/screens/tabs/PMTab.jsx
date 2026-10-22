@@ -420,6 +420,9 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
         title="Footage"
         lead="Tell Post House where this shoot lives: the interviews, the B-roll and the audio. It transcribes what was said so stories can be found in it."
         next="Next: Stories, once the interviews are transcribed"
+      
+        tip="Drop a folder of footage anywhere on this page. Interviews go in one zone, B-roll in another, and recorder audio in the third."
+        tipKey="footage"
       />
 
       {/* The details of the project: needed once, then rarely touched. Open for a new project, folded for one that is set up so the footage zones lead. */}
