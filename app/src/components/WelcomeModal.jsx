@@ -101,16 +101,20 @@ const SCREENS = [
       <>
         <ol className="welcome-numbered">
           <li>
-            <strong>Project.</strong> Point it at your footage. Clips are
-            transcribed and indexed.
+            <strong>Footage.</strong> Point it at your shoot. Interviews are
+            transcribed, B-roll described, recorder audio synced.
           </li>
           <li>
-            <strong>Ideas.</strong> The AI proposes cuts from what was
-            said. Export the ones you like as one Premiere XML.
+            <strong>Stories.</strong> It finds stories in what was said. You
+            choose the ones to cut and export one XML.
           </li>
           <li>
-            <strong>Review.</strong> Trim in Premiere, bring the XML back,
-            press Get Creative, check the result, and open it in Premiere.
+            <strong>Trim.</strong> In Premiere, you edit the storyline and the
+            delivery your way, then export the XML back.
+          </li>
+          <li>
+            <strong>Finish.</strong> Drop that XML here. Captions, graphics,
+            music and sound go on, and it goes back to Premiere.
           </li>
         </ol>
       </>

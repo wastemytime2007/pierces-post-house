@@ -13,6 +13,7 @@ import WelcomeModal from "./components/WelcomeModal.jsx";
 import ApiKeyHelp from "./components/ApiKeyHelp.jsx";
 import ToastStack from "./components/ToastStack.jsx";
 import Mark from "./components/Mark.jsx";
+import Icon from "./components/Icon.jsx";
 import { ingest as ingestThumb } from "./thumbStore.js";
 
 // ---------------------------------------------------------------------------
@@ -512,6 +513,28 @@ export default function App() {
     && (settings.active_source !== "none" || settings.llm_via_cli);
 
   const [showAppMenu, setShowAppMenu] = useState(false);
+  const [xmlOver, setXmlOver] = useState(false);                // an XML is being dragged over the window
+  const projectRef = useRef(null);
+  projectRef.current = project;
+  useEffect(() => {
+    let offs = [];
+    const isXml = (e) => (e.payload?.paths || []).some((p) => /\.xml$/i.test(p));
+    (async () => {
+      try {
+        offs.push(await listen("tauri://drag-enter", (e) => { if (isXml(e)) setXmlOver(true); }));
+        offs.push(await listen("tauri://drag-leave", () => setXmlOver(false)));
+        offs.push(await listen("tauri://drag-drop", (e) => {
+          setXmlOver(false);
+          const paths = e.payload?.paths || [];
+          const xml = paths.filter((p) => /\.xml$/i.test(p));
+          if (!xml.length || xml.length !== paths.length) return;          // footage dropped on a zone is handled by the Footage page
+          if (projectRef.current) window.dispatchEvent(new CustomEvent("posthouse-open-xml", { detail: { path: xml[0] } }));
+          else showToast("Open a project first, then drop the XML on it.", "info");
+        }));
+      } catch (err) { /* not running inside Tauri */ }
+    })();
+    return () => offs.forEach((f) => f && f());
+  }, [showToast]);
   // Native menu bar commands (src-tauri/src/main.rs): Settings and the activity log belong to the shell, the rest to whichever screen is showing.
   useEffect(() => {
     let off;
@@ -799,6 +822,11 @@ export default function App() {
         </div>
       )}
 
+      {xmlOver && (
+        <div className="drop-veil" aria-hidden="true">
+          <div className="drop-veil-card"><Icon name="folderOpen" size={28} /><b>Drop to open in Finish</b><span>Your trimmed XML opens on its own frames.</span></div>
+        </div>
+      )}
       <ToastStack toasts={toasts} />
     </div>
   );

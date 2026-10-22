@@ -478,6 +478,19 @@ export default function ReviewTab({ subscribe, onStatus }) {
   }, []);
 
   useEffect(() => {
+    // Sent from the Trim step or by dropping an XML on the window
+    const onOpen = (e) => {
+      const path = e.detail?.path;
+      if (!path || busyRef.current) return;
+      setError("");
+      setReading(path);
+      sendCommand({ type: "list_sequences", xml: path }).catch((err) => { setReading(""); setError(String(err.message || err)); });
+    };
+    window.addEventListener("posthouse-open-xml", onOpen);
+    return () => window.removeEventListener("posthouse-open-xml", onOpen);
+  }, []);
+
+  useEffect(() => {
     try { if (seqSet) localStorage.setItem("review.seqSet", JSON.stringify(seqSet)); } catch (e) { /* private window */ }
   }, [seqSet]);
   const creativeKey = seqSet?.items?.[0]?.xml || versions[0]?.xml || "";

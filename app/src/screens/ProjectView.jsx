@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
+import Journey from "../components/Journey.jsx";
+import TrimTab from "./tabs/TrimTab.jsx";
 import { sendCommand } from "../App.jsx";
 import PMTab from "./tabs/PMTab.jsx";
 import IdeasTab from "./tabs/IdeasTab.jsx";
@@ -44,7 +46,14 @@ export default function ProjectView({
     return () => window.removeEventListener("posthouse-menu", onMenu);
   }, []);
   const [activeTab, setActiveTab] = useState("pm");
-  const [reviewSub, setReviewSub] = useState("notes on a cut"); // the Review tab reports what it is doing ("building the cut…", "V2 open")
+  const [exportsList, setExportsList] = useState([]);                         // XMLs this project has sent to Premiere (the Trim step lists them)
+  useEffect(() => {
+    // An XML dropped anywhere in the window, or chosen on the Trim step, opens in Finish
+    const onOpen = () => setActiveTab("review");
+    window.addEventListener("posthouse-open-xml", onOpen);
+    return () => window.removeEventListener("posthouse-open-xml", onOpen);
+  }, []);
+  const [reviewSub, setReviewSub] = useState(""); // the Review tab reports what it is doing ("building the cut…", "V2 open")
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Drop 3.6: log hidden by default. User can reveal via side tab.
   const [showLog, setShowLog] = useState(false);
@@ -78,6 +87,8 @@ export default function ProjectView({
   // Subscribe to pipeline/producer events
   useEffect(() => {
     return subscribe((ev) => {
+      if (ev.type === "exports_listed") setExportsList(ev.exports || []);
+      else if (ev.type === "export_complete") sendCommand({ type: "list_exports" }).catch(() => {});
       // --- Pipeline stage events ---
       if (ev.type === "pipeline_started") {
         setJobs((prev) => ({
@@ -268,6 +279,7 @@ export default function ProjectView({
   // Fetch ideas list once on mount
   useEffect(() => {
     sendCommand({ type: "list_ideas" }).catch(() => {});
+    sendCommand({ type: "list_exports" }).catch(() => {});
     // Reopen an in-progress planning conversation rather than making the
     // editor start over every time they come back to the tab.
     sendCommand({ type: "story_plan_latest" }).catch(() => {});
@@ -281,17 +293,22 @@ export default function ProjectView({
     .flatMap((s) => Object.values(s.files || {}))
     .filter((f) => f.transcript_status === "done").length;
 
+  const reviewOpen = /open|finish|creative|ready to/i.test(reviewSub) && reviewSub !== "cut ready";
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const journeyStatus = {
+    pm: { done: transcriptCount > 0, text: transcriptCount > 0 ? `${plural(transcriptCount, "interview", "interviews")} transcribed` : project.sources.length ? "Needs processing" : "Add your footage" },
+    ideas: { done: exportsList.length > 0, disabled: transcriptCount === 0 && ideas.length === 0, text: ideas.length ? plural(ideas.length, "story", "stories") : "Find the stories" },
+    trim: { done: reviewOpen, text: reviewOpen ? "XML back" : exportsList.length ? "XML out, waiting for you" : "Edit in Premiere" },
+    review: { text: reviewSub || "Add the finishing touches" },
+  };
+
   return (
     <div className="project-view">
       <div className="project-nav">
         <button className="project-nav-back" onClick={onClose}>
           ‹ Projects
         </button>
-        <div className="project-nav-tabs" role="tablist" aria-label="Project sections">
-          <Tab label="Footage" active={activeTab === "pm"} onClick={() => setActiveTab("pm")} sub={project.sources.length ? `${project.sources.length}` : ""} />
-          <Tab label="Ideas" active={activeTab === "ideas"} onClick={() => setActiveTab("ideas")} sub={ideas.length ? `${ideas.length}` : ""} disabled={transcriptCount === 0 && ideas.length === 0} />
-          <Tab label="Finish" active={activeTab === "review"} onClick={() => setActiveTab("review")} sub={reviewSub} />
-        </div>
+        <Journey active={activeTab} onSelect={setActiveTab} status={journeyStatus} />
         <div className="project-nav-spacer" />
         <button className="btn btn-sm" aria-pressed={showLog} onClick={() => setShowLog((x) => !x)} title="Show or hide the activity log">Activity</button>
         {onDelete && (
@@ -340,6 +357,7 @@ export default function ProjectView({
               onGoToReview={() => setActiveTab("review")}
             />
           )}
+          {activeTab === "trim" && <TrimTab exportsList={exportsList} onGoTo={setActiveTab} />}
           {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}
           <div className="review-host" style={{ display: activeTab === "review" ? "flex" : "none" }}>
             <ReviewTab subscribe={subscribe} onStatus={setReviewSub} />

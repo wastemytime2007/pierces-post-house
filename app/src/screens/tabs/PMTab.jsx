@@ -418,8 +418,8 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
     <div className="pm-tab">
       <PageHeader
         title="Footage"
-        lead="Tell Post House where this shoot lives: the interviews, the B-roll and the audio. It transcribes what was said so ideas can be found in it."
-        next="Next: Ideas, once the interviews are transcribed"
+        lead="Tell Post House where this shoot lives: the interviews, the B-roll and the audio. It transcribes what was said so stories can be found in it."
+        next="Next: Stories, once the interviews are transcribed"
       />
 
       <FolderField
@@ -638,7 +638,7 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
               </span>
             </div>
             <button className="btn btn-primary" onClick={onGoToIdeas}>
-              Next → Ideas
+              Next: find stories
             </button>
           </div>
         )}
@@ -840,7 +840,7 @@ function RunPipelineModal({ hasAroll, hasBroll, hasAudio, onConfirm, onClose }) 
               checked={flags.run_transcription}
               onChange={() => toggle("run_transcription")}
               label="Transcribe the interviews"
-              sub="Turns what was said into text, so ideas can be found in it."
+              sub="Turns what was said into text, so stories can be found in it."
               disabled={!hasAroll}
               disabledReason="Needs interview footage"
             />

@@ -5240,3 +5240,55 @@ input[type="checkbox"]:not(.rv-switch):not(.idea-card-checkbox input):checked {
 }
 input[type="checkbox"]:not(.rv-switch):not(.idea-card-checkbox input):disabled { opacity: 0.4; cursor: default; }
 select { height: 28px; }
+
+/* ===========================================================
+ * Direction 2: the journey bar, the Trim step, the drop veil
+ * =========================================================== */
+.project-nav { height: 60px; }
+.journey { display: flex; align-items: center; gap: 2px; margin: 0 auto 0 var(--space-3); min-width: 0; }
+.jstep { display: flex; align-items: center; gap: 9px; padding: 6px 12px 6px 8px; border: 0; border-radius: 11px; background: transparent; color: var(--fg-1); font: inherit; text-align: left; cursor: pointer; min-width: 0; transition: background 140ms var(--ease), box-shadow 140ms var(--ease); }
+.jstep:hover:not(:disabled):not(.on) { background: var(--fill); }
+.jstep:disabled { opacity: 0.4; cursor: default; }
+.jstep.on { background: var(--bg-2); box-shadow: var(--shadow-1); color: var(--fg-0); }
+.jdot { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: var(--text-footnote); font-weight: 600; color: var(--fg-1); box-shadow: inset 0 0 0 1.5px var(--bg-4); transition: background 160ms var(--ease), color 160ms var(--ease), box-shadow 160ms var(--ease); }
+.jstep.on .jdot { background: var(--accent-fill); color: var(--on-accent); box-shadow: none; }
+.jstep.done .jdot { background: rgba(76, 203, 122, 0.18); color: var(--success); box-shadow: none; }
+.jstep.done.on .jdot { background: var(--accent-fill); color: var(--on-accent); }
+.jtext { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.jname { font-size: var(--text-body); font-weight: 600; letter-spacing: -0.01em; }
+.jsub { font-size: var(--text-caption); color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.jline { flex: none; width: 22px; height: 1.5px; border-radius: 1px; background: var(--bg-4); }
+.jline.done { background: rgba(76, 203, 122, 0.55); }
+@media (max-width: 1100px) { .jsub { display: none; } .jstep { padding-right: 10px; } }
+
+.trim { max-width: 980px; }
+.trim-steps { list-style: none; counter-reset: ts; margin: 0 0 28px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.trim-steps li { counter-increment: ts; display: flex; flex-direction: column; gap: 3px; padding: 14px; border-radius: 12px; background: var(--bg-1); box-shadow: var(--shadow-1); }
+.trim-steps li::before { content: counter(ts); width: 22px; height: 22px; margin-bottom: 8px; border-radius: 50%; display: grid; place-items: center; font-size: var(--text-footnote); font-weight: 600; color: var(--accent); background: rgba(var(--accent-rgb), 0.14); }
+.trim-steps b { font-weight: 600; }
+.trim-steps span { font-size: var(--text-footnote); color: var(--fg-1); line-height: 1.4; }
+.trim-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .trim-cols, .trim-steps { grid-template-columns: 1fr; } }
+.trim h2 { margin: 0 0 10px; font-size: var(--text-large); font-weight: 650; letter-spacing: -0.02em; }
+.trim-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.trim-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; background: var(--bg-1); box-shadow: var(--shadow-1); }
+.trim-row-icon { flex: none; width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--fill); color: var(--fg-1); }
+.trim-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.trim-row-name { font-weight: 600; font-size: var(--text-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trim-row-meta { font-size: var(--text-footnote); color: var(--fg-1); }
+.trim-empty { padding: 18px; border-radius: 12px; background: var(--bg-1); box-shadow: var(--shadow-1); }
+.trim-empty p { margin: 0 0 12px; color: var(--fg-1); }
+.trim-drop { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 22px; border-radius: 16px; border: 1.5px dashed var(--bg-4); background: transparent; }
+.trim-drop h2 { margin: 6px 0 0; }
+.trim-drop p { margin: 0 0 8px; color: var(--fg-1); font-size: var(--text-body); line-height: 1.45; }
+.trim-drop-art { position: relative; width: 120px; height: 70px; }
+.trim-drop-art span { position: absolute; width: 78px; height: 50px; border-radius: 9px; box-shadow: var(--shadow-2); }
+.trim-drop-art span:nth-child(1) { left: 0; top: 14px; background: linear-gradient(135deg, #033459, #0a6ea8); transform: rotate(-7deg); }
+.trim-drop-art span:nth-child(2) { left: 18px; top: 6px; background: linear-gradient(135deg, #0a6ea8, #00ade1); transform: rotate(-1deg); }
+.trim-drop-art span:nth-child(3) { left: 36px; top: 10px; background: linear-gradient(135deg, #00ade1, #8fdcf5); transform: rotate(6deg); }
+
+.drop-veil { position: fixed; inset: 0; z-index: 300; display: grid; place-items: center; background: rgba(var(--accent-rgb), 0.12); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); pointer-events: none; animation: veil-in 140ms var(--ease) both; }
+.drop-veil-card { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 34px 48px; border-radius: 22px; background: var(--bg-2); box-shadow: var(--shadow-2), 0 0 0 2px var(--accent); color: var(--fg-0); text-align: center; }
+.drop-veil-card b { font-size: var(--text-large); letter-spacing: -0.02em; margin-top: 6px; }
+.drop-veil-card span { color: var(--fg-1); font-size: var(--text-body); }
+@keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }

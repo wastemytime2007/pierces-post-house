@@ -135,7 +135,7 @@ export default function IdeasTab({
 
     const failed = producerJobs.find(([, j]) => j.status === "failed");
     if (failed) {
-      setGenerationError(failed[1].error || "Generation failed — no ideas were produced.");
+      setGenerationError(failed[1].error || "Nothing was found. No stories were produced.");
     }
 
     // When producerBusy transitions from true → false, clear activeRun
@@ -304,7 +304,7 @@ export default function IdeasTab({
   return (
     <>
       <PageHeader
-        title="Ideas"
+        title="Stories"
         lead="Stories found in what your people actually said. Choose the ones worth cutting and export them to Premiere to trim."
         next="Next: Finish, with your trimmed XML"
       />
@@ -346,10 +346,10 @@ export default function IdeasTab({
             ? (
               <>
                 <span className="btn-spinner" aria-hidden="true" />
-                Researching + building ideas…
+                Finding stories…
               </>
             )
-            : "Generate ideas"}
+            : "Find stories"}
         </button>
         <div className="action-spacer" />
         <div className="action-hint">
@@ -377,7 +377,7 @@ export default function IdeasTab({
       {generationError && (
         <div className="generation-error-banner">
           <div className="generation-error-text">
-            <strong>Generation failed — no new ideas were produced.</strong>{" "}
+            <strong>Nothing new was found. No stories were produced.</strong>{" "}
             The list below is unchanged from before this run.
             <div className="generation-error-detail">{generationError}</div>
           </div>
@@ -443,7 +443,7 @@ export default function IdeasTab({
             </div>
           ) : (
             <div className="empty-state empty-state-with-action">
-              <div>No ideas yet. Click <strong>Generate ideas</strong> to get started.</div>
+              <div>No stories yet. Choose <strong>Find stories</strong>, or <strong>Plan with AI</strong> to talk it through first.</div>
               <div style={{ marginTop: 14, fontSize: 12, color: "var(--fg-2)" }}>
                 Or skip the AI step entirely and{" "}
                 <button
@@ -628,7 +628,7 @@ function GeneratingPanel({ activeRun, generatedCount, compact = false }) {
   const headline = mode === "analyze"
     ? "Analyzing your transcripts…"
     : mode === "more"
-      ? "Generating more ideas…"
+      ? "Finding more stories…"
       : "Reading your transcripts…";
 
   // Sub-line describes what's happening, and updates as angles stream in.

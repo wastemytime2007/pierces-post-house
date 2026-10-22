@@ -78,7 +78,12 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.evaluate((a) => window.__backend({ type: "ideas_list", ideas: a }), ANGLES);
-  await page.getByRole("tab", { name: /Ideas/ }).click();
+  await page.evaluate(() => window.__backend({ type: "exports_listed", exports: [
+    { name: "Runnells Weekend - 3 stories.xml", path: "/x/exports/Runnells Weekend - 3 stories.xml", mtime: Date.now() / 1000 - 1500, session: null },
+    { name: "Runnells Weekend - first pass.xml", path: "/x/exports/Runnells Weekend - first pass.xml", mtime: Date.now() / 1000 - 90000, session: { versions: 2 } }] }));
+  await page.getByRole("tab", { name: /Trim/ }).click();
+  await shot("14b_trim");
+  await page.getByRole("tab", { name: /Stories/ }).click();
   if (fs.existsSync(FR2)) {
     const f2 = fs.readdirSync(FR2).filter((f) => f.endsWith(".jpg")).sort();
     const th = {};
