@@ -85,6 +85,23 @@ export default function ReviewTab({ subscribe, onStatus }) {
   });
   const [choosing, setChoosing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [scopeAll, setScopeAll] = useState(true);                  // Get Creative: every sequence opened, or only this one
+  const [menuOpen, setMenuOpen] = useState(false);                 // the More menu
+  const keysRef = useRef({});                                      // the latest handlers for the keyboard shortcuts (set below, after they exist)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
+      const k = keysRef.current;
+      const fire = (fn) => { if (fn) { e.preventDefault(); fn(); } };
+      if (e.key === "o") fire(k.open);
+      else if (e.key === "e") fire(k.premiere);
+      else if (e.key === "g") fire(k.creative);
+      else if (e.key === "[") fire(k.older);
+      else if (e.key === "]") fire(k.newer);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [finishOpts, setFinishOpts] = useState(() => {
     try { return { fillers: true, captions: true, music: true, bleep: true, graphics: true, sfx: true, ...JSON.parse(localStorage.getItem("review.finish") || "{}") }; } catch (e) { return { captions: true, music: true, bleep: true, graphics: true, sfx: true }; }
   });
@@ -722,64 +739,163 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       );
     }
-    const yours = CREATIVE_STAGE ? "Your cut is open exactly as you trimmed it. Nothing here edits it. Get Creative adds ums-and-uhs cuts, graphics, captions and music; click a cut to add a transition; then Open in Premiere." : auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
+    if (CREATIVE_STAGE) return null;
+    const yours = auto.status === "done" ? auto.summary : autoOn ? "The AI editor is idle." : "The AI editor is switched off.";
     return (
       <div className={`ai-strip yours ${outcomeBad ? "bad" : ""}`} role="status" aria-live="polite">
         <span className="ai-dot" />
         <div className="ai-strip-main">
-          <div className="ai-strip-title">Your turn <span className="ai-time">{CREATIVE_STAGE ? "your cut is not being edited" : auto.status === "done" ? (auto.outcome === "clean" ? "nothing left for the editor" : "the editor has done what it can") : "the editor is waiting on you"}</span></div>
+          <div className="ai-strip-title">Your turn</div>
           <div className="ai-strip-sub">{yours}</div>
         </div>
       </div>
     );
   }
 
-  // ---- nothing chosen yet
-  if (!version) {
+  // The sequences opened from one XML, one row each, with where each stands. Progress and Stop sit at the foot while Get Creative runs.
+  function SeqSidebar() {
+    if (!seqSet || seqSet.items.length < 2) return null;
+    const st = creative?.state;
+    const byXml = Object.fromEntries((st?.items || []).map((i) => [i.xml, i]));
+    const total = st?.items?.length || 0;
+    const finished = (st?.items || []).filter((i) => i.status === "done" || i.status === "skipped" || i.status === "failed").length;
+    const left = (st?.items || []).filter((i) => i.status === "waiting" || i.status === "running" || i.status === "failed");
+    const glyph = { done: "✓", skipped: "–", failed: "!", running: "…", waiting: "·" };
+    const current = (st?.items || []).find((i) => i.status === "running");
+    const busyNow = !!busy || auto.status === "running";
     return (
-      <div className="review-tab">
-        <div className="run-pipeline-section">
-          <div className="run-pipeline-section-label">Choose the cut to review</div>
-          <p className="pm-tab-sub">
-            {CREATIVE_STAGE
-              ? "Open the XML you trimmed in Premiere. It shows here exactly as you cut it: the video and every clip on a timeline. Nothing in this stage edits the cut. Add the ums-and-uhs cut, graphics, captions, music and the bleep with Get Creative, click any cut to add a transition and its sound, then Open in Premiere."
-              : "Pick ideas on the Ideas tab and press Review: the cut is made in your project folder and opens here by itself, with nothing to save or download: the video, every edit decision on a timeline, and a place for timecoded notes and drawing on the frame. Leave notes, apply them to get the next version, then export the XML and open it in Premiere."}
-          </p>
-          {StatusStrip()}
-      {SequencePicker()}
-      {CreativePanel()}
-          {!making && !busy && exportsList.length === 0 && <div className="sync-section-hint">{CREATIVE_STAGE ? "No XML yet. Press Browse and choose the XML you exported from Premiere." : "No cut from this project yet. Pick ideas on the Ideas tab and press Review."}</div>}
-          {exportsList.length > 0 && (
-            <div className="transcripts-list">
-              {exportsList.slice(0, 8).map((x) => (
-                <div className="transcript-row" key={x.path}>
-                  <div className="transcript-row-main">
-                    <div className="transcript-row-name">{x.name}</div>
-                    <div className="transcript-row-folder">
-                      {new Date(x.mtime * 1000).toLocaleString()}
-                      {x.session ? ` · reviewed: ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}, ${x.session.best} is the one to review${x.session.left ? `, ${x.session.left} left` : ""}` : " · not reviewed yet"}
-                    </div>
-                  </div>
-                  <button className="btn btn-primary" disabled={!!busy} onClick={() => openReview(x.path)}>
-                    {x.session ? "Open review" : "Review"}
-                  </button>
-                  {x.session && (
-                    <button className="btn btn-ghost" disabled={!!busy} title="Build this cut's review again from the start. The versions made so far are replaced."
-                      onClick={() => { if (window.confirm("Start this cut's review over? The versions made so far will be replaced.")) openReview(x.path, true); }}>
-                      Start over
-                    </button>
-                  )}
-                </div>
-              ))}
+      <nav className="rv-side" aria-label="Sequences">
+        <div className="rv-side-head">Sequences <span className="rv-count">{seqSet.items.length}</span></div>
+        <ul className="rv-side-list">
+          {seqSet.items.map((sq) => {
+            const it = byXml[sq.xml];
+            const on = versionsRef.current[0]?.xml === sq.xml;
+            return (
+              <li key={sq.xml}>
+                <button className={`rv-seq ${on ? "on" : ""} ${it?.status || ""}`} disabled={busyNow} title={it?.message || sq.xml} aria-current={on ? "true" : undefined} onClick={() => openReview(sq.xml)}>
+                  <span className={`rv-glyph ${it?.status || ""}`} aria-hidden="true">{glyph[it?.status] || ""}</span>
+                  <span className="rv-seq-name">{sq.name.replace(/_/g, " ")}</span>
+                  <span className="rv-sr">{it?.status ? `, ${it.status}` : ""}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {st && total > 0 && (!(!creative.running && creativeHidden === String(st.started))) && (
+          <div className="rv-side-foot" role="status" aria-live="polite">
+            <div className="rv-side-foot-title">
+              {creative.running ? `Getting creative, ${finished} of ${total}` : st.state === "done" ? "Get Creative finished" : st.state === "stopped" ? "Get Creative stopped" : "Get Creative was interrupted"}
+            </div>
+            <div className="rv-progress" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={finished}><span style={{ width: `${Math.round((100 * finished) / total)}%` }} /></div>
+            {creative.running && current?.step && <div className="rv-side-foot-sub">{current.name}: {current.step}</div>}
+            <div className="rv-side-foot-row">
+              {creative.running
+                ? <button className="btn btn-ghost btn-sm" onClick={() => sendCommand({ type: "creative_stop" })} title="Stops after the sequence being worked on. What is finished stays finished.">Stop</button>
+                : (<>
+                    {left.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => startCreative(left.map((i) => i.xml))}>Continue with {left.length}</button>}
+                    <button className="btn btn-ghost btn-sm" onClick={() => setCreativeHidden(String(st.started))}>Dismiss</button>
+                  </>)}
+            </div>
+          </div>
+        )}
+      </nav>
+    );
+  }
+
+  // Get Creative: a sheet over the page, one short decision, Return to go.
+  function CreativeSheet() {
+    if (!finishing) return null;
+    const nothing = !finishOpts.fillers && !finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics;
+    const all = seqSet && seqSet.items.length > 1 ? seqSet.items.map((sq) => sq.xml) : null;
+    const go = (e) => { e?.preventDefault(); if (nothing) return; startCreative(all && scopeAll ? all : [versionsRef.current[0].xml]); };
+    const opt = (k, label, hint) => (
+      <label className="rv-check" key={k}>
+        <input type="checkbox" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
+        <span>{label}{hint && <span className="rv-hint">{hint}</span>}</span>
+      </label>
+    );
+    return (
+      <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setFinishing(false); }}>
+        <form className="rv-sheet" role="dialog" aria-modal="true" aria-labelledby="rv-gc-title" onSubmit={go} onKeyDown={(e) => { if (e.key === "Escape") setFinishing(false); }}>
+          <h2 id="rv-gc-title">Get Creative</h2>
+          <p className="rv-sheet-sub">Runs in the background, one sequence after another. Each sequence gets new versions; your trimmed cut is never changed. Several minutes per sequence.</p>
+          <fieldset>
+            <legend>Cut</legend>
+            {opt("fillers", "Ums and uhs", "cut from sound and picture")}
+          </fieldset>
+          <fieldset>
+            <legend>Add</legend>
+            {opt("captions", "Captions")}
+            {opt("graphics", "Graphics", "title card, name tags")}
+            {opt("music", "Music", "an upbeat bed, a beat on every cut")}
+            {opt("sfx", "Sound effects", "as each graphic comes on")}
+            {opt("bleep", "Bleep", "every word on the list")}
+          </fieldset>
+          {all && (
+            <div className="rv-seg" role="radiogroup" aria-label="Which sequences">
+              <button type="button" role="radio" aria-checked={scopeAll} className={scopeAll ? "on" : ""} onClick={() => setScopeAll(true)}>All {all.length} sequences</button>
+              <button type="button" role="radio" aria-checked={!scopeAll} className={!scopeAll ? "on" : ""} onClick={() => setScopeAll(false)}>This sequence</button>
             </div>
           )}
-          <div className="pm-tab-row">
-            <button className="btn btn-ghost" disabled={!!busy} onClick={browse}>
-              {exportsList.length ? "A different XML…" : "Choose an XML yourself…"}
-            </button>
+          <details className="rv-more">
+            <summary>Already done with an older version?</summary>
+            <label className="rv-check">
+              <input type="checkbox" checked={redoOpt} onChange={(e) => setRedoOpt(e.target.checked)} />
+              <span>Start over from the original<span className="rv-hint">the earlier versions move to a folder called “older versions”, not deleted</span></span>
+            </label>
+          </details>
+          <div className="rv-sheet-actions">
+            <button type="button" className="btn btn-ghost" onClick={() => setFinishing(false)}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={nothing} autoFocus>Get Creative</button>
           </div>
+        </form>
+      </div>
+    );
+  }
+
+  // ---- nothing chosen yet
+  if (!version) {
+    keysRef.current = { open: () => { if (!busy) browse(); } };
+    return (
+      <div className="review-tab rv-empty">
+        <div className="rv-empty-card">
+          <h1>{CREATIVE_STAGE ? "Open the cut you trimmed" : "Choose the cut to review"}</h1>
+          <p>
+            {CREATIVE_STAGE
+              ? "Choose the XML you exported from Premiere. Add captions, graphics, music and transitions, then send it back to Premiere."
+              : "Pick ideas on the Ideas tab and press Review. The cut opens here by itself."}
+          </p>
+          <div className="rv-empty-actions">
+            <button className="btn btn-primary" disabled={!!busy} onClick={browse}>Choose XML…</button>
+            <span className="rv-hint">or press ⌘O</span>
+          </div>
+          {(error || making || busy) && (
+            <div className="rv-notices" style={{ marginTop: 16 }}>
+              {StatusStrip()}
+              {error && <div className="rv-notice bad" role="alert"><span style={{ whiteSpace: "pre-wrap" }}>{error}</span><button className="btn btn-ghost btn-sm" onClick={() => setError("")}>Dismiss</button></div>}
+            </div>
+          )}
+          {SequencePicker()}
+          {CreativePanel()}
+          {exportsList.length > 0 && (
+            <>
+              <h2 className="rv-recent-head">Recent</h2>
+              <ul className="rv-recent">
+                {exportsList.slice(0, 8).map((x) => (
+                  <li key={x.path}>
+                    <button className="rv-recent-row" disabled={!!busy} onClick={() => openReview(x.path)}>
+                      <span className="rv-recent-name">{x.name}</span>
+                      <span className="rv-recent-meta">
+                        {new Date(x.mtime * 1000).toLocaleDateString([], { month: "short", day: "numeric" })}
+                        {x.session ? ` · ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}${x.session.left ? `, ${x.session.left} left` : ""}` : ""}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
-        {error && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error}</div>}
       </div>
     );
   }
@@ -794,179 +910,142 @@ export default function ReviewTab({ subscribe, onStatus }) {
   // YOUR notes the editor could not act on matter most: they are never buried among the AI's own. (The AI's notes carry the prefix "AI: ".)
   const mineLeft = qa ? qa.notes.filter((n) => (n.status === "NOT DONE" || n.status === "FAILED") && !/^AI:/.test(n.text || "")) : [];
 
+  const hasSide = !!(seqSet && seqSet.items.length > 1);
+  const seqName = (seqSet?.items.find((sq) => sq.xml === versionsRef.current[0]?.xml)?.name) || fileName(versionsRef.current[0]?.xml || version.xml).replace(/\.xml$/i, "");
+  const toolsBusy = !!busy || auto.status === "running" || !!creative?.running;
+  const premiereLabel = premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere";
+  const goVersion = (i) => { if (i < 0 || i >= versions.length) return; setCur(i); setNoteCount(0); setExportResult(null); };
+  keysRef.current = {
+    open: () => { if (!busy) browse(); },
+    premiere: () => { if (!busy) onOpenInPremiere(); },
+    creative: () => { if (!toolsBusy) setFinishing(true); },
+    older: () => goVersion(cur - 1),
+    newer: () => goVersion(cur + 1),
+  };
+  const closeMenu = (fn) => () => { setMenuOpen(false); fn(); };
+
   return (
-    <div className="review-tab" style={{ display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
-      <div className="pm-tab-row" style={{ flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-        {versions.map((v, i) => (
-          <button key={v.label} className={`btn ${i === cur ? "btn-primary" : "btn-ghost"}`} onClick={() => { setCur(i); setNoteCount(0); setExportResult(null); }} disabled={!!busy}>
-            {v.label}
-          </button>
-        ))}
-        <span className="transcript-row-name" title={version.xml}>{fileName(version.xml)}</span>
-        <span style={{ flex: 1 }} />
-        {!CREATIVE_STAGE && (<>
-        <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="When on, the AI editor reviews each version, submits the fixes it can make and repeats until nothing fixable is left. You can stop it any time.">
-          <input type="checkbox" checked={autoOn} onChange={(e) => { setAutoOn(e.target.checked); try { localStorage.setItem("review.autoEdit", e.target.checked ? "on" : "off"); } catch (err) { /* private window */ } }} />
-          AI editor works on its own
-        </label>
-        <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="When on, the AI editor ends by finishing the best version it made: captions, a title card and name tags, music, an effect on each graphic, the bleep. The choices are the ones in Finish the cut.">
-          <input type="checkbox" checked={autoFinish} onChange={(e) => { setAutoFinish(e.target.checked); try { localStorage.setItem("review.autoFinish", e.target.checked ? "on" : "off"); } catch (err) { /* private window */ } }} />
-          …and finishes the cut
-        </label>
-        {auto.status === "running" && (
-          <button className="btn btn-ghost" onClick={() => sendCommand({ type: "auto_edit_stop" })} title="The editor finishes the step it is on and stops">Stop the AI editor</button>
-        )}
-        <button className="btn btn-primary" onClick={apply} disabled={!!busy || auto.status === "running"} title="Send the notes on the page to the editor. It makes the changes and opens the next version here.">
-          {busy === "applying"
-            ? "Editor is working…"
-            : noteCount
-              ? `Submit changes (${noteCount}) → V${versions.length + 1}`
-              : `Submit changes → V${versions.length + 1}`}
-        </button>
-        </>)}
-        {graphicCount > 0 && (
-          <button className="btn btn-primary" onClick={applyGraphics} disabled={!!busy || !!creative?.running}
-            title="Make the next version with the graphics where you put them. Nothing is redrawn; each graphic is moved or scaled on its own clip, and stays adjustable in Premiere.">
-            Apply {graphicCount} graphic change{graphicCount === 1 ? "" : "s"} → V{versions.length + 1}
-          </button>
-        )}
-        <button className="btn btn-ghost" onClick={() => setFinishing((x) => !x)}
-          title="Cut the ums and uhs, then add captions, a title card and name tag, music and the bleep, as new versions. Can run on every sequence you opened, in the background." disabled={!!busy || auto.status === "running" || !!creative?.running}>
-          Get Creative…
-        </button>
-        <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere. Nothing to download.">
-          {(premiereApps.length > 1 && chosenApp ? `Open in ${shortName(chosenApp)}` : "Open in Premiere") + (version ? `: ${version.label}` : "")}
-        </button>
-        {premiereApps.length > 1 && (
-          <button className="btn btn-ghost" onClick={() => setChoosing((x) => !x)} disabled={!!busy} title="Choose which version of Premiere opens it">
-            Premiere version…
-          </button>
-        )}
-        <button className="btn btn-ghost" onClick={() => sendCommand({ type: "open_path", path: dirName(version.xml) })} disabled={!!busy}>
-          Show in Finder
-        </button>
-        <button className="btn btn-ghost" onClick={() => { setVersions([]); setCur(0); setExportResult(null); setError(""); setInfo(""); openedRef.current = true; sendCommand({ type: "list_exports" }).catch(() => {}); }} disabled={!!busy}>
-          Other cut…
-        </button>
-        <button className="btn btn-ghost" title="Build this cut's review again from the start. The versions made so far are replaced." disabled={!!busy || auto.status === "running"}
-          onClick={() => { if (window.confirm("Start this cut's review over? The versions made so far will be replaced.")) openReview(versionsRef.current[0].xml, true); }}>
-          Start over
-        </button>
-      </div>
-
-      {SeqSwitcher()}
-
-      {!CREATIVE_STAGE && versions.length > 0 && (
-        <label className="sync-section-hint" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          Your own direction, after the AI editor has done its pass (optional; it already follows the idea you chose, and this is added on top of that)
-          <textarea rows={2} value={direction} placeholder="For example: open on Bob's quick check, then Mitch's plan. Then press Start over to run the editor again with this added."
-            onChange={(e) => { setDirection(e.target.value); try { localStorage.setItem(dirKey(versionsRef.current[0]?.xml), e.target.value); } catch (err) { /* private window */ } }}
-            style={{ width: "100%", font: "inherit", background: "transparent", color: "inherit", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 6, padding: 8 }} />
-        </label>
-      )}
-
-      {finishing && (
-        <div className="run-pipeline-section" role="dialog" aria-label="Get Creative">
-          <div className="run-pipeline-section-label">Get Creative</div>
-          <div className="sync-section-hint">Runs in the background, one sequence after another, so you can leave and come back. Each sequence gets new versions: the ums and uhs cut out first, then the layers below on top. Several minutes per sequence.</div>
-          {[["fillers", "Ums and uhs: cut out of the sound and the picture (the cut gets shorter)"], ["captions", "Captions: what is said, as text on screen"], ["graphics", "Graphics: a title card with the topic, and a name tag the first time each person talks"], ["music", "Music: generated, an upbeat bed under the voice, a beat on every cut"], ["sfx", "Sound effects: a library effect as each graphic comes on (placed with the music)"], ["bleep", "Bleep: every listed word"]].map(([k, label]) => (
-            <label key={k} className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input type="checkbox" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
-              {label}
-            </label>
-          ))}
-          <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }} title="For sequences already done with an older version of Get Creative: build everything again from the original. Their earlier versions are moved to a folder called older versions, not deleted.">
-            <input type="checkbox" checked={redoOpt} onChange={(e) => setRedoOpt(e.target.checked)} />
-            Start over from the original (the earlier versions go to "older versions")
-          </label>
-          <div className="pm-tab-row">
-            {(() => {
-              const nothing = !finishOpts.fillers && !finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics;
-              const all = seqSet && seqSet.items.length > 1 ? seqSet.items.map((s) => s.xml) : null;
-              return (
-                <>
-                  {all && <button className="btn btn-primary" onClick={() => startCreative(all)} disabled={nothing}>Get Creative on all {all.length} sequences</button>}
-                  <button className={`btn ${all ? "btn-ghost" : "btn-primary"}`} onClick={() => startCreative([versionsRef.current[0].xml])} disabled={nothing}>{all ? "Just this sequence" : "Get Creative"}</button>
-                </>
-              );
-            })()}
-            <button className="btn btn-ghost" onClick={() => setFinishing(false)}>Cancel</button>
+    <div className="review-tab rv">
+      {SeqSidebar()}
+      <div className="rv-main">
+        <header className="rv-toolbar">
+          <div className="rv-title">
+            <h1 title={version.xml}>{seqName.replace(/_/g, " ")}</h1>
+            {versions.length > 1 ? (
+              <label className="rv-version">
+                <span className="rv-sr">Version</span>
+                <select value={cur} onChange={(e) => goVersion(Number(e.target.value))} disabled={!!busy}>
+                  {versions.map((v, i) => <option key={v.label} value={i}>{v.label}{i === versions.length - 1 ? " (latest)" : ""}</option>)}
+                </select>
+              </label>
+            ) : (
+              <span className="rv-version-static">{version.label}</span>
+            )}
           </div>
-        </div>
-      )}
-
-      {choosing && (
-        <div className="run-pipeline-section" role="dialog" aria-label="Choose a version of Premiere">
-          <div className="run-pipeline-section-label">Which Premiere should open it?</div>
-          <div className="sync-section-hint">More than one version is installed.</div>
-          <div className="pm-tab-row" style={{ flexWrap: "wrap" }}>
-            {premiereApps.map((a) => (
-              <button key={a.path} className={`btn ${a.path === premiereChoice ? "btn-primary" : "btn-ghost"}`} onClick={() => pickPremiere(a)}>
-                {shortName(a)}
+          <div className="rv-actions">
+            {graphicCount > 0 && (
+              <button className="btn btn-tinted" onClick={applyGraphics} disabled={toolsBusy}
+                title="Make the next version with the graphics where you put them. Nothing is redrawn; each graphic is moved or scaled on its own clip, and stays adjustable in Premiere.">
+                Apply {graphicCount} graphic change{graphicCount === 1 ? "" : "s"}
               </button>
-            ))}
-            <button className="btn btn-ghost" onClick={() => setChoosing(false)}>Cancel</button>
-          </div>
-          <label className="sync-section-hint" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Use this one from now on (you can change it with "Premiere version…")
-          </label>
-        </div>
-      )}
-
-      {incoming && (
-        <div className="pm-tab-warnings" role="status">
-          <div className="pm-tab-row" style={{ alignItems: "center" }}>
-            <span>A new export was just made: {fileName(incoming)}.</span>
-            <button className="btn btn-primary" disabled={!!busy} onClick={() => { const x = incoming; setIncoming(""); build(x); }}>Review it instead</button>
-            <button className="btn btn-ghost" onClick={() => setIncoming("")}>Keep this one</button>
-          </div>
-        </div>
-      )}
-      {error && <div className="pm-tab-warnings" role="alert" style={{ whiteSpace: "pre-wrap" }}>{error}</div>}
-      {info && <div className="pm-tab-warnings" role="status">{info}</div>}
-
-      {exportResult && (
-        <div className={exportResult.verified ? "sync-section-hint" : "pm-tab-warnings"} role="status">
-          {exportResult.verified
-            ? exportResult.opened
-              ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}` + (exportResult.transitions ? `. Transitions: ${exportResult.transitions.cuts} Film Impact Push${exportResult.transitions.cuts === 1 ? "" : "es"} with your whoosh (the Premiere plugin adds the push when the XML opens)` + (exportResult.transitions.skipped?.length ? `; no sound possible at ${exportResult.transitions.skipped.join(", ")} s (too near the start or end)` : "") : "") + (exportResult.inherited?.length ? `. Already in the original export, not made by the editing: ${exportResult.inherited.join(", ")} (footage in the leftover bin overlaps; your cut is not affected).` : "")
-              : `Checked: ${fileName(exportResult.xml)} (not opened${exportResult.app ? "" : "; Premiere was not found"}).`
-            : `Not opened: the export check failed (${exportResult.failed.join(", ")}). ${failedChecks.map((r) => r.detail).join(" ")}`}
-        </div>
-      )}
-
-      {StatusStrip()}
-      {SequencePicker()}
-      {CreativePanel()}
-
-      {mineLeft.length > 0 && (
-        <div className="pm-tab-warnings" role="alert">
-          <div style={{ fontWeight: 600 }}>
-            {mineLeft.length === 1 ? "One of your notes was" : `${mineLeft.length} of your notes were`} not done: the AI editor cannot make {mineLeft.length === 1 ? "this change" : "these changes"}, so {mineLeft.length === 1 ? "it needs" : "they need"} you or another tool.
-          </div>
-          {mineLeft.map((n) => (
-            <div key={n.note} style={{ marginTop: 6 }}>
-              <div>“{n.text}”</div>
-              <div className="sync-section-hint">{(n.rows[0] && n.rows[0].detail) || "no operation exists for this yet"}</div>
+            )}
+            <button className="btn" onClick={() => setFinishing(true)} disabled={toolsBusy}
+              title="Cut the ums and uhs, then add captions, graphics, music and the bleep, as new versions (⌘G)">
+              Get Creative…
+            </button>
+            <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere (⌘E)">
+              {premiereLabel}
+            </button>
+            <div className="rv-menu">
+              <button className="btn btn-icon" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More" title="More" onClick={() => setMenuOpen((x) => !x)}>⋯</button>
+              {menuOpen && (
+                <>
+                  <div className="rv-menu-scrim" onMouseDown={() => setMenuOpen(false)} />
+                  <div className="rv-menu-list" role="menu" onKeyDown={(e) => { if (e.key === "Escape") setMenuOpen(false); }}>
+                    <button role="menuitem" onClick={closeMenu(() => sendCommand({ type: "open_path", path: dirName(version.xml) }))} disabled={!!busy}>Show in Finder</button>
+                    {premiereApps.length > 1 && <button role="menuitem" onClick={closeMenu(() => setChoosing(true))} disabled={!!busy}>Premiere version…</button>}
+                    <button role="menuitem" onClick={closeMenu(browse)} disabled={!!busy}><span>Choose another XML…</span><kbd>⌘O</kbd></button>
+                    <hr />
+                    <button role="menuitem" className="danger" disabled={!!busy || auto.status === "running"}
+                      onClick={closeMenu(() => { if (window.confirm("Start this cut's review over? The versions made so far will be replaced.")) openReview(versionsRef.current[0].xml, true); })}>
+                      Start over…
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          ))}
+          </div>
+        </header>
+
+        {(error || info || incoming || exportResult || working) && (
+          <div className="rv-notices">
+            {StatusStrip()}
+            {incoming && (
+              <div className="rv-notice" role="status">
+                <span>A new export was just made: {fileName(incoming)}.</span>
+                <button className="btn btn-sm" disabled={!!busy} onClick={() => { const x = incoming; setIncoming(""); build(x); }}>Review it instead</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setIncoming("")}>Keep this one</button>
+              </div>
+            )}
+            {error && <div className="rv-notice bad" role="alert"><span style={{ whiteSpace: "pre-wrap" }}>{error}</span><button className="btn btn-ghost btn-sm" onClick={() => setError("")}>Dismiss</button></div>}
+            {info && <div className="rv-notice" role="status"><span>{info}</span><button className="btn btn-ghost btn-sm" onClick={() => setInfo("")}>Dismiss</button></div>}
+            {exportResult && (
+              <div className={`rv-notice ${exportResult.verified ? "ok" : "bad"}`} role="status">
+                <span>
+                  {exportResult.verified
+                    ? exportResult.opened
+                      ? `Checked, and opened in ${exportResult.app || "the default app"}: ${fileName(exportResult.xml)}` + (exportResult.transitions ? `. Transitions: ${exportResult.transitions.cuts} Film Impact Push${exportResult.transitions.cuts === 1 ? "" : "es"} with your whoosh (the Premiere plugin adds the push when the XML opens)` + (exportResult.transitions.skipped?.length ? `; no sound possible at ${exportResult.transitions.skipped.join(", ")} s (too near the start or end)` : "") : "") + (exportResult.inherited?.length ? `. Already in the original export, not made by the editing: ${exportResult.inherited.join(", ")} (footage in the leftover bin overlaps; your cut is not affected).` : "")
+                      : `Checked: ${fileName(exportResult.xml)} (not opened${exportResult.app ? "" : "; Premiere was not found"}).`
+                    : `Not opened: the export check failed (${exportResult.failed.join(", ")}). ${failedChecks.map((r) => r.detail).join(" ")}`}
+                </span>
+                <button className="btn btn-ghost btn-sm" onClick={() => setExportResult(null)}>Dismiss</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {!hasSide && CreativePanel()}
+        {SequencePicker()}
+
+        {mineLeft.length > 0 && (
+          <div className="rv-notice bad" role="alert">
+            <span>
+              <strong>{mineLeft.length === 1 ? "One of your notes was" : `${mineLeft.length} of your notes were`} not done.</strong>{" "}
+              {mineLeft.map((n) => `“${n.text}”: ${(n.rows[0] && n.rows[0].detail) || "no operation exists for this yet"}`).join(" ")}
+            </span>
+          </div>
+        )}
+
+        <div className="rv-frame">
+          {working && (auto.status === "running" || busy === "applying") && (
+            <div className="ai-badge"><span className="ai-dot" /> {CREATIVE_STAGE ? "Getting creative" : `AI editor working: ${STEPS[step].toLowerCase()}`}</div>
+          )}
+          <iframe
+            key={version.url}
+            ref={frameRef}
+            title={`Review ${version.label}`}
+            src={version.url}
+            allow="autoplay; clipboard-write"
+            onLoad={() => { if (CREATIVE_STAGE) frameRef.current?.contentWindow?.postMessage({ type: "review:mode", submit: false }, "*"); }}
+          />
+        </div>
+
+      {CreativeSheet()}
+      {choosing && (
+        <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setChoosing(false); }}>
+          <div className="rv-sheet" role="dialog" aria-modal="true" aria-labelledby="rv-pp-title" onKeyDown={(e) => { if (e.key === "Escape") setChoosing(false); }}>
+            <h2 id="rv-pp-title">Which Premiere should open it?</h2>
+            <p className="rv-sheet-sub">More than one version is installed.</p>
+            <div className="rv-list">
+              {premiereApps.map((a) => (
+                <button key={a.path} className={`btn ${a.path === premiereChoice ? "btn-tinted" : ""}`} onClick={() => pickPremiere(a)}>{shortName(a)}</button>
+              ))}
+            </div>
+            <label className="rv-check"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /><span>Use this one from now on<span className="rv-hint">change it later in the ⋯ menu</span></span></label>
+            <div className="rv-sheet-actions"><button className="btn btn-ghost" onClick={() => setChoosing(false)}>Cancel</button></div>
+          </div>
         </div>
       )}
-
-      <div style={{ position: "relative", flex: 1, display: "flex", minHeight: 640 }}>
-        {working && (auto.status === "running" || busy === "applying") && (
-          <div className="ai-badge"><span className="ai-dot" /> {CREATIVE_STAGE ? "Getting creative" : `AI editor working: ${STEPS[step].toLowerCase()}`}</div>
-        )}
-        <iframe
-          key={version.url}
-          ref={frameRef}
-          title={`Review ${version.label}`}
-          src={version.url}
-          allow="autoplay; clipboard-write"
-          onLoad={() => { if (CREATIVE_STAGE) frameRef.current?.contentWindow?.postMessage({ type: "review:mode", submit: false }, "*"); }}
-          style={{ flex: 1, minHeight: 640, width: "100%", border: `1px solid ${working ? "var(--accent, #00e0e0)" : "var(--border, #333)"}`, borderRadius: 8, background: "#000" }}
-        />
-      </div>
 
       {!CREATIVE_STAGE && auto.status === "done" && (
         <div className={auto.outcome === "failed" || auto.outcome === "worse" || auto.outcome === "short" ? "pm-tab-warnings" : "run-pipeline-section"} role="status">
@@ -1083,7 +1162,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
-      {activity.length > 0 && (
+      {!CREATIVE_STAGE && activity.length > 0 && (
         <div className="run-pipeline-section">
           <div className="pm-tab-row" style={{ alignItems: "center" }}>
             <div className="run-pipeline-section-label" style={{ margin: 0 }}>What has happened</div>
@@ -1103,6 +1182,7 @@ export default function ReviewTab({ subscribe, onStatus }) {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

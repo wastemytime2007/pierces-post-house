@@ -65,6 +65,10 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-21: UI overhaul with the Apple design skill (Review screen first); built, not yet seen by Ryan in the real app
+
+Ryan: the app is "messy and so confusing", "a million buttons". Audit and plan: `docs/design/UI_SYSTEM.md` (measured with `app/harness.html` + `app/dev/shots.js`, a mocked-Tauri page driven by headless Chrome). Built so far: new token system in `app/src/styles.css` (one accent blue, system font, light and dark following macOS, nothing under 11 px, visible keyboard focus, reduced motion); Review screen rebuilt (toolbar with one prominent Open in Premiere, a version pull-down instead of V1/V2 buttons, a More menu, a Sequences sidebar with per-sequence status and determinate progress with Stop, Get Creative as a sheet with an All/This sequence control, empty state with one Choose XML button, no permanent banner or feed); framed review page relaid out (picture and transport left, graphics and notes right, ribbon under both, one screen); tab names without numbers. Shortcuts: ⌘O, ⌘E, ⌘G, ⌘[ ⌘]. Evidence: before/after control counts in UI_SYSTEM.md; `app/tests/design_tokens.test.mjs` (7 pass, both appearances); page tests `drive_review_graphics.js` and `drive_review_transitions.js` pass. Not done: Project and Ideas tabs still carry the old density (colors and type are new); inspector tabs (Graphics / Notes / Details) are stacked sections instead; no native menu bar; nothing opened by Ryan in the real app yet.
+
 ### 2026-10-21: two-stage workflow chosen by Ryan; transitions through XML tested; Transition Lab plugin built, awaiting Ryan's run in Premiere
 
 Ryan's plan (also in memory `project_two_stage_workflow`): stage 1 finds the pieces that tell a story and exports ONE PreCut-structured XML, a sequence per idea, synced to its audio sources; Ryan trims each sequence in Premiere and exports the XML back; stage 2 (creative) cuts ums and uhs, scales every other shot by speaker, adds graphics, lower thirds, transitions, music, SFX (his own library), captions and CTAs. The Post House app build stays stopped (2026-10-17); nothing was built in `app/`.

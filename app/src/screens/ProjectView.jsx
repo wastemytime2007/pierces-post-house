@@ -279,24 +279,24 @@ export default function ProjectView({
     <div className="project-view">
       <div className="project-nav">
         <button className="project-nav-back" onClick={onClose}>
-          ← Projects
+          ‹ Projects
         </button>
         <div className="project-nav-tabs">
           <Tab
-            label="00 · Project"
+            label="Project"
             active={activeTab === "pm"}
             onClick={() => setActiveTab("pm")}
             sub={project.sources.length ? `${project.sources.length} source${project.sources.length !== 1 ? "s" : ""}` : "no sources yet"}
           />
           <Tab
-            label="01 · Ideas"
+            label="Ideas"
             active={activeTab === "ideas"}
             onClick={() => setActiveTab("ideas")}
             sub={ideas.length ? `${ideas.length} cards` : "none"}
             disabled={transcriptCount === 0 && ideas.length === 0}
           />
           <Tab
-            label="02 · Review"
+            label="Review"
             active={activeTab === "review"}
             onClick={() => setActiveTab("review")}
             sub={reviewSub}
@@ -325,7 +325,7 @@ export default function ProjectView({
       </div>
 
       <div className={`project-main ${showLog ? "log-visible" : "log-hidden"}`}>
-        <section className="project-stage">
+        <section className={`project-stage ${activeTab === "review" ? "is-review" : ""}`}>
           {activeTab === "pm" && (
             <PMTab
               subscribe={subscribe}
@@ -356,7 +356,7 @@ export default function ProjectView({
             />
           )}
           {/* Stays mounted (hidden) so a review page that finishes building while another tab is open is not lost. */}
-          <div style={{ display: activeTab === "review" ? "block" : "none" }}>
+          <div className="review-host" style={{ display: activeTab === "review" ? "flex" : "none" }}>
             <ReviewTab subscribe={subscribe} onStatus={setReviewSub} />
           </div>
         </section>

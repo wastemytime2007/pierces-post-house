@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UI harness</title>
+  </head>
+  <body>
+    <!--
+      Development only (not part of the shipped app): mounts a real screen with a stand-in for Tauri, so a screen can be looked at and driven in a browser (tests and screenshots).
+      Open it through `vite` (http://localhost:<port>/harness.html?screen=review). `window.__emit(event)` feeds a backend event to the screen.
+    -->
+    <div id="root"></div>
+    <script>
+      (function () {
+        window.__sent = [];                                       // every command the screen sent to the backend
+        window.__handlers = {};
+        let nextId = 1;
+        window.__TAURI_INTERNALS__ = {
+          metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main", windowLabel: "main" } },
+          transformCallback(cb) { const id = nextId++; window["_" + id] = cb; return id; },
+          convertFileSrc(p) { return p; },
+          async invoke(cmd, args) {
+            if (cmd === "send_to_backend") { try { window.__sent.push(JSON.parse(args.commandJson)); } catch (e) {} return null; }
+            if (cmd === "setup_check") return JSON.stringify({ all_ready: true, setup_complete_flag: true });
+            if (cmd === "plugin:event|listen") { (window.__handlers[args.event] = window.__handlers[args.event] || []).push(args.handler); return nextId++; }
+            if (cmd === "plugin:event|unlisten") return null;
+            if (cmd === "plugin:dialog|open") return null;
+            return null;
+          },
+        };
+        window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
+      })();
+    </script>
+    <script type="module" src="/src/harness.jsx"></script>
+  </body>
+</html>
