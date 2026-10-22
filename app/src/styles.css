@@ -5406,3 +5406,17 @@ select { height: 28px; }
 
 .rv-board .sp-head { margin-bottom: 14px; }
 .rv-board .rv-notice { margin-bottom: 4px; }
+
+/* A cover says what the project is waiting for; opening it lands there */
+.cover-next { position: absolute; right: 14px; bottom: 14px; display: inline-flex; align-items: center; gap: 4px; padding: 5px 11px 5px 13px; border-radius: 99px; font-size: var(--text-footnote); font-weight: 600; color: #fff; background: rgba(255, 255, 255, 0.16); -webkit-backdrop-filter: blur(14px) saturate(160%); backdrop-filter: blur(14px) saturate(160%); box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.28); opacity: 0; transform: translateY(4px); transition: opacity 160ms var(--ease), transform 160ms var(--ease); }
+.cover:hover .cover-next, .cover-open:focus-visible .cover-next, .cover.featured .cover-next { opacity: 1; transform: none; }
+.cover.featured .cover-next { background: rgba(10, 114, 184, 0.92); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); font-size: var(--text-body); padding: 7px 14px 7px 16px; }
+
+/* Title bar: the wordmark is the way home; the project you are in shows by its own frame */
+.titlebar-brand { gap: 10px; }
+.titlebar-home { display: inline-flex; align-items: center; gap: 9px; padding: 3px 8px 3px 4px; margin-left: -4px; border: 0; border-radius: 8px; background: none; color: var(--fg-0); font: inherit; cursor: pointer; -webkit-app-region: no-drag; }
+.titlebar-home:disabled { cursor: default; }
+.titlebar-home:hover:not(:disabled) { background: var(--fill); }
+.titlebar-chip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.titlebar-chip-art { flex: none; width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, #033459, #0a6ea8) center / cover; box-shadow: 0 0 0 0.5px var(--separator); }
+.titlebar-project { font-size: var(--text-body); font-weight: 500; color: var(--fg-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 36vw; }

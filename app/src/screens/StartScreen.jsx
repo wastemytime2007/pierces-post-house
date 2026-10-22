@@ -19,6 +19,16 @@ import Icon from "../components/Icon.jsx";
 import Mark from "../components/Mark.jsx";
 import { useThumb, requestPosters, tileColors } from "../thumbStore.js";
 
+// The step a project is waiting at, so opening it lands there
+function nextStep(p) {
+  const s = p.summary || {};
+  if (p.source_count === 0) return { tab: "pm", text: "Add your footage" };
+  if (!s.transcribed) return { tab: "pm", text: "Process the footage" };
+  if (!s.stories) return { tab: "ideas", text: "Find stories" };
+  if (!s.exports) return { tab: "ideas", text: "Choose stories to export" };
+  return { tab: "review", text: "Bring back your trimmed XML" };
+}
+
 // Where the project stands, in the words of the four steps
 function stageText(p) {
   const s = p.summary || {};
@@ -40,13 +50,14 @@ function Cover({ p, featured, onOpen, onDelete, onContext, index }) {
   const [c1, c2] = tileColors(p.name);
   return (
     <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }} onContextMenu={(e) => { e.preventDefault(); onContext(e.clientX, e.clientY, p); }}>
-      <button className="cover-open" onClick={() => onOpen(p.name)}>
+      <button className="cover-open" onClick={() => { try { sessionStorage.setItem("ph.tab", nextStep(p).tab); } catch (e) { /* private window */ } onOpen(p.name); }}>
         <span className="cover-art" style={poster ? { backgroundImage: `url(${poster})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
         <span className="cover-shade" />
         <span className="cover-info">
           <span className="cover-name">{p.name}</span>
           <span className="cover-meta">{stageText(p)} · {formatRelativeTime(p.updated_at)}</span>
         </span>
+        <span className="cover-next">{nextStep(p).text} <Icon name="chevronRight" size={12} /></span>
       </button>
       <button className="cover-delete" title="Delete project" aria-label={`Delete ${p.name}`} onClick={() => onDelete(p.name)}><Icon name="trash" size={15} /></button>
     </div>

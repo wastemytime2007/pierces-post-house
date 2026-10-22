@@ -49,3 +49,7 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 43 | Notes: copy and download are quiet text buttons; tool buttons smaller | screenshot |
 | 44 | Send all finished sequences back to Premiere as ONE XML: each is export-checked first, only those that pass are merged (the rest named with why), every id namespaced per source, output read back and checked, a new file beside the sequences (never over one) | `test_merge_sequences.py` (7), `test_merge_finished.py` (4); run on the real 11 finished sequences: 11 of 11 pass the export check, merged file has 11 sequences, every clip's timing and footage identical to its own file; not yet opened in Premiere |
 | 45 | The board has "Send N to Premiere" and a result card with Open in Premiere and Show in Finder | screenshot dark |
+| 46 | Opening a project lands on the step it is waiting at (Footage, Stories, or Finish) instead of always Footage | build; sessionStorage handoff, needs a real project to see |
+| 47 | Each cover says what is next ("Bring back your trimmed XML", "Find stories") as a pill (always on the big one, on hover for the rest) | screenshot dark |
+| 48 | The title bar shows the open project by its own frame and name | screenshot dark |
+| 49 | The wordmark is the way back to all projects | build |

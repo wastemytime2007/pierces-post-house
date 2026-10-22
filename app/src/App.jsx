@@ -17,7 +17,18 @@ import Tooltips from "./components/Tooltips.jsx";
 import CommandPalette from "./components/CommandPalette.jsx";
 import ShortcutsSheet from "./components/ShortcutsSheet.jsx";
 import Icon from "./components/Icon.jsx";
-import { ingest as ingestThumb } from "./thumbStore.js";
+import { ingest as ingestThumb, useThumb } from "./thumbStore.js";
+
+// The project you are in, by its own frame and name
+function ProjectChip({ name }) {
+  const u = useThumb(`poster:${name}`);
+  return (
+    <span className="titlebar-chip">
+      <span className="titlebar-chip-art" style={u ? { backgroundImage: `url(${u})` } : undefined} aria-hidden="true" />
+      <span className="titlebar-project">{name}</span>
+    </span>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // IPC helpers
@@ -629,11 +640,13 @@ export default function App() {
     <div className="app">
       <header className="titlebar">
         <div className="titlebar-brand">
-          <Mark size={20} /><span className="titlebar-wordmark">Post House</span>
+          <button className="titlebar-home" onClick={() => project && closeProject()} disabled={!project} aria-label={project ? "All projects" : "Post House"} title={project ? "All projects" : undefined}>
+            <Mark size={20} /><span className="titlebar-wordmark">Post House</span>
+          </button>
           {project && (
             <>
-              &nbsp;&nbsp;<span className="titlebar-sep">/</span>
-              &nbsp;&nbsp;<span className="titlebar-project">{project.name}</span>
+              <span className="titlebar-sep" aria-hidden="true">/</span>
+              <ProjectChip name={project.name} />
             </>
           )}
         </div>

@@ -45,7 +45,11 @@ export default function ProjectView({
     window.addEventListener("posthouse-menu", onMenu);
     return () => window.removeEventListener("posthouse-menu", onMenu);
   }, []);
-  const [activeTab, setActiveTab] = useState("pm");
+  const [activeTab, setActiveTab] = useState(() => {
+    // Opened from a project cover: land on the step the project is waiting at
+    try { const t = sessionStorage.getItem("ph.tab"); if (t) { sessionStorage.removeItem("ph.tab"); return t; } } catch (e) { /* private window */ }
+    return "pm";
+  });
   const [exportsList, setExportsList] = useState([]);                         // XMLs this project has sent to Premiere (the Trim step lists them)
   useEffect(() => {
     // An XML dropped anywhere in the window, or chosen on the Trim step, opens in Finish
