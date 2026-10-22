@@ -5509,3 +5509,6 @@ label:has(input), .rv-opt, .rv-check { cursor: pointer; }
 .home-filter { width: 220px; height: 28px; padding: 0 10px; font-size: var(--text-body); }
 .dz-thumb { flex: none; width: 44px; height: 30px; border-radius: 6px; background: var(--bg-3) center / cover; box-shadow: 0 0 0 0.5px var(--separator); margin-right: 10px; }
 .dropzone-fileitem { display: flex; align-items: center; }
+
+/* Dropdowns: tall enough for their text */
+select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }

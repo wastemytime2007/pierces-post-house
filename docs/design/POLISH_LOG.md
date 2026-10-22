@@ -73,3 +73,5 @@ Each round is one change someone could point at. "Checked" says how; screenshots
 | 67 | Found by that run: a request for 71 frames was cut off at 60. Frames are now requested in chunks of 40 and the backend allows 80 per request | e2e run |
 | 68 | End to end on the real backend through the core Finish flow, on a scratch COPY of a real many-sequence XML: contact sheet, choose 2, open, the real review builds (`app/dev/e2e_finish.cjs`) | ran: 11 sequences, review open in 23 s, real filmstrip, no page errors |
 | 69 | Found by that run: the tooltip logic showed "Review V1" over the page inside the review frame (frames are now ignored); and tiles for cuts without a preview showed nothing: they now use a frame of the cut's own footage from the listing | e2e screenshot: both sidebar tiles show real frames |
+| 70 | Dropdown text was clipped (select height 28 px): selects are now 32 px with room for the arrow | screenshot of the Footage tab |
+| 71 | The sequence board checked on the real finished batch of 11 WK cuts (`app/dev/e2e_board.cjs`; reads only, sends nothing): 11 "Finished" chips, 11 real frames, "Send 11 to Premiere" | ran: no page errors; screenshot read |
