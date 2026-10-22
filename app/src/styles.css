@@ -5136,3 +5136,53 @@ h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em;
 .dropzone-picklink { display: none; }
 
 .rv-posters { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+
+/* ===========================================================
+ * Polish, second round (2026-10-21): ideas cards, dialogs, toasts, loading, screen changes
+ * =========================================================== */
+
+/* Idea cards: the title leads, the hook is a quote, the facts sit quietly, the format picks share a row */
+.idea-card.is-angle { padding: 0 20px 18px; gap: 6px; border-radius: 14px; }
+.idea-card-title { font-size: 18px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.25; margin: 10px 0 0; color: var(--fg-0); }
+.idea-card-tone { font-size: var(--text-footnote); color: var(--fg-2); margin: 0 0 2px; }
+.idea-card-hook { margin: 8px 0 2px; font-size: 15px; line-height: 1.45; color: var(--fg-0); font-weight: 450; }
+.idea-card-pitch { margin: 0 0 6px; font-size: var(--text-body); line-height: 1.5; color: var(--fg-1); }
+.idea-card-meta-row { display: flex; gap: 8px; margin: 0; font-size: var(--text-body); color: var(--fg-0); }
+.idea-card-meta-label { flex: none; min-width: 64px; font-size: var(--text-footnote); color: var(--fg-2); font-weight: 400; }
+.idea-card-research { display: flex; gap: 2px; margin: 4px 0 2px -6px; }
+.idea-card-phrases { background: var(--bg-2); border: 0; border-radius: 10px; padding: 10px 12px; margin-top: 6px; }
+.idea-card-section-label { font-size: var(--text-footnote); font-weight: 600; color: var(--fg-1); letter-spacing: 0; text-transform: none; margin-bottom: 4px; }
+.idea-card-phrases-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.idea-card-phrase-item { display: flex; gap: 8px; font-size: var(--text-body); font-variant-numeric: tabular-nums; }
+.idea-card-phrase-item .phrase-index { color: var(--fg-2); min-width: 14px; }
+.idea-card-format { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border-top: 0.5px solid var(--separator); padding-top: 12px; margin-top: 8px; }
+.idea-card-format-label { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-footnote); font-weight: 600; color: var(--fg-1); letter-spacing: 0; text-transform: none; }
+.idea-card-format-select { width: 100%; font-size: var(--text-body); font-weight: 400; color: var(--fg-0); }
+.idea-card-format-hint { grid-column: 1 / -1; font-style: normal; font-weight: 400; font-size: var(--text-footnote); color: var(--fg-2); }
+.idea-card-format > label:last-child { grid-column: auto; }
+.idea-card-actions { border-top: 0; margin-top: 2px; }
+
+/* Dialogs */
+.modal { border: 0; }
+.modal-header { padding: 18px 22px 14px; border-bottom: 0; }
+.modal-header h2 { font-size: var(--text-large); font-weight: 650; letter-spacing: -0.02em; }
+.modal-close { width: 26px; height: 26px; padding: 0; display: grid; place-items: center; border-radius: 50%; background: var(--fill); font-size: 17px; line-height: 1; }
+.modal-close:hover { background: var(--fill-hover); }
+.modal-body { padding: 4px 22px 18px; }
+.modal-actions { padding: 14px 22px 18px; border-top: 0.5px solid var(--separator); }
+
+/* Toasts: a small floating pill, status color as a dot only */
+.toast { border: 0; border-left: 0 !important; border-radius: 12px; padding: 10px 16px; box-shadow: var(--shadow-2); background: color-mix(in srgb, var(--bg-2) 92%, transparent); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%); animation: toast-in 260ms var(--ease) both; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* Loading: tiles that hold the place of the covers, with a slow sheen */
+.cover-skeleton { aspect-ratio: 16 / 10; border-radius: 14px; background: linear-gradient(100deg, var(--bg-2) 30%, var(--bg-3) 50%, var(--bg-2) 70%); background-size: 220% 100%; animation: sheen 1.6s ease-in-out infinite; }
+@keyframes sheen { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+
+/* Changing screen: the new one eases in; the review screen stays mounted and does not replay it */
+.project-stage > :not(.review-host) { animation: stage-in 260ms var(--ease) both; }
+@keyframes stage-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Small things that add up: buttons and rows answer the pointer, text selects in the accent */
+.rv-seq, .project-tab, .btn, .cover, .rv-poster, .rv-opt, .idea-card { -webkit-tap-highlight-color: transparent; }
+.rv-seq:active:not(:disabled) { background: rgba(var(--accent-rgb), 0.28); }

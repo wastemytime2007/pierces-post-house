@@ -18,7 +18,7 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
     source_ranges: [{ source_path: "/Volumes/Runnells/Interviews/wknd_Bob_01.mp4", source_start_sec: 120, source_end_sec: 140 }, { source_path: "/Volumes/Runnells/Interviews/wknd_Bob_01.mp4", source_start_sec: 300, source_end_sec: 318 }] } }));
 (async () => {
   const browser = await chromium.launch({ executablePath: CHROME, headless: true });
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: process.env.SCHEME || "light" })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: 1280, height: parseInt(process.env.H || "800", 10) }, colorScheme: process.env.SCHEME || "light" })).newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const shot = async (name) => {

@@ -910,16 +910,16 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
 
       <h3 className="idea-card-title">{title}</h3>
       {tone && <div className="idea-card-tone">{tone}</div>}
-      {hook && <p className="idea-card-hook"><strong>Hook:</strong> {hook}</p>}
+      {hook && <p className="idea-card-hook">“{hook}”</p>}
       {why && <p className="idea-card-pitch">{why}</p>}
       {audience && (
         <div className="idea-card-meta-row">
-          <span className="idea-card-meta-label">Audience:</span> {audience}
+          <span className="idea-card-meta-label">For</span> {audience}
         </div>
       )}
       {cta && (
         <div className="idea-card-meta-row">
-          <span className="idea-card-meta-label">CTA:</span> {cta}
+          <span className="idea-card-meta-label">Ends with</span> {cta}
         </div>
       )}
       <div className="idea-card-research">
@@ -1112,7 +1112,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
 
       {useRanges && (
         <div className="idea-card-phrases">
-          <div className="idea-card-section-label">Source ranges</div>
+          <div className="idea-card-section-label">Moments used</div>
           <ol className="idea-card-phrases-list">
             {visibleRanges.map((r, i) => {
               const dur = Math.max(0, (r.source_end_sec || 0) - (r.source_start_sec || 0));
@@ -1166,7 +1166,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
 
       <div className="idea-card-format">
         <label className="idea-card-format-label">
-          Platform overlay
+          Platform
           <select
             className="idea-card-format-select"
             value={currentPlatform}
@@ -1179,7 +1179,7 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
           </select>
         </label>
 
-        <label className="idea-card-format-label" style={{ marginTop: 8 }}>
+        <label className="idea-card-format-label">
           Aspect ratio
           <select
             className="idea-card-format-select"

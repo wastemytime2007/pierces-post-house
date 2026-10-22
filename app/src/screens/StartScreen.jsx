@@ -293,7 +293,9 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
         )}
 
         {loading ? (
-          <div className="empty-state">Loading projects…</div>
+          <div className="cover-grid" aria-busy="true" aria-label="Loading projects">
+            {[0, 1, 2].map((i) => <div key={i} className="cover-skeleton" style={{ animationDelay: `${i * 120}ms` }} />)}
+          </div>
         ) : projects.length === 0 ? (
           <div className="start-empty">
             <div className="start-empty-frames" aria-hidden="true"><span /><span /><span /></div>

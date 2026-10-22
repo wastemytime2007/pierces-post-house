@@ -33,7 +33,7 @@ async function counts(page, label) {
 
 (async () => {
   const browser = await chromium.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true });
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1, colorScheme: process.env.SCHEME || "light" })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: 1280, height: parseInt(process.env.H || "800", 10) }, deviceScaleFactor: 1, colorScheme: process.env.SCHEME || "light" })).newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.addInitScript((items) => { localStorage.setItem("review.seqSet", JSON.stringify({ source: "/x/wk.xml", items })); },

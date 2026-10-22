@@ -178,6 +178,20 @@
   .tabs button[aria-selected=true] { background: #48484a; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
   textarea, input[type=text] { border: .5px solid rgba(255,255,255,.14) !important; border-radius: 8px !important; }
   video { border-radius: 10px; }
+
+  /* Transport and details (2026-10-21): the picture's controls are quiet; the technical lines live under Details */
+  #left .now { display: none; }
+  #nowCopy b { color: var(--text); font-weight: 600; }
+  .pane-details h2 { margin: 4px 0 6px; font-size: 12px; color: var(--dim); font-weight: 600; }
+  .pane-details .meta { margin-bottom: 14px; }
+  #transport { gap: 6px; align-items: center; }
+  #play { min-width: 92px; border-radius: 999px; font-weight: 600; }
+  #back, #fwd { background: transparent; color: var(--dim); }
+  #back:hover, #fwd:hover { background: rgba(128,128,140,.22); color: var(--text); }
+  .time { min-width: 0; margin-left: 4px; font-size: 13px; color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+  button.tint { background: rgba(76,179,238,.16); color: #4cb3ee; }
+  button.tint:hover { background: rgba(76,179,238,.26); }
+  #rate { min-height: 28px; padding: 0 6px; background: transparent; color: var(--dim); }
   @media (max-width: 900px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
 </style>
@@ -193,15 +207,15 @@
     </div>
     <div class="now" id="now"></div>
     <div class="row" id="transport">
-      <button id="play" class="primary">Play</button>
-      <button id="back">-5s</button>
-      <button id="fwd">+5s</button>
+      <button id="play" class="primary">▶︎  Play</button>
+      <button id="back" title="Back 5 seconds">−5 s</button>
+      <button id="fwd" title="Forward 5 seconds">+5 s</button>
       <button id="layersBtn" style="display:none" title="Show or hide the callouts, captions, music and effects placed on this cut">Layers: on</button>
       <select id="rate" aria-label="Speed"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select>
       <span class="time" id="time"></span>
       <span class="spacer"></span>
-      <button id="addDraw">Draw on frame (d)</button>
-      <button id="add">+ Note at this moment (n)</button>
+      <button id="addDraw" title="Draw on the frame to point at something (d)">Draw (d)</button>
+      <button id="add" class="tint">Add note (n)</button>
     </div>
   </section>
   <aside id="right" data-tab="notes">
@@ -248,7 +262,7 @@
     </div>
     <div id="notes"></div>
     </div>
-    <div class="pane pane-details"><div class="meta" id="meta"></div></div>
+    <div class="pane pane-details"><h2>At the playhead</h2><div class="meta" id="nowCopy"></div><h2>This cut</h2><div class="meta" id="meta"></div></div>
   </aside>
   <section id="ribbon">
     <div class="bar" id="bar"><div class="head" id="head"></div></div>
@@ -828,7 +842,7 @@ function tick() {
   });
   document.getElementById('now').innerHTML = '<b>Clip ' + w.clip + '/' + w.of + '</b> · ' + esc(w.source) + ' · source ' + fmt(w.source_sec)
     + (live.length ? ' · <b>on now</b>: ' + esc(live.join(' · ')) : '');
-  document.getElementById('play').textContent = v.paused ? 'Play' : 'Pause';
+  document.getElementById('play').textContent = v.paused ? '\u25B6\uFE0E  Play' : '\u275A\u275A  Pause';
   redraw();
 }
 function followPlayhead() { if (pending && !pending.target && v.paused) { pending.t = v.currentTime; updateEditorAt(); } }
@@ -1101,6 +1115,13 @@ tellHost({ type: 'review:count', n: notes.length });
   const cnt = document.getElementById('count'), nb = tabs.find(b => b.dataset.t === 'notes');
   const label = () => { const m = /\d+/.exec(cnt.textContent || ''); nb.textContent = (m && m[0] !== '0') ? 'Notes (' + m[0] + ')' : 'Notes'; };
   new MutationObserver(label).observe(cnt, { childList: true, characterData: true, subtree: true }); label();
+})();
+
+/* Mirror the "on now" line (which the page rewrites as it plays) into Details, since it is hidden under the picture */
+(() => {
+  const src = document.getElementById('now'), dst = document.getElementById('nowCopy');
+  const copy = () => { dst.innerHTML = src.innerHTML; };
+  new MutationObserver(copy).observe(src, { childList: true, characterData: true, subtree: true }); copy();
 })();
 </script>
 </body>
