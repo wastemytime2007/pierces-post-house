@@ -592,6 +592,7 @@ def list_projects() -> list[dict]:
                 "updated_at": d["updated_at"],
                 "source_count": len(d.get("sources", [])),
                 "root_dir": root_dir,
+                "dir": root_dir,
                 "is_portable": True,
             })
             seen_names.add(d["name"])
@@ -619,6 +620,7 @@ def list_projects() -> list[dict]:
                 "updated_at": d["updated_at"],
                 "source_count": len(d.get("sources", [])),
                 "root_dir": None,
+                "dir": str(pdir),
                 "is_portable": False,
             })
         except Exception:

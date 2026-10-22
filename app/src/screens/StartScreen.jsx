@@ -15,6 +15,34 @@ import TourTooltip from "../components/TourTooltip.jsx";
  * the commands and expects project_created/project_loaded events to
  * cause App to unmount this screen and mount ProjectView.
  */
+import Icon from "../components/Icon.jsx";
+import Mark from "../components/Mark.jsx";
+import { useThumb, requestPosters, tileColors } from "../thumbStore.js";
+
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? "Working late." : h < 12 ? "Good morning." : h < 18 ? "Good afternoon." : "Good evening.";
+}
+
+// A project is its own footage: one frame from its interviews as the cover, the name over a soft shade. No footage yet: a color tile from the brand's blues.
+function Cover({ p, featured, onOpen, onDelete, index }) {
+  const poster = useThumb(`poster:${p.name}`);
+  const [c1, c2] = tileColors(p.name);
+  return (
+    <div className={`cover ${featured ? "featured" : ""}`} style={{ "--i": index }}>
+      <button className="cover-open" onClick={() => onOpen(p.name)} aria-label={`Open ${p.name}`}>
+        <span className="cover-art" style={poster ? { backgroundImage: `url(${poster})` } : { backgroundImage: `linear-gradient(135deg, ${c1}, ${c2})` }} />
+        <span className="cover-shade" />
+        <span className="cover-info">
+          <span className="cover-name">{p.name}</span>
+          <span className="cover-meta">{p.source_count === 0 ? "No footage yet" : `${p.source_count} source${p.source_count !== 1 ? "s" : ""}`} · {formatRelativeTime(p.updated_at)}</span>
+        </span>
+      </button>
+      <button className="cover-delete" title="Delete project" aria-label={`Delete ${p.name}`} onClick={() => onDelete(p.name)}><Icon name="trash" size={15} /></button>
+    </div>
+  );
+}
+
 export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCreate, onDelete, subscribe, log, tourReady, onTourComplete }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +101,7 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   }, [backendReady]);
 
   useEffect(() => { refreshProjects(); }, [refreshProjects]);
+  useEffect(() => { if (projects.length) requestPosters(projects); }, [projects]);
 
   // Subscribe to relevant backend events
   useEffect(() => {
@@ -163,25 +192,19 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
   return (
     <div className="start-screen">
       <div className="start-panel">
-        <div className="start-header">
-          <h1 className="start-title">Projects</h1>
+        <div className="start-hero">
+          <div className="start-hero-text">
+            <Mark size={34} />
+            <h1 className="start-title">{greeting()}</h1>
+            <p className="start-sub">{projects.length ? "Pick up where you left off, or start something new." : "Start a project, add your footage, and Post House finds the stories in it."}</p>
+          </div>
           <div className="start-header-actions">
-            <button
-              ref={openFromFolderBtnRef}
-              className="btn btn-ghost"
-              onClick={handleOpenFromFolder}
-              disabled={!backendReady}
-              title="Open an existing project from its folder — useful after moving a project between computers"
-            >
-              Open from folder…
+            <button ref={openFromFolderBtnRef} className="btn" onClick={handleOpenFromFolder} disabled={!backendReady}
+              title="Open an existing project from its folder, for example after moving it to another computer">
+              <Icon name="folderOpen" size={15} /> Open from folder…
             </button>
-            <button
-              ref={newProjectBtnRef}
-              className="btn btn-primary"
-              onClick={() => setShowNewProject(true)}
-              disabled={!backendReady}
-            >
-              + New project
+            <button ref={newProjectBtnRef} className="btn btn-primary" onClick={() => setShowNewProject(true)} disabled={!backendReady}>
+              <Icon name="plus" size={15} /> New project
             </button>
           </div>
         </div>
@@ -262,52 +285,32 @@ export default function StartScreen({ backendReady, onOpen, onOpenFromPath, onCr
                 <>
                   Project metadata will be stored at
                   <br />
-                  <code>~/Library/Application Support/PreCut/projects/{(newName || "…").trim()}/</code>
+                  <code>~/Library/Application Support/Post House/projects/{(newName || "…").trim()}/</code>
                 </>
               )}
             </div>
           </div>
         )}
 
-        <div className="project-list">
-          {loading ? (
-            <div className="empty-state">Loading projects…</div>
-          ) : projects.length === 0 ? (
-            <div className="empty-state">
-              No projects yet. Create one to start.
+        {loading ? (
+          <div className="empty-state">Loading projects…</div>
+        ) : projects.length === 0 ? (
+          <div className="start-empty">
+            <div className="start-empty-frames" aria-hidden="true"><span /><span /><span /></div>
+            <h2>Nothing here yet.</h2>
+            <p>A project holds one shoot: the interviews, the B-roll and the audio. Add the folders and Post House reads what was said.</p>
+            <button className="btn btn-primary" onClick={() => setShowNewProject(true)} disabled={!backendReady}><Icon name="plus" size={15} /> New project</button>
+          </div>
+        ) : (
+          <>
+            <h2 className="section-head">Continue</h2>
+            <Cover p={projects[0]} featured index={0} onOpen={onOpen} onDelete={setDeleteTarget} />
+            {projects.length > 1 && <h2 className="section-head">All projects</h2>}
+            <div className="cover-grid">
+              {projects.slice(1).map((p, i) => <Cover key={p.name} p={p} index={i + 1} onOpen={onOpen} onDelete={setDeleteTarget} />)}
             </div>
-          ) : (
-            projects.map((p) => (
-              <div
-                key={p.name}
-                className="project-row"
-                onClick={() => onOpen(p.name)}
-              >
-                <div className="project-row-main">
-                  <div className="project-row-name">{p.name}</div>
-                  <div className="project-row-meta">
-                    {p.source_count} source{p.source_count !== 1 ? "s" : ""}
-                    &nbsp;·&nbsp;
-                    <span className="project-row-date">
-                      updated {formatRelativeTime(p.updated_at)}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  className="project-row-delete"
-                  title="Delete project"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget(p.name);
-                  }}
-                >
-                  ×
-                </button>
-                <div className="project-row-arrow">→</div>
-              </div>
-            ))
-          )}
-        </div>
+          </>
+        )}
       </div>
 
       {/* Only a real backend error shows here (an install or startup failure); routine log lines live in the project's Activity panel */}

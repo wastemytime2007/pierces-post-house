@@ -4,6 +4,7 @@ import ReactDOM from "react-dom/client";
 import "./styles.css";
 import ProjectView from "./screens/ProjectView.jsx";
 import App from "./App.jsx";
+import { ingest } from "./thumbStore.js";
 
 const params = new URLSearchParams(window.location.search);
 
@@ -21,7 +22,7 @@ function Harness() {
   const subscribe = useCallback((h) => { subs.current.add(h); return () => subs.current.delete(h); }, []);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    window.__emit = (ev) => subs.current.forEach((h) => h(ev));
+    window.__emit = (ev) => { ingest(ev); subs.current.forEach((h) => h(ev)); };
     setReady(true);
     window.__ready = true;
   }, []);

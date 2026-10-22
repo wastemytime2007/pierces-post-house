@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import Icon from "../../components/Icon.jsx";
+import { useThumb, requestFrames, cutFrameItem } from "../../thumbStore.js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { sendCommand } from "../../App.jsx";
@@ -22,6 +24,12 @@ const fmtDur = (s) => { const m = Math.round(s / 60); return m >= 60 ? `${Math.f
 const isAutoSave = (bin) => /auto-?save/i.test(bin || "");
 const fileName = (p) => (p || "").split("/").pop();
 const dirName = (p) => (p || "").split("/").slice(0, -1).join("/");
+
+// The frame that stands for a cut: from its finished version when it has one, so the graphics show. A color tile with a film icon until it arrives.
+function CutThumb({ xml, className = "" }) {
+  const u = useThumb(`cut:${xml}`);
+  return <span className={`cut-thumb ${className} ${u ? "" : "empty"}`} style={u ? { backgroundImage: `url(${u})` } : undefined} aria-hidden="true">{!u && <Icon name="film" size={14} />}</span>;
+}
 
 // File names read as words: underscores become spaces and a split contraction is put back (someone_s -> someone's)
 const pretty = (n) => String(n).replace(/_/g, " ").replace(/(\w) (s|t|re|ve|ll|d)(?= |$)/g, "$1'$2");
@@ -88,6 +96,8 @@ export default function ReviewTab({ subscribe, onStatus }) {
   });
   const [choosing, setChoosing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  useEffect(() => { if (seqSet?.items?.length) requestFrames(seqSet.items.map((sq) => cutFrameItem(sq.xml)), 200); }, [seqSet]);
+  useEffect(() => { if (exportsList?.length) requestFrames(exportsList.slice(0, 8).map((x) => cutFrameItem(x.path)), 420); }, [exportsList]);
   const [scopeAll, setScopeAll] = useState(true);                  // Get Creative: every sequence opened, or only this one
   const [menuOpen, setMenuOpen] = useState(false);                 // the More menu
   const keysRef = useRef({});                                      // the latest handlers for the keyboard shortcuts (set below, after they exist)
@@ -784,8 +794,9 @@ export default function ReviewTab({ subscribe, onStatus }) {
             return (
               <li key={sq.xml}>
                 <button className={`rv-seq ${on ? "on" : ""} ${it?.status || ""}`} disabled={busyNow} title={it?.message || sq.xml} aria-current={on ? "true" : undefined} onClick={() => openReview(sq.xml)}>
-                  <span className={`rv-glyph ${it?.status || ""}`} aria-hidden="true">{glyph[it?.status] || ""}</span>
+                  <CutThumb xml={sq.xml} />
                   <span className="rv-seq-name">{pretty(sq.name)}</span>
+                  <span className={`rv-glyph ${it?.status || ""}`} aria-hidden="true">{glyph[it?.status] || ""}</span>
                   <span className="rv-sr">{it?.status ? `, ${it.status}` : ""}</span>
                 </button>
               </li>
@@ -819,28 +830,29 @@ export default function ReviewTab({ subscribe, onStatus }) {
     const nothing = !finishOpts.fillers && !finishOpts.captions && !finishOpts.music && !finishOpts.bleep && !finishOpts.graphics;
     const all = seqSet && seqSet.items.length > 1 ? seqSet.items.map((sq) => sq.xml) : null;
     const go = (e) => { e?.preventDefault(); if (nothing) return; startCreative(all && scopeAll ? all : [versionsRef.current[0].xml]); };
-    const opt = (k, label, hint) => (
-      <label className="rv-check" key={k}>
-        <input type="checkbox" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
-        <span>{label}{hint && <span className="rv-hint">{hint}</span>}</span>
+    const opt = (k, icon, label, hint) => (
+      <label className={`rv-opt ${finishOpts[k] ? "on" : ""}`} key={k}>
+        <span className="rv-opt-icon"><Icon name={icon} size={18} /></span>
+        <span className="rv-opt-text"><b>{label}</b><span>{hint}</span></span>
+        <input type="checkbox" className="rv-switch" checked={!!finishOpts[k]} onChange={(e) => setFinishOpts((o) => ({ ...o, [k]: e.target.checked }))} />
       </label>
     );
     return (
       <div className="rv-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setFinishing(false); }}>
         <form className="rv-sheet" role="dialog" aria-modal="true" aria-labelledby="rv-gc-title" onSubmit={go} onKeyDown={(e) => { if (e.key === "Escape") setFinishing(false); }}>
           <h2 id="rv-gc-title">Get Creative</h2>
-          <p className="rv-sheet-sub">Runs in the background, one sequence after another. Each sequence gets new versions; your trimmed cut is never changed. Several minutes per sequence.</p>
+          <p className="rv-sheet-sub">Choose what to add. It runs in the background, one sequence after another, and your trimmed cut is never changed: each sequence gets new versions. Allow a few minutes per sequence.</p>
           <fieldset>
             <legend>Cut</legend>
-            {opt("fillers", "Ums and uhs", "cut from sound and picture")}
+            {opt("fillers", "cut", "Ums and uhs", "Cut from the sound and the picture. The video gets shorter.")}
           </fieldset>
           <fieldset>
             <legend>Add</legend>
-            {opt("captions", "Captions")}
-            {opt("graphics", "Graphics", "title card, name tags")}
-            {opt("music", "Music", "an upbeat bed, a beat on every cut")}
-            {opt("sfx", "Sound effects", "as each graphic comes on")}
-            {opt("bleep", "Bleep", "every word on the list")}
+            {opt("captions", "captions", "Captions", "What is said, as text on the screen.")}
+            {opt("graphics", "graphics", "Graphics", "A title card with the topic, and a name tag the first time each person speaks.")}
+            {opt("music", "music", "Music", "An upbeat bed under the voice, with a beat on every cut.")}
+            {opt("sfx", "sfx", "Sound effects", "A sound as each graphic comes on.")}
+            {opt("bleep", "bleep", "Bleep", "Covers every word on your list.")}
           </fieldset>
           {all && (
             <div className="rv-seg" role="radiogroup" aria-label="Which sequences">
@@ -870,14 +882,15 @@ export default function ReviewTab({ subscribe, onStatus }) {
     return (
       <div className="review-tab rv-empty">
         <div className="rv-empty-card">
-          <h1>{CREATIVE_STAGE ? "Open the cut you trimmed" : "Choose the cut to review"}</h1>
-          <p>
-            {CREATIVE_STAGE
-              ? "Choose the XML you exported from Premiere. Add captions, graphics, music and transitions, then send it back to Premiere."
-              : "Pick ideas on the Ideas tab and press Review. The cut opens here by itself."}
-          </p>
+          <h1>Finish</h1>
+          <p>Bring back the cut you trimmed in Premiere. Post House leaves your edit as it is and adds the finishing touches.</p>
+          <ol className="rv-steps">
+            <li><b>Trim in Premiere</b><span>Export the sequences as one XML.</span></li>
+            <li><b>Choose the XML here</b><span>Each sequence opens on its own frame.</span></li>
+            <li><b>Get Creative</b><span>Captions, graphics, music and sound, then open it back in Premiere.</span></li>
+          </ol>
           <div className="rv-empty-actions">
-            <button className="btn btn-primary" disabled={!!busy} onClick={browse}>Choose XML…</button>
+            <button className="btn btn-primary" disabled={!!busy} onClick={browse}><Icon name="folderOpen" size={15} /> Choose XML…</button>
             <span className="rv-hint">or press ⌘O</span>
           </div>
           {(error || making || busy) && (
@@ -890,16 +903,14 @@ export default function ReviewTab({ subscribe, onStatus }) {
           {CreativePanel()}
           {exportsList.length > 0 && (
             <>
-              <h2 className="rv-recent-head">Recent</h2>
-              <ul className="rv-recent">
+              <h2 className="rv-recent-head">Recent cuts</h2>
+              <ul className="rv-posters">
                 {exportsList.slice(0, 8).map((x) => (
                   <li key={x.path}>
-                    <button className="rv-recent-row" disabled={!!busy} onClick={() => openReview(x.path)}>
-                      <span className="rv-recent-name">{x.name}</span>
-                      <span className="rv-recent-meta">
-                        {new Date(x.mtime * 1000).toLocaleDateString([], { month: "short", day: "numeric" })}
-                        {x.session ? ` · ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}${x.session.left ? `, ${x.session.left} left` : ""}` : ""}
-                      </span>
+                    <button className="rv-poster" disabled={!!busy} onClick={() => openReview(x.path)}>
+                      <CutThumb xml={x.path} className="big" />
+                      <span className="rv-poster-name">{pretty(x.name.replace(/\.xml$/i, ""))}</span>
+                      <span className="rv-poster-meta">{new Date(x.mtime * 1000).toLocaleDateString([], { month: "short", day: "numeric" })}{x.session ? ` · ${x.session.versions} version${x.session.versions === 1 ? "" : "s"}` : ""}</span>
                     </button>
                   </li>
                 ))}
@@ -962,10 +973,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
             )}
             <button className="btn" onClick={() => setFinishing(true)} disabled={toolsBusy}
               title="Cut the ums and uhs, then add captions, graphics, music and the bleep, as new versions (⌘G)">
-              Get Creative…
+              <Icon name="sparkles" size={15} /> Get Creative…
             </button>
             <button className="btn btn-primary" onClick={onOpenInPremiere} disabled={!!busy} title="Check the XML, then open it in Premiere (⌘E)">
-              {premiereLabel}
+              {premiereLabel} <Icon name="arrowUpRight" size={14} />
             </button>
             <div className="rv-menu">
               <button className="btn btn-icon" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More" title="More" onClick={() => setMenuOpen((x) => !x)}>⋯</button>

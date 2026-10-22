@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import PageHeader from "../../components/PageHeader.jsx";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { sendCommand } from "../../App.jsx";
@@ -55,10 +56,10 @@ import AudioSyncPreview from "../../components/AudioSyncPreview.jsx";
  * project folder by organize_project).
  */
 const SOURCE_ZONES = [
-  { kind: "aroll", label: "A-Roll", title: "Interviews, talking-head footage", description: "Drag folders or files here" },
-  { kind: "broll", label: "B-Roll", title: "Supplementary/cutaway footage", description: "Drag folders or files here" },
-  { kind: "audio", label: "Source Audio", title: "Lav mics, external recorders", description: "Drag folders or files here" },
-  { kind: "assets", label: "Assets", title: "Anything else that belongs to this project", description: "Drag folders or files here" },
+  { kind: "aroll", label: "Interviews", title: "People talking to camera. This is what gets transcribed.", description: "Drop folders or files here" },
+  { kind: "broll", label: "B-roll", title: "Cutaways and coverage that sit over the talking.", description: "Drop folders or files here" },
+  { kind: "audio", label: "Recorder audio", title: "Lav mics and external recorders, synced to the picture.", description: "Drop folders or files here" },
+  { kind: "assets", label: "Other files", title: "Anything else that belongs to this project.", description: "Drop folders or files here" },
 ];
 const CONTRACT_KIND = { aroll: "aroll", broll: "broll", audio: "source_audio", assets: "assets" };
 const PROJECT_TYPES = ["interview", "property_tour", "renovation", "how_to", "event", "product", "other"];
@@ -415,10 +416,11 @@ export default function PMTab({ subscribe, project, jobs, hasRunning, onGoToIdea
 
   return (
     <div className="pm-tab">
-      <h2>Project</h2>
-      <p className="pm-tab-sub">
-        Add your footage once. Organize saves the project and starts processing it.
-      </p>
+      <PageHeader
+        title="Footage"
+        lead="Tell Post House where this shoot lives: the interviews, the B-roll and the audio. It transcribes what was said so ideas can be found in it."
+        next="Next: Ideas, once the interviews are transcribed"
+      />
 
       <FolderField
         label="Project folder"

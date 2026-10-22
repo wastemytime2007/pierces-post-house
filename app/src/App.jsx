@@ -12,6 +12,8 @@ import AutoIncludeHelp from "./components/AutoIncludeHelp.jsx";
 import WelcomeModal from "./components/WelcomeModal.jsx";
 import ApiKeyHelp from "./components/ApiKeyHelp.jsx";
 import ToastStack from "./components/ToastStack.jsx";
+import Mark from "./components/Mark.jsx";
+import { ingest as ingestThumb } from "./thumbStore.js";
 import precutLogo from "./assets/precut-logo.png";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +114,8 @@ export default function App() {
           console.error("Malformed backend event:", tauriEvent.payload);
           return;
         }
+
+        ingestThumb(ev);                                       // stills from the footage go to whichever screen shows them
 
         switch (ev.type) {
           case "ready":
@@ -557,7 +561,7 @@ export default function App() {
     <div className="app">
       <header className="titlebar">
         <div className="titlebar-brand">
-          <span className="titlebar-wordmark">Post House</span>
+          <Mark size={20} /><span className="titlebar-wordmark">Post House</span>
           {project && (
             <>
               &nbsp;&nbsp;<span className="titlebar-sep">/</span>

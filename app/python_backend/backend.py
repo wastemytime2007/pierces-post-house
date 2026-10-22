@@ -1469,11 +1469,48 @@ def _require_project() -> Optional[Project]:
     return p
 
 
+def handle_project_posters(cmd: dict) -> None:
+    """A still from each project's own footage for the project list: {"projects": [{"name", "dir"}]}. One `project_poster` event per project as each is ready (cached after the first time)."""
+    items = [p for p in cmd.get("projects", []) if p.get("dir")]
+
+    def worker() -> None:
+        import thumbs
+        for p in items:
+            emit({"type": "project_poster", "name": p.get("name"), "poster": thumbs.project_poster(p["dir"])})
+
+    threading.Thread(target=worker, name="project-posters", daemon=True).start()
+
+
+def handle_frame_thumbs(cmd: dict) -> None:
+    """Stills for the page to show: {"id", "items": [{"key", "path", "t"}], "width"?}. Answers with `frame_thumbs` events: {"id", "thumbs": {key: data URI or null}}."""
+    items = cmd.get("items", [])[:60]
+    width = int(cmd.get("width") or 320)
+    rid = cmd.get("id")
+
+    def worker() -> None:
+        import thumbs
+        out = {}
+        for it in items:
+            uri = None
+            for cand in [it.get("path", ""), *it.get("alts", [])]:      # the first file that exists and gives a frame wins; a short clip falls back to its first second
+                uri = thumbs.frame_data_uri(cand, float(it.get("t") or 1.0), width) or thumbs.frame_data_uri(cand, 0.5, width)
+                if uri:
+                    break
+            out[str(it.get("key"))] = uri
+            if len(out) % 6 == 0 and len(out) < len(items):
+                emit({"type": "frame_thumbs", "id": rid, "thumbs": dict(out), "partial": True})
+        emit({"type": "frame_thumbs", "id": rid, "thumbs": out})
+
+    threading.Thread(target=worker, name="frame-thumbs", daemon=True).start()
+
+
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
 
 HANDLERS = {
+    "project_posters": handle_project_posters,
+    "frame_thumbs": handle_frame_thumbs,
     "ping": handle_ping,
     "list_projects": handle_list_projects,
     "create_project": handle_create_project,

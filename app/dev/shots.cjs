@@ -46,8 +46,17 @@ async function counts(page, label) {
   await page.screenshot({ path: path.join(out, "01_project_tab.png") });
   await counts(page, "01_project_tab");
 
+  // frames for the cuts' tiles (dev/frames/*.jpg, cut from real footage with thumbs.py); without them the tiles stay as film-icon placeholders
+  const FR = process.env.FRAMES || path.join(__dirname, "frames");
+  if (fs.existsSync(FR)) {
+    const files = fs.readdirSync(FR).filter((f) => f.endsWith(".jpg")).sort();
+    const thumbs = {};
+    NAMES.forEach((n, i) => { thumbs[`cut:${WK}/${n}.xml`] = "data:image/jpeg;base64," + fs.readFileSync(path.join(FR, files[i % files.length])).toString("base64"); });
+    thumbs["cut:/x/wall.xml"] = "data:image/jpeg;base64," + fs.readFileSync(path.join(FR, files[0])).toString("base64");
+    await page.evaluate((t) => window.__emit({ type: "frame_thumbs", thumbs: t }), thumbs);
+  }
   // 2. the Review tab with nothing open
-  await page.getByText("Review", { exact: true }).click();
+  await page.getByRole("tab", { name: /Finish/ }).click();
   await page.waitForTimeout(300);
   await page.evaluate((x) => window.__emit({ type: "exports_listed", exports: x }), [
     { name: "WK_08 mitch if it is someone s home", path: `${WK}/${n8}.xml`, folder: "wk xml - seqs", mtime: Date.now() / 1000 },

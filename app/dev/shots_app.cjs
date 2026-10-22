@@ -4,6 +4,7 @@ const { chromium } = require("playwright-core");
 const fs = require("fs");
 const path = require("path");
 const out = process.argv[2] || "shots_app";
+const FR2 = process.env.FRAMES || path.join(__dirname, "frames");
 const port = process.argv[3] || "5199";
 const CHROME = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 fs.mkdirSync(out, { recursive: true });
@@ -36,8 +37,17 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await shot("09_welcome");
   await page.getByRole("button", { name: "Skip" }).first().click().catch(() => {});
   await page.evaluate(() => window.__backend({ type: "settings", settings: { has_env: false, active_source: "none", llm_via_cli: false, welcome_seen: true, tour_seen: true, auto_include_nudge_seen: true } }));
-  await page.evaluate(() => window.__backend({ type: "projects_list", projects: [
-    { name: "Runnells Weekend", path: "/x/a", updated_at: Date.now() / 1000 - 3600, source_count: 2 }, { name: "Wall Removal", path: "/x/b", updated_at: Date.now() / 1000 - 90000, source_count: 4 }] }));
+  // Real frames: dev/frames/*.jpg if present (cut from your own footage with thumbs.py), else the posters stay as brand-color tiles
+  const NAMES = ["Runnells Weekend", "Runnells Wall Removal", "Runnells Hanging Mirror", "Kitchen and Doors, 3 Reels", "How to remove wallpaper", "Test2"];
+  await page.evaluate((names) => window.__backend({ type: "projects_list", projects: names.map((n, i) => ({ name: n, dir: "/x/" + i, updated_at: Date.now() / 1000 - 3600 * (i * i + 1), source_count: n === "Test2" ? 0 : 2 + i })) }), NAMES);
+  const FR = process.env.FRAMES || path.join(__dirname, "frames");
+  if (fs.existsSync(FR)) {
+    const files = fs.readdirSync(FR).filter((f) => f.endsWith(".jpg")).sort();
+    for (let i = 0; i < Math.min(files.length, NAMES.length - 1); i++) {
+      const uri = "data:image/jpeg;base64," + fs.readFileSync(path.join(FR, files[i])).toString("base64");
+      await page.evaluate(([n, u]) => window.__backend({ type: "project_poster", name: n, poster: u }), [NAMES[i], uri]);
+    }
+  }
   await shot("10_start");
   await page.getByRole("button", { name: /New project/i }).first().click().catch(() => {});
   await shot("11_new_project");
@@ -52,6 +62,12 @@ const ANGLES = [1, 2, 3].map((n) => ({ idea_id: `a${n}`, kind: "story_angle", cr
   await page.getByRole("button", { name: /Close|Cancel|×/ }).first().click().catch(() => {});
   await page.evaluate((a) => window.__backend({ type: "ideas_list", ideas: a }), ANGLES);
   await page.getByRole("tab", { name: /Ideas/ }).click();
+  if (fs.existsSync(FR2)) {
+    const f2 = fs.readdirSync(FR2).filter((f) => f.endsWith(".jpg")).sort();
+    const th = {};
+    [120, 300].forEach((sec, i) => { th[`f:/Volumes/Runnells/Interviews/wknd_Bob_01.mp4:${sec}`] = "data:image/jpeg;base64," + fs.readFileSync(path.join(FR2, f2[i % f2.length])).toString("base64"); });
+    await page.evaluate((x) => window.__backend({ type: "frame_thumbs", thumbs: x }), th);
+  }
   await shot("15_ideas");
   await page.getByRole("button", { name: "Activity" }).click();
   await shot("16_activity_open");

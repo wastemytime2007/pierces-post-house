@@ -5024,3 +5024,115 @@ h1, h2, .pm-tab > h2, .rv-empty-card h1, .rv-title h1 { letter-spacing: -0.02em;
 
 /* Start screen: a backend error is a small notice with its own background, never text over the project list */
 .start-log { left: 50%; right: auto; transform: translateX(-50%); bottom: 20px; max-width: min(720px, calc(100vw - 40px)); max-height: none; padding: 8px 14px; background: var(--bg-2); border-radius: 10px; box-shadow: var(--shadow-2); color: var(--fg-0); font-size: var(--text-footnote); }
+
+/* ===========================================================
+ * Home (2026-10-21): the footage is the interface. See docs/design/EXPERIENCE.md
+ * =========================================================== */
+.start-panel { max-width: 1040px; width: 100%; padding-bottom: 64px; }
+.start-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin: 8px 0 28px; flex-wrap: wrap; }
+.start-hero-text { display: flex; flex-direction: column; gap: 6px; }
+.start-hero-text > svg { margin-bottom: 14px; box-shadow: 0 6px 18px rgba(3, 52, 89, 0.35); border-radius: 9px; }
+.start-title { margin: 0; font-size: 36px; line-height: 1.1; font-weight: 700; letter-spacing: -0.03em; color: var(--fg-0); }
+.start-sub { margin: 0; font-size: 15px; color: var(--fg-1); max-width: 460px; line-height: 1.45; }
+.start-header-actions { display: flex; gap: 8px; }
+.section-head { margin: 28px 0 10px; font-size: var(--text-body); font-weight: 600; letter-spacing: 0; color: var(--fg-1); }
+.cover-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .cover-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.cover { position: relative; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-1); aspect-ratio: 16 / 10; background: var(--bg-2);
+  animation: cover-in 460ms var(--ease) both; animation-delay: calc(var(--i, 0) * 45ms); transition: box-shadow 200ms var(--ease), transform 200ms var(--ease); }
+.cover.featured { aspect-ratio: 21 / 8; border-radius: 16px; }
+.cover:hover { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.cover-open { position: absolute; inset: 0; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; border-radius: inherit; display: block; }
+.cover-art { position: absolute; inset: 0; background-size: cover; background-position: center 30%; transition: transform 600ms var(--ease); }
+.cover:hover .cover-art { transform: scale(1.04); }
+.cover-shade { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.28) 38%, rgba(0, 0, 0, 0) 62%); }
+.cover-info { position: absolute; left: 16px; right: 16px; bottom: 13px; display: flex; flex-direction: column; gap: 2px; }
+.cover-name { font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; color: #fff; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cover.featured .cover-name { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+.cover-meta { font-size: var(--text-footnote); color: rgba(255, 255, 255, 0.82); }
+.cover-delete { position: absolute; top: 10px; right: 10px; width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #fff; background: rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); cursor: pointer; opacity: 0; transition: opacity 150ms var(--ease), background 120ms var(--ease); }
+.cover:hover .cover-delete, .cover-delete:focus-visible { opacity: 1; }
+.cover-delete:hover { background: rgba(0, 0, 0, 0.7); }
+@keyframes cover-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.start-empty { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 48px 0; max-width: 480px; }
+.start-empty h2 { margin: 12px 0 0; font-size: 22px; letter-spacing: -0.02em; font-weight: 650; }
+.start-empty p { margin: 0 0 8px; color: var(--fg-1); font-size: var(--text-body); line-height: 1.5; }
+.start-empty-frames { position: relative; width: 150px; height: 92px; }
+.start-empty-frames span { position: absolute; width: 104px; height: 66px; border-radius: 10px; box-shadow: var(--shadow-2); }
+.start-empty-frames span:nth-child(1) { left: 0; top: 18px; background: linear-gradient(135deg, #033459, #0a6ea8); transform: rotate(-7deg); }
+.start-empty-frames span:nth-child(2) { left: 22px; top: 8px; background: linear-gradient(135deg, #0a6ea8, #00ade1); transform: rotate(-1deg); }
+.start-empty-frames span:nth-child(3) { left: 46px; top: 14px; background: linear-gradient(135deg, #00ade1, #8fdcf5); transform: rotate(6deg); }
+
+/* Page headers: what this page is for, and what comes next */
+.page-header { margin: 4px 0 22px; max-width: 640px; }
+.page-header h1 { margin: 0 0 6px; font-size: 30px; line-height: 1.12; font-weight: 700; letter-spacing: -0.03em; color: var(--fg-0); }
+.page-header p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--fg-1); }
+.page-next { display: inline-flex; align-items: center; gap: 3px; margin-top: 10px; font-size: var(--text-footnote); color: var(--accent); }
+.cover.featured { aspect-ratio: 24 / 8; }
+
+/* An idea is a storyboard: frames from the moments it uses, edge to edge across the top of its card */
+.idea-card.is-angle { padding-top: 0; overflow: hidden; }
+.storyboard { position: relative; margin: 0 -20px 4px; }
+.storyboard-frames { display: flex; gap: 2px; height: 132px; background: var(--bg-0); }
+.storyboard .frame { flex: 1; min-width: 0; background-size: cover; background-position: center 25%; }
+.storyboard .frame.empty { display: grid; place-items: center; background: var(--bg-3); color: var(--fg-2); }
+.storyboard-check { position: absolute; top: 10px; left: 12px; }
+.storyboard-chip { position: absolute; right: 10px; bottom: 8px; padding: 2px 9px; border-radius: 99px; font-size: var(--text-caption); color: #fff; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.icon { flex: none; vertical-align: -0.15em; }
+
+/* Finish screen: cuts are shown by their own frame; Get Creative says what each option does to the video */
+.cut-thumb { flex: none; width: 38px; height: 38px; border-radius: 8px; background-color: var(--bg-3); background-size: cover; background-position: center 22%; box-shadow: 0 0 0 0.5px var(--separator); display: grid; place-items: center; color: var(--fg-2); }
+.cut-thumb.big { width: 100%; height: auto; aspect-ratio: 4 / 5; border-radius: 12px; box-shadow: var(--shadow-1); transition: box-shadow 200ms var(--ease), transform 200ms var(--ease); }
+.rv-seq { align-items: center; gap: 10px; padding: 5px 8px; }
+.rv-seq .rv-glyph { margin-left: auto; }
+.rv-side { width: 264px; }
+
+.rv-sheet { width: min(500px, 100%); }
+.rv-opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 11px; background: var(--bg-2); box-shadow: var(--shadow-1); cursor: pointer; transition: box-shadow 120ms var(--ease); }
+.rv-opt:hover { box-shadow: var(--shadow-2); }
+.rv-opt-icon { flex: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; background: var(--fill); color: var(--fg-1); transition: background 120ms var(--ease), color 120ms var(--ease); }
+.rv-opt.on .rv-opt-icon { background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
+.rv-opt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rv-opt-text b { font-weight: 600; font-size: var(--text-body); }
+.rv-opt-text span { font-size: var(--text-footnote); color: var(--fg-1); line-height: 1.35; }
+.rv-switch { appearance: none; -webkit-appearance: none; flex: none; width: 38px; height: 22px; border-radius: 11px; background: var(--bg-4); border: 0 !important; box-shadow: none !important; position: relative; cursor: pointer; transition: background 160ms var(--ease); }
+.rv-switch::after { content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 160ms var(--ease); }
+.rv-switch:checked { background: var(--accent-fill); }
+.rv-switch:checked::after { transform: translateX(16px); }
+.rv-sheet fieldset { gap: 6px; }
+
+.rv-empty { padding-top: 9vh; }
+.rv-empty-card { width: min(940px, 100%); }
+.rv-empty-card h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; }
+.rv-empty-card > p { font-size: 15px; max-width: 560px; }
+.rv-steps { list-style: none; counter-reset: step; margin: 22px 0 24px; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; max-width: 760px; }
+.rv-steps li { counter-increment: step; display: flex; flex-direction: column; gap: 3px; padding: 14px 14px 14px 14px; border-radius: 12px; background: var(--bg-1); box-shadow: var(--shadow-1); }
+.rv-steps li::before { content: counter(step); width: 22px; height: 22px; margin-bottom: 8px; border-radius: 50%; display: grid; place-items: center; font-size: var(--text-footnote); font-weight: 600; color: var(--accent); background: rgba(var(--accent-rgb), 0.14); }
+.rv-steps b { font-weight: 600; }
+.rv-steps span { font-size: var(--text-footnote); color: var(--fg-1); line-height: 1.4; }
+.rv-recent-head { margin: 36px 0 12px; }
+.rv-posters { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.rv-poster { display: flex; flex-direction: column; gap: 3px; width: 100%; text-align: left; background: none; border: 0; padding: 0; cursor: pointer; color: var(--fg-0); font: inherit; border-radius: 12px; }
+.rv-poster:hover:not(:disabled) .cut-thumb.big { box-shadow: var(--shadow-2); transform: translateY(-2px); }
+.rv-poster-name { margin-top: 8px; font-weight: 600; font-size: var(--text-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rv-poster-meta { font-size: var(--text-footnote); color: var(--fg-1); }
+
+/* Footage zones: each says what goes in it, with a quiet icon; dashed while empty, solid once something is in */
+.dropzone { border: 1.5px dashed var(--bg-4); background: transparent; box-shadow: none; border-radius: 14px; padding: 18px 18px 16px; min-height: 168px; gap: 6px; }
+.dropzone:hover { background: var(--fill); border-color: var(--fg-3); }
+.dropzone.has-items { border: 0; background: var(--bg-1); box-shadow: var(--shadow-1); }
+.dropzone.active { border-color: var(--accent); background: var(--accent-glow); box-shadow: inset 0 0 0 1px var(--accent); }
+.dropzone-header { align-items: center; }
+.dropzone-label { display: inline-flex; align-items: center; gap: 10px; font-size: var(--text-title); font-weight: 600; letter-spacing: -0.01em; color: var(--fg-0); }
+.dropzone-icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; background: var(--fill); color: var(--fg-1); }
+.dropzone.has-items .dropzone-icon { background: rgba(var(--accent-rgb), 0.16); color: var(--accent); }
+.dropzone-title { font-size: var(--text-footnote); font-weight: 400; line-height: 1.4; color: var(--fg-1); letter-spacing: 0; margin: 4px 0 0; }
+.dropzone-description { display: none; }
+.dropzone-count { color: var(--fg-1); }
+.dropzone-fileitem .remove { background: none; border: 0; padding: 0 4px; font-size: 16px; color: var(--fg-2); cursor: pointer; }
+.dropzone-picklink { display: none; }
+
+.rv-posters { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }

@@ -1,4 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
+import PageHeader from "../../components/PageHeader.jsx";
+import Icon from "../../components/Icon.jsx";
+import { useThumb, requestFrames } from "../../thumbStore.js";
 import { sendCommand } from "../../App.jsx";
 import ExportModal from "../../components/ExportModal.jsx";
 import HelpTooltip from "../../components/HelpTooltip.jsx";
@@ -300,6 +303,11 @@ export default function IdeasTab({
 
   return (
     <>
+      <PageHeader
+        title="Ideas"
+        lead="Stories found in what your people actually said. Choose the ones worth cutting and export them to Premiere to trim."
+        next="Next: Finish, with your trimmed XML"
+      />
       <div className="ideas-actions">
         {/* 2026-09-04: this is now THE "Generate ideas" button. Ryan's own
             words made clear he doesn't think of "generate from flagged
@@ -326,7 +334,7 @@ export default function IdeasTab({
           disabled={transcriptCount === 0 || producerBusy}
           title="Talk through what's in your footage and what to build with it — research and a proposed game plan first, ideas only once you agree"
         >
-          {planSession ? "Continue planning" : "Plan with AI"}
+          <Icon name="sparkles" size={15} /> {planSession ? "Continue planning" : "Plan with AI"}
         </button>
         <button
           className="btn"
@@ -771,6 +779,30 @@ function IdeaCard({ idea, projectDir, research, onFetchResearch, onRefine, onDis
 // Story Angle card — Drop 4.0
 // ---------------------------------------------------------------------------
 
+// The idea as a storyboard: one frame from each moment it uses, taken from the footage itself, with the choose-it checkbox and the runtime laid over the strip.
+function Frame({ frameKey }) {
+  const uri = useThumb(frameKey);
+  return <div className={`frame ${uri ? "" : "empty"}`} style={uri ? { backgroundImage: `url(${uri})` } : undefined}>{!uri && <Icon name="film" size={18} />}</div>;
+}
+
+function Storyboard({ ranges, selected, onToggle, chip }) {
+  const picks = ranges.slice(0, 4).map((r) => ({ key: `f:${r.source_path}:${Math.round(r.source_start_sec || 0)}`, path: r.source_path, t: (r.source_start_sec || 0) + 1.5 }));
+  const sig = picks.map((p) => p.key).join("|");
+  useEffect(() => { requestFrames(picks, 360); }, [sig]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div className="storyboard">
+      <div className={`storyboard-frames n${Math.max(1, picks.length)}`}>
+        {picks.length ? picks.map((p) => <Frame key={p.key} frameKey={p.key} />) : <div className="frame empty"><Icon name="film" size={18} /></div>}
+      </div>
+      <label className="idea-card-checkbox storyboard-check" title={selected ? "Chosen for export" : "Choose for export"} onClick={(e) => e.stopPropagation()}>
+        <input type="checkbox" checked={!!selected} onChange={onToggle} />
+        <span className="idea-card-checkbox-box" />
+      </label>
+      <span className="storyboard-chip">{chip}</span>
+    </div>
+  );
+}
+
 function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard, onSetPreset, onSetPlatformAndAspect, disabled, selected, onToggleSelect }) {
   const d = idea.data || {};
   const brief = d.brief || {};
@@ -869,29 +901,12 @@ function StoryAngleCard({ idea, projectDir, research, onFetchResearch, onDiscard
 
   return (
     <div className={`idea-card is-angle ${selected ? "is-selected" : ""}`}>
-      <div className="idea-card-header">
-        <label
-          className="idea-card-checkbox"
-          title={selected ? "Selected for export" : "Select for export"}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <input
-            type="checkbox"
-            checked={!!selected}
-            onChange={() => onToggleSelect?.(idea.idea_id, true)}
-          />
-          <span className="idea-card-checkbox-box" />
-        </label>
-        <div className="idea-card-kind">
-          <span className="idea-card-angle-badge">★ Story angle</span>
-        </div>
-        <div className="idea-card-meta">
-          {useRanges
-            ? `${sourceRanges.length} range${sourceRanges.length !== 1 ? "s" : ""}`
-            : `${(d.phrase_ids || []).length} phrase${(d.phrase_ids || []).length !== 1 ? "s" : ""}`}
-          {duration ? ` · ${duration}` : ""}
-        </div>
-      </div>
+      <Storyboard
+        ranges={sourceRanges}
+        selected={selected}
+        onToggle={() => onToggleSelect?.(idea.idea_id, true)}
+        chip={`${useRanges ? `${sourceRanges.length} moment${sourceRanges.length !== 1 ? "s" : ""}` : `${(d.phrase_ids || []).length} phrase${(d.phrase_ids || []).length !== 1 ? "s" : ""}`}${duration ? ` · ${duration}` : ""}`}
+      />
 
       <h3 className="idea-card-title">{title}</h3>
       {tone && <div className="idea-card-tone">{tone}</div>}

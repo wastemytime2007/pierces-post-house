@@ -288,9 +288,9 @@ export default function ProjectView({
           ‹ Projects
         </button>
         <div className="project-nav-tabs" role="tablist" aria-label="Project sections">
-          <Tab label="Project" active={activeTab === "pm"} onClick={() => setActiveTab("pm")} sub={project.sources.length ? `${project.sources.length}` : ""} />
+          <Tab label="Footage" active={activeTab === "pm"} onClick={() => setActiveTab("pm")} sub={project.sources.length ? `${project.sources.length}` : ""} />
           <Tab label="Ideas" active={activeTab === "ideas"} onClick={() => setActiveTab("ideas")} sub={ideas.length ? `${ideas.length}` : ""} disabled={transcriptCount === 0 && ideas.length === 0} />
-          <Tab label="Review" active={activeTab === "review"} onClick={() => setActiveTab("review")} sub={reviewSub} />
+          <Tab label="Finish" active={activeTab === "review"} onClick={() => setActiveTab("review")} sub={reviewSub} />
         </div>
         <div className="project-nav-spacer" />
         <button className="btn btn-sm" aria-pressed={showLog} onClick={() => setShowLog((x) => !x)} title="Show or hide the activity log">Activity</button>

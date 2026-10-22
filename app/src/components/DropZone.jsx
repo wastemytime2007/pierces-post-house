@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import Icon from "./Icon.jsx";
 import HelpTooltip from "./HelpTooltip.jsx";
 
 /**
@@ -109,6 +110,7 @@ export default function DropZone({
     >
       <div className="dropzone-header">
         <span className="dropzone-label">
+          <span className="dropzone-icon"><Icon name={{ aroll: "film", broll: "image", audio: "mic", assets: "folder" }[kind] || "folder"} size={18} /></span>
           {label}
           {help && <HelpTooltip>{help}</HelpTooltip>}
         </span>
@@ -122,8 +124,8 @@ export default function DropZone({
         <>
           <div className="dropzone-description">{description}</div>
           <div style={{ marginTop: "auto", display: "flex", gap: 14 }}>
-            <a className="dropzone-picklink" onClick={onPick}>Browse files…</a>
-            <a className="dropzone-picklink" onClick={onPickFolder}>Pick folder…</a>
+            <button type="button" className="btn btn-sm" onClick={onPickFolder}><Icon name="folder" size={14} /> Add folder</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={onPick}>Add files…</button>
           </div>
         </>
       ) : (
@@ -145,14 +147,14 @@ export default function DropZone({
                       <span className="item-count"> · {fileCount} file{fileCount !== 1 ? "s" : ""}</span>
                     )}
                   </span>
-                  <span className="remove" onClick={() => onRemove(path)}>×</span>
+                  <button type="button" className="remove" onClick={() => onRemove(path)} aria-label={`Remove ${display}`} title="Remove">×</button>
                 </div>
               );
             })}
           </div>
           <div style={{ display: "flex", gap: 14 }}>
-            <a className="dropzone-picklink" onClick={onPick}>+ files</a>
-            <a className="dropzone-picklink" onClick={onPickFolder}>+ folder</a>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={onPickFolder}><Icon name="plus" size={13} /> Folder</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={onPick}><Icon name="plus" size={13} /> Files</button>
           </div>
         </>
       )}
