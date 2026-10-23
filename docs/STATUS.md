@@ -90,6 +90,21 @@ this repo in `~/Documents/SoldFast Origin Film/` (film work, not code).
   `None` keeps the existing probe-the-first-segment behaviour). Needed because this reel opens on a
   1440x810 proxy while 22 of its 40 clips are 1920x1080, which would import mis-scaled. Synced via
   `sync_posthouse.sh`.
+- **v1 was rejected by Ryan on 2026-10-23 and the reason is worth keeping.** His words:
+  *"Sentences are getting cut off. Bob says 'ive been doing it forty four years now' with no context
+  as to what 'IT' is."* Both true. v1 was cut on Whisper **cue boundaries**, which fall where the
+  model broke rather than where a sentence ends, and its quotes were chosen to be **citable** rather
+  than to be speech that stands alone — so clips ended mid-phrase ("something that we live eating")
+  and began with pronouns whose referent had been cut. The machine checks all passed: token-overlap
+  measured whether the right words were present, never whether the result was intelligible. A green
+  check on a broken artifact. The missing antecedent was in the selects and was dropped when the
+  treatment was written.
+- **v2** (`origin_cut_v2.xml`, 7:12, 33 clips) rebuilds every clip as a complete thought, named by
+  its first and last spoken words and cut on WhisperX **word-level** timings. The rendered cut was
+  transcribed and read back end to end as a script — the step skipped the first time, and the only
+  one that catches this class of defect. `CUT-GRANULARITY` fails (5 clips/min, wants 6); that rule
+  came from a 65s Reel and is believed to be a false positive for long-form. Not tuned away; left
+  failing and flagged to Ryan. Notes in `CUT_V2.md`.
 - **Not done, and not Done**: Ryan has not seen any of it. No B-roll, music or titles — spoken spine
   only. Runtime is 55s over the 5:00 brief, deliberately, for him to trim. Three sensitive passages
   (Mitch's mother; Bob and Sam, which needs Sam's own consent; the partnership tension) found and
