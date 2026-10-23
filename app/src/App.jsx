@@ -38,6 +38,23 @@ function ProjectChip({ name }) {
 // ---------------------------------------------------------------------------
 
 /** True only for somewhere a person is typing: a text field, a text area, or editable content. A checkbox, radio or button is not. */
+/** Move the window with the pointer. The attribute alone did not do it, so the window is asked directly.
+ *  Outside a Tauri window (the browser harness) there is nothing to move, and nothing happens. */
+export async function dragWindow() {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startDragging();
+  } catch (e) { /* not in a window that can be moved */ }
+}
+
+/** Double-clicking the title bar zooms, the way macOS expects. */
+export async function zoomWindow() {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().toggleMaximize();
+  } catch (e) { /* not in a window that can be zoomed */ }
+}
+
 export function isTyping(el) {
   if (!el) return false;
   if (el.isContentEditable) return true;
@@ -754,7 +771,19 @@ export default function App() {
 
   return (
     <div className={`app ${typeof window !== "undefined" && window.__IS_HARNESS__ ? "" : "has-traffic-lights"}`}>
-      <header className="titlebar" data-tauri-drag-region>
+      <header
+        className="titlebar"
+        data-tauri-drag-region
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          if (e.target.closest("button, a, input, select, textarea, [role=\"menu\"], [role=\"menuitem\"]")) return;
+          dragWindow();
+        }}
+        onDoubleClick={(e) => {
+          if (e.target.closest("button, a, input, select, textarea")) return;
+          zoomWindow();
+        }}
+      >
         <div className="titlebar-brand" data-tauri-drag-region>
           <button className="titlebar-home" onClick={() => project && closeProject()} disabled={!project} aria-label={project ? "Post House, all projects" : "Post House"} title={project ? "All projects" : undefined}>
             <Mark size={20} /><span className="titlebar-wordmark">Post House</span>

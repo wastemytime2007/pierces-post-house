@@ -13,6 +13,8 @@
     "dialog:allow-save",
     "fs:default",
     "shell:default",
-    "drag:default"
+    "drag:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize"
   ]
 }
