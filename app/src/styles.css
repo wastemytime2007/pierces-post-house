@@ -5565,9 +5565,8 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
       room around it. One flat blur reads as a sticker.
    2. Surfaces lit from above. A hairline of light along the top edge of a
       raised thing is what makes it read as a surface rather than a rectangle.
-   3. Grain. A post house's own texture, from the medium: a fine film grain over
-      the chrome, far too quiet to see on purpose, enough that a large flat
-      panel stops looking like paint. Never over the picture itself.
+   3. (The grain that was here is gone: Ryan did not like it. What replaced it
+      is the light in the MATERIAL section below.)
    4. Reflections on the footage. A cover is a glossy thing; it catches a little
       light across its top and leaves a soft fall under it.
 
@@ -5584,7 +5583,6 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
   /* the light that falls on the top edge of a raised surface */
   --lit: inset 0 1px 0 rgba(255, 255, 255, 0.055);
   --lit-strong: inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  --grain-opacity: 0.035;
 }
 
 @media (prefers-color-scheme: light) {
@@ -5597,27 +5595,11 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
     --elev-4: 0 6px 12px rgba(16, 24, 32, 0.13), 0 28px 60px -10px rgba(16, 24, 32, 0.24), 0 0 0 0.5px var(--separator);
     --lit: inset 0 1px 0 rgba(255, 255, 255, 0.85);
     --lit-strong: inset 0 1px 0 rgba(255, 255, 255, 1);
-    --grain-opacity: 0.022;
   }
 }
 :root[data-theme="dark"] {
   --elev-1: 0 1px 1px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.10), 0 0 0 0.5px var(--separator);
   --lit: inset 0 1px 0 rgba(255, 255, 255, 0.055);
-}
-
-/* ---- 3. Grain -------------------------------------------------------------
-   One fixed layer over the whole window, under every control and over the flat
-   grounds. It never takes a click, and it is excluded from the picture, the
-   covers' own frames and anything showing footage. */
-.app::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  opacity: var(--grain-opacity);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
 }
 
 /* ---- 1 and 2. Raised surfaces ---------------------------------------------
@@ -5648,7 +5630,7 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
   box-shadow: var(--elev-3), var(--lit-strong);
 }
 
-/* the picture itself sits above the page, and is never grained */
+/* the picture itself sits above the page */
 .rv-frame iframe, .rv-compare-one, .sp-peek-art {
   box-shadow: var(--elev-4);
 }
@@ -5779,8 +5761,7 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
 
    - no flat fills. Every panel is a gradient, lighter at the top where the
      light falls, darker at the bottom.
-   - a visible grain ON the panels (not a 3% whisper over the window), so a
-     large surface reads as coated rather than painted.
+   (The grain this section added was removed: see MATERIAL, SECOND ATTEMPT.)
    - a specular sweep across the top of cards and bars, like light across glass.
    - a vignette on footage, so a frame sits in its tile instead of on it.
    =========================================================================== */
@@ -5793,9 +5774,6 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
   /* a specular band, swept across the top of a surface */
   --spec: linear-gradient(104deg, transparent 0%, rgba(255, 255, 255, 0.04) 36%, rgba(255, 255, 255, 0.06) 44%, rgba(255, 255, 255, 0.015) 54%, transparent 72%);
   /* white speckle on transparent: the turbulence's own luminance becomes the alpha, so it lies on any ground */
-  --grain-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 -0.38'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-  --grain-dark-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0.62'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-  --grain-on-panel: 0;
 }
 
 @media (prefers-color-scheme: light) {
@@ -5804,71 +5782,8 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
     --sheen-bar: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.2) 55%, rgba(16, 24, 32, 0.05) 100%);
     --sheen-sunk: linear-gradient(180deg, rgba(16, 24, 32, 0.07) 0%, rgba(16, 24, 32, 0.012) 60%, rgba(255, 255, 255, 0.6) 100%);
     --spec: linear-gradient(104deg, transparent 0%, rgba(255, 255, 255, 0.16) 36%, rgba(255, 255, 255, 0.24) 44%, rgba(255, 255, 255, 0.08) 54%, transparent 72%);
-    --grain-on-panel: 0;
   }
 }
-
-/* ---- The material itself ---------------------------------------------------
-   A surface gets its own gradient and its own grain, layered over whatever
-   background it already had. `background-blend-mode` keeps the colour underneath. */
-.idea-card,
-.trim-steps li,
-.dropzone,
-.trim-row,
-.rv-opt,
-.modal,
-.rv-sheet,
-.cp,
-.set-row-control select,
-.activity-panel,
-.rv-menu-list,
-.page-tip,
-.trim-drop,
-.rv-notice {
-  position: relative;
-  background-image: var(--grain-url), var(--sheen-card);
-  background-size: 140px 140px, auto;
-  background-blend-mode: soft-light, normal;
-}
-
-/* the grain needs to be visible, so it rides its own layer at a real opacity */
-.idea-card::before,
-.trim-steps li::before,
-.dropzone::before,
-.rv-opt::before,
-.modal::before,
-.rv-sheet::before,
-.cp::before,
-.activity-panel::before,
-.trim-drop::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  opacity: var(--grain-on-panel);
-  background-image: var(--grain-url);
-  background-size: 140px 140px;
-  mix-blend-mode: soft-light;
-}
-/* the numbered Trim tiles already use ::before for their number, so they get the grain on ::after */
-.trim-steps li::before { content: counter(ts); opacity: 1; background: rgba(var(--accent-rgb), 0.14); mix-blend-mode: normal; }
-.trim-steps li::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  opacity: var(--grain-on-panel);
-  background-image: var(--grain-url);
-  background-size: 140px 140px;
-  mix-blend-mode: soft-light;
-}
-.trim-steps li { position: relative; }
-.trim-steps li > * { position: relative; z-index: 1; }
-.idea-card > *, .dropzone > *, .rv-opt > *, .modal > *, .rv-sheet > *, .cp > *, .activity-panel > *, .trim-drop > * { position: relative; z-index: 1; }
 
 /* ---- A specular sweep across the top of the big surfaces ------------------- */
 .modal::after,
@@ -5886,12 +5801,6 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
   background: var(--spec);
 }
 
-/* ---- Bars are brushed, not painted ----------------------------------------- */
-.titlebar, .project-nav, .rv-toolbar, .set-toolbar {
-  background-image: var(--grain-url), var(--sheen-bar);
-  background-size: 140px 140px, auto;
-  background-blend-mode: soft-light, normal;
-}
 
 /* ---- Things cut into the page get the opposite gradient -------------------- */
 input[type="text"], input[type="search"], input[type="password"], textarea,
@@ -5933,39 +5842,14 @@ input[type="text"], input[type="search"], input[type="password"], textarea,
    because it is transparent over the page while a full one has its own ground. */
 .dropzone:not(.has-items) { background-color: var(--bg-1); }
 
-/* The tip line is a tinted panel, not a textured one: grain over a colour reads as noise */
+/* The tip line is a tinted panel, not a textured one */
 .page-tip { background-image: none; }
 .page-tip::before { display: none; }
 
-/* The grain layer: light speckle and dark speckle together, laid on normally. `soft-light` and
-   `overlay` both vanish on a dark ground, which is why the first two attempts read as nothing. */
-.idea-card::before,
-.trim-steps li::after,
-.dropzone::before,
-.rv-opt::before,
-.modal::before,
-.rv-sheet::before,
-.cp::before,
-.activity-panel::before,
-.trim-drop::before {
-  mix-blend-mode: normal;
-  background-image: var(--grain-url), var(--grain-dark-url);
-  background-size: 140px 140px, 140px 140px;
-  background-position: 0 0, 70px 40px;
-}
-
-/* The bars keep the sheen but NOT the grain: they are thin strips that are mostly text, and grain on
-   them reads as a dirty screen and eats the labels. Texture belongs on the big surfaces. */
+/* The bars keep their gradient only: they are thin strips that are mostly text. */
 .titlebar, .project-nav, .rv-toolbar, .set-toolbar {
   background-image: var(--sheen-bar);
   background-size: auto;
-  background-blend-mode: normal;
-}
-
-/* a card's own surface no longer needs the blended copy: the layer above carries the grain */
-.idea-card, .trim-steps li, .dropzone, .trim-row, .rv-opt, .modal, .rv-sheet, .cp,
-.set-row-control select, .activity-panel, .rv-menu-list, .trim-drop, .rv-notice {
-  background-image: var(--sheen-card);
   background-blend-mode: normal;
 }
 
@@ -5985,7 +5869,7 @@ input[type="text"], input[type="search"], input[type="password"], textarea,
       falling off across it, so every panel is lit from the same place.
    =========================================================================== */
 
-/* the grain layers go away entirely */
+/* the layers the removed grain rode on */
 .idea-card::before,
 .trim-steps li::after,
 .dropzone::before,
