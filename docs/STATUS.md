@@ -105,6 +105,20 @@ this repo in `~/Documents/SoldFast Origin Film/` (film work, not code).
   one that catches this class of defect. `CUT-GRANULARITY` fails (5 clips/min, wants 6); that rule
   came from a 65s Reel and is believed to be a false positive for long-form. Not tuned away; left
   failing and flagged to Ryan. Notes in `CUT_V2.md`.
+- **v3 and v4 were also rejected** (2026-10-23): "this is boring", then "it still has nothing to do with
+  the story we care about. SoldFast, Iowa, Mitch, Bob, Grandkids, fixing homes the right way", then
+  "painfully unusable". Diagnosis in order: v3 was a radio edit with no picture or pace and its best
+  moment at 87% of the runtime; v4 had the right themes but was assembled from transcripts and
+  thumbnails without ever watching footage. Ryan: "Start from scratch. Read the entire transcripts
+  and build something that is heartfelt and engaging."
+- **v5** (`SoldFast_v5.mp4`, 6:49, 125 shots at 3.3s; `SoldFast_v5_spine.xml`): all four transcripts
+  re-read end to end for what is *alive* rather than informative. Opens on the origin as Bob tells it
+  (a pregnancy test in an Altoids tin on Thanksgiving is why he moved to Iowa); the sixth-stitch story
+  intercut from both men; the lemonade stand; Lily fishing; Columbia House; "Papa did work on that
+  one"; the engineer. **The grandkids are on camera**: `Lunch w:Bob and fam` on the video share, never
+  used before, cut under both men's lunch lines and verified shot-by-shot after assembly. Voice and
+  picture are separate tracks so the voice runs continuously under cutaways. No music exists to use.
+  Notes: `CUT_V5.md`. Still not seen by Ryan.
 - **Not done, and not Done**: Ryan has not seen any of it. No B-roll, music or titles — spoken spine
   only. Runtime is 55s over the 5:00 brief, deliberately, for him to trim. Three sensitive passages
   (Mitch's mother; Bob and Sam, which needs Sam's own consent; the partnership tension) found and
