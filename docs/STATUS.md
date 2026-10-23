@@ -119,6 +119,18 @@ this repo in `~/Documents/SoldFast Origin Film/` (film work, not code).
   used before, cut under both men's lunch lines and verified shot-by-shot after assembly. Voice and
   picture are separate tracks so the voice runs continuously under cutaways. No music exists to use.
   Notes: `CUT_V5.md`. Still not seen by Ryan.
+- **Editable Premiere XML of v5** (`SoldFast_v5_RED.xml`, built by `xml_v5.py` beside the film), on
+  Ryan's spec "with the original RED files and all 4 audio tracks for each clip". Skeleton through
+  `posthouse.coldfootage` against the proxies (30/1, same as the R3Ds, so in/out carry over), then
+  three things PreCut does not do: every interview `<file>` relinked to the first .R3D chunk of its
+  RDC (channelcount 4); A1 cloned to A2–A4 per interview clip with `<sourcetrack><trackindex>` 2–4,
+  unlinked as PreCut's own are; the film's 29 cutaways placed on V2 pointing at the UHD 59.94 originals
+  in Premiere's own export shape (clip rate = sequence, in/out in file frames, file rate 60 NTSC).
+  Self-verified: every path resolves, 31/31 interview clips on R3D, 4 audio tracks × 31, V2 positions
+  match the rendered film to the frame. `verify_export.py` passes everything but the Reel-derived
+  CUT-GRANULARITY rule. **Not yet opened in Premiere.** Two things only Premiere can confirm: that it
+  stitches each RDC from its first chunk, and whether the 6K/8K R3D frames need Set to Frame Size
+  (the XML carries the proxies' dimensions for those files, since ffprobe cannot read R3D).
 - **Not done, and not Done**: Ryan has not seen any of it. No B-roll, music or titles — spoken spine
   only. Runtime is 55s over the 5:00 brief, deliberately, for him to trim. Three sensitive passages
   (Mitch's mother; Bob and Sam, which needs Sam's own consent; the partnership tension) found and
