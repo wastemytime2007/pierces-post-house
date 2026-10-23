@@ -5795,7 +5795,7 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
   /* white speckle on transparent: the turbulence's own luminance becomes the alpha, so it lies on any ground */
   --grain-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 -0.38'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
   --grain-dark-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.15' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -1 0 0 0 0.62'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-  --grain-on-panel: 0.26;
+  --grain-on-panel: 0;
 }
 
 @media (prefers-color-scheme: light) {
@@ -5804,7 +5804,7 @@ progress, .stage-bar, .creative-bar, .sync-bar { box-shadow: var(--inset-2); }
     --sheen-bar: linear-gradient(180deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.2) 55%, rgba(16, 24, 32, 0.05) 100%);
     --sheen-sunk: linear-gradient(180deg, rgba(16, 24, 32, 0.07) 0%, rgba(16, 24, 32, 0.012) 60%, rgba(255, 255, 255, 0.6) 100%);
     --spec: linear-gradient(104deg, transparent 0%, rgba(255, 255, 255, 0.16) 36%, rgba(255, 255, 255, 0.24) 44%, rgba(255, 255, 255, 0.08) 54%, transparent 72%);
-    --grain-on-panel: 0.2;
+    --grain-on-panel: 0;
   }
 }
 
@@ -5967,4 +5967,99 @@ input[type="text"], input[type="search"], input[type="password"], textarea,
 .set-row-control select, .activity-panel, .rv-menu-list, .trim-drop, .rv-notice {
   background-image: var(--sheen-card);
   background-blend-mode: normal;
+}
+
+/* ===========================================================================
+   MATERIAL, SECOND ATTEMPT (Ryan: "The overlays of grain arent very attractive
+   can you try something else?")
+
+   Grain is off. Dimension now comes from LIGHT rather than texture, which is
+   what makes a surface look expensive instead of busy:
+
+   1. Glass. The panels are slightly translucent and blur what is behind them,
+      so the ambient colour of the page comes through and the surface has depth
+      of its own instead of being a painted rectangle.
+   2. A bevel. One hairline of light along the top edge and one of shadow along
+      the bottom, which is how a real raised edge catches a room's light.
+   3. A light source. A single soft highlight in the top-left of each surface,
+      falling off across it, so every panel is lit from the same place.
+   =========================================================================== */
+
+/* the grain layers go away entirely */
+.idea-card::before,
+.trim-steps li::after,
+.dropzone::before,
+.rv-opt::before,
+.modal::before,
+.rv-sheet::before,
+.cp::before,
+.activity-panel::before,
+.trim-drop::before { display: none; }
+
+:root {
+  /* a light in the top-left of every surface, falling off across it */
+  --lightfall: radial-gradient(120% 95% at 4% -10%, rgba(255, 255, 255, 0.17) 0%, rgba(255, 255, 255, 0.06) 30%, rgba(255, 255, 255, 0) 62%), linear-gradient(180deg, rgba(255,255,255,0) 55%, rgba(0,0,0,0.10) 100%);
+  /* the top edge catches the light, the bottom edge is in its own shade */
+  --bevel: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 1px 0 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.30);
+  --glass: color-mix(in srgb, var(--bg-2) 86%, transparent);
+  --glass-deep: color-mix(in srgb, var(--bg-1) 82%, transparent);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --lightfall: radial-gradient(120% 95% at 4% -10%, rgba(255, 255, 255, 1) 0%, rgba(255, 255, 255, 0.55) 28%, rgba(255, 255, 255, 0) 64%), linear-gradient(180deg, rgba(255,255,255,0) 55%, rgba(16,24,32,0.055) 100%);
+    --bevel: inset 0 1px 0 rgba(255, 255, 255, 1), inset 1px 0 0 rgba(255, 255, 255, 0.7), inset 0 -1px 0 rgba(16, 24, 32, 0.10);
+    --glass: color-mix(in srgb, #ffffff 88%, transparent);
+    --glass-deep: color-mix(in srgb, var(--bg-1) 85%, transparent);
+  }
+}
+
+/* the surfaces: lit, bevelled, and a little see-through */
+.idea-card,
+.trim-steps li,
+.dropzone,
+.rv-opt,
+.trim-row,
+.frame-pick-tile,
+.activity-panel,
+.trim-drop,
+.rv-notice {
+  background-color: var(--glass);
+  background-image: var(--lightfall);
+  backdrop-filter: blur(14px) saturate(130%);
+  -webkit-backdrop-filter: blur(14px) saturate(130%);
+  box-shadow: var(--elev-2), var(--bevel);
+}
+
+/* the things that come forward are the most glass-like of all */
+.modal, .rv-sheet, .cp, .rv-menu-list {
+  background-color: var(--glass-deep);
+  background-image: var(--lightfall);
+  backdrop-filter: blur(30px) saturate(150%);
+  -webkit-backdrop-filter: blur(30px) saturate(150%);
+  box-shadow: var(--elev-4), var(--bevel);
+}
+
+/* the bars are the same glass, so the content passing under them reads as under them */
+.titlebar, .project-nav, .rv-toolbar, .set-toolbar {
+  background-color: var(--glass-deep);
+  background-image: var(--lightfall);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+/* pointing at something brings the light up with it */
+.idea-card:hover, .dropzone:hover, .trim-row:hover, .rv-opt:hover, .frame-pick-tile:hover:not(:disabled) {
+  box-shadow: var(--elev-3), inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+
+/* where glass is the wrong answer: a flat, firm, opaque surface */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .idea-card, .trim-steps li, .dropzone, .rv-opt, .trim-row, .frame-pick-tile, .activity-panel, .trim-drop, .rv-notice,
+  .modal, .rv-sheet, .cp, .rv-menu-list, .titlebar, .project-nav, .rv-toolbar, .set-toolbar {
+    background-color: var(--bg-2);
+    background-image: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .titlebar, .project-nav, .rv-toolbar, .set-toolbar { background-color: var(--bg-0); }
 }
