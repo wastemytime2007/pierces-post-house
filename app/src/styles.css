@@ -5503,7 +5503,10 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 
 /* The footage zones: the icon says what kind of thing goes here, but it is not a badge in a tinted
    square on every card (EXPERIENCE.md names that as a tell). It sits with the heading, at its weight. */
-.dropzone-icon { width: auto; height: auto; background: none; color: var(--fg-2); }
+/* The icon says WHAT KIND of footage a zone takes, so it looks the same in every zone. Whether a zone has
+   anything in it is already said twice over, by the "N items" chip and by the dashed border on an empty one.
+   Colouring the icon as well made two of the four look wrong rather than empty (Ryan, 2026-10-22). */
+.dropzone-icon { width: auto; height: auto; background: none; color: var(--accent); }
 .dropzone.has-items .dropzone-icon { background: none; color: var(--accent); }
 
 /* Narrow window: the three Trim steps stack, and a stacked step is a row, not a tall box with
