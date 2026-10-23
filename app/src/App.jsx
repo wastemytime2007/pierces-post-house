@@ -26,9 +26,9 @@ import { undo as undoOne, redo as redoOne, clearUndo } from "./undo.js";
 function ProjectChip({ name }) {
   const u = useThumb(`poster:${name}`);
   return (
-    <span className="titlebar-chip">
-      <span className="titlebar-chip-art" style={u ? { backgroundImage: `url(${u})` } : undefined} aria-hidden="true" />
-      <span className="titlebar-project">{name}</span>
+    <span className="titlebar-chip" data-tauri-drag-region>
+      <span className="titlebar-chip-art" data-tauri-drag-region style={u ? { backgroundImage: `url(${u})` } : undefined} aria-hidden="true" />
+      <span className="titlebar-project" data-tauri-drag-region>{name}</span>
     </span>
   );
 }
@@ -755,19 +755,19 @@ export default function App() {
   return (
     <div className={`app ${typeof window !== "undefined" && window.__IS_HARNESS__ ? "" : "has-traffic-lights"}`}>
       <header className="titlebar" data-tauri-drag-region>
-        <div className="titlebar-brand">
+        <div className="titlebar-brand" data-tauri-drag-region>
           <button className="titlebar-home" onClick={() => project && closeProject()} disabled={!project} aria-label={project ? "Post House, all projects" : "Post House"} title={project ? "All projects" : undefined}>
             <Mark size={20} /><span className="titlebar-wordmark">Post House</span>
           </button>
           {project && (
             <>
-              <span className="titlebar-sep" aria-hidden="true">/</span>
+              <span className="titlebar-sep" aria-hidden="true" data-tauri-drag-region>/</span>
               <ProjectChip name={project.name} />
             </>
           )}
         </div>
-        <div className="titlebar-status">
-          {!backendReady && <span className="titlebar-status-text" role="status">Starting…</span>}
+        <div className="titlebar-status" data-tauri-drag-region>
+          {!backendReady && <span className="titlebar-status-text" role="status" data-tauri-drag-region>Starting…</span>}
           <div className="rv-menu app-menu">
             <button className={`btn btn-sm app-menu-btn ${settings && !canCallLLM ? "attention" : ""}`} aria-haspopup="menu" aria-expanded={showAppMenu} onClick={() => setShowAppMenu((x) => !x)}>
               Settings

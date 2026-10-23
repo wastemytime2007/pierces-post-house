@@ -161,7 +161,6 @@ html, body, #root {
   align-items: center;
   padding: 0 20px;
   border-bottom: 1px solid var(--bg-3);
-  -webkit-app-region: drag;
 }
 
 .titlebar-brand {
@@ -4716,7 +4715,7 @@ kbd {
 /* Shell (2026-10-21): title bar with one Settings menu; project navigation as a toolbar with a segmented control */
 .titlebar { padding: 0 var(--gutter); border-bottom: 1px solid var(--separator); background: var(--bg-0); }
 .titlebar-brand { font-size: var(--text-body); color: var(--fg-0); }
-.titlebar-status { -webkit-app-region: no-drag; }
+/* (the -webkit-app-region rules that were here did nothing: that property is Chromium's, and this app runs in a macOS webview. Dragging is the data-tauri-drag-region attribute in App.jsx.) */
 .app-menu-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; }
 .app-menu-btn.attention { color: var(--warn); }
 .app-menu-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
@@ -5244,7 +5243,7 @@ select { height: 28px; }
 
 /* Title bar: the wordmark is the way home; the project you are in shows by its own frame */
 .titlebar-brand { gap: 10px; }
-.titlebar-home { display: inline-flex; align-items: center; gap: 9px; padding: 3px 8px 3px 4px; margin-left: -4px; border: 0; border-radius: 8px; background: none; color: var(--fg-0); font: inherit; cursor: pointer; -webkit-app-region: no-drag; }
+.titlebar-home { display: inline-flex; align-items: center; gap: 9px; padding: 3px 8px 3px 4px; margin-left: -4px; border: 0; border-radius: 8px; background: none; color: var(--fg-0); font: inherit; cursor: pointer; }
 .titlebar-home:disabled { cursor: default; }
 .titlebar-home:hover:not(:disabled) { background: var(--fill); }
 .titlebar-chip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
@@ -5362,7 +5361,6 @@ select { height: 32px; padding: 0 28px 0 10px; line-height: 30px; }
 
 /* The window's own title bar is off: macOS draws its three lights over ours, so the brand starts after them. The bar is the drag region; everything in it that can be clicked is not. */
 .app.has-traffic-lights .titlebar { padding-left: 78px; }
-.titlebar-brand, .titlebar-home, .titlebar-chip { -webkit-app-region: no-drag; }
 
 /* The Settings window: a fixed toolbar of panes over a quiet sheet of rows (HIG settings.md) */
 .set-win { height: 100vh; display: flex; flex-direction: column; background: var(--bg-0); color: var(--fg-0); }
@@ -6014,3 +6012,7 @@ input[type="text"], input[type="search"], input[type="password"], textarea,
 
 @media (max-width: 1100px) { .ideas-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) { .pm-tab-dropzones { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trim-cols { grid-template-columns: minmax(0, 1fr); } }
+
+/* The whole title bar is the drag handle, so a pointer over it says so, except over the controls. */
+.titlebar[data-tauri-drag-region] { cursor: default; }
+.titlebar button, .titlebar .rv-menu { cursor: pointer; }
