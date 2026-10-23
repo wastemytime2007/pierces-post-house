@@ -65,6 +65,40 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-23: SoldFast origin film — all four long-form interviews read in full, 5:54 origin cut built and machine-checked, awaiting Ryan
+
+Ryan: *"build out a 5 minute video about mitch and bob and how soldfast got started"*, then the
+binding correction *"No skimming. Look at the transcripts in their entirety"*. Work lives outside
+this repo in `~/Documents/SoldFast Origin Film/` (film work, not code).
+
+- **All four interviews read end to end**: 3,255 segments, 4h30m (`A001` Bob 2:10:48, `A004` Mitch
+  1:16:42, `A005` Mitch 0:37:56, `A002` Bob-on-Mitch 0:04:52). Loop detector run first: zero
+  hallucination loops. `A004` had never been read by any session and carries the entire founding
+  account — the earlier partial-read treatment had the story's spine wrong.
+- **Treatment** (`TREATMENT.md`): 7 beats, built on 2008 told twice by both men, the three options
+  dated to COVID 2020, and Bob's wholesaling-at-Christmas story as the "why we're different" proof.
+- **Cut built** (`origin_cut_v1.xml` + `origin_cut_v1_preview.mp4`): 40 clips, 5:54.8, 1920x1080@30,
+  via `posthouse.coldfootage` through PreCut's exporter. `verify_export.py` all applicable checks
+  pass. Frame arithmetic exact on 40/40; every source path resolves.
+- **The cut was transcribed and compared back to the script** — frame maths only proves the XML
+  points where it aimed. 36/40 clips at >=75% token overlap, mean 91%; the other four are
+  re-transcription artifacts checked by hand. This found three real boundary defects, all fixed and
+  each re-verified by transcribing the corrected range: a word ("solution") split across two cues and
+  cut in half; a duplicated "solution" the audio never says twice; and Bob's Larry line ending at
+  "I agreed to give you a", dropping "million dollars to do that project".
+- **Code change**: `posthouse/coldfootage.py` gained an optional `sequence_dims` argument (default
+  `None` keeps the existing probe-the-first-segment behaviour). Needed because this reel opens on a
+  1440x810 proxy while 22 of its 40 clips are 1920x1080, which would import mis-scaled. Synced via
+  `sync_posthouse.sh`.
+- **Not done, and not Done**: Ryan has not seen any of it. No B-roll, music or titles — spoken spine
+  only. Runtime is 55s over the 5:00 brief, deliberately, for him to trim. Three sensitive passages
+  (Mitch's mother; Bob and Sam, which needs Sam's own consent; the partnership tension) found and
+  **excluded** pending his ruling. `BROLL_MAP.md` marks every row SEEN or NAMED and lists three
+  questions that gate picture.
+- **Pre-existing failures confirmed unrelated**: `test_coldfootage_matches_golden_master` and
+  `test_exporter_golden` fail in a full-suite run. Verified by reverting `coldfootage.py` to HEAD and
+  re-running: identical 2 failed / 666 passed. Not caused by this change.
+
 ### 2026-10-22 overnight: Direction 2, the app as four rooms (Footage, Stories, Trim, Finish); built and checked in a browser harness, not yet used by Ryan in the running app
 
 Ryan, 2026-10-21 night: "do 100 rounds of polishing... research... I want to be blown away." Research, sources and their weak spots: `docs/design/DIRECTION_2.md`. Every round, what was checked and what was not: `docs/design/POLISH_LOG.md` (the numbered table is the count; it is the honest total, not a target). Highlights, all pushed to `worktree-review-loop-spike`:

@@ -359,6 +359,7 @@ def build_coldfootage_xml(
     output_path: Path,
     project_name: Optional[str] = None,
     audio_sync_state=None,
+    sequence_dims: Optional[tuple[int, int]] = None,
 ) -> Path:
     """Build a Cold Footage sequence XML from a parsed segments dict.
 
@@ -374,6 +375,10 @@ def build_coldfootage_xml(
             pre-offset, and mutes the camera audio on a cut a microphone
             covers (the same behaviour the app has for A-roll). Left ``None``
             the sequence carries camera audio only, as before.
+        sequence_dims: optional ``(width, height)`` for the sequence. Default
+            ``None`` keeps the existing behaviour of probing the first
+            segment's source. Pass it when the reel mixes camera sizes and the
+            first clip is not the one that should set the frame.
 
     Returns:
         The output_path, on success.
@@ -413,6 +418,11 @@ def build_coldfootage_xml(
     total_duration = timeline_cursor
 
     seq_w, seq_h, seq_fps = _probe_native_dims(resolved[0].source_path)
+    if sequence_dims is not None:
+        # The first segment's native size is the right default for a single-camera reel, but a
+        # multi-camera assembly can open on the smaller camera: the Bob/Mitch origin cut starts on a
+        # 1440x810 proxy while most of its clips are 1920x1080, which would import mis-scaled.
+        seq_w, seq_h = int(sequence_dims[0]), int(sequence_dims[1])
 
     cutlist = CutList(
         deliverable_concept=sequence_name,
