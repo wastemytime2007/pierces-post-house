@@ -505,9 +505,8 @@ export default function App() {
     return () => window.removeEventListener("posthouse-work", onWork);
   }, []);
   useEffect(() => {
-    const base = "Post House";
-    const title = work && work.total ? `${work.what} ${work.done} of ${work.total}, ${base}` : project?.name ? `${project.name}, ${base}` : base;
-    try { document.title = title; } catch (e) { /* not a document */ }
+    // Not document.title: with the title bar hidden, macOS draws the window title over our own wordmark.
+    // The work in progress is on the Dock icon (set_progress, below) and in the room it belongs to.
     invoke("set_progress", { done: work?.done ?? 0, total: work?.total ?? 0 }).catch(() => {});
   }, [work, project?.name]);
 

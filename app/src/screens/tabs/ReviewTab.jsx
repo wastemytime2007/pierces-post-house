@@ -83,10 +83,10 @@ export default function ReviewTab({ subscribe, onStatus }) {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [exportResult, setExportResult] = useState(null);
-  const [showLedger, setShowLedger] = useState(true);
+  const [showLedger, setShowLedger] = useState(false);  // same: hidden until asked for
   // The AI review of each version (keyed by its label): { status: running | done | failed, stage, result }. Its findings are posted onto the page as notes once the page is ready.
   const [ai, setAi] = useState({});
-  const [showAi, setShowAi] = useState(true);
+  const [showAi, setShowAi] = useState(false);        // Ryan, 2026-10-22: details start hidden and open on a click, not the other way round
   const aiPending = useRef({});
   const readyRef = useRef(false);
   const curRef = useRef(0);

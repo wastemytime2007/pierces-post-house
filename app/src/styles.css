@@ -5971,3 +5971,46 @@ input[type="text"], input[type="search"], input[type="password"], textarea,
   }
   .titlebar, .project-nav, .rv-toolbar, .set-toolbar { background-color: var(--bg-0); }
 }
+
+/* ===========================================================================
+   USING THE SCREEN (Ryan, 2026-10-22, on a 2000 px display: "can we make it so
+   that content fills up the whole screen to take advantage of the screen
+   realestate better?")
+
+   The page was pinned to a 1200 px column, so on his display about 40% of the
+   width was doing nothing. Two different rules are needed, because the answer
+   is not the same for every kind of content:
+
+   - A GRID of things (stories, footage zones, sequences, exports) should take
+     the width and add columns. More of the work visible at once is the whole
+     point of a big screen.
+   - A PARAGRAPH should not. A line of text 2000 px wide is unreadable, so the
+     page's prose keeps a sane measure however wide the window is.
+   =========================================================================== */
+
+/* the page column follows the window, with a stop only so an ultrawide does not sprawl */
+.project-main.log-hidden .project-stage > * { max-width: min(2400px, 100%); }
+.start-panel { max-width: min(2400px, 100%); }
+
+/* prose keeps its measure: the header, and any lead or hint line */
+.page-header { max-width: 72ch; }
+.page-header p, .pm-section-lead, .sync-section-hint, .empty-state span { max-width: 80ch; }
+
+/* Two kinds of grid, and they want opposite things.
+
+   A grid of a FIXED few (the four footage zones, the two Trim panels) should STRETCH across the width:
+   there will never be a fifth, so wrapping is pointless and leaving them narrow wastes the screen.
+
+   A grid that GROWS (stories, sequences, projects) should keep its cards a sane size and add columns as
+   there is room. A story card stretched to 2000 px would be a paragraph a metre wide. */
+.pm-tab-dropzones { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.trim-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* auto-FIT with a 1fr maximum: empty tracks collapse and the cards that exist stretch to fill the row,
+   so there is no dead gutter at the right and the first card still lines up with the page's heading. */
+.ideas-grid { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
+.sp-grid { grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
+.cover-grid, .start-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+@media (max-width: 1100px) { .ideas-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .pm-tab-dropzones { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trim-cols { grid-template-columns: minmax(0, 1fr); } }
