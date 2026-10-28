@@ -58,6 +58,15 @@ const asked = () => new Promise((resolve) => {
   fire(doc.querySelector('#cutmenu [data-set="left"]'), "click");
   assert(doc.getElementById("transcount").textContent === "2 Film Impact Pushes chosen", doc.getElementById("transcount").textContent);
 
+  // 2026-10-28: the filmstrip is where the eye reads a cut, so it carries the same handles; one opens the same menu, and a chosen Push shows there too
+  const fs = [...doc.querySelectorAll("#filmstrip .fscut")];
+  assert.strictEqual(fs.length, 2, "the filmstrip has a handle per cut: " + fs.length);
+  assert(fs[0].classList.contains("on") && fs[1].classList.contains("on"), "the chosen Pushes show on the filmstrip handles");
+  fire(fs[0], "click", 320, 160);
+  assert(doc.getElementById("cutmenu") && doc.getElementById("cutmenu").textContent.includes("Add transition"), "a click on a filmstrip handle opens the transition menu");
+  fire(doc.body, "click");
+  assert(!doc.getElementById("cutmenu"));
+
   let p = await asked();
   assert.strictEqual(JSON.stringify(p.transitions), JSON.stringify([{ timeline_sec: 10, direction: "left" }, { timeline_sec: 22, direction: "left" }]), "the tab reads the choices with the notes");
 
@@ -69,7 +78,7 @@ const asked = () => new Promise((resolve) => {
   const stored = JSON.parse(w.localStorage.getItem([...Array(w.localStorage.length).keys()].map((i) => w.localStorage.key(i)).find((k) => k.endsWith(":transitions"))));
   assert.strictEqual(JSON.stringify(stored), JSON.stringify([{ timeline_sec: 10, direction: "left" }]), "kept with the version, like notes");
   assert.deepStrictEqual(errors, [], errors.join("; "));
-  console.log("review page: cut handles between clips only, menu at the mouse, badges, change, remove, choices returned with the notes and kept in the page's storage");
+  console.log("review page: cut handles between clips only, on the Clips lane and on the filmstrip, menu at the mouse, badges, change, remove, choices returned with the notes and kept in the page's storage");
   console.log("ALL CHECKS PASSED");
   process.exit(0);
 })().catch((e) => { console.error("FAILED:", e.message); process.exit(1); });

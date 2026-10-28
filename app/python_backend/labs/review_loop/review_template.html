@@ -298,7 +298,15 @@
   #filmstrip { position: relative; height: 46px; margin: 0 0 6px; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.05); cursor: pointer; }
   #filmstrip canvas { display: block; width: 100%; height: 100%; }
   #filmstrip .fph { position: absolute; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 .5px rgba(0,0,0,.5); pointer-events: none; }
-  #filmstrip.building::after { content: "Reading the picture…"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: var(--dim); }
+  #filmstrip.building::after { content: "Reading the picture…"; position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: var(--dim); pointer-events: none; }
+  /* a cut, where the picture changes: the same handle as the Clips lane, put where the eye looks */
+  .fscut { position: absolute; top: 0; bottom: 0; width: 18px; margin-left: -9px; cursor: pointer; z-index: 3; }
+  .fscut::after { content: ""; position: absolute; left: 8px; top: 0; bottom: 0; width: 2px; background: rgba(255, 255, 255, .78); box-shadow: 0 0 0 .5px rgba(0, 0, 0, .55); }
+  .fscut:hover::after { left: 7px; width: 4px; background: #fff; }
+  .fscut.on::after { left: 7px; width: 4px; background: #00ade1; }
+  .fscut.manual::after { left: 7px; width: 4px; background: #f4690b; }
+  .fscut .tip { position: absolute; left: 50%; top: 100%; transform: translateX(-50%); margin-top: 3px; padding: 1px 6px; border-radius: 4px; background: #14213a; border: 1px solid #3b5a85; color: #e6edf7; font-size: 10px; white-space: nowrap; display: none; z-index: 6; }
+  .fscut:hover .tip { display: block; }
   @media (max-width: 900px) and (min-width: 681px) { main { grid-template-columns: minmax(0, 1fr) 270px; gap: 8px 12px; padding: 10px; } }
   @media (max-width: 680px) { main { display: block; height: auto; overflow: visible; } #left { height: 60vh; } #ribbon { max-height: none; } }
 
@@ -521,7 +529,7 @@ const CUTS = [];
     el.title = 'Cut at ' + fmt(it.start) + '. Click to add a transition.';
     el.onclick = e => { e.stopPropagation(); openCutMenu(it.start, e); };
     lane.appendChild(el);
-    CUTS.push({ sec: it.start, el });
+    CUTS.push({ sec: it.start, el, els: [el] });
   });
   drawTrans();
 })();
@@ -530,8 +538,7 @@ function drawTrans() {
   const bm = document.getElementById('beatmap');
   CUTS.forEach(c => {
     const x = transAt(c.sec);
-    c.el.classList.toggle('on', !!x && x.direction === 'left');
-    c.el.classList.toggle('manual', !!x && x.direction !== 'left');
+    (c.els || [c.el]).forEach(h => { h.classList.toggle('on', !!x && x.direction === 'left'); h.classList.toggle('manual', !!x && x.direction !== 'left'); });
     if (!x) return;
     const b = document.createElement('div');
     b.className = 'cutbadge' + (x.direction === 'left' ? '' : ' manual');
@@ -543,6 +550,21 @@ function drawTrans() {
   const n = TRANS.length;
   const s = document.getElementById('transcount');
   if (s) s.textContent = n ? n + ' Film Impact Push' + (n === 1 ? '' : 'es') + ' chosen' : '';
+}
+/* The same handles on a strip that spans the whole cut (the filmstrip, the waveform): a cut is where the picture changes, so that is where the click lands. */
+function addCutMarks(strip) {
+  if (!strip || !DATA.duration || typeof CUTS === 'undefined') return;
+  CUTS.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'fscut';
+    el.style.left = (c.sec / DATA.duration * 100) + '%';
+    el.title = 'Cut at ' + fmt(c.sec) + '. Click to add a transition.';
+    const tip = document.createElement('span'); tip.className = 'tip'; tip.textContent = 'Add transition'; el.appendChild(tip);
+    el.onclick = e => { e.stopPropagation(); openCutMenu(c.sec, e); };
+    strip.appendChild(el);
+    c.els = (c.els || [c.el]).concat([el]);
+  });
+  drawTrans();
 }
 function closeCutMenu() { const m = document.getElementById('cutmenu'); if (m) m.remove(); }
 function openCutMenu(sec, e) {
@@ -950,7 +972,7 @@ function drawNotes() {
   sb.textContent = notes.length ? 'Submit changes (' + notes.length + ')' : 'Submit changes';
   sb.disabled = !notes.length;
   const box = document.getElementById('notes');
-  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Click any box on the timeline map to leave a note on that whole element, or press n for a note at the playhead, d to draw on the frame.</div>';
+  box.innerHTML = notes.length ? '' : '<div class="empty">No notes yet. Click a cut on the filmstrip to add a transition. Click any box on the timeline map to leave a note on that whole element, or press n for a note at the playhead, d to draw on the frame.</div>';
   notes.forEach((n, i) => {
     const el = document.createElement('div');
     el.className = 'note';
@@ -1349,6 +1371,7 @@ tellHost({ type: 'review:count', n: notes.length });
   el.appendChild(cvs); el.appendChild(ph);
   bar.parentNode.insertBefore(el, bar.nextSibling);          /* under the ruler; the filmstrip inserts itself after this, so the order is ruler, filmstrip, wave */
   el.addEventListener('click', e => { const r = el.getBoundingClientRect(); v.currentTime = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur)); });
+  addCutMarks(el);
   const place = () => { ph.style.left = (v.currentTime / dur * 100) + '%'; requestAnimationFrame(place); };
   requestAnimationFrame(place);
   function draw() {
@@ -1394,6 +1417,7 @@ tellHost({ type: 'review:count', n: notes.length });
   strip.appendChild(ph);
   bar.parentNode.insertBefore(strip, bar.nextSibling);
   strip.addEventListener('click', e => { const r = strip.getBoundingClientRect(); v.currentTime = Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur)); });
+  addCutMarks(strip);
   const place = () => { ph.style.left = (v.currentTime / dur * 100) + '%'; requestAnimationFrame(place); };
   requestAnimationFrame(place);
   const clean = LIVE ? DATA.preview_live_clean : 'preview.mp4';

@@ -65,6 +65,25 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-28: "when I click on cuts it's not asking if I want to add transitions" — the handles were buried under the filmstrip; now they are on it
+
+Ryan, in the app, on the "A gruff contractor…" cut. The feature (10-21, `fe53ccb`: click a cut on the
+Clips lane → Add transition › Film Impact Push) was intact: the page driver passed in jsdom, a real
+mouse in Chrome opened the menu on his exact rendered page, and the same click made through the app
+shell (`dev/bridge.cjs` + harness, real backend, his XML) opened it too. The data was fine (9 clips, 8
+touching cuts). What had changed was the 10-22 polish: the filmstrip and waveform now dominate the
+timeline, and the handles were 4 px ticks on the 18 px Clips lane beneath them. A cut is where the
+picture changes on the filmstrip, so that is where the click lands, and that click only seeked.
+
+Fix, template only (`labs/review_loop/review_template.html`, synced): `addCutMarks()` puts the same
+handle on the filmstrip and the waveform for every cut, opening the same menu and showing the same
+Push badge (each cut now keeps every handle drawn for it); the "Reading the picture…" overlay is
+click-transparent; the Notes hint says "Click a cut on the filmstrip to add a transition." The page is
+rebuilt from the template each time a cut is opened, so this reaches the running app on the next open.
+Checked: page driver extended and passing; 343 review-loop tests pass; through the app shell, 8
+handles on the filmstrip and 8 on the waveform, and a click on a filmstrip handle opens the menu
+(`app_cuts2.cjs`, screenshots in the job's scratch). **Not yet confirmed by Ryan in the Tauri window.**
+
 ### 2026-10-23: SoldFast origin film — all four long-form interviews read in full, 5:54 origin cut built and machine-checked, awaiting Ryan
 
 Ryan: *"build out a 5 minute video about mitch and bob and how soldfast got started"*, then the
