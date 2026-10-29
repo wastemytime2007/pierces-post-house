@@ -65,6 +65,18 @@ because this session violated them once each.
 
 ## In progress
 
+### 2026-10-29: the worktree is merged; `~/pierces-post-house` on `claude/ai-video-editing-team-k2a66r` is the one build from here on
+
+Ryan: "Update the repo and ensure that the correct build from here forward is what we use."
+`worktree-review-loop-spike` (265 commits of app polish, the review-loop work and the SoldFast film
+entries) was fast-forwarded into `claude/ai-video-editing-team-k2a66r` at `71e7511` on origin and in
+the local checkout; the branch had grown straight from the main branch's tip, so there was no merge
+commit and nothing to reconcile. The worktree and its local branch are removed. The Premiere panel
+symlink now points at `~/pierces-post-house/app/premiere_extension` (it had pointed into the
+worktree). `npm install` run here; the git-ignored `icon.icns` copied over; `sync_posthouse.sh` and
+`sync_labs.sh` both verify identical. The app is launched from `~/pierces-post-house/app` with
+`npm run tauri dev`. Running anything from a `.claude/worktrees/` copy is now the wrong build.
+
 ### 2026-10-28: "when I click on cuts it's not asking if I want to add transitions" — the handles were buried under the filmstrip; now they are on it
 
 Ryan, in the app, on the "A gruff contractor…" cut. The feature (10-21, `fe53ccb`: click a cut on the
